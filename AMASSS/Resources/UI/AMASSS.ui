@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1215</width>
+    <width>555</width>
     <height>1069</height>
    </rect>
   </property>
@@ -16,7 +16,163 @@
      <property name="text">
       <string>Inputs</string>
      </property>
-     <layout class="QFormLayout" name="formLayout_2"/>
+     <layout class="QVBoxLayout" name="verticalLayout_16">
+      <item>
+       <layout class="QVBoxLayout" name="verticalLayout_15">
+        <property name="leftMargin">
+         <number>10</number>
+        </property>
+        <property name="topMargin">
+         <number>10</number>
+        </property>
+        <property name="rightMargin">
+         <number>10</number>
+        </property>
+        <property name="bottomMargin">
+         <number>10</number>
+        </property>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_4">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <layout class="QVBoxLayout" name="verticalLayout_4">
+            <item>
+             <widget class="QLabel" name="label">
+              <property name="text">
+               <string>Input Type :</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_node_select">
+              <property name="text">
+               <string>Select node</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_folder_select">
+              <property name="text">
+               <string>Scans folder</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_model_select">
+              <property name="text">
+               <string>Models folder </string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="verticalLayout_3">
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <widget class="QComboBox" name="input_type_select">
+              <item>
+               <property name="text">
+                <string>Folder as input</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>File as input</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="qMRMLNodeComboBox" name="MRMLNodeComboBox_file">
+              <property name="enabled">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="lineEditScanPath"/>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="lineEditModelPath"/>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="verticalLayout_2">
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="emptyInptType">
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="emptyLabelNodeSelect">
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="SearchScanFolder">
+              <property name="enabled">
+               <bool>true</bool>
+              </property>
+              <property name="text">
+               <string>Search</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="SearchModelFolder">
+              <property name="text">
+               <string>Search</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QPushButton" name="DownloadButton">
+          <property name="text">
+           <string>Download latest models</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
@@ -56,7 +212,138 @@
      <property name="text">
       <string>Outputs</string>
      </property>
-     <layout class="QFormLayout" name="formLayout_4"/>
+     <layout class="QVBoxLayout" name="verticalLayout_9">
+      <item>
+       <layout class="QVBoxLayout" name="verticalLayout_8">
+        <property name="leftMargin">
+         <number>10</number>
+        </property>
+        <property name="topMargin">
+         <number>10</number>
+        </property>
+        <property name="rightMargin">
+         <number>10</number>
+        </property>
+        <property name="bottomMargin">
+         <number>10</number>
+        </property>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout">
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QComboBox" name="comboBox">
+            <item>
+             <property name="text">
+              <string>Separated + Merged</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Separated</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Merged only</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_6">
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <layout class="QVBoxLayout" name="verticalLayout_11">
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>5</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="label_9">
+              <property name="toolTip">
+               <string>Choose the ID that wil be added in the folder name.</string>
+              </property>
+              <property name="text">
+               <string>Prediction ID :</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="PredictFolderLabel">
+              <property name="toolTip">
+               <string/>
+              </property>
+              <property name="text">
+               <string>Prediction folder</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="verticalLayout_12">
+            <item>
+             <widget class="QLineEdit" name="SaveId">
+              <property name="toolTip">
+               <string>Choose the ID that wil be added in the folder name.</string>
+              </property>
+              <property name="text">
+               <string extracomment="pred">Seg</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="SaveFolderLineEdit">
+              <property name="enabled">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="verticalLayout_14">
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <widget class="QCheckBox" name="SavePredictCheckBox">
+              <property name="layoutDirection">
+               <enum>Qt::RightToLeft</enum>
+              </property>
+              <property name="text">
+               <string>Save prediction in scan folder</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="SearchSaveFolder">
+              <property name="enabled">
+               <bool>true</bool>
+              </property>
+              <property name="text">
+               <string>Choose</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
@@ -65,147 +352,13 @@
       <string>Advanced</string>
      </property>
      <property name="collapsed">
-      <bool>true</bool>
+      <bool>false</bool>
      </property>
-     <layout class="QFormLayout" name="formLayout_3">
-      <item row="8" column="0">
-       <widget class="QLabel" name="label_4">
-        <property name="text">
-         <string>Invert threshold: </string>
-        </property>
-       </widget>
-      </item>
-      <item row="8" column="1">
-       <widget class="QCheckBox" name="invertOutputCheckBox">
-        <property name="toolTip">
-         <string>If checked, values above threshold are set to 0. If unchecked, values below are set to 0.</string>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-       </widget>
-      </item>
-      <item row="7" column="0">
-       <widget class="qMRMLNodeComboBox" name="invertedOutputSelector">
-        <property name="toolTip">
-         <string>Result with inverted threshold will be written into this volume</string>
-        </property>
-        <property name="nodeTypes">
-         <stringlist>
-          <string>vtkMRMLScalarVolumeNode</string>
-         </stringlist>
-        </property>
-        <property name="showChildNodeTypes">
-         <bool>false</bool>
-        </property>
-        <property name="noneEnabled">
-         <bool>true</bool>
-        </property>
-        <property name="addEnabled">
-         <bool>true</bool>
-        </property>
-        <property name="removeEnabled">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="0">
-       <widget class="qMRMLNodeComboBox" name="inputSelector">
-        <property name="toolTip">
-         <string>Pick the input to the algorithm.</string>
-        </property>
-        <property name="nodeTypes">
-         <stringlist>
-          <string>vtkMRMLScalarVolumeNode</string>
-         </stringlist>
-        </property>
-        <property name="showChildNodeTypes">
-         <bool>false</bool>
-        </property>
-        <property name="addEnabled">
-         <bool>false</bool>
-        </property>
-        <property name="removeEnabled">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0">
-       <widget class="QLabel" name="label">
-        <property name="text">
-         <string>Input volume:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
-       <widget class="ctkSliderWidget" name="imageThresholdSliderWidget">
-        <property name="toolTip">
-         <string>Set threshold value for computing the output image. Voxels that have intensities lower than this value will set to zero.</string>
-        </property>
-        <property name="singleStep">
-         <double>0.100000000000000</double>
-        </property>
-        <property name="minimum">
-         <double>-100.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>500.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>0.500000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
-       <widget class="qMRMLNodeComboBox" name="outputSelector">
-        <property name="toolTip">
-         <string>Pick the output to the algorithm.</string>
-        </property>
-        <property name="nodeTypes">
-         <stringlist>
-          <string>vtkMRMLScalarVolumeNode</string>
-         </stringlist>
-        </property>
-        <property name="showChildNodeTypes">
-         <bool>false</bool>
-        </property>
-        <property name="noneEnabled">
-         <bool>true</bool>
-        </property>
-        <property name="addEnabled">
-         <bool>true</bool>
-        </property>
-        <property name="removeEnabled">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="label_2">
-        <property name="text">
-         <string>Thresholded volume:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="label_5">
-        <property name="text">
-         <string>Inverted volume:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="label_3">
-        <property name="text">
-         <string>Image threshold:</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
+     <layout class="QFormLayout" name="formLayout_3"/>
     </widget>
    </item>
    <item>
-    <widget class="QPushButton" name="applyButton">
+    <widget class="QPushButton" name="PredictionButton">
      <property name="enabled">
       <bool>false</bool>
      </property>
@@ -214,6 +367,19 @@
      </property>
      <property name="text">
       <string>Run  prediction</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="pushButton">
+     <property name="enabled">
+      <bool>false</bool>
+     </property>
+     <property name="toolTip">
+      <string>Generate the .vtf files associated with the previously generated segmentations.</string>
+     </property>
+     <property name="text">
+      <string>Generate surface model</string>
      </property>
     </widget>
    </item>
@@ -243,11 +409,6 @@
    <container>1</container>
   </customwidget>
   <customwidget>
-   <class>ctkSliderWidget</class>
-   <extends>QWidget</extends>
-   <header>ctkSliderWidget.h</header>
-  </customwidget>
-  <customwidget>
    <class>qMRMLNodeComboBox</class>
    <extends>QWidget</extends>
    <header>qMRMLNodeComboBox.h</header>
@@ -265,54 +426,5 @@
   </customwidget>
  </customwidgets>
  <resources/>
- <connections>
-  <connection>
-   <sender>AMASSS</sender>
-   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
-   <receiver>inputSelector</receiver>
-   <slot>setMRMLScene(vtkMRMLScene*)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>122</x>
-     <y>132</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>248</x>
-     <y>61</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>AMASSS</sender>
-   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
-   <receiver>outputSelector</receiver>
-   <slot>setMRMLScene(vtkMRMLScene*)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>82</x>
-     <y>135</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>220</x>
-     <y>161</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>AMASSS</sender>
-   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
-   <receiver>invertedOutputSelector</receiver>
-   <slot>setMRMLScene(vtkMRMLScene*)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>161</x>
-     <y>8</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>173</x>
-     <y>176</y>
-    </hint>
-   </hints>
-  </connection>
- </connections>
+ <connections/>
 </ui>
