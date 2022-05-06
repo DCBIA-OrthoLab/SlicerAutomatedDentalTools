@@ -27,6 +27,8 @@ GROUPS_SEG = {
   "Soft tissue" :['Skin','Upper airway'],
 }
 
+DEFAULT_SELECT = ["Mandible","Maxilla","Cranial base","Cervical vertebra"]
+
 
 SEG_GROUP = GetSegGroup(GROUPS_SEG)
 
@@ -83,6 +85,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self._parameterNode = None
     self._updatingGUIFromParameterNode = False
     
+    self.MRMLNode_scan = None
+
     self.save_folder = None
 
 
@@ -137,6 +141,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
 
     self.ui.input_type_select.currentIndexChanged.connect(self.SwitchInputType)
+    self.ui.MRMLNodeComboBox_file.setMRMLScene(slicer.mrmlScene)
+    self.ui.MRMLNodeComboBox_file.currentNodeChanged.connect(self.onNodeChanged)
+
 
     self.ui.DownloadButton.connect('clicked(bool)',self.onDownloadButton)
 
@@ -152,6 +159,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.OptionVLayout.addWidget(self.seg_tab.widget)
     self.seg_tab.Clear()
     self.seg_tab.FillTab(GROUPS_SEG)
+
+    self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox_file.currentNodeID)
+
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
@@ -182,6 +192,11 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.label_node_select.setHidden(not index)
     self.ui.MRMLNodeComboBox_file.setHidden(not index)
     self.ui.emptyLabelNodeSelect.setHidden(not index)
+
+  def onNodeChanged(self):
+    self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox_file.currentNodeID)
+    if self.MRMLNode_scan is not None:
+      print(PathFromNode(self.MRMLNode_scan))
   
 
   def onDownloadButton(self):
@@ -189,10 +204,20 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def onSearchScanButton(self):
-    surface_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-    if surface_folder != '':
-      self.surface_folder = surface_folder
-      self.ui.lineEditScanPath.setText(self.surface_folder)
+    scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+    if scan_folder != '':
+      self.scan_folder = scan_folder
+      self.ui.lineEditScanPath.setText(self.scan_folder)
+
+      msg = qt.QMessageBox()
+      scan_nbr = 0
+      if scan_nbr == 0:
+        msg_txt = "Missing parameters : \n"
+        msg_txt += "- No scan found in folder '" + scan_folder + "'\n"
+
+      msg.setText(msg_txt)
+      msg.setWindowTitle("Error")
+      msg.exec_()
 
       
   def onSearchModelButton(self):
@@ -417,7 +442,7 @@ class LMTab:
         for seg in seg_lst:
           self.seg_group_dic["All"].append(seg)
           if seg not in self.seg_status_dic.keys():
-            self.seg_status_dic[seg] = self.default_checkbox_state
+            self.seg_status_dic[seg] = seg in DEFAULT_SELECT
       
       # print(self.seg_group_dic)
 
@@ -430,7 +455,7 @@ class LMTab:
         lst_wid = []
         for seg in seg_lst:
           new_cb = qt.QCheckBox(seg)
-          new_cb.setChecked(self.default_checkbox_state)
+          new_cb.setChecked(seg in DEFAULT_SELECT)
           self.check_box_dic[new_cb] = seg
           lst_wid.append(new_cb)
 
@@ -565,6 +590,13 @@ class LMTab:
 
 #     return out_dic
 
+def PathFromNode(node):
+  storageNode=node.GetStorageNode()
+  if storageNode is not None:
+    filepath=storageNode.GetFullNameFromFileName()
+  else:
+    filepath=None
+  return filepath
 
 
 
