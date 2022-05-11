@@ -87,7 +87,15 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     self.MRMLNode_scan = None
 
+    self.model_ready = False
+    self.scan_ready = False
+
+    self.scan_folder = None
     self.save_folder = None
+    self.save_surface = True
+
+    self.precision = 50
+    self.smoothing = 10
 
 
   def setup(self):
@@ -127,11 +135,16 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
     # self.ui.invertedOutputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
 
-    self.ui.SavePredictCheckBox.connect("toggled(bool)", self.UpdateSaveType)
+    self.ui.SavePredictCheckBox.connect("toggled(bool)", self.UpdateSaveFolder)
+    self.ui.checkBoxSurfaceSelect.connect("toggled(bool)", self.UpdateSaveSurface)
 
     self.ui.SearchSaveFolder.setHidden(True)
     self.ui.SaveFolderLineEdit.setHidden(True)
     self.ui.PredictFolderLabel.setHidden(True)
+
+    # self.ui.labelSmoothing.setHidden(True)
+    # self.ui.horizontalSliderSmoothing.setHidden(True)
+    # self.ui.spinBoxSmoothing.setHidden(True)
 
     self.SwitchInputType(0)
 
@@ -151,6 +164,13 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.SearchModelFolder.connect('clicked(bool)',self.onSearchModelButton)
     self.ui.SearchSaveFolder.connect('clicked(bool)',self.onSearchSaveButton)
 
+
+    self.ui.horizontalSliderPrecision.valueChanged.connect(self.onPrecisionSlider)
+    self.ui.spinBoxPrecision.valueChanged.connect(self.onPrecisionSpinbox)
+
+    self.ui.horizontalSliderSmoothing.valueChanged.connect(self.onSmoothingSlider)
+    self.ui.spinBoxSmoothing.valueChanged.connect(self.onSmoothingSpinbox)
+
     self.ui.PredictionButton.connect('clicked(bool)', self.onPredictButton)
 
 
@@ -168,16 +188,43 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 
-  def UpdateSaveType(self,caller=None, event=None):
+  def UpdateSaveFolder(self,caller=None, event=None):
     # print(caller,event)
-    self.ui.SearchSaveFolder.setHidden(caller)
-    self.ui.SaveFolderLineEdit.setHidden(caller)
-    self.ui.PredictFolderLabel.setHidden(caller)
+    hide = caller
+
+    self.ui.SearchSaveFolder.setHidden(hide)
+    self.ui.SaveFolderLineEdit.setHidden(hide)
+    self.ui.PredictFolderLabel.setHidden(hide)
 
     # self.ui.SearchSaveFolder.setEnabled(not caller)
     # self.ui.SaveFolderLineEdit.setEnabled(not caller)
     
     self.save_scan_folder = caller
+
+  def UpdateSaveSurface(self,caller=None, event=None):
+    hide = not caller
+
+    self.ui.labelSmoothing.setHidden(hide)
+    self.ui.horizontalSliderSmoothing.setHidden(hide)
+    self.ui.spinBoxSmoothing.setHidden(hide)
+    
+    self.save_surface = caller
+
+  def onPrecisionSlider(self):
+    self.precision = self.ui.horizontalSliderPrecision.value * 5
+    self.ui.spinBoxPrecision.value = self.precision
+
+  def onPrecisionSpinbox(self):
+    self.precision = self.ui.spinBoxPrecision.value
+    self.ui.horizontalSliderPrecision.value = self.precision / 5
+
+  def onSmoothingSlider(self):
+    self.smoothing = self.ui.horizontalSliderSmoothing.value
+    self.ui.spinBoxSmoothing.value = self.smoothing
+
+  def onSmoothingSpinbox(self):
+    self.smoothing = self.ui.spinBoxSmoothing.value
+    self.ui.horizontalSliderSmoothing.value = self.smoothing
 
   def SwitchInputType(self,index):
     if index == 0:
@@ -193,6 +240,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.MRMLNodeComboBox_file.setHidden(not index)
     self.ui.emptyLabelNodeSelect.setHidden(not index)
 
+    self.scan_ready = False
+
   def onNodeChanged(self):
     self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox_file.currentNodeID)
     if self.MRMLNode_scan is not None:
@@ -207,17 +256,22 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
     if scan_folder != '':
       self.scan_folder = scan_folder
+      self.save_folder = scan_folder
       self.ui.lineEditScanPath.setText(self.scan_folder)
 
-      msg = qt.QMessageBox()
-      scan_nbr = 0
-      if scan_nbr == 0:
-        msg_txt = "Missing parameters : \n"
-        msg_txt += "- No scan found in folder '" + scan_folder + "'\n"
 
-      msg.setText(msg_txt)
-      msg.setWindowTitle("Error")
-      msg.exec_()
+      self.scan_ready = True
+
+      # msg = qt.QMessageBox()
+      # scan_nbr = 0
+      # if scan_nbr == 0:
+      #   msg_txt = "Missing parameters : \n"
+      #   msg_txt += "- No scan found in folder '" + scan_folder + "'\n"
+
+      # msg.setText(msg_txt)
+      # msg.setWindowTitle("Error")
+      # msg.exec_()
+    self.UpdateRunBtn()
 
       
   def onSearchModelButton(self):
@@ -226,17 +280,24 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.model_folder = model_folder
       self.ui.lineEditModelPath.setText(self.model_folder)
 
+      self.model_ready = True
+
       # available_lm,brain_dic = GetAvailableSeg(self.model_folder,SEG_GROUP)
       # print(brain_dic)
       
       # self.seg_tab.Clear()
       # self.seg_tab.FillTab(GROUPS_SEG)
+    self.UpdateRunBtn()
 
   def onSearchSaveButton(self):
     save_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
     if save_folder != '':
       self.save_folder = save_folder
       self.ui.SaveFolderLineEdit.setText(self.save_folder)
+
+  def UpdateRunBtn(self):
+    self.ui.PredictionButton.setEnabled(self.scan_ready and self.model_ready)
+
 
   def onPredictButton(self):
 
@@ -256,7 +317,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # print(scans)
 
-    selectedLM = self.seg_tab.GetSelectedLM()
+    selectedLM = self.seg_tab.GetSelected()
     seg_nbr = len(selectedLM)
     self.ui.LandmarkProgressBar.maximum = seg_nbr
     scan_nbr = len(scans)
@@ -402,6 +463,8 @@ class LMTab:
       layout = qt.QVBoxLayout(self.widget)
 
       self.seg_tab_widget = qt.QTabWidget()
+      # self.seg_tab_widget.connect('currentChanged(int)',self.Test)
+
       self.seg_tab_widget.minimumSize = qt.QSize(100,200)
       self.seg_tab_widget.maximumSize = qt.QSize(800,400)
       self.seg_tab_widget.setMovable(True)
@@ -424,6 +487,7 @@ class LMTab:
       layout.addWidget(self.seg_tab_widget)
       layout.addWidget(buttons_wid)
       self.seg_status_dic = {}
+
 
     def Clear(self):
       self.seg_tab_widget.clear()
@@ -534,12 +598,12 @@ class LMTab:
           cb.setChecked(state)
         self.seg_status_dic[seg_id] = state
 
-    def GetSelectedLM(self):
-      selectedLM = []
+    def GetSelected(self):
+      selected = []
       for seg,state in self.seg_status_dic.items():
         if state:
-          selectedLM.append(seg)
-      return selectedLM
+          selected.append(seg)
+      return selected
 
     def SelectAll(self):
       self.UpdateAll(True)
