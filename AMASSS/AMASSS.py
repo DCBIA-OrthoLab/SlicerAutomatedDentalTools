@@ -23,11 +23,23 @@ MODEL_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.0-al
 GROUPS_SEG = {
   "Bones" : ["Mandible","Maxilla","Cranial base","Cervical vertebra"],
   "Teeth" : ['Root canal'],
-  "Nerfs" : ['Mandibular canal'],
+  "Nerves" : ['Mandibular canal'],
   "Soft tissue" :['Skin','Upper airway'],
 }
 
 DEFAULT_SELECT = ["Mandible","Maxilla","Cranial base","Cervical vertebra"]
+
+
+TRANSLATE ={
+  "Mandible" : "MAND",
+  "Maxilla" : "MAX",
+  "Cranial base" : "CB",
+  "Cervical vertebra" : "CV",
+  "Root canal" : "RC",
+  "Mandibular canal" : "MCAN",
+  "Skin" : "SKIN",
+  "Upper airway" : "UAW",
+}
 
 
 SEG_GROUP = GetSegGroup(GROUPS_SEG)
@@ -85,17 +97,23 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self._parameterNode = None
     self._updatingGUIFromParameterNode = False
     
-    self.MRMLNode_scan = None
+    self.MRMLNode_scan = None # MRML node of the selected scan
 
-    self.model_ready = False
-    self.scan_ready = False
+    self.model_ready = False # model selected
+    self.scan_ready = False # scan is selected
 
-    self.scan_folder = None
-    self.save_folder = None
-    self.save_surface = True
+    self.scan_folder = None # path to the folder containing the scans
+    self.save_folder = None # path to the folder where the results will be saved
+    self.save_surface = True # True: save surface .vtk of the segmentation
 
-    self.precision = 50
-    self.smoothing = 10
+    self.output_selection = "m" # m: merged, s: separated, ms: both
+    self.prediction_ID = "Seg" # ID to put in the prediction name
+
+
+    self.center_all = False # True: center all the scan seg and surfaces in the same position
+    self.save_adjusted = False # True: save the contrast adjusted scan
+    self.precision = 50 # Default precision for the segmentation 
+    self.smoothing = 10 # Default smoothing value for the generated surface
 
 
   def setup(self):
@@ -211,12 +229,12 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.save_surface = caller
 
   def onPrecisionSlider(self):
-    self.precision = self.ui.horizontalSliderPrecision.value * 5
+    self.precision = self.ui.horizontalSliderPrecision.value
     self.ui.spinBoxPrecision.value = self.precision
 
   def onPrecisionSpinbox(self):
     self.precision = self.ui.spinBoxPrecision.value
-    self.ui.horizontalSliderPrecision.value = self.precision / 5
+    self.ui.horizontalSliderPrecision.value = self.precision
 
   def onSmoothingSlider(self):
     self.smoothing = self.ui.horizontalSliderSmoothing.value
@@ -488,6 +506,10 @@ class LMTab:
       layout.addWidget(buttons_wid)
       self.seg_status_dic = {}
 
+
+    # def Test(self, index):
+    #   print(index)
+    
 
     def Clear(self):
       self.seg_tab_widget.clear()
