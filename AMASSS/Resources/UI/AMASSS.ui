@@ -400,7 +400,7 @@
            <number>0</number>
           </property>
           <item>
-           <widget class="QCheckBox" name="checkBox_Center">
+           <widget class="QCheckBox" name="CenterAllCheckBox">
             <property name="toolTip">
              <string>Center the origin of all the files.</string>
             </property>
@@ -416,7 +416,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QCheckBox" name="checkBox_2">
+           <widget class="QCheckBox" name="SaveAdjustedCheckBox">
             <property name="toolTip">
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Save the scan with contrast adjustment.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
@@ -513,7 +513,7 @@
                <number>1</number>
               </property>
               <property name="value">
-               <number>10</number>
+               <number>5</number>
               </property>
               <property name="orientation">
                <enum>Qt::Horizontal</enum>
@@ -552,7 +552,7 @@
                <string>Smoothing factor to apply to the generated .vtk surface.</string>
               </property>
               <property name="value">
-               <number>10</number>
+               <number>5</number>
               </property>
              </widget>
             </item>

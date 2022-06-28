@@ -10,13 +10,8 @@ from slicer.util import VTKObservationMixin
 import webbrowser
 
 
-def GetSegGroup(group_landmark):
-  seg_group = {}
-  for group,labels in group_landmark.items():
-      for label in labels:
-          seg_group[label] = group
-  return seg_group
 
+#region ========= GLOBAL VARIABLES =========
 
 MODEL_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.0-alpha/ALL_MODELS.zip'
 
@@ -44,8 +39,27 @@ TRANSLATE ={
 
 SEG_GROUP = GetSegGroup(GROUPS_SEG)
 
+#endregion
+
+#region ========== FUNCTIONS ==========
+def GetSegGroup(group_landmark):
+  seg_group = {}
+  for group,labels in group_landmark.items():
+      for label in labels:
+          seg_group[label] = group
+  return seg_group
 
 
+
+def PathFromNode(node):
+  storageNode=node.GetStorageNode()
+  if storageNode is not None:
+    filepath=storageNode.GetFullNameFromFileName()
+  else:
+    filepath=None
+  return filepath
+
+#endregion
 
 #
 # AMASSS
@@ -61,22 +75,14 @@ class AMASSS(ScriptedLoadableModule):
     self.parent.title = "AMASSS"  # TODO: make this more human readable by adding spaces
     self.parent.categories = ["Automatic Tools"]  # TODO: set categories (folders where the module shows up in the module selector)
     self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-    self.parent.contributors = ["John Doe (AnyWare Corp.)"]  # TODO: replace with "Firstname Lastname (Organization)"
-    # TODO: update with short description of the module and a link to online module documentation
+    self.parent.contributors = ["Maxime Gillot (CPE Lyon & UoM), Baptiste Baquero (CPE Lyon & UoM)"]  # TODO: replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#AMASSS">module documentation</a>.
-"""
-    # TODO: replace with organization, grant and thanks
+      This is a module that will allow you to automatically segment your CT scan.
+      """
     self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
-"""
-
-#
-# Register sample data sets in Sample Data module
-#
-
+    This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
+    and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
+    """
 
 #
 # AMASSSWidget
@@ -99,27 +105,30 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     self.MRMLNode_scan = None # MRML node of the selected scan
 
+    self.scan_folder = None # path to the folder containing the scans
+    self.save_folder = None # path to the folder where the results will be saved
+
     self.model_ready = False # model selected
     self.scan_ready = False # scan is selected
 
-    self.scan_folder = None # path to the folder containing the scans
-    self.save_folder = None # path to the folder where the results will be saved
     self.save_surface = True # True: save surface .vtk of the segmentation
-
-    self.output_selection = "m" # m: merged, s: separated, ms: both
-    self.prediction_ID = "Seg" # ID to put in the prediction name
+    self.output_selection = "MERGE" # m: merged, s: separated, ms: both
+    self.prediction_ID = "Seg_Pred" # ID to put in the prediction name
 
 
     self.center_all = False # True: center all the scan seg and surfaces in the same position
     self.save_adjusted = False # True: save the contrast adjusted scan
     self.precision = 50 # Default precision for the segmentation 
-    self.smoothing = 10 # Default smoothing value for the generated surface
+    self.smoothing = 5 # Default smoothing value for the generated surface
 
 
   def setup(self):
     """
     Called when the user opens the module the first time and the widget is initialized.
     """
+    #region ===== WIDGET =====
+    
+
     ScriptedLoadableModuleWidget.setup(self)
 
     # Load widget from .ui file (created by Qt Designer).
@@ -137,60 +146,36 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # in batch mode, without a graphical user interface.
     self.logic = AMASSSLogic()
 
-    # Connections
-
     # These connections ensure that we update parameter node when scene is closed
     self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
     self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
+    #endregion
+
+    #region ===== CONNECTIONS =====
 
 
+      #region == INPUT ==
 
-    # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
-    # (in the selected parameter node).
-    # self.ui.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    # self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    # self.ui.imageThresholdSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
-    # self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
-    # self.ui.invertedOutputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-
-    self.ui.SavePredictCheckBox.connect("toggled(bool)", self.UpdateSaveFolder)
-    self.ui.checkBoxSurfaceSelect.connect("toggled(bool)", self.UpdateSaveSurface)
-
-    self.ui.SearchSaveFolder.setHidden(True)
-    self.ui.SaveFolderLineEdit.setHidden(True)
-    self.ui.PredictFolderLabel.setHidden(True)
-
-    # self.ui.labelSmoothing.setHidden(True)
-    # self.ui.horizontalSliderSmoothing.setHidden(True)
-    # self.ui.spinBoxSmoothing.setHidden(True)
-
+    # Input type
+    self.ui.input_type_select.currentIndexChanged.connect(self.SwitchInputType)
     self.SwitchInputType(0)
 
+    # Input scan
+    self.ui.SearchScanFolder.connect('clicked(bool)',self.onSearchScanButton)
 
-
-    # Buttons
-    # self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
-
-    self.ui.input_type_select.currentIndexChanged.connect(self.SwitchInputType)
     self.ui.MRMLNodeComboBox_file.setMRMLScene(slicer.mrmlScene)
     self.ui.MRMLNodeComboBox_file.currentNodeChanged.connect(self.onNodeChanged)
+    self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox_file.currentNodeID)
 
+    # model folder
+    self.ui.SearchModelFolder.connect('clicked(bool)',self.onSearchModelButton)
 
+    # Download model
     self.ui.DownloadButton.connect('clicked(bool)',self.onDownloadButton)
 
-    self.ui.SearchScanFolder.connect('clicked(bool)',self.onSearchScanButton)
-    self.ui.SearchModelFolder.connect('clicked(bool)',self.onSearchModelButton)
-    self.ui.SearchSaveFolder.connect('clicked(bool)',self.onSearchSaveButton)
+    #endregion
 
-
-    self.ui.horizontalSliderPrecision.valueChanged.connect(self.onPrecisionSlider)
-    self.ui.spinBoxPrecision.valueChanged.connect(self.onPrecisionSpinbox)
-
-    self.ui.horizontalSliderSmoothing.valueChanged.connect(self.onSmoothingSlider)
-    self.ui.spinBoxSmoothing.valueChanged.connect(self.onSmoothingSpinbox)
-
-    self.ui.PredictionButton.connect('clicked(bool)', self.onPredictButton)
-
+      #region == SEGMENTATION SELECTION ==
 
     self.seg_tab = LMTab()
     # seg_tab_widget,seg_buttons_dic = GenLandmarkTab(Landmarks_group)
@@ -198,51 +183,66 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.seg_tab.Clear()
     self.seg_tab.FillTab(GROUPS_SEG)
 
-    self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox_file.currentNodeID)
+    #endregion
 
+      #region == OUTPUT ==
+
+    # Output type
+    self.ui.OutputTypecomboBox.currentIndexChanged.connect(self.SwitchOutputType)
+
+    # Generate vtk file
+    self.ui.checkBoxSurfaceSelect.connect("toggled(bool)", self.UpdateSaveSurface)
+
+    # Save in a folder
+    self.ui.SavePredictCheckBox.connect("toggled(bool)", self.UpdateSaveFolder)
+
+    # folder selection
+    self.ui.SearchSaveFolder.connect('clicked(bool)',self.onSearchSaveButton)
+    self.ui.SearchSaveFolder.setHidden(True)
+    self.ui.SaveFolderLineEdit.setHidden(True)
+    self.ui.PredictFolderLabel.setHidden(True)
+
+    #endregion
+
+
+      #region == MORE OPTIONS ==
+
+    # Center all
+    # self.ui.CenterAllCheckBox.connect("toggled(bool)", self.UpdateCenterAll)
+
+    # Save adjusted
+    # self.ui.SaveAdjustedCheckBox.connect("toggled(bool)", self.UpdateSaveAdjusted)
+
+    # precision
+    self.ui.horizontalSliderPrecision.valueChanged.connect(self.onPrecisionSlider)
+    self.ui.horizontalSliderSmoothing.setHidden(True)
+    self.ui.spinBoxPrecision.valueChanged.connect(self.onPrecisionSpinbox)
+    self.ui.spinBoxPrecision.setHidden(True)
+
+    # smoothing
+    self.ui.horizontalSliderSmoothing.valueChanged.connect(self.onSmoothingSlider)
+    self.ui.labelSmoothing.setHidden(True)
+    self.ui.spinBoxSmoothing.valueChanged.connect(self.onSmoothingSpinbox)
+    self.ui.spinBoxSmoothing.setHidden(True)
+
+    #endregion
+
+      #region == RUN ==
+
+
+    self.ui.PredictionButton.connect('clicked(bool)', self.onPredictButton)
+  
+      #endregion
+
+    #endregion
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
 
 
+  #region ====== FUNCTIONS ======
 
-  def UpdateSaveFolder(self,caller=None, event=None):
-    # print(caller,event)
-    hide = caller
-
-    self.ui.SearchSaveFolder.setHidden(hide)
-    self.ui.SaveFolderLineEdit.setHidden(hide)
-    self.ui.PredictFolderLabel.setHidden(hide)
-
-    # self.ui.SearchSaveFolder.setEnabled(not caller)
-    # self.ui.SaveFolderLineEdit.setEnabled(not caller)
-    
-    self.save_scan_folder = caller
-
-  def UpdateSaveSurface(self,caller=None, event=None):
-    hide = not caller
-
-    self.ui.labelSmoothing.setHidden(hide)
-    self.ui.horizontalSliderSmoothing.setHidden(hide)
-    self.ui.spinBoxSmoothing.setHidden(hide)
-    
-    self.save_surface = caller
-
-  def onPrecisionSlider(self):
-    self.precision = self.ui.horizontalSliderPrecision.value
-    self.ui.spinBoxPrecision.value = self.precision
-
-  def onPrecisionSpinbox(self):
-    self.precision = self.ui.spinBoxPrecision.value
-    self.ui.horizontalSliderPrecision.value = self.precision
-
-  def onSmoothingSlider(self):
-    self.smoothing = self.ui.horizontalSliderSmoothing.value
-    self.ui.spinBoxSmoothing.value = self.smoothing
-
-  def onSmoothingSpinbox(self):
-    self.smoothing = self.ui.spinBoxSmoothing.value
-    self.ui.horizontalSliderSmoothing.value = self.smoothing
+    #region == INPUT ==
 
   def SwitchInputType(self,index):
     if index == 0:
@@ -264,11 +264,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox_file.currentNodeID)
     if self.MRMLNode_scan is not None:
       print(PathFromNode(self.MRMLNode_scan))
-  
-
-  def onDownloadButton(self):
-    webbrowser.open(MODEL_LINK)
-
 
   def onSearchScanButton(self):
     scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
@@ -291,7 +286,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       # msg.exec_()
     self.UpdateRunBtn()
 
-      
   def onSearchModelButton(self):
     model_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a model folder")
     if model_folder != '':
@@ -307,16 +301,71 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       # self.seg_tab.FillTab(GROUPS_SEG)
     self.UpdateRunBtn()
 
+  def onDownloadButton(self):
+    webbrowser.open(MODEL_LINK)
+
+    #endregion
+
+    #region == OUTPUT ==
+
+  def UpdateSaveFolder(self,caller=None, event=None):
+
+    # print(caller,event)
+    hide = caller
+
+    self.ui.SearchSaveFolder.setHidden(hide)
+    self.ui.SaveFolderLineEdit.setHidden(hide)
+    self.ui.PredictFolderLabel.setHidden(hide)
+
+    # self.ui.SearchSaveFolder.setEnabled(not caller)
+    # self.ui.SaveFolderLineEdit.setEnabled(not caller)
+    
+    self.save_scan_folder = caller
+
+  def UpdateSaveSurface(self,caller=None, event=None):
+    hide = not caller
+
+    self.ui.labelSmoothing.setHidden(hide)
+    self.ui.horizontalSliderSmoothing.setHidden(hide)
+    self.ui.spinBoxSmoothing.setHidden(hide)
+    
+    self.save_surface = caller
+
   def onSearchSaveButton(self):
     save_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
     if save_folder != '':
       self.save_folder = save_folder
       self.ui.SaveFolderLineEdit.setText(self.save_folder)
 
-  def UpdateRunBtn(self):
-    self.ui.PredictionButton.setEnabled(self.scan_ready and self.model_ready)
+  def SwitchOutputType(self,index):
+    print("Selected output type:",index)
 
 
+    #endregion
+
+    #region == MORE OPTIONS ==
+
+  def onPrecisionSlider(self):
+    self.precision = self.ui.horizontalSliderPrecision.value
+    self.ui.spinBoxPrecision.value = self.precision
+
+  def onPrecisionSpinbox(self):
+    self.precision = self.ui.spinBoxPrecision.value
+    self.ui.horizontalSliderPrecision.value = self.precision
+
+  def onSmoothingSlider(self):
+    self.smoothing = self.ui.horizontalSliderSmoothing.value
+    self.ui.spinBoxSmoothing.value = self.smoothing
+
+  def onSmoothingSpinbox(self):
+    self.smoothing = self.ui.spinBoxSmoothing.value
+    self.ui.horizontalSliderSmoothing.value = self.smoothing
+
+
+    #endregion
+
+  
+    #region == RUN ==
   def onPredictButton(self):
 
     # print(self.addLog)
@@ -363,10 +412,15 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.threadFunc()
 
+    #endregion
+
+
+  def UpdateRunBtn(self):
+    self.ui.PredictionButton.setEnabled(self.scan_ready and self.model_ready)
 
 
 
-
+    #region == SLICER BASICS ==
 
   def cleanup(self):
     """
@@ -469,7 +523,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self._parameterNode.EndModify(wasModified)
 
-
+    #endregion
 
 class LMTab:
     def __init__(self) -> None:
@@ -479,6 +533,7 @@ class LMTab:
 
       self.widget = qt.QWidget()
       layout = qt.QVBoxLayout(self.widget)
+
 
       self.seg_tab_widget = qt.QTabWidget()
       # self.seg_tab_widget.connect('currentChanged(int)',self.Test)
@@ -510,7 +565,6 @@ class LMTab:
     # def Test(self, index):
     #   print(index)
     
-
     def Clear(self):
       self.seg_tab_widget.clear()
 
@@ -633,6 +687,47 @@ class LMTab:
     def ClearAll(self):
       self.UpdateAll(False)
 
+
+
+
+#
+# AMASSSLogic
+#
+
+class AMASSSLogic(ScriptedLoadableModuleLogic):
+  """
+  Uses ScriptedLoadableModuleLogic base class, available at:
+  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
+  """
+
+  def __init__(self):
+    """
+    Called when the logic class is instantiated. Can be used for initializing member variables.
+    """
+    ScriptedLoadableModuleLogic.__init__(self)
+
+
+  def process(self, parameters, showResult=True):
+    """
+    Run the processing algorithm.
+    Can be used without GUI widget.
+    """
+
+    startTime = time.time()
+    logging.info('Processing started')
+
+    cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, parameters, wait_for_completion=True, update_display=showResult)
+    # We don't need the CLI module node anymore, remove it to not clutter the scene with it
+    slicer.mrmlScene.RemoveNode(cliNode)
+
+    stopTime = time.time()
+    logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
+
+
+#region OLD CODE
+
+
+
 # def GetAvailableSeg(mfold,seg_group):
 #   brain_dic = GetBrain(mfold)
 #   # print(brain_dic)
@@ -676,142 +771,104 @@ class LMTab:
 
 #     return out_dic
 
-def PathFromNode(node):
-  storageNode=node.GetStorageNode()
-  if storageNode is not None:
-    filepath=storageNode.GetFullNameFromFileName()
-  else:
-    filepath=None
-  return filepath
 
 
 
-#
-# AMASSSLogic
-#
+  # def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
+  #   """
+  #   Run the processing algorithm.
+  #   Can be used without GUI widget.
+  #   """
 
-class AMASSSLogic(ScriptedLoadableModuleLogic):
-  """This class should implement all the actual
-  computation done by your module.  The interface
-  should be such that other python code can import
-  this class and make use of the functionality without
-  requiring an instance of the Widget.
-  Uses ScriptedLoadableModuleLogic base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
+  #   if not inputVolume or not outputVolume:
+  #     raise ValueError("Input or output volume is invalid")
 
-  def __init__(self):
-    """
-    Called when the logic class is instantiated. Can be used for initializing member variables.
-    """
-    ScriptedLoadableModuleLogic.__init__(self)
+  #   import time
+  #   startTime = time.time()
+  #   logging.info('Processing started')
 
-  def setDefaultParameters(self, parameterNode):
-    """
-    Initialize parameter node with default settings.
-    """
-    if not parameterNode.GetParameter("Threshold"):
-      parameterNode.SetParameter("Threshold", "100.0")
-    if not parameterNode.GetParameter("Invert"):
-      parameterNode.SetParameter("Invert", "false")
+  #   # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
 
-  def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
-    """
-    Run the processing algorithm.
-    Can be used without GUI widget.
-    :param inputVolume: volume to be thresholded
-    :param outputVolume: thresholding result
-    :param imageThreshold: values above/below this threshold will be set to 0
-    :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-    :param showResult: show output volume in slice viewers
-    """
+  #   cliParams = {
+  #     'InputVolume': inputVolume.GetID(),
+  #     'OutputVolume': outputVolume.GetID(),
+  #     'ThresholdValue' : imageThreshold,
+  #     'ThresholdType' : 'Above' if invert else 'Below'
+  #     }
+  #   cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
+  #   # We don't need the CLI module node anymore, remove it to not clutter the scene with it
+  #   slicer.mrmlScene.RemoveNode(cliNode)
 
-    if not inputVolume or not outputVolume:
-      raise ValueError("Input or output volume is invalid")
-
-    import time
-    startTime = time.time()
-    logging.info('Processing started')
-
-    # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-    cliParams = {
-      'InputVolume': inputVolume.GetID(),
-      'OutputVolume': outputVolume.GetID(),
-      'ThresholdValue' : imageThreshold,
-      'ThresholdType' : 'Above' if invert else 'Below'
-      }
-    cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
-    # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-    slicer.mrmlScene.RemoveNode(cliNode)
-
-    stopTime = time.time()
-    logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
+  #   stopTime = time.time()
+  #   logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
 
 
 #
 # AMASSSTest
 #
 
-class AMASSSTest(ScriptedLoadableModuleTest):
-  """
-  This is the test case for your scripted module.
-  Uses ScriptedLoadableModuleTest base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
+# class AMASSSTest(ScriptedLoadableModuleTest):
+#   """
+#   This is the test case for your scripted module.
+#   Uses ScriptedLoadableModuleTest base class, available at:
+#   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
+#   """
 
-  def setUp(self):
-    """ Do whatever is needed to reset the state - typically a scene clear will be enough.
-    """
-    slicer.mrmlScene.Clear()
+#   def setUp(self):
+#     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
+#     """
+#     slicer.mrmlScene.Clear()
 
-  def runTest(self):
-    """Run as few or as many tests as needed here.
-    """
-    self.setUp()
-    self.test_AMASSS1()
+#   def runTest(self):
+#     """Run as few or as many tests as needed here.
+#     """
+#     self.setUp()
+#     self.test_AMASSS1()
 
-  def test_AMASSS1(self):
-    """ Ideally you should have several levels of tests.  At the lowest level
-    tests should exercise the functionality of the logic with different inputs
-    (both valid and invalid).  At higher levels your tests should emulate the
-    way the user would interact with your code and confirm that it still works
-    the way you intended.
-    One of the most important features of the tests is that it should alert other
-    developers when their changes will have an impact on the behavior of your
-    module.  For example, if a developer removes a feature that you depend on,
-    your test should break so they know that the feature is needed.
-    """
+#   def test_AMASSS1(self):
+#     """ Ideally you should have several levels of tests.  At the lowest level
+#     tests should exercise the functionality of the logic with different inputs
+#     (both valid and invalid).  At higher levels your tests should emulate the
+#     way the user would interact with your code and confirm that it still works
+#     the way you intended.
+#     One of the most important features of the tests is that it should alert other
+#     developers when their changes will have an impact on the behavior of your
+#     module.  For example, if a developer removes a feature that you depend on,
+#     your test should break so they know that the feature is needed.
+#     """
 
-    self.delayDisplay("Starting the test")
+#     self.delayDisplay("Starting the test")
 
-    # Get/create input data
+#     # Get/create input data
 
-    import SampleData
-    registerSampleData()
-    inputVolume = SampleData.downloadSample('AMASSS1')
-    self.delayDisplay('Loaded test data set')
+#     import SampleData
+#     registerSampleData()
+#     inputVolume = SampleData.downloadSample('AMASSS1')
+#     self.delayDisplay('Loaded test data set')
 
-    inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(inputScalarRange[0], 0)
-    self.assertEqual(inputScalarRange[1], 695)
+#     inputScalarRange = inputVolume.GetImageData().GetScalarRange()
+#     self.assertEqual(inputScalarRange[0], 0)
+#     self.assertEqual(inputScalarRange[1], 695)
 
-    outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-    threshold = 100
+#     outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+#     threshold = 100
 
-    # Test the module logic
+#     # Test the module logic
 
-    logic = AMASSSLogic()
+#     logic = AMASSSLogic()
 
-    # Test algorithm with non-inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, True)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], threshold)
+#     # Test algorithm with non-inverted threshold
+#     logic.process(inputVolume, outputVolume, threshold, True)
+#     outputScalarRange = outputVolume.GetImageData().GetScalarRange()
+#     self.assertEqual(outputScalarRange[0], inputScalarRange[0])
+#     self.assertEqual(outputScalarRange[1], threshold)
 
-    # Test algorithm with inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, False)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], inputScalarRange[1])
+#     # Test algorithm with inverted threshold
+#     logic.process(inputVolume, outputVolume, threshold, False)
+#     outputScalarRange = outputVolume.GetImageData().GetScalarRange()
+#     self.assertEqual(outputScalarRange[0], inputScalarRange[0])
+#     self.assertEqual(outputScalarRange[1], inputScalarRange[1])
 
-    self.delayDisplay('Test passed')
+#     self.delayDisplay('Test passed')
+
+#endregion
