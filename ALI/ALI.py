@@ -10,12 +10,6 @@ from slicer.util import VTKObservationMixin
 #   LMTab,
 # )
 
-try:
-    import monai
-except:
-    slicer.util.pip_install('monai')
-    import monai
-
 #
 # ALI
 #

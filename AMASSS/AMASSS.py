@@ -1,3 +1,4 @@
+from genericpath import isfile
 import os
 import unittest
 import logging
@@ -8,38 +9,6 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 import webbrowser
-
-
-
-#region ========= GLOBAL VARIABLES =========
-
-MODEL_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.0-alpha/ALL_MODELS.zip'
-
-GROUPS_SEG = {
-  "Bones" : ["Mandible","Maxilla","Cranial base","Cervical vertebra"],
-  "Teeth" : ['Root canal'],
-  "Nerves" : ['Mandibular canal'],
-  "Soft tissue" :['Skin','Upper airway'],
-}
-
-DEFAULT_SELECT = ["Mandible","Maxilla","Cranial base","Cervical vertebra"]
-
-
-TRANSLATE ={
-  "Mandible" : "MAND",
-  "Maxilla" : "MAX",
-  "Cranial base" : "CB",
-  "Cervical vertebra" : "CV",
-  "Root canal" : "RC",
-  "Mandibular canal" : "MCAN",
-  "Skin" : "SKIN",
-  "Upper airway" : "UAW",
-}
-
-
-SEG_GROUP = GetSegGroup(GROUPS_SEG)
-
-#endregion
 
 #region ========== FUNCTIONS ==========
 def GetSegGroup(group_landmark):
@@ -60,6 +29,55 @@ def PathFromNode(node):
   return filepath
 
 #endregion
+
+
+def createProgressDialog(parent=None, value=0, maximum=100, windowTitle="Starting..."):
+    # import qt # qt.qVersion()
+    progressIndicator = qt.QProgressDialog()  #(parent if parent else self.mainWindow())
+    progressIndicator.minimumDuration = 0
+    progressIndicator.maximum = maximum
+    progressIndicator.value = value
+    progressIndicator.windowTitle = windowTitle
+    return progressIndicator
+
+
+#region ========= GLOBAL VARIABLES =========
+
+MODEL_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.0-alpha/ALL_MODELS.zip'
+
+GROUPS_FF_SEG = {
+  "Bones" : ["Mandible","Maxilla","Cranial base","Cervical vertebra"],
+  "Soft tissue" :['Upper airway','Skin',],
+}
+
+
+GROUPS_HD_SEG = {
+  "Bones" : ["Mandible","Maxilla"],
+  "Teeth" : ['Teeth','Root canal'],
+  "Nerves" : ['Mandibular canal'],
+
+
+}
+
+
+DEFAULT_SELECT = ["Mandible","Maxilla","Cranial base","Cervical vertebra","Upper airway"]
+
+TRANSLATE ={
+  "Mandible" : "MAND",
+  "Maxilla" : "MAX",
+  "Cranial base" : "CB",
+  "Cervical vertebra" : "CV",
+  "Root canal" : "RC",
+  "Mandibular canal" : "MCAN",
+  "Upper airway" : "UAW",
+  "Skin" : "SKIN",
+  "Teeth" : "TEETH"
+}
+
+
+
+#endregion
+
 
 #
 # AMASSS
@@ -105,8 +123,14 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     self.MRMLNode_scan = None # MRML node of the selected scan
 
-    self.scan_folder = None # path to the folder containing the scans
-    self.save_folder = None # path to the folder where the results will be saved
+    self.folder_as_input = True
+
+
+    self.input_path = None # path to the folder containing the scans
+    self.model_folder = None # path to the folder containing the models
+
+    self.use_small_FOV = False # use high resolution model
+
 
     self.model_ready = False # model selected
     self.scan_ready = False # scan is selected
@@ -114,12 +138,16 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.save_surface = True # True: save surface .vtk of the segmentation
     self.output_selection = "MERGE" # m: merged, s: separated, ms: both
     self.prediction_ID = "Seg_Pred" # ID to put in the prediction name
+    self.save_in_input_folder = True # path to the folder where the results will be saved
 
 
     self.center_all = False # True: center all the scan seg and surfaces in the same position
     self.save_adjusted = False # True: save the contrast adjusted scan
     self.precision = 50 # Default precision for the segmentation 
     self.smoothing = 5 # Default smoothing value for the generated surface
+
+
+    
 
 
   def setup(self):
@@ -177,11 +205,12 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
       #region == SEGMENTATION SELECTION ==
 
+    self.ui.smallFOVCheckBox.connect("toggled(bool)",self.onSmallFOVCheckBox)
     self.seg_tab = LMTab()
     # seg_tab_widget,seg_buttons_dic = GenLandmarkTab(Landmarks_group)
     self.ui.OptionVLayout.addWidget(self.seg_tab.widget)
     self.seg_tab.Clear()
-    self.seg_tab.FillTab(GROUPS_SEG)
+    self.seg_tab.FillTab(GROUPS_FF_SEG)
 
     #endregion
 
@@ -215,15 +244,16 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # precision
     self.ui.horizontalSliderPrecision.valueChanged.connect(self.onPrecisionSlider)
-    self.ui.horizontalSliderSmoothing.setHidden(True)
+    self.ui.horizontalSliderSmoothing.setVisible(True)
     self.ui.spinBoxPrecision.valueChanged.connect(self.onPrecisionSpinbox)
-    self.ui.spinBoxPrecision.setHidden(True)
+    self.ui.spinBoxPrecision.setVisible(True)
 
     # smoothing
     self.ui.horizontalSliderSmoothing.valueChanged.connect(self.onSmoothingSlider)
-    self.ui.labelSmoothing.setHidden(True)
     self.ui.spinBoxSmoothing.valueChanged.connect(self.onSmoothingSpinbox)
-    self.ui.spinBoxSmoothing.setHidden(True)
+
+    self.UpdateSaveSurface(False)
+
 
     #endregion
 
@@ -231,7 +261,12 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     self.ui.PredictionButton.connect('clicked(bool)', self.onPredictButton)
+    self.UpdateRunBtn()
   
+    self.ui.CancelButton.connect('clicked(bool)', self.onCancel)
+    self.ui.CancelButton.setHidden(True)
+
+
       #endregion
 
     #endregion
@@ -245,73 +280,96 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     #region == INPUT ==
 
   def SwitchInputType(self,index):
+
     if index == 0:
-      index =False
+      self.folder_as_input = True
     else:
-      index = True
+      self.folder_as_input = False
+      self.onNodeChanged()
 
-    self.ui.label_folder_select.setHidden(index)
-    self.ui.lineEditScanPath.setHidden(index)
-    self.ui.SearchScanFolder.setHidden(index)
+    self.ui.label_folder_select.setVisible(self.folder_as_input)
+    self.ui.lineEditScanPath.setVisible(self.folder_as_input)
+    self.ui.SearchScanFolder.setVisible(self.folder_as_input)
 
-    self.ui.label_node_select.setHidden(not index)
-    self.ui.MRMLNodeComboBox_file.setHidden(not index)
-    self.ui.emptyLabelNodeSelect.setHidden(not index)
+    self.ui.label_node_select.setVisible(not self.folder_as_input)
+    self.ui.MRMLNodeComboBox_file.setVisible(not self.folder_as_input)
+    self.ui.emptyLabelNodeSelect.setVisible(not self.folder_as_input)
 
-    self.scan_ready = False
+
 
   def onNodeChanged(self):
     self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox_file.currentNodeID)
     if self.MRMLNode_scan is not None:
       print(PathFromNode(self.MRMLNode_scan))
+      self.input_path = PathFromNode(self.MRMLNode_scan)
+      self.scan_ready = True
+  
+  def CountFileWithExtention(self,path,extentions = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]):
+
+    count = 0
+    normpath = os.path.normpath("/".join([path, '**', '']))
+    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
+        #  print(img_fn)
+        basename = os.path.basename(img_fn)
+
+        if True in [ext in basename for ext in extentions]:
+          count += 1
+
+    return count
 
   def onSearchScanButton(self):
-    scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+    file_explorer = qt.QFileDialog()
+    # file_explorer.setFileMode(qt.QFileDialog.AnyFile)
+    scan_folder = file_explorer.getExistingDirectory(self.parent, "Select a scan folder")
+  
     if scan_folder != '':
-      self.scan_folder = scan_folder
-      self.save_folder = scan_folder
-      self.ui.lineEditScanPath.setText(self.scan_folder)
 
+      nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
+      if nbr_scans == 0:
+        qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
 
-      self.scan_ready = True
+      else:
+        self.input_path = scan_folder
+        self.ui.lineEditScanPath.setText(self.input_path)
+        self.ui.PrePredInfo.setText("Number of scans to process : " + str(nbr_scans))
+        self.scan_ready = True
+        self.UpdateRunBtn()
 
-      # msg = qt.QMessageBox()
-      # scan_nbr = 0
-      # if scan_nbr == 0:
-      #   msg_txt = "Missing parameters : \n"
-      #   msg_txt += "- No scan found in folder '" + scan_folder + "'\n"
-
-      # msg.setText(msg_txt)
-      # msg.setWindowTitle("Error")
-      # msg.exec_()
-    self.UpdateRunBtn()
 
   def onSearchModelButton(self):
     model_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a model folder")
     if model_folder != '':
-      self.model_folder = model_folder
-      self.ui.lineEditModelPath.setText(self.model_folder)
+      nbr_model = self.CountFileWithExtention(model_folder, [".pth"])
+      if nbr_model == 0:
+        qt.QMessageBox.warning(self.parent, 'Warning', 'No models found in the selected folder\nPlease select a folder containing .pth files\nYou can download the latest models with\n  "Download latest models" button')
 
-      self.model_ready = True
-
-      # available_lm,brain_dic = GetAvailableSeg(self.model_folder,SEG_GROUP)
-      # print(brain_dic)
-      
-      # self.seg_tab.Clear()
-      # self.seg_tab.FillTab(GROUPS_SEG)
-    self.UpdateRunBtn()
+      else:
+        self.model_folder = model_folder
+        self.ui.lineEditModelPath.setText(self.model_folder)
+        self.model_ready = True
+        self.UpdateRunBtn()
 
   def onDownloadButton(self):
     webbrowser.open(MODEL_LINK)
 
     #endregion
 
+
+    #region == SEGMENTATION SELECTION ==
+  def onSmallFOVCheckBox(self,checked):
+    self.use_small_FOV = checked
+    if self.use_small_FOV:
+      self.seg_tab.Clear()
+      self.seg_tab.FillTab(GROUPS_HD_SEG)
+    else:
+      self.seg_tab.Clear()
+      self.seg_tab.FillTab(GROUPS_FF_SEG)
     #region == OUTPUT ==
 
-  def UpdateSaveFolder(self,caller=None, event=None):
+  def UpdateSaveFolder(self,checked):
 
     # print(caller,event)
-    hide = caller
+    hide = checked
 
     self.ui.SearchSaveFolder.setHidden(hide)
     self.ui.SaveFolderLineEdit.setHidden(hide)
@@ -320,16 +378,15 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # self.ui.SearchSaveFolder.setEnabled(not caller)
     # self.ui.SaveFolderLineEdit.setEnabled(not caller)
     
-    self.save_scan_folder = caller
+    self.save_in_input_folder = checked
 
-  def UpdateSaveSurface(self,caller=None, event=None):
-    hide = not caller
+  def UpdateSaveSurface(self,checked):
 
-    self.ui.labelSmoothing.setHidden(hide)
-    self.ui.horizontalSliderSmoothing.setHidden(hide)
-    self.ui.spinBoxSmoothing.setHidden(hide)
+    self.ui.labelSmoothing.setVisible(checked)
+    self.ui.horizontalSliderSmoothing.setVisible(checked)
+    self.ui.spinBoxSmoothing.setVisible(checked)
     
-    self.save_surface = caller
+    self.save_surface = checked
 
   def onSearchSaveButton(self):
     save_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
@@ -338,9 +395,18 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.ui.SaveFolderLineEdit.setText(self.save_folder)
 
   def SwitchOutputType(self,index):
+
     print("Selected output type:",index)
+    if index == 0:
+      self.output_selection = "MERGE"
+      self.ui.saveInFolder.checked = False
+    elif index == 1:
+      self.output_selection = "SEPARATE"
+      self.ui.saveInFolder.checked = True
 
-
+    elif index == 2:
+      self.output_selection = "MERGE SEPARATE"
+      self.ui.saveInFolder.checked = True
     #endregion
 
     #region == MORE OPTIONS ==
@@ -368,65 +434,175 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     #region == RUN ==
   def onPredictButton(self):
 
-    # print(self.addLog)
 
-    scan_folder = self.ui.lineEditScanPath.text
-
-    scans = []
-    if scan_folder != '':
-      normpath = os.path.normpath("/".join([scan_folder, '**', '']))
-      for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-          #  print(img_fn)
-          basename = os.path.basename(img_fn)
-
-          if True in [ext in img_fn for ext in [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]]:
-            scans.append({"name" : basename, "path":img_fn})
-
-    # print(scans)
-
-    selectedLM = self.seg_tab.GetSelected()
-    seg_nbr = len(selectedLM)
-    self.ui.LandmarkProgressBar.maximum = seg_nbr
-    scan_nbr = len(scans)
-    self.ui.TotalrogressBar.maximum = scan_nbr
-    if seg_nbr == 0 or scan_nbr ==0:
-      print("Error")
-      msg = qt.QMessageBox()
-      msg_txt = "Missing parameters : \n"
-      if scan_nbr == 0:
-        msg_txt += "- No scan found in folder '" + scan_folder + "'\n"
-      if seg_nbr == 0:
-        msg_txt += "- 0 Landmark selected"
+    # scan_folder = self.ui.lineEditScanPath.text
 
 
-      msg.setText(msg_txt)
-      msg.setWindowTitle("Error")
-      msg.exec_()
-      
+
+    # self.input_path =  '/home/luciacev/Desktop/TEST_SEG/TEMP'
+    # self.model_folder = '/home/luciacev/Desktop/Maxime_Gillot/Data/AMASSS/FULL_FACE_MODELS'
+
+
+    selected_seg = []
+    for struct in self.seg_tab.GetSelected():
+      selected_seg.append(TRANSLATE[struct])
+
+
+    if len(selected_seg) == 0:
+      qt.QMessageBox.warning(self.parent, 'Warning', 'No segmentation selected')
       return
 
-    self.scans = scans
-    self.selectedLM = selectedLM
-    self.scan_nbr = scan_nbr
-    self.seg_nbr = seg_nbr
+    param = {}
 
-    self.threadFunc()
+    param["inputVolume"] = self.input_path
+    param["modelDirectory"] = self.model_folder
+    param["highDefinition"] = self.use_small_FOV
 
-    #endregion
+    param["skullStructure"] = " ".join(selected_seg)
+    param["merge"] = self.output_selection
+    param["genVtk"] = self.save_surface
+    param["save_in_folder"] = self.ui.saveInFolder.isChecked()
+
+
+    if self.save_in_input_folder:
+      if os.path.isfile(self.input_path):
+        param["output_folder"] = os.path.dirname(self.input_path)
+      else:
+        param["output_folder"] = self.input_path
+
+    else:
+      param["output_folder"] = self.ui.SaveFolderLineEdit.text
+
+    param["precision"] = self.precision
+    param["vtk_smooth"] = self.smoothing
+
+    param["prediction_ID"] = self.ui.SaveId.text
+
+
+    # print(param)
+
+
+    self.logic.process(param)
+    self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
+    self.onProcessStarted()
+    self.progressBar = createProgressDialog(None, 0, 100)
+    self.progressBar.setWindowTitle("Starting...")
+    self.progressBar.connect('canceled()', self.onCancel)
+    
+    # def onCliModified(self, caller, event):
+    #     self.progressBar.setValue(caller.GetProgress())
+    #     if caller.GetStatus() == 32: 
+    #         self.progressBar.close()
+
+
+
+  def onProcessStarted(self):
+    self.ui.PredictionButton.setVisible(False)
+    self.ui.CancelButton.setVisible(True)
+
+    return
 
 
   def UpdateRunBtn(self):
     self.ui.PredictionButton.setEnabled(self.scan_ready and self.model_ready)
+    # self.ui.PredictionButton.setEnabled(True)
 
 
+
+  def onProcessUpdate(self,caller,event):
+
+    # print(caller.GetProgress(),caller.GetStatus())
+
+    progress = caller.GetProgress()
+    # print(progress)
+
+    if progress == 20000:
+      self.progressBar.windowTitle = "Correcting contrast..."
+
+    elif progress == 30000:
+      self.progressBar.windowTitle = "Segmenting scans..."
+
+    else:
+      self.progressBar.setValue(progress)
+
+  
+    # check log file
+    # if os.path.isfile(self.log_path):
+    #   time = os.path.getmtime(self.log_path)
+    #   if time != self.time_log:
+    #     # if progress was made
+    #     self.time_log = time
+    #     self.progress += 1
+    #     progressbar_value = self.progress/(self.rotation+2)*100
+    #     print(f'progressbar value {progressbar_value}')
+    #     if progressbar_value < 100 :
+    #       self.ui.progressBar.setValue(progressbar_value)
+    #     else:
+    #       self.ui.progressBar.setValue(99)
+    # print("Process update")
+    # print(self.logic.cliNode.GetOutputText())
+
+    if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+      # process complete
+      # self.ui.applyChangesButton.setEnabled(True)
+      # self.ui.resetButton.setEnabled(True)
+      # self.ui.progressLabel.setHidden(False)         
+      # self.ui.cancelButton.setEnabled(False)
+      # self.ui.progressBar.setEnabled(False)
+      # self.ui.progressBar.setHidden(True)
+      # self.ui.progressLabel.setHidden(True)
+
+
+
+      if self.logic.cliNode.GetStatus() & self.logic.cliNode.ErrorsMask:
+        # error
+        print(self.logic.cliNode.GetOutputText())
+        print("\n\n ========= ERROR ========= \n")
+        errorText = self.logic.cliNode.GetErrorText()
+        print("CLI execution failed: \n \n" + errorText)
+        # msg = qt.QMessageBox()
+        # msg.setText(f'There was an error during the process:\n \n {errorText} ')
+        # msg.setWindowTitle("Error")
+        # msg.exec_()
+
+      else:
+        # success
+        self.OnEndProcess()
+
+  def onCancel(self):
+    # print(self.logic.cliNode.GetOutputText())
+    self.logic.cliNode.Cancel()
+    self.ui.PredictionButton.setVisible(True)
+    self.ui.CancelButton.setVisible(False)
+    # self.ui.CLIProgressBar.setValue(0)
+    self.progressBar.close()
+
+
+    print("Cancelled")
+    #endregion
 
     #region == SLICER BASICS ==
+
+  def OnEndProcess(self):
+    print('PROCESS DONE.')
+    self.progressBar.setValue(100)
+    self.progressBar.close()
+    print(self.logic.cliNode.GetOutputText())
+    self.ui.PredictionButton.setVisible(True)
+    self.ui.CancelButton.setVisible(False)
+    
+    # self.ui.doneLabel.setHidden(False)
 
   def cleanup(self):
     """
     Called when the application closes and the module widget is destroyed.
     """
+
+    if self.logic.cliNode is not None:
+      if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
+        self.logic.cliNode.Cancel()    
     self.removeObservers()
+
 
   def enter(self):
     """
@@ -705,6 +881,7 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
     Called when the logic class is instantiated. Can be used for initializing member variables.
     """
     ScriptedLoadableModuleLogic.__init__(self)
+    self.cliNode = None
 
 
   def process(self, parameters, showResult=True):
@@ -716,12 +893,22 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
     startTime = time.time()
     logging.info('Processing started')
 
-    cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, parameters, wait_for_completion=True, update_display=showResult)
+
+ 
+    print ('parameters : ', parameters)
+
+
+    AMASSSProcess = slicer.modules.amasss_cli
+
+    self.cliNode = slicer.cli.run(AMASSSProcess, None, parameters)
+    
     # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-    slicer.mrmlScene.RemoveNode(cliNode)
+    # slicer.mrmlScene.RemoveNode(cliNode)
 
     stopTime = time.time()
     logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
+
+    return AMASSSProcess
 
 
 #region OLD CODE

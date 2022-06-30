@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>554</width>
-    <height>1069</height>
+    <height>812</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -201,6 +201,13 @@
          <number>10</number>
         </property>
         <item>
+         <widget class="QCheckBox" name="smallFOVCheckBox">
+          <property name="text">
+           <string>Use small FOV models</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QLabel" name="label_6">
           <property name="text">
            <string>Structure to segment</string>
@@ -292,12 +299,12 @@
               </item>
               <item>
                <property name="text">
-                <string>Separated + Merged</string>
+                <string>Separated</string>
                </property>
               </item>
               <item>
                <property name="text">
-                <string>Separated</string>
+                <string>Separated + Merged</string>
                </property>
               </item>
              </widget>
@@ -308,7 +315,7 @@
                <string>Choose the ID that wil be added in the folder name.</string>
               </property>
               <property name="text">
-               <string extracomment="pred">Seg</string>
+               <string extracomment="pred">Pred</string>
               </property>
              </widget>
             </item>
@@ -338,7 +345,7 @@
                <string>Generate .vtk file</string>
               </property>
               <property name="checked">
-               <bool>true</bool>
+               <bool>false</bool>
               </property>
              </widget>
             </item>
@@ -400,12 +407,19 @@
            <number>0</number>
           </property>
           <item>
+           <widget class="QCheckBox" name="saveInFolder">
+            <property name="text">
+             <string>Group output files in a folder</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QCheckBox" name="CenterAllCheckBox">
             <property name="toolTip">
              <string>Center the origin of all the files.</string>
             </property>
             <property name="layoutDirection">
-             <enum>Qt::LeftToRight</enum>
+             <enum>Qt::RightToLeft</enum>
             </property>
             <property name="text">
              <string>Center all</string>
@@ -566,20 +580,59 @@
     </widget>
    </item>
    <item>
-    <widget class="QPushButton" name="PredictionButton">
-     <property name="enabled">
-      <bool>false</bool>
-     </property>
-     <property name="toolTip">
-      <string>Run the algorithm.</string>
-     </property>
+    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton">
      <property name="text">
-      <string>Run  prediction</string>
+      <string>Compute</string>
      </property>
+     <layout class="QFormLayout" name="formLayout_1">
+      <item row="0" column="0" colspan="2">
+       <layout class="QVBoxLayout" name="OptionVLayout">
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>10</number>
+        </property>
+        <property name="rightMargin">
+         <number>10</number>
+        </property>
+        <property name="bottomMargin">
+         <number>10</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="PrePredInfo">
+          <property name="text">
+           <string>Number of scans to process : 0</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="PredictionButton">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="toolTip">
+           <string>Run the algorithm.</string>
+          </property>
+          <property name="text">
+           <string>Run  prediction</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="CancelButton">
+          <property name="enabled">
+           <bool>true</bool>
+          </property>
+          <property name="text">
+           <string>Cancel prediction</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
     </widget>
-   </item>
-   <item>
-    <widget class="qSlicerCLIProgressBar" name="CLIProgressBar"/>
    </item>
    <item>
     <spacer name="verticalSpacer">
@@ -613,11 +666,6 @@
    <extends>QWidget</extends>
    <header>qMRMLWidget.h</header>
    <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>qSlicerCLIProgressBar</class>
-   <extends>QWidget</extends>
-   <header>qSlicerCLIProgressBar.h</header>
   </customwidget>
  </customwidgets>
  <resources/>

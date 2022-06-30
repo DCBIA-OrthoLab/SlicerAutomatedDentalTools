@@ -1,64 +1,51 @@
-#!/use/bin/env python-real
+#!/usr/bin/env python-real
+
 
 #region Imports
 print("Importing librairies...")
 
-from numpy import spacing
+import time
+import os
+import shutil
+import random
+import glob
+import sys
+
+
+# try:
+#     import argparse
+# except ImportError:
+#     pip_install('argparse')
+#     import argparse
+
+
+# print(sys.argv)
+
+
 # from slicer.util import pip_install
+
+# # from slicer.util import pip_uninstall
+# # pip_uninstall('torch torchvision torchaudio') 
+
+# pip_install('--upgrade pip')
+
+
+try:
+    import torch
+except ImportError:
+    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
+    import torch
+
 
 #region try import
 try :
     from monai.networks.nets import UNETR
 except ImportError:
     pip_install('monai==0.7.0')
+    pip_install('nibabel')
+    pip_install('einops')
+
     from monai.networks.nets import UNETR
-
-try:
-    import SimpleITK as sitk
-except ImportError:
-    pip_install('SimpleITK==2.1.1')
-    import SimpleITK as sitk
-
-try:
-    import itk
-except ImportError:
-    pip_install('itk==5.2.1')
-    import itk
-
-try:
-    import vtk
-except ImportError:
-    pip_install('vtk==9.1.0')
-    import vtk
-
-try:
-    import numpy as np
-except ImportError:
-    pip_install('numpy==1.22.3')
-    import numpy as np
-
-try:
-    import torch
-except ImportError:
-    pip_install('torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
-    import torch
-
-try:
-    import cc3d
-except ImportError:
-    pip_install('connected-components-3d==3.9.1')
-    import cc3d
-
-#endregion
-
-import time
-import os
-import shutil
-import random
-import string
-import glob
-
-import argparse
 
 from monai.data import (
     DataLoader,
@@ -103,11 +90,72 @@ from monai.transforms import (
 
 from monai.inferers import sliding_window_inference
 
-#endregion
+
+
+try:
+    import nibabel
+except ImportError:
+    pip_install('nibabel')
+    import nibabel
+
+
+try:
+    import SimpleITK as sitk
+except ImportError:
+    pip_install('SimpleITK==2.1.1')
+    import SimpleITK as sitk
+
+try:
+    import itk
+except ImportError:
+    pip_install('itk==5.2.1')
+    import itk
+
+try:
+    import vtk
+except ImportError:
+    pip_install('vtk==9.1.0')
+    import vtk
+
+try:
+    import numpy as np
+except ImportError:
+    pip_install('numpy==1.22.3')
+    import numpy as np
+
+
+
+try:
+    import cc3d
+except ImportError:
+    pip_install('connected-components-3d==3.9.1')
+    import cc3d
+
+ #endregion
+
+
+
+# endregion
 
 #region Global variables
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
+TRANSLATE ={
+  "Mandible" : "MAND",
+  "Maxilla" : "MAX",
+  "Cranial base" : "CB",
+  "Cervical vertebra" : "CV",
+  "Root canal" : "RC",
+  "Mandibular canal" : "MCAN",
+  "Upper-airway" : "UAW",
+  "Skin" : "SKIN",
+  "Teeth" : "TEETH"
+}
+
+INV_TRANSLATE = {}
+for k,v in TRANSLATE.items():
+    INV_TRANSLATE[v] = k
 
 LABELS = {
     "MAND" : 1,
@@ -117,9 +165,12 @@ LABELS = {
     "CV" : 5,
     "SKIN" : 6,
     
-    "RC" : 2,
-    "TEETH" : 5,
 }
+
+NAMES_FROM_LABELS = {}
+for k,v in LABELS.items():
+    NAMES_FROM_LABELS[v] = INV_TRANSLATE[k]
+
 
 MODELS_GROUP = {
     "LARGE": {
@@ -246,7 +297,7 @@ def CreatePredTransform(spacing):
 
 def SavePrediction(img,ref_filepath, outpath, output_spacing):
 
-    # print("Saving prediction to : ", outpath)
+    # print("Saving prediction for : ", ref_filepath)
 
     # print(data)
 
@@ -258,6 +309,7 @@ def SavePrediction(img,ref_filepath, outpath, output_spacing):
     output.SetSpacing(output_spacing)
     output.SetDirection(ref_img.GetDirection())
     output.SetOrigin(ref_img.GetOrigin())
+    output = sitk.Cast(output, sitk.sitkInt16)
 
     writer = sitk.ImageFileWriter()
     writer.SetFileName(outpath)
@@ -429,8 +481,14 @@ def SavePredToVTK(file_path,temp_folder,smoothing, out_folder):
     img = sitk.ReadImage(file_path) 
     img_arr = sitk.GetArrayFromImage(img)
 
-    for i in range(np.max(img_arr)):
-        label = i+1
+
+    present_labels = []
+    for label in range(np.max(img_arr)):
+        if label+1 in img_arr:
+            present_labels.append(label+1)
+
+    for i in present_labels:
+        label = i
         seg = np.where(img_arr == label, 1,0)
 
         output = sitk.GetImageFromArray(seg)
@@ -479,7 +537,10 @@ def SavePredToVTK(file_path,temp_folder,smoothing, out_folder):
         # print(SmoothPolyDataFilter.GetOutput())
 
         # outputFilename = "Test.vtk"
-        outpath = out_folder + "/VTK files/" + os.path.basename(file_path).split('.')[0] + f"_label-{label}.vtk"
+        if len(present_labels) > 1:
+            outpath = out_folder + "/VTK files/" + os.path.basename(file_path).split('.')[0] + f"_{NAMES_FROM_LABELS[label]}_model.vtk"
+        else:
+            outpath = out_folder + "/VTK files/" + os.path.basename(file_path).split('.')[0] + f"_model.vtk"
         if not os.path.exists(os.path.dirname(outpath)):
             os.makedirs(os.path.dirname(outpath))
         Write(SmoothPolyDataFilter.GetOutput(), outpath)
@@ -518,7 +579,9 @@ def MergeSeg(seg_path_dic,out_path,seg_order):
     writer.Execute(output)
     return output
 
-def SaveSeg(file_path, spacing ,seg_arr, clean_seg , input_path,temp_path, outputdir,temp_folder):
+def SaveSeg(file_path, spacing ,seg_arr, clean_seg , input_path,temp_path, outputdir,temp_folder, save_vtk, smoothing = 5):
+
+    print("Saving segmentation for ", file_path)
 
     SavePrediction(seg_arr,input_path,temp_path,output_spacing = spacing)
     if clean_seg:
@@ -530,8 +593,8 @@ def SaveSeg(file_path, spacing ,seg_arr, clean_seg , input_path,temp_path, outpu
         outpath=file_path
         )
 
-    if args.gen_vtk:
-        SavePredToVTK(file_path,temp_folder, args.vtk_smooth, out_folder=outputdir)
+    if save_vtk:
+        SavePredToVTK(file_path,temp_folder, smoothing, out_folder=outputdir)
 
 def CropSkin(skin_seg_arr, thickness):
 
@@ -555,23 +618,38 @@ def CropSkin(skin_seg_arr, thickness):
 
     return out
     
+    
+
+def GenerateMask(skin_seg_arr, radius):
+
+    seg_arr = sitk.GetImageFromArray(skin_seg_arr)
+
+    dilate_arr = sitk.BinaryDilate(seg_arr, [radius] * seg_arr.GetDimension())
+    eroded_arr = sitk.BinaryErode(dilate_arr, [radius] * seg_arr.GetDimension())
+
+    out = sitk.GetArrayFromImage(eroded_arr)
+
+    return out
+
+
 #endregion
 
 #region Main
 def main(args):
+    print("Start")
 
     # region Read data
-    cropSize = args.crop_size
+    cropSize = [128,128,128]
 
-    temp_fold = os.path.join(args.temp_fold, "temp")
+    temp_fold = os.path.join(args["temp_fold"], "temp")
     if not os.path.exists(temp_fold):
         os.makedirs(temp_fold)
 
 
     # Find available models in folder
     available_models = {}
-    print("Loading models from", args.dir_models)
-    normpath = os.path.normpath("/".join([args.dir_models, '**', '']))
+    print("Loading models from", args["dir_models"])
+    normpath = os.path.normpath("/".join([args["dir_models"], '**', '']))
     for img_fn in glob.iglob(normpath, recursive=True):
         #  print(img_fn)
         basename = os.path.basename(img_fn)
@@ -583,7 +661,7 @@ def main(args):
     MODELS_DICT = {}
     models_to_use = {}
     # models_ID = []  
-    if args.high_def:
+    if args["high_def"]:
         # model_size = "SMALL"
         MODELS_DICT = MODELS_GROUP["SMALL"]
         spacing = [0.16,0.16,0.32]
@@ -596,7 +674,7 @@ def main(args):
 
     for model_id in MODELS_DICT.keys():
         if model_id in available_models.keys():
-            for struct in args.skul_structure:
+            for struct in args["skul_structure"]:
                 if struct in MODELS_DICT[model_id].keys():
                     if model_id not in models_to_use.keys():
                         models_to_use[model_id] = available_models[model_id]
@@ -611,20 +689,39 @@ def main(args):
     # load data
     data_list = []
 
-    if args.file:
-        print("Loading scan :", args.file)
-        img_fn = args.file
+
+    number_of_scans = 0
+    if os.path.isfile(args["input"]):  
+        print("Loading scan :", args["input"])
+        img_fn = args["input"]
         basename = os.path.basename(img_fn)
         new_path = os.path.join(temp_fold,basename)
         temp_pred_path = os.path.join(temp_fold,"temp_Pred.nii.gz")
         CorrectHisto(img_fn, new_path,0.01, 0.99)
         # new_path = img_fn
         data_list.append({"scan":new_path, "name":img_fn, "temp_path":temp_pred_path})
+        number_of_scans += 1
 
     else:
-        scan_dir = args.dir
+
+        scan_dir = args["input"]
         print("Loading data from",scan_dir )
         normpath = os.path.normpath("/".join([scan_dir, '**', '']))
+        for img_fn in sorted(glob.iglob(normpath, recursive=True)):
+            #  print(img_fn)
+            basename = os.path.basename(img_fn)
+
+            if True in [ext in basename for ext in [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]]:
+                if not True in [txt in basename for txt in ["_Pred","seg","Seg"]]:
+                    number_of_scans += 1
+
+        print(f"""<filter-progress>{200}</filter-progress>""")
+        sys.stdout.flush()
+        time.sleep(0.5)
+        print(f"""<filter-progress>{0}</filter-progress>""")
+        sys.stdout.flush()
+
+        counter = 0
         for img_fn in sorted(glob.iglob(normpath, recursive=True)):
             #  print(img_fn)
             basename = os.path.basename(img_fn)
@@ -635,12 +732,18 @@ def main(args):
                     temp_pred_path = os.path.join(temp_fold,"temp_Pred.nii.gz")
                     CorrectHisto(img_fn, new_path,0.01, 0.99)
                     data_list.append({"scan":new_path, "name":img_fn, "temp_path":temp_pred_path})
+                    counter += 1
+                    print(f"""<filter-progress>{(counter/number_of_scans)}</filter-progress>""")
+                    sys.stdout.flush()
 
 
 
     #endregion
 
     # region prepare data
+
+    number_of_scans
+
     pred_transform = CreatePredTransform(spacing)
 
     pred_ds = Dataset(
@@ -651,13 +754,20 @@ def main(args):
         dataset=pred_ds,
         batch_size=1, 
         shuffle=False, 
-        num_workers=args.nbr_CPU_worker, 
+        num_workers=args["nbr_CPU_worker"], 
         pin_memory=True
     )
     # endregion
 
     startTime = time.time()
     seg_not_to_clean = ["CV","RC","SKIN"]
+
+    print(f"""<filter-progress>{300}</filter-progress>""")
+    sys.stdout.flush()
+    time.sleep(0.5)
+
+    print(f"""<filter-progress>{0}</filter-progress>""")
+    sys.stdout.flush()
 
     with torch.no_grad():
         for step, batch in enumerate(pred_loader):
@@ -671,7 +781,7 @@ def main(args):
             baseName = os.path.basename(image)
             scan_name= baseName.split(".")
             # print(baseName)
-            pred_id = "_XXXX-Seg_Pred"
+            pred_id = "_XXXX-Seg_"+ args["prediction_ID"]
 
             if "_scan" in baseName:
                 pred_name = baseName.replace("_scan",pred_id)
@@ -685,14 +795,14 @@ def main(args):
                     else:
                         pred_name += "." + element
 
-            if args.save_in_folder:
-                outputdir = os.path.dirname(input_path[0]) + "/" + scan_name[0] + "_" + "SegOut"
+            outputdir = args["output_dir"]
+            if args["save_in_folder"]:
+                outputdir += "/" + scan_name[0] + "_" + "SegOut"
                 print("Output dir :",outputdir)
 
                 if not os.path.exists(outputdir):
                     os.makedirs(outputdir)
-            else :
-                outputdir = os.path.dirname(input_path[0])
+                
 
             prediction_segmentation = {}
 
@@ -709,11 +819,13 @@ def main(args):
                 net.load_state_dict(torch.load(model_path,map_location=DEVICE))
                 net.eval()
 
-                val_outputs = sliding_window_inference(input_img, cropSize, args.nbr_GPU_worker, net,overlap=args.precision)
+                val_outputs = sliding_window_inference(input_img, cropSize, args["nbr_GPU_worker"], net,overlap=args["precision"])
 
                 pred_data = torch.argmax(val_outputs, dim=1).detach().cpu().type(torch.int16)
 
                 segmentations = pred_data.permute(0,3,2,1)
+
+                # print("Segmentations shape :",segmentations.shape)
 
                 seg = segmentations.squeeze(0)
 
@@ -723,18 +835,26 @@ def main(args):
 
                 for struct, label in MODELS_DICT[model_id].items():
                 
-                    sep_arr = seg_arr.where(seg_arr == label, 1,0)
+                    sep_arr = np.where(seg_arr == label, 1,0)
 
                     if (struct == "SKIN"):
                         sep_arr = CropSkin(sep_arr,5)
+                        # sep_arr = GenerateMask(sep_arr,20)
 
                     prediction_segmentation[struct] = sep_arr
 
             #endregion
 
-            #region Save predictions
-            if "SEPARATE" in args.merge:
-                for struct,segmentation in prediction_segmentation.items():
+            #region ===== SAVE RESULT =====
+
+            seg_to_save = {}
+            for struct in args["skul_structure"]:
+                seg_to_save[struct] = prediction_segmentation[struct]
+
+            save_vtk = args["gen_vtk"]
+
+            if "SEPARATE" in args["merge"]:
+                for struct,segmentation in seg_to_save.items():
                     file_path = os.path.join(outputdir,pred_name.replace('XXXX',struct))
                     SaveSeg(
                         file_path = file_path,
@@ -744,16 +864,19 @@ def main(args):
                         input_path=input_path[0],
                         outputdir=outputdir,
                         temp_path=temp_path[0],
-                        temp_folder=temp_fold
+                        temp_folder=temp_fold,
+                        save_vtk=args["gen_vtk"],
+                        smoothing=args["vtk_smooth"]
                     )
+                    save_vtk = False
 
-            if "MERGE" in args.merge:
+            if "MERGE" in args["merge"] and len(args["skul_structure"]) > 1:
                 print("Merging")
                 file_path = os.path.join(outputdir,pred_name.replace('XXXX',"MERGED"))
                 merged_seg = np.zeros(seg_arr.shape)
-                for struct in args.merging_order:
-                    if struct in prediction_segmentation.keys():
-                        merged_seg = np.where(prediction_segmentation[struct] == 1, LABELS[struct], merged_seg)
+                for struct in args["merging_order"]:
+                    if struct in seg_to_save.keys():
+                        merged_seg = np.where(seg_to_save[struct] == 1, LABELS[struct], merged_seg)
                 SaveSeg(
                     file_path = file_path,
                     spacing = spacing,
@@ -762,8 +885,12 @@ def main(args):
                     input_path=input_path[0],
                     outputdir=outputdir,
                     temp_path=temp_path[0],
-                    temp_folder=temp_fold
+                    temp_folder=temp_fold,
+                    save_vtk=save_vtk,
                 )
+
+            print(f"""<filter-progress>{(step+1/number_of_scans)}</filter-progress>""")
+            sys.stdout.flush()
             #endregion
                             
     try:
@@ -778,36 +905,100 @@ def main(args):
 
 #region argparse
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Predict Landmarks', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    input_group = parser.add_argument_group('directory')
+    print("Starting")
+    print(sys.argv)
 
-    input_group.add_argument('-id','--dir', type=str, help='Path to the scans folder', default='/app/data/scans')
-    input_group.add_argument('-if','--file', type=str, help='Path to the scan', default=None)
-    input_group.add_argument('-dm', '--dir_models', type=str, help='Folder with the models', required=True)
+    args = {
+        "input": sys.argv[1],
+        "dir_models": sys.argv[2],
+        "high_def": sys.argv[3] == "true",
+        "skul_structure": sys.argv[4].split(" "),
+        "merge": sys.argv[5].split(" "),
+        "gen_vtk": sys.argv[6] == "true",
+        "save_in_folder": sys.argv[7] == "true",
+        "output_dir": sys.argv[8],
+        "precision": int(sys.argv[9]) / 100,
+        "vtk_smooth": int(sys.argv[10]),
+        "prediction_ID": sys.argv[11],
 
-    input_group.add_argument('--temp_fold', type=str, help='temporary folder', default='..')
+        "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC"],
 
-    input_group.add_argument('-ss', '--skul_structure', nargs="+", type=str, help='Skul structure to segment', default=["MAND","SKIN"])
-    input_group.add_argument('-hd', '--high_def', type=bool, help='Use high definition models', default=False)
+        "temp_fold" : "..",
+        "nbr_GPU_worker": 5,
+        "nbr_CPU_worker": 5,
+    }
 
-    input_group.add_argument('-m', '--merge',  nargs="+", type=str, help='merge the segmentations', default=["MERGE","SEPARATE"])
+    # args = {
+    #     "input": '/home/luciacev/Desktop/REQUESTED_SEG/1_T1_scan_or.nii.gz',
+    #     "dir_models": '/home/luciacev/Desktop/Maxime_Gillot/Data/AMASSS/FULL_FACE_MODELS',
+    #     "high_def": False,
+    #     "skul_structure": ["SKIN","CV","UAW","CB","MAX","MAND"],
+    #     "merge": ["MERGE"],
+    #     "gen_vtk": True,
+    #     "save_in_folder": True,
+    #     "output_dir": '/home/luciacev/Desktop/REQUESTED_SEG/CranialBaseSegmentation',
+    #     "precision": 0.5,
+    #     "vtk_smooth": 5,
+    #     "prediction_ID": "Pred",
 
-    input_group.add_argument('-sf', '--save_in_folder', type=bool, help='Save the output in one folder', default=True)
+    #     "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC"],
 
-    input_group.add_argument('-vtk', '--gen_vtk', type=bool, help='Genrate vtk file', default=True)
-    input_group.add_argument('--vtk_smooth', type=int, help='Smoothness of the vtk', default=5)
+    #     "temp_fold" : "..",
+    #     "nbr_GPU_worker": 5,
+    #     "nbr_CPU_worker": 5,
+    # }
 
 
-    input_group.add_argument('-cs', '--crop_size', nargs="+", type=float, help='Wanted crop size', default=[128,128,128])
-    input_group.add_argument('-pr', '--precision', type=float, help='precision of the prediction', default=0.5)
+    # print(args)
 
-    input_group.add_argument('-mo','--merging_order',nargs="+", type=str, help='order of the merging', default=["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC"])
 
-    input_group.add_argument('-ncw', '--nbr_CPU_worker', type=int, help='Number of worker', default=5)
-    input_group.add_argument('-ngw', '--nbr_GPU_worker', type=int, help='Number of worker', default=5)
 
-    args = parser.parse_args()
+
+    # print(f"""<filter-progress>{300}</filter-progress>""")
+    # sys.stdout.flush()
+    # time.sleep(0.5)
+
+    # for i in range(20):
+    #     print(f"""<filter-progress>{(5*i)/100}</filter-progress>""")
+    #     # print(f"""<filter-progress>{-3}</filter-progress>""")
+
+    #     sys.stdout.flush()
+    #     time.sleep(0.2)
+
+    # parser = argparse.ArgumentParser(description='Predict Landmarks', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    # input_group = parser.add_argument_group('directory')
+
+    # input_group.add_argument('-id','--dir', type=str, help='Path to the scans folder', default='/app/data/scans')
+    # input_group.add_argument('-if','--file', type=str, help='Path to the scan', default=None)
+    # input_group.add_argument('-dm', '--dir_models', type=str, help='Folder with the models', required=True)
+
+    # input_group.add_argument('--temp_fold', type=str, help='temporary folder', default='..')
+
+    # input_group.add_argument('-ss', '--skul_structure', nargs="+", type=str, help='Skul structure to segment', default=["MAND","UAW"])
+    # input_group.add_argument('-hd', '--high_def', type=bool, help='Use high definition models', default=False)
+
+    # input_group.add_argument('-m', '--merge',  nargs="+", type=str, help='merge the segmentations', default=["MERGE","SEPARATE"])
+
+    # input_group.add_argument('-sf', '--save_in_folder', type=bool, help='Save the output in one folder', default=True)
+
+    # input_group.add_argument('-vtk', '--gen_vtk', type=bool, help='Genrate vtk file', default=True)
+    # input_group.add_argument('--vtk_smooth', type=int, help='Smoothness of the vtk', default=5)
+
+
+    # input_group.add_argument('-cs', '--crop_size', nargs="+", type=float, help='Wanted crop size', default=[128,128,128])
+    # input_group.add_argument('-pr', '--precision', type=float, help='precision of the prediction', default=0.5)
+
+    # input_group.add_argument('-mo','--merging_order',nargs="+", type=str, help='order of the merging', default=["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC"])
+
+    # input_group.add_argument('-ncw', '--nbr_CPU_worker', type=int, help='Number of worker', default=5)
+    # input_group.add_argument('-ngw', '--nbr_GPU_worker', type=int, help='Number of worker', default=5)
+
+    # args = parser.parse_args()
+
+    # print(args.skul_structure)
+
     main(args)
 
 

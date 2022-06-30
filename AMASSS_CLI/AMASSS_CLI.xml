@@ -8,30 +8,88 @@
   <license>Slicer</license>
   <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
   <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+
   <parameters>
+
     <label>IO</label>
     <description><![CDATA[Input/output parameters]]></description>
-    <double>
-      <name>sigma</name>
-      <longflag>sigma</longflag>
-      <flag>s</flag>
-      <label>Sigma</label>
-      <description><![CDATA[A double value (in units of mm) passed to the algorithm]]></description>
-      <default>1.0</default>
-    </double>
-    <image>
+
+    <string>
       <name>inputVolume</name>
-      <label>Input Volume</label>
-      <channel>input</channel>
+      <label>inputVolume</label>
       <index>0</index>
-      <description><![CDATA[Input volume]]></description>
-    </image>
-    <image>
-      <name>outputVolume</name>
-      <label>Output Volume</label>
-      <channel>output</channel>
+      <description>Path for the images.</description>
+    </string>
+
+    <string>
+      <name>modelDirectory</name>
+      <label>modelDirectory</label>
       <index>1</index>
-      <description><![CDATA[Output Volume]]></description>
-    </image>
+      <description>Path of the model</description>
+    </string>
+
+    <boolean>
+      <name>highDefinition</name>
+      <label>highDefinition</label>
+      <index>2</index>
+      <description>Use high definition model</description>
+    </boolean>
+
+    <string>
+      <name>skullStructure</name>
+      <label>skullStructure</label>
+      <index>3</index>
+      <description>structures to segment</description>
+    </string>
+
+    <string>
+      <name>merge</name>
+      <label>merge</label>
+      <index>4</index>
+      <description>type of output</description>
+    </string>
+
+    <boolean>
+      <name>genVtk</name>
+      <label>genVtk</label>
+      <index>5</index>
+      <description>generate Vtk</description>
+    </boolean>
+
+    <boolean>
+      <name>save_in_folder</name>
+      <label>save_in_folder</label>
+      <index>6</index>
+      <description>save in a folder</description>
+    </boolean>
+
+    <string>
+      <name>output_folder</name>
+      <label>output_folder</label>
+      <index>7</index>
+      <description>output folder</description>
+    </string>
+
+    <integer>
+      <name>precision</name>
+      <label>precision</label>
+      <index>8</index>
+      <description>precision of model</description>
+    </integer>
+
+    <integer>
+      <name>vtk_smooth</name>
+      <label>vtk_smooth</label>
+      <index>9</index>
+      <description>vtk smoothing of the 3d model</description>
+    </integer>
+
+    <string>
+      <name>prediction_ID</name>
+      <label>prediction_ID</label>
+      <index>10</index>
+      <description>ID of the prediction</description>
+    </string>
+
   </parameters>
 </executable>
