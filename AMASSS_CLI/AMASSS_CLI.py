@@ -22,12 +22,15 @@ import sys
 # print(sys.argv)
 
 
-# from slicer.util import pip_install
+from slicer.util import pip_install
 
 # # from slicer.util import pip_uninstall
 # # pip_uninstall('torch torchvision torchaudio') 
 
-# pip_install('--upgrade pip')
+pip_install('--upgrade pip')
+
+
+
 
 
 try:
@@ -37,13 +40,25 @@ except ImportError:
     import torch
 
 
+try:
+    import nibabel
+except ImportError:
+    pip_install('nibabel')
+    import nibabel
+
+
+try:
+    import einops
+except ImportError:
+    pip_install('einops')
+    import einops
+
 #region try import
 try :
     from monai.networks.nets import UNETR
 except ImportError:
     pip_install('monai==0.7.0')
-    pip_install('nibabel')
-    pip_install('einops')
+
 
     from monai.networks.nets import UNETR
 
@@ -92,11 +107,6 @@ from monai.inferers import sliding_window_inference
 
 
 
-try:
-    import nibabel
-except ImportError:
-    pip_install('nibabel')
-    import nibabel
 
 
 try:
@@ -144,10 +154,10 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 TRANSLATE ={
   "Mandible" : "MAND",
   "Maxilla" : "MAX",
-  "Cranial base" : "CB",
-  "Cervical vertebra" : "CV",
-  "Root canal" : "RC",
-  "Mandibular canal" : "MCAN",
+  "Cranial-base" : "CB",
+  "Cervical-vertebra" : "CV",
+  "Root-canal" : "RC",
+  "Mandibular-canal" : "MCAN",
   "Upper-airway" : "UAW",
   "Skin" : "SKIN",
   "Teeth" : "TEETH"
@@ -158,18 +168,36 @@ for k,v in TRANSLATE.items():
     INV_TRANSLATE[v] = k
 
 LABELS = {
-    "MAND" : 1,
-    "CB" : 2,
-    "UAW" : 3,
-    "MAX" : 4,
-    "CV" : 5,
-    "SKIN" : 6,
-    
+
+    "LARGE":{
+        "MAND" : 1,
+        "CB" : 2,
+        "UAW" : 3,
+        "MAX" : 4,
+        "CV" : 5,
+        "SKIN" : 6,
+    },
+    "SMALL":{
+        "MAND" : 1,
+        "RC" : 2,
+        "MAX" : 4,
+    }
 }
 
-NAMES_FROM_LABELS = {}
-for k,v in LABELS.items():
-    NAMES_FROM_LABELS[v] = INV_TRANSLATE[k]
+
+LABEL_COLORS = {
+    1: [216, 101, 79],
+    2: [128, 174, 128],
+    3: [0, 0, 0],
+    4: [230, 220, 70],
+    5: [111, 184, 210],
+    6: [172, 122, 101],
+}
+
+NAMES_FROM_LABELS = {"LARGE":{}, "SMALL":{}}
+for group,data in LABELS.items():
+    for k,v in data.items():
+        NAMES_FROM_LABELS[group][v] = INV_TRANSLATE[k]
 
 
 MODELS_GROUP = {
@@ -190,11 +218,11 @@ MODELS_GROUP = {
 
 
     "SMALL": {
-        "HD_MAND":
+        "HD-MAND":
         {
             "MAND" : 1
         },
-        "HD_MAX":
+        "HD-MAX":
         {
             "MAX" : 1
         },
@@ -359,6 +387,21 @@ def CleanScan(file_path):
     writer.Execute(output)
 
 
+def CleanArray(seg_arr,radius):
+    input_img = sitk.GetImageFromArray(seg_arr)
+    output = sitk.BinaryDilate(input_img, [radius] * input_img.GetDimension())
+    output = sitk.BinaryFillhole(output)
+    output = sitk.BinaryErode(output, [radius] * output.GetDimension())
+
+    labels_in = sitk.GetArrayFromImage(output)
+    out, N = cc3d.largest_k(
+        labels_in, k=1, 
+        connectivity=26, delta=0,
+        return_N=True,
+    )
+
+    return out
+
 
 def SetSpacingFromRef(filepath,refFile,interpolator = "NearestNeighbor",outpath=-1):
     """
@@ -475,7 +518,7 @@ def ItkToSitk(itk_img):
     return new_sitk_img
 
 
-def SavePredToVTK(file_path,temp_folder,smoothing, out_folder):
+def SavePredToVTK(file_path,temp_folder,smoothing, out_folder, model_size):
     print("Generating VTK for ", file_path)
 
     img = sitk.ReadImage(file_path) 
@@ -522,6 +565,22 @@ def SavePredToVTK(file_path,temp_folder,smoothing, out_folder):
         SmoothPolyDataFilter.SetRelaxationFactor(0.6)
         SmoothPolyDataFilter.Update()
 
+        model = SmoothPolyDataFilter.GetOutput()
+
+        color = vtk.vtkUnsignedCharArray() 
+        color.SetName("Colors") 
+        color.SetNumberOfComponents(3) 
+        color.SetNumberOfTuples( model.GetNumberOfCells() )
+            
+        for i in range(model.GetNumberOfCells()):
+            color_tup=LABEL_COLORS[label]
+            color.SetTuple(i, color_tup)
+
+        model.GetCellData().SetScalars(color)
+
+
+        # model.GetPointData().SetS
+
         # SINC smooth
         # smoother = vtk.vtkWindowedSincPolyDataFilter()
         # smoother.SetInputConnection(dmc.GetOutputPort())
@@ -537,13 +596,11 @@ def SavePredToVTK(file_path,temp_folder,smoothing, out_folder):
         # print(SmoothPolyDataFilter.GetOutput())
 
         # outputFilename = "Test.vtk"
-        if len(present_labels) > 1:
-            outpath = out_folder + "/VTK files/" + os.path.basename(file_path).split('.')[0] + f"_{NAMES_FROM_LABELS[label]}_model.vtk"
-        else:
-            outpath = out_folder + "/VTK files/" + os.path.basename(file_path).split('.')[0] + f"_model.vtk"
+        outpath = out_folder + "/VTK files/" + os.path.basename(file_path).split('.')[0] + f"_{NAMES_FROM_LABELS[model_size][label]}_model.vtk"
+
         if not os.path.exists(os.path.dirname(outpath)):
             os.makedirs(os.path.dirname(outpath))
-        Write(SmoothPolyDataFilter.GetOutput(), outpath)
+        Write(model, outpath)
 
 def Write(vtkdata, output_name):
 	outfilename = output_name
@@ -579,13 +636,13 @@ def MergeSeg(seg_path_dic,out_path,seg_order):
     writer.Execute(output)
     return output
 
-def SaveSeg(file_path, spacing ,seg_arr, clean_seg , input_path,temp_path, outputdir,temp_folder, save_vtk, smoothing = 5):
+def SaveSeg(file_path, spacing ,seg_arr, input_path,temp_path, outputdir,temp_folder, save_vtk, smoothing = 5, model_size= "LARGE"):
 
     print("Saving segmentation for ", file_path)
 
     SavePrediction(seg_arr,input_path,temp_path,output_spacing = spacing)
-    if clean_seg:
-        CleanScan(temp_path)
+    # if clean_seg:
+    #     CleanScan(temp_path)
     SetSpacingFromRef(
         temp_path,
         input_path,
@@ -594,7 +651,7 @@ def SaveSeg(file_path, spacing ,seg_arr, clean_seg , input_path,temp_path, outpu
         )
 
     if save_vtk:
-        SavePredToVTK(file_path,temp_folder, smoothing, out_folder=outputdir)
+        SavePredToVTK(file_path,temp_folder, smoothing, out_folder=outputdir,model_size=model_size)
 
 def CropSkin(skin_seg_arr, thickness):
 
@@ -657,17 +714,19 @@ def main(args):
             model_id = basename.split("_")[1]
             available_models[model_id] = img_fn
 
+    print("Available models:", available_models)
+
     # Choose models to use
     MODELS_DICT = {}
     models_to_use = {}
     # models_ID = []  
     if args["high_def"]:
-        # model_size = "SMALL"
+        model_size = "SMALL"
         MODELS_DICT = MODELS_GROUP["SMALL"]
         spacing = [0.16,0.16,0.32]
 
     else:
-        # model_size = "LARGE"
+        model_size = "LARGE"
         MODELS_DICT = MODELS_GROUP["LARGE"]
         spacing = [0.4,0.4,0.4]
 
@@ -689,6 +748,10 @@ def main(args):
     # load data
     data_list = []
 
+    print(f"""<filter-progress>{0.99}</filter-progress>""")
+    time.sleep(0.2)
+    print(f"""<filter-progress>{2}</filter-progress>""")
+    sys.stdout.flush()
 
     number_of_scans = 0
     if os.path.isfile(args["input"]):  
@@ -715,11 +778,6 @@ def main(args):
                 if not True in [txt in basename for txt in ["_Pred","seg","Seg"]]:
                     number_of_scans += 1
 
-        print(f"""<filter-progress>{200}</filter-progress>""")
-        sys.stdout.flush()
-        time.sleep(0.5)
-        print(f"""<filter-progress>{0}</filter-progress>""")
-        sys.stdout.flush()
 
         counter = 0
         for img_fn in sorted(glob.iglob(normpath, recursive=True)):
@@ -737,6 +795,9 @@ def main(args):
                     sys.stdout.flush()
 
 
+    print(f"""<filter-progress>{0.99}</filter-progress>""")
+    sys.stdout.flush()
+    time.sleep(0.5)
 
     #endregion
 
@@ -760,14 +821,16 @@ def main(args):
     # endregion
 
     startTime = time.time()
-    seg_not_to_clean = ["CV","RC","SKIN"]
+    seg_not_to_clean = ["CV","RC"]
 
-    print(f"""<filter-progress>{300}</filter-progress>""")
+
+    print(f"""<filter-progress>{3}</filter-progress>""")
     sys.stdout.flush()
     time.sleep(0.5)
 
-    print(f"""<filter-progress>{0}</filter-progress>""")
-    sys.stdout.flush()
+
+
+    delta = 1/3*number_of_scans
 
     with torch.no_grad():
         for step, batch in enumerate(pred_loader):
@@ -806,6 +869,9 @@ def main(args):
 
             prediction_segmentation = {}
 
+            print(f"""<filter-progress>{(step/number_of_scans) + delta}</filter-progress>""")
+            sys.stdout.flush()
+
             for model_id,model_path in models_to_use.items():
 
                 net = Create_UNETR(
@@ -818,6 +884,7 @@ def main(args):
                 print("Loading model", model_path)
                 net.load_state_dict(torch.load(model_path,map_location=DEVICE))
                 net.eval()
+
 
                 val_outputs = sliding_window_inference(input_img, cropSize, args["nbr_GPU_worker"], net,overlap=args["precision"])
 
@@ -840,10 +907,15 @@ def main(args):
                     if (struct == "SKIN"):
                         sep_arr = CropSkin(sep_arr,5)
                         # sep_arr = GenerateMask(sep_arr,20)
+                    elif not True in [struct == id for id in seg_not_to_clean]:
+                        sep_arr = CleanArray(sep_arr,2)
 
                     prediction_segmentation[struct] = sep_arr
 
             #endregion
+
+            print(f"""<filter-progress>{(step/number_of_scans) + 2*delta}</filter-progress>""")
+            sys.stdout.flush()
 
             #region ===== SAVE RESULT =====
 
@@ -860,13 +932,13 @@ def main(args):
                         file_path = file_path,
                         spacing = spacing,
                         seg_arr=segmentation,
-                        clean_seg= not True in [struct == id for id in seg_not_to_clean],
                         input_path=input_path[0],
                         outputdir=outputdir,
                         temp_path=temp_path[0],
                         temp_folder=temp_fold,
                         save_vtk=args["gen_vtk"],
-                        smoothing=args["vtk_smooth"]
+                        smoothing=args["vtk_smooth"],
+                        model_size=model_size
                     )
                     save_vtk = False
 
@@ -876,17 +948,17 @@ def main(args):
                 merged_seg = np.zeros(seg_arr.shape)
                 for struct in args["merging_order"]:
                     if struct in seg_to_save.keys():
-                        merged_seg = np.where(seg_to_save[struct] == 1, LABELS[struct], merged_seg)
+                        merged_seg = np.where(seg_to_save[struct] == 1, LABELS[model_size][struct], merged_seg)
                 SaveSeg(
                     file_path = file_path,
                     spacing = spacing,
                     seg_arr=merged_seg,
-                    clean_seg= not True in [struct == id for id in seg_not_to_clean],
                     input_path=input_path[0],
                     outputdir=outputdir,
                     temp_path=temp_path[0],
                     temp_folder=temp_fold,
                     save_vtk=save_vtk,
+                    model_size=model_size
                 )
 
             print(f"""<filter-progress>{(step+1/number_of_scans)}</filter-progress>""")
@@ -926,7 +998,7 @@ if __name__ == "__main__":
 
         "temp_fold" : "..",
         "nbr_GPU_worker": 5,
-        "nbr_CPU_worker": 5,
+        "nbr_CPU_worker": 2,
     }
 
     # args = {
@@ -955,16 +1027,14 @@ if __name__ == "__main__":
 
 
 
-    # print(f"""<filter-progress>{300}</filter-progress>""")
-    # sys.stdout.flush()
-    # time.sleep(0.5)
-
-    # for i in range(20):
-    #     print(f"""<filter-progress>{(5*i)/100}</filter-progress>""")
-    #     # print(f"""<filter-progress>{-3}</filter-progress>""")
-
+    print(f"""<filter-progress>{0.5}</filter-progress>""")
+    sys.stdout.flush()
+    # for i in range(2):
+    #     print(f"""<filter-progress>{(50*(i+1))/100}</filter-progress>""")
     #     sys.stdout.flush()
-    #     time.sleep(0.2)
+    #     time.sleep(0.1)
+
+
 
     # parser = argparse.ArgumentParser(description='Predict Landmarks', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 

@@ -60,7 +60,7 @@ GROUPS_HD_SEG = {
 }
 
 
-DEFAULT_SELECT = ["Mandible","Maxilla","Cranial base","Cervical vertebra","Upper airway"]
+DEFAULT_SELECT = ["Mandible","Maxilla","Cranial base","Cervical vertebra","Upper airway","Root canal"]
 
 TRANSLATE ={
   "Mandible" : "MAND",
@@ -75,6 +75,7 @@ TRANSLATE ={
 }
 
 
+LOADED_VTK_FILES = {}
 
 #endregion
 
@@ -127,8 +128,13 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     self.input_path = None # path to the folder containing the scans
-    self.model_folder = None # path to the folder containing the models
 
+    self.output_folder = None # path to the folder where the segmentations will be saved
+    self.vtk_output_folder = None
+
+  
+    self.model_folder = None # path to the folder containing the models
+  
     self.use_small_FOV = False # use high resolution model
 
 
@@ -303,6 +309,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       print(PathFromNode(self.MRMLNode_scan))
       self.input_path = PathFromNode(self.MRMLNode_scan)
       self.scan_ready = True
+      self.ui.PrePredInfo.setText("Number of scans to process : 1")
+
   
   def CountFileWithExtention(self,path,extentions = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]):
 
@@ -387,6 +395,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.spinBoxSmoothing.setVisible(checked)
     
     self.save_surface = checked
+    if checked:
+      self.ui.saveInFolder.checked = True
 
   def onSearchSaveButton(self):
     save_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
@@ -439,7 +449,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 
-    # self.input_path =  '/home/luciacev/Desktop/TEST_SEG/TEMP'
+    # self.input_path =  '/home/luciacev/Desktop/REQUESTED_SEG/BAMP_SegPred'
+    # self.input_path = '/home/luciacev/Desktop/TEST_SEG/TEMP/AnaJ_Scan_T1_OR.gipl.gz'
     # self.model_folder = '/home/luciacev/Desktop/Maxime_Gillot/Data/AMASSS/FULL_FACE_MODELS'
 
 
@@ -461,17 +472,38 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     param["skullStructure"] = " ".join(selected_seg)
     param["merge"] = self.output_selection
     param["genVtk"] = self.save_surface
-    param["save_in_folder"] = self.ui.saveInFolder.isChecked()
+    param["save_in_folder"] = self.ui.saveInFolder.isChecked() or self.ui.checkBoxSurfaceSelect.isChecked()
 
 
     if self.save_in_input_folder:
       if os.path.isfile(self.input_path):
-        param["output_folder"] = os.path.dirname(self.input_path)
+        self.output_folder = os.path.dirname(self.input_path)
+
+        baseName = os.path.basename(self.input_path)
+        scan_name= baseName.split(".")
+
+        outputdir = self.output_folder
+        if param["save_in_folder"]:
+            outputdir += "/" + scan_name[0] + "_" + "SegOut"
+
+        self.vtk_output_folder = outputdir + "/VTK files"
+
+
       else:
-        param["output_folder"] = self.input_path
+        self.output_folder = self.input_path
+        self.vtk_output_folder = None
 
     else:
-      param["output_folder"] = self.ui.SaveFolderLineEdit.text
+      self.output_folder = self.ui.SaveFolderLineEdit.text
+      self.vtk_output_folder = None
+
+
+    if not self.ui.checkBoxSurfaceSelect.isChecked():
+      self.vtk_output_folder = None
+
+
+    param["output_folder"] = self.output_folder
+
 
     param["precision"] = self.precision
     param["vtk_smooth"] = self.smoothing
@@ -489,6 +521,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.progressBar.setWindowTitle("Starting...")
     self.progressBar.connect('canceled()', self.onCancel)
     
+    # self.OnEndProcess()
+
     # def onCliModified(self, caller, event):
     #     self.progressBar.setValue(caller.GetProgress())
     #     if caller.GetStatus() == 32: 
@@ -516,42 +550,22 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     progress = caller.GetProgress()
     # print(progress)
 
-    if progress == 20000:
+    if progress == 200:
       self.progressBar.windowTitle = "Correcting contrast..."
+      self.progressBar.setValue(0)
 
-    elif progress == 30000:
+
+    elif progress == 300:
       self.progressBar.windowTitle = "Segmenting scans..."
+      self.progressBar.setValue(0)
+
 
     else:
       self.progressBar.setValue(progress)
 
   
-    # check log file
-    # if os.path.isfile(self.log_path):
-    #   time = os.path.getmtime(self.log_path)
-    #   if time != self.time_log:
-    #     # if progress was made
-    #     self.time_log = time
-    #     self.progress += 1
-    #     progressbar_value = self.progress/(self.rotation+2)*100
-    #     print(f'progressbar value {progressbar_value}')
-    #     if progressbar_value < 100 :
-    #       self.ui.progressBar.setValue(progressbar_value)
-    #     else:
-    #       self.ui.progressBar.setValue(99)
-    # print("Process update")
-    # print(self.logic.cliNode.GetOutputText())
-
     if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
       # process complete
-      # self.ui.applyChangesButton.setEnabled(True)
-      # self.ui.resetButton.setEnabled(True)
-      # self.ui.progressLabel.setHidden(False)         
-      # self.ui.cancelButton.setEnabled(False)
-      # self.ui.progressBar.setEnabled(False)
-      # self.ui.progressBar.setHidden(True)
-      # self.ui.progressLabel.setHidden(True)
-
 
 
       if self.logic.cliNode.GetStatus() & self.logic.cliNode.ErrorsMask:
@@ -560,6 +574,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("\n\n ========= ERROR ========= \n")
         errorText = self.logic.cliNode.GetErrorText()
         print("CLI execution failed: \n \n" + errorText)
+
+        self.progressBar.windowTitle = "FAILED 1"
+        self.progressBar.setValue(100)
+
         # msg = qt.QMessageBox()
         # msg.setText(f'There was an error during the process:\n \n {errorText} ')
         # msg.setWindowTitle("Error")
@@ -590,8 +608,42 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     print(self.logic.cliNode.GetOutputText())
     self.ui.PredictionButton.setVisible(True)
     self.ui.CancelButton.setVisible(False)
-    
-    # self.ui.doneLabel.setHidden(False)
+  
+
+    if self.vtk_output_folder is not None:
+      print(self.vtk_output_folder)
+      files = []
+      # get all .vtk files in self.vtk_output_folder
+      for file in os.listdir(self.vtk_output_folder):
+        if file.endswith(".vtk"):
+          files.append(self.vtk_output_folder + '/' +file)
+
+
+      print(files)
+      # files = [files[0]]
+
+      for models in files:
+        if models not in LOADED_VTK_FILES.keys():
+          #open model vtk file
+          modelNode = slicer.util.loadModel(models)
+          LOADED_VTK_FILES[models] = modelNode
+
+          # Edit display properties
+          displayNode = modelNode.GetDisplayNode()
+          displayNode.SetSliceIntersectionVisibility(True)
+          if "Skin" in models or "SKIN" in models:
+            displayNode.SetOpacity(0.1)
+
+
+
+      if True in ["Root-canal" in name for name in LOADED_VTK_FILES.keys()]:
+        for model,node in LOADED_VTK_FILES.items():
+          if True in [x in model for x in ["Mandible","Maxilla"]]:
+            displayNode = node.GetDisplayNode()
+            displayNode.SetOpacity(0.2)
+
+
+
 
   def cleanup(self):
     """
