@@ -631,6 +631,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           # Edit display properties
           displayNode = modelNode.GetDisplayNode()
           displayNode.SetSliceIntersectionVisibility(True)
+          displayNode.SetSliceIntersectionThickness(2)
           if "Skin" in models or "SKIN" in models:
             displayNode.SetOpacity(0.1)
 
