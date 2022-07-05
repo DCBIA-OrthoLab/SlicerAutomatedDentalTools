@@ -62,6 +62,8 @@ GROUPS_HD_SEG = {
 
 DEFAULT_SELECT = ["Mandible","Maxilla","Cranial base","Cervical vertebra","Upper airway","Root canal"]
 
+UNAVAILABLE_MODELS = ["Teeth","Mandibular canal"]
+
 TRANSLATE ={
   "Mandible" : "MAND",
   "Maxilla" : "MAX",
@@ -258,6 +260,12 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.horizontalSliderSmoothing.valueChanged.connect(self.onSmoothingSlider)
     self.ui.spinBoxSmoothing.valueChanged.connect(self.onSmoothingSpinbox)
 
+    self.ui.horizontalSliderGPU.valueChanged.connect(self.onGPUSlider)
+    self.ui.spinBoxGPU.valueChanged.connect(self.onGPUSpinbox)
+
+    self.ui.horizontalSliderCPU.valueChanged.connect(self.onCPUSlider)
+    self.ui.spinBoxCPU.valueChanged.connect(self.onCPUSpinbox)
+
     self.UpdateSaveSurface(False)
 
 
@@ -437,7 +445,20 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.smoothing = self.ui.spinBoxSmoothing.value
     self.ui.horizontalSliderSmoothing.value = self.smoothing
 
+  def onGPUSlider(self):
+    self.ui.spinBoxGPU.value = self.ui.horizontalSliderGPU.value
 
+  def onGPUSpinbox(self):
+    self.ui.horizontalSliderGPU.value = self.ui.spinBoxGPU.value
+
+  def onCPUSlider(self):
+    self.ui.spinBoxCPU.value = self.ui.horizontalSliderCPU.value
+
+  def onCPUSpinbox(self):
+    self.ui.horizontalSliderCPU.value = self.ui.spinBoxCPU.value
+
+
+    #region == RUN ==
     #endregion
 
   
@@ -509,6 +530,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     param["vtk_smooth"] = self.smoothing
 
     param["prediction_ID"] = self.ui.SaveId.text
+
+    param["gpu_usage"] = self.ui.spinBoxGPU.value
+    param["cpu_usage"] = self.ui.spinBoxCPU.value
+
 
 
     # print(param)
@@ -825,6 +850,9 @@ class LMTab:
         for seg in seg_lst:
           new_cb = qt.QCheckBox(seg)
           new_cb.setChecked(seg in DEFAULT_SELECT)
+          if seg in UNAVAILABLE_MODELS:
+            new_cb.setEnabled(False)
+
           self.check_box_dic[new_cb] = seg
           lst_wid.append(new_cb)
 

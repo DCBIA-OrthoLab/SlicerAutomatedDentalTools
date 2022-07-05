@@ -993,12 +993,12 @@ if __name__ == "__main__":
         "precision": int(sys.argv[9]) / 100,
         "vtk_smooth": int(sys.argv[10]),
         "prediction_ID": sys.argv[11],
+        "nbr_GPU_worker": int(sys.argv[12]),
+        "nbr_CPU_worker": int(sys.argv[13]),
 
         "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC"],
 
         "temp_fold" : "..",
-        "nbr_GPU_worker": 5,
-        "nbr_CPU_worker": 2,
     }
 
     # args = {

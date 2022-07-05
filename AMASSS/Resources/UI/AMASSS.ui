@@ -294,12 +294,12 @@
              <widget class="QComboBox" name="OutputTypecomboBox">
               <item>
                <property name="text">
-                <string>Merged only</string>
+                <string>One segmentation file</string>
                </property>
               </item>
               <item>
                <property name="text">
-                <string>Separated</string>
+                <string>Separated segmentations</string>
                </property>
               </item>
               <item>
@@ -415,6 +415,9 @@
           </item>
           <item>
            <widget class="QCheckBox" name="CenterAllCheckBox">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="toolTip">
              <string>Center the origin of all the files.</string>
             </property>
@@ -431,6 +434,9 @@
           </item>
           <item>
            <widget class="QCheckBox" name="SaveAdjustedCheckBox">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="toolTip">
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Save the scan with contrast adjustment.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
@@ -477,6 +483,20 @@
               </property>
               <property name="text">
                <string>Surface Laplacian smoothing</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_3">
+              <property name="text">
+               <string>GPU usage</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_4">
+              <property name="text">
+               <string>CPU usage</string>
               </property>
              </widget>
             </item>
@@ -537,6 +557,44 @@
               </property>
              </widget>
             </item>
+            <item>
+             <widget class="QSlider" name="horizontalSliderGPU">
+              <property name="minimum">
+               <number>1</number>
+              </property>
+              <property name="maximum">
+               <number>5</number>
+              </property>
+              <property name="pageStep">
+               <number>1</number>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="tickPosition">
+               <enum>QSlider::TicksBothSides</enum>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="horizontalSliderCPU">
+              <property name="minimum">
+               <number>1</number>
+              </property>
+              <property name="maximum">
+               <number>5</number>
+              </property>
+              <property name="pageStep">
+               <number>1</number>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="tickPosition">
+               <enum>QSlider::TicksBothSides</enum>
+              </property>
+             </widget>
+            </item>
            </layout>
           </item>
           <item>
@@ -566,6 +624,26 @@
                <string>Smoothing factor to apply to the generated .vtk surface.</string>
               </property>
               <property name="value">
+               <number>5</number>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="spinBoxGPU">
+              <property name="minimum">
+               <number>1</number>
+              </property>
+              <property name="maximum">
+               <number>5</number>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="spinBoxCPU">
+              <property name="minimum">
+               <number>1</number>
+              </property>
+              <property name="maximum">
                <number>5</number>
               </property>
              </widget>

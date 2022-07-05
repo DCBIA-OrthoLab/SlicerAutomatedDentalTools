@@ -91,5 +91,19 @@
       <description>ID of the prediction</description>
     </string>
 
+    <integer>
+      <name>gpu_usage</name>
+      <label>gpu_usage</label>
+      <index>11</index>
+      <description>Number of GPU to use</description>
+    </integer>
+
+    <integer>
+      <name>cpu_usage</name>
+      <label>cpu_usage</label>
+      <index>12</index>
+      <description>Number of CPU to use</description>
+    </integer>
+
   </parameters>
 </executable>
