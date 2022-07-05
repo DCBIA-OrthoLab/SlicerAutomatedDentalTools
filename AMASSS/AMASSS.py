@@ -43,7 +43,10 @@ def createProgressDialog(parent=None, value=0, maximum=100, windowTitle="Startin
 
 #region ========= GLOBAL VARIABLES =========
 
-MODEL_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.0-alpha/ALL_MODELS.zip'
+# MODEL_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.0-alpha/ALL_MODELS.zip'
+MODEL_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/ALL_NEW_MODELS.zip'
+SCAN_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz'
+
 
 GROUPS_FF_SEG = {
   "Bones" : ["Mandible","Maxilla","Cranial base","Cervical vertebra"],
@@ -208,6 +211,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # Download model
     self.ui.DownloadButton.connect('clicked(bool)',self.onDownloadButton)
+    self.ui.DownloadScanButton.connect('clicked(bool)',self.onDownloadScanButton)
 
     #endregion
 
@@ -295,7 +299,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def SwitchInputType(self,index):
 
-    if index == 0:
+    if index == 1:
       self.folder_as_input = True
     else:
       self.folder_as_input = False
@@ -367,6 +371,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def onDownloadButton(self):
     webbrowser.open(MODEL_LINK)
+
+  def onDownloadScanButton(self):
+    webbrowser.open(SCAN_LINK)
 
     #endregion
 

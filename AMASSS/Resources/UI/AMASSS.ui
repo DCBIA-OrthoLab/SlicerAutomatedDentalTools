@@ -89,12 +89,12 @@
              <widget class="QComboBox" name="input_type_select">
               <item>
                <property name="text">
-                <string>Folder as input</string>
+                <string>File as input</string>
                </property>
               </item>
               <item>
                <property name="text">
-                <string>File as input</string>
+                <string>Folder as input</string>
                </property>
               </item>
              </widget>
@@ -169,11 +169,25 @@
          </layout>
         </item>
         <item>
-         <widget class="QPushButton" name="DownloadButton">
-          <property name="text">
-           <string>Download latest models</string>
+         <layout class="QHBoxLayout" name="horizontalLayout_2">
+          <property name="topMargin">
+           <number>0</number>
           </property>
-         </widget>
+          <item>
+           <widget class="QPushButton" name="DownloadScanButton">
+            <property name="text">
+             <string>Download test scan</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="DownloadButton">
+            <property name="text">
+             <string>Download latest models</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
         </item>
        </layout>
       </item>
