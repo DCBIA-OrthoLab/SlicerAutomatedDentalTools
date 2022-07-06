@@ -12,8 +12,8 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text">
       <string>Inputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_16">
@@ -45,6 +45,27 @@
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_4">
             <item>
+             <widget class="QLabel" name="label_8">
+              <property name="text">
+               <string>Input type</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_11">
+              <property name="text">
+               <string>Input</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_12">
+              <property name="text">
+               <string>Select node</string>
+              </property>
+             </widget>
+            </item>
+            <item>
              <widget class="QLabel" name="label_3">
               <property name="text">
                <string>Scan folder</string>
@@ -72,6 +93,41 @@
              <number>0</number>
             </property>
             <item>
+             <widget class="QComboBox" name="comboBox">
+              <item>
+               <property name="text">
+                <string>CBCT - Work on Cone Beam CT scans </string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>IOS - Work on Intra Oral Scans</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboBox_2">
+              <item>
+               <property name="text">
+                <string>File as input</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Folder as input</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="qMRMLNodeComboBox" name="MRMLNodeComboBox">
+              <property name="enabled">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
              <widget class="QLineEdit" name="lineEditScanPath"/>
             </item>
             <item>
@@ -93,6 +149,27 @@
             <property name="bottomMargin">
              <number>0</number>
             </property>
+            <item>
+             <widget class="QLabel" name="label_10">
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_13">
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_14">
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
             <item>
              <widget class="QPushButton" name="SearchScanFolder">
               <property name="enabled">
@@ -120,8 +197,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="optionsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="optionsCollapsibleButton">
+     <property name="text">
       <string>Options</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_10">
@@ -146,8 +223,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton">
+     <property name="text">
       <string>Outputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -257,14 +334,14 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="advancedCollapsibleButton" native="true">
+    <widget class="ctkCollapsibleButton" name="advancedCollapsibleButton">
      <property name="enabled">
       <bool>true</bool>
      </property>
-     <property name="text" stdset="0">
+     <property name="text">
       <string>Advanced</string>
      </property>
-     <property name="collapsed" stdset="0">
+     <property name="collapsed">
       <bool>true</bool>
      </property>
      <layout class="QHBoxLayout" name="horizontalLayout">
@@ -295,7 +372,7 @@
            </widget>
           </item>
           <item>
-           <widget class="qMRMLNodeComboBox" name="inputSelector" native="true">
+           <widget class="qMRMLNodeComboBox" name="inputSelector">
             <property name="minimumSize">
              <size>
               <width>100</width>
@@ -305,18 +382,18 @@
             <property name="toolTip">
              <string>Pick the input to the algorithm.</string>
             </property>
-            <property name="nodeTypes" stdset="0">
+            <property name="nodeTypes">
              <stringlist>
               <string>vtkMRMLScalarVolumeNode</string>
              </stringlist>
             </property>
-            <property name="showChildNodeTypes" stdset="0">
+            <property name="showChildNodeTypes">
              <bool>false</bool>
             </property>
-            <property name="addEnabled" stdset="0">
+            <property name="addEnabled">
              <bool>false</bool>
             </property>
-            <property name="removeEnabled" stdset="0">
+            <property name="removeEnabled">
              <bool>false</bool>
             </property>
            </widget>
@@ -366,7 +443,7 @@
            </widget>
           </item>
           <item>
-           <widget class="qMRMLNodeComboBox" name="outputSelector" native="true">
+           <widget class="qMRMLNodeComboBox" name="outputSelector">
             <property name="minimumSize">
              <size>
               <width>10</width>
@@ -376,21 +453,21 @@
             <property name="toolTip">
              <string>Pick the output to the algorithm.</string>
             </property>
-            <property name="nodeTypes" stdset="0">
+            <property name="nodeTypes">
              <stringlist>
               <string>vtkMRMLScalarVolumeNode</string>
              </stringlist>
             </property>
-            <property name="showChildNodeTypes" stdset="0">
+            <property name="showChildNodeTypes">
              <bool>false</bool>
             </property>
-            <property name="noneEnabled" stdset="0">
+            <property name="noneEnabled">
              <bool>true</bool>
             </property>
-            <property name="addEnabled" stdset="0">
+            <property name="addEnabled">
              <bool>true</bool>
             </property>
-            <property name="removeEnabled" stdset="0">
+            <property name="removeEnabled">
              <bool>true</bool>
             </property>
            </widget>
@@ -410,7 +487,7 @@
            </widget>
           </item>
           <item>
-           <widget class="qMRMLNodeComboBox" name="invertedOutputSelector" native="true">
+           <widget class="qMRMLNodeComboBox" name="invertedOutputSelector">
             <property name="minimumSize">
              <size>
               <width>10</width>
@@ -420,21 +497,21 @@
             <property name="toolTip">
              <string>Result with inverted threshold will be written into this volume</string>
             </property>
-            <property name="nodeTypes" stdset="0">
+            <property name="nodeTypes">
              <stringlist>
               <string>vtkMRMLScalarVolumeNode</string>
              </stringlist>
             </property>
-            <property name="showChildNodeTypes" stdset="0">
+            <property name="showChildNodeTypes">
              <bool>false</bool>
             </property>
-            <property name="noneEnabled" stdset="0">
+            <property name="noneEnabled">
              <bool>true</bool>
             </property>
-            <property name="addEnabled" stdset="0">
+            <property name="addEnabled">
              <bool>true</bool>
             </property>
-            <property name="removeEnabled" stdset="0">
+            <property name="removeEnabled">
              <bool>true</bool>
             </property>
            </widget>

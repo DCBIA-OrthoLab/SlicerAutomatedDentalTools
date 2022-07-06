@@ -1,4 +1,14 @@
 #!/usr/bin/env python-real
+"""
+AMASSS_CLI.py (https://github.com/Maxlo24/Slicer_Automatic_Tools/blob/main/AMASSS_CLI/AMASSS_CLI.py)
+Autors : Maxime Gillot (CPE Lyon & UoM), Baptiste Baquero (CPE Lyon & UoM)
+
+Info : This script is used to perform automatic segmentation of a CBCT scan using AMASSS.
+
+This file was developed by Maxime Gillot (CPE Lyon & UoM), Baptiste Baquero (CPE Lyon & UoM)
+and was supported by NIDCR R01 024450, AA0F Dewel Memorial Biomedical Research award and by
+Research Enhancement Award Activity 141 from the University of the Pacific, Arthur A. Dugoni School of Dentistry.
+"""
 
 
 #region Imports
@@ -26,12 +36,7 @@ from slicer.util import pip_install
 
 # # from slicer.util import pip_uninstall
 # # pip_uninstall('torch torchvision torchaudio') 
-
-pip_install('--upgrade pip')
-
-
-
-
+random
 
 try:
     import torch
@@ -748,10 +753,17 @@ def main(args):
     # load data
     data_list = []
 
-    print(f"""<filter-progress>{0.99}</filter-progress>""")
-    time.sleep(0.2)
+
+    print(f"""<filter-progress>{0}</filter-progress>""")
+    sys.stdout.flush()
+    time.sleep(0.5)
     print(f"""<filter-progress>{2}</filter-progress>""")
     sys.stdout.flush()
+    time.sleep(0.5)
+    print(f"""<filter-progress>{0}</filter-progress>""")
+    sys.stdout.flush()
+    time.sleep(0.5)
+
 
     number_of_scans = 0
     if os.path.isfile(args["input"]):  
@@ -760,7 +772,8 @@ def main(args):
         basename = os.path.basename(img_fn)
         new_path = os.path.join(temp_fold,basename)
         temp_pred_path = os.path.join(temp_fold,"temp_Pred.nii.gz")
-        CorrectHisto(img_fn, new_path,0.01, 0.99)
+        if not os.path.exists(new_path):
+            CorrectHisto(img_fn, new_path,0.01, 0.99)
         # new_path = img_fn
         data_list.append({"scan":new_path, "name":img_fn, "temp_path":temp_pred_path})
         number_of_scans += 1
@@ -791,13 +804,16 @@ def main(args):
                     CorrectHisto(img_fn, new_path,0.01, 0.99)
                     data_list.append({"scan":new_path, "name":img_fn, "temp_path":temp_pred_path})
                     counter += 1
-                    print(f"""<filter-progress>{(counter/number_of_scans)}</filter-progress>""")
+                    print(f"""<filter-progress>{1}</filter-progress>""")
+                    sys.stdout.flush()
+                    time.sleep(0.5)
+                    print(f"""<filter-progress>{0}</filter-progress>""")
                     sys.stdout.flush()
 
 
-    print(f"""<filter-progress>{0.99}</filter-progress>""")
-    sys.stdout.flush()
-    time.sleep(0.5)
+    # print(f"""<filter-progress>{0.99}</filter-progress>""")
+    # sys.stdout.flush()
+    # time.sleep(0.5)
 
     #endregion
 
@@ -820,17 +836,21 @@ def main(args):
     )
     # endregion
 
-    startTime = time.time()
-    seg_not_to_clean = ["CV","RC"]
 
-
-    print(f"""<filter-progress>{3}</filter-progress>""")
+    print(f"""<filter-progress>{0}</filter-progress>""")
+    sys.stdout.flush()
+    time.sleep(0.5)
+    print(f"""<filter-progress>{2}</filter-progress>""")
+    sys.stdout.flush()
+    time.sleep(0.5)
+    print(f"""<filter-progress>{0}</filter-progress>""")
     sys.stdout.flush()
     time.sleep(0.5)
 
 
+    startTime = time.time()
+    seg_not_to_clean = ["CV","RC"]
 
-    delta = 1/3*number_of_scans
 
     with torch.no_grad():
         for step, batch in enumerate(pred_loader):
@@ -869,8 +889,7 @@ def main(args):
 
             prediction_segmentation = {}
 
-            print(f"""<filter-progress>{(step/number_of_scans) + delta}</filter-progress>""")
-            sys.stdout.flush()
+
 
             for model_id,model_path in models_to_use.items():
 
@@ -912,10 +931,22 @@ def main(args):
 
                     prediction_segmentation[struct] = sep_arr
 
+                    print(f"""<filter-progress>{1}</filter-progress>""")
+                    sys.stdout.flush()
+                    time.sleep(0.5)
+                    print(f"""<filter-progress>{0}</filter-progress>""")
+                    sys.stdout.flush()
+                    time.sleep(0.5)
+
+
             #endregion
 
-            print(f"""<filter-progress>{(step/number_of_scans) + 2*delta}</filter-progress>""")
-            sys.stdout.flush()
+            # print(f"""<filter-progress>{1}</filter-progress>""")
+            # sys.stdout.flush()
+            # time.sleep(0.5)
+            # print(f"""<filter-progress>{0}</filter-progress>""")
+            # sys.stdout.flush()
+
 
             #region ===== SAVE RESULT =====
 
@@ -961,9 +992,20 @@ def main(args):
                     model_size=model_size
                 )
 
-            print(f"""<filter-progress>{(step+1/number_of_scans)}</filter-progress>""")
-            sys.stdout.flush()
+            # print(f"""<filter-progress>{1}</filter-progress>""")
+            # sys.stdout.flush()
+            # time.sleep(0.5)
+            # print(f"""<filter-progress>{0}</filter-progress>""")
+            # sys.stdout.flush()
+
             #endregion
+
+    # print(f"""<filter-progress>{1}</filter-progress>""")
+    # sys.stdout.flush()
+    # time.sleep(0.5)
+    # print(f"""<filter-progress>{0}</filter-progress>""")
+    # sys.stdout.flush()
+    # time.sleep(0.5)
                             
     try:
         shutil.rmtree(temp_fold)
@@ -1027,8 +1069,8 @@ if __name__ == "__main__":
 
 
 
-    print(f"""<filter-progress>{0.5}</filter-progress>""")
-    sys.stdout.flush()
+    # print(f"""<filter-progress>{0.5}</filter-progress>""")
+    # sys.stdout.flush()
     # for i in range(2):
     #     print(f"""<filter-progress>{(50*(i+1))/100}</filter-progress>""")
     #     sys.stdout.flush()

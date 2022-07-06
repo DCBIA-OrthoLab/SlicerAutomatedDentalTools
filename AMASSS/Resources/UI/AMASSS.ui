@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>554</width>
-    <height>812</height>
+    <height>857</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -47,7 +47,7 @@
             <item>
              <widget class="QLabel" name="label">
               <property name="text">
-               <string>Input Type :</string>
+               <string>Input </string>
               </property>
              </widget>
             </item>
@@ -356,7 +356,7 @@
                <enum>Qt::RightToLeft</enum>
               </property>
               <property name="text">
-               <string>Generate .vtk file</string>
+               <string>Generate surface file</string>
               </property>
               <property name="checked">
                <bool>false</bool>
@@ -701,13 +701,41 @@
         <item>
          <widget class="QPushButton" name="PredictionButton">
           <property name="enabled">
-           <bool>false</bool>
+           <bool>true</bool>
           </property>
           <property name="toolTip">
            <string>Run the algorithm.</string>
           </property>
           <property name="text">
            <string>Run  prediction</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="PredScanLabel">
+          <property name="text">
+           <string>Scan ready for segmentation : 0 / X</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QProgressBar" name="PredScanProgressBar">
+          <property name="value">
+           <number>0</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="PredSegLabel">
+          <property name="text">
+           <string>Segmented structures : 0 / X</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QProgressBar" name="PredSegProgressBar">
+          <property name="value">
+           <number>0</number>
           </property>
          </widget>
         </item>

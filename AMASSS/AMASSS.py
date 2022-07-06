@@ -4,6 +4,7 @@ import unittest
 import logging
 import glob
 import time
+import shutil
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
@@ -90,22 +91,25 @@ LOADED_VTK_FILES = {}
 #
 
 class AMASSS(ScriptedLoadableModule):
-  """Uses ScriptedLoadableModule base class, available at:
+  """
+  AMASSS (https://github.com/Maxlo24/Slicer_Automatic_Tools/blob/main/AMASSS/AMASSS.py)
+  Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "AMASSS"  # TODO: make this more human readable by adding spaces
-    self.parent.categories = ["CBCT Automatic Tools"]  # TODO: set categories (folders where the module shows up in the module selector)
+    self.parent.categories = ["Automated dental tools"]  # TODO: set categories (folders where the module shows up in the module selector)
     self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-    self.parent.contributors = ["Maxime Gillot (CPE Lyon & UoM), Baptiste Baquero (CPE Lyon & UoM)"]  # TODO: replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = ["Maxime Gillot (CPE Lyon & UoM), Baptiste Baquero (CPE Lyon & UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UoNC)"]  # TODO: replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-      This is a module that will allow you to automatically segment your CT scan.
+      This is a module that will allow you to automatically perform segmentation of skull structures in your CBCT scans.
       """
     self.parent.acknowledgementText = """
-    This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
-    and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
+    This file was developed by Maxime Gillot (CPE Lyon & UoM), Baptiste Baquero (CPE Lyon & UoM)
+    and was supported by NIDCR R01 024450, AA0F Dewel Memorial Biomedical Research award and by
+    Research Enhancement Award Activity 141 from the University of the Pacific, Arthur A. Dugoni School of Dentistry.
     """
 
 #
@@ -113,7 +117,9 @@ class AMASSS(ScriptedLoadableModule):
 #
 
 class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
-  """Uses ScriptedLoadableModuleWidget base class, available at:
+  """
+  AMASSS (https://github.com/Maxlo24/Slicer_Automatic_Tools/blob/main/AMASSS/AMASSS.py)
+  Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
@@ -129,10 +135,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     self.MRMLNode_scan = None # MRML node of the selected scan
 
-    self.folder_as_input = True
-
 
     self.input_path = None # path to the folder containing the scans
+    self.folder_as_input = False # 0 for file, 1 for folder 
 
     self.output_folder = None # path to the folder where the segmentations will be saved
     self.vtk_output_folder = None
@@ -143,8 +148,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.use_small_FOV = False # use high resolution model
 
 
-    self.model_ready = False # model selected
-    self.scan_ready = False # scan is selected
+    # self.model_ready = False # model selected
+    # self.scan_ready = False # scan is selected
 
     self.save_surface = True # True: save surface .vtk of the segmentation
     self.output_selection = "MERGE" # m: merged, s: separated, ms: both
@@ -158,7 +163,13 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.smoothing = 5 # Default smoothing value for the generated surface
 
 
-    
+    self.scan_count = 0 # number of scans in the input folder
+    self.seg_cout = 0 # number of segmentations to perform 
+
+    self.total_seg_progress = 0 # total number of step to perform
+
+    self.prediction_step = 0 # step of the prediction
+    self.progress = 0 # progress of the prediction
 
 
   def setup(self):
@@ -279,10 +290,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     self.ui.PredictionButton.connect('clicked(bool)', self.onPredictButton)
-    self.UpdateRunBtn()
   
     self.ui.CancelButton.connect('clicked(bool)', self.onCancel)
-    self.ui.CancelButton.setHidden(True)
+    self.RunningUI(False)
+
 
 
       #endregion
@@ -301,6 +312,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     if index == 1:
       self.folder_as_input = True
+
     else:
       self.folder_as_input = False
       self.onNodeChanged()
@@ -316,15 +328,20 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def onNodeChanged(self):
+    selected = False
     self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox_file.currentNodeID)
     if self.MRMLNode_scan is not None:
       print(PathFromNode(self.MRMLNode_scan))
       self.input_path = PathFromNode(self.MRMLNode_scan)
-      self.scan_ready = True
-      self.ui.PrePredInfo.setText("Number of scans to process : 1")
+      self.scan_count = 1
 
-  
-  def CountFileWithExtention(self,path,extentions = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]):
+
+      self.ui.PrePredInfo.setText("Number of scans to process : 1")
+      selected = True
+
+    return selected
+
+  def CountFileWithExtention(self,path,extentions = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"], exception = ["Seg", "seg", "Pred"]):
 
     count = 0
     normpath = os.path.normpath("/".join([path, '**', '']))
@@ -333,7 +350,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         basename = os.path.basename(img_fn)
 
         if True in [ext in basename for ext in extentions]:
-          count += 1
+            if not True in [ex in basename for ex in exception]:
+                count += 1
 
     return count
 
@@ -352,14 +370,13 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.input_path = scan_folder
         self.ui.lineEditScanPath.setText(self.input_path)
         self.ui.PrePredInfo.setText("Number of scans to process : " + str(nbr_scans))
-        self.scan_ready = True
-        self.UpdateRunBtn()
+        self.scan_count = nbr_scans
 
 
   def onSearchModelButton(self):
     model_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a model folder")
     if model_folder != '':
-      nbr_model = self.CountFileWithExtention(model_folder, [".pth"])
+      nbr_model = self.CountFileWithExtention(model_folder, [".pth"], [])
       if nbr_model == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'No models found in the selected folder\nPlease select a folder containing .pth files\nYou can download the latest models with\n  "Download latest models" button')
 
@@ -367,7 +384,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.model_folder = model_folder
         self.ui.lineEditModelPath.setText(self.model_folder)
         self.model_ready = True
-        self.UpdateRunBtn()
 
   def onDownloadButton(self):
     webbrowser.open(MODEL_LINK)
@@ -472,6 +488,23 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     #region == RUN ==
   def onPredictButton(self):
 
+    ready = True
+
+    if self.folder_as_input:
+      if self.input_path == None:
+        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a scan folder')
+        ready = False
+    else:
+      if not self.onNodeChanged():
+        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select an input file')
+        ready = False
+
+    if self.model_folder == None:
+      qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a model folder')
+      ready = False
+
+    if not ready:
+      return
 
     # scan_folder = self.ui.lineEditScanPath.text
 
@@ -490,6 +523,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if len(selected_seg) == 0:
       qt.QMessageBox.warning(self.parent, 'Warning', 'No segmentation selected')
       return
+
+    self.seg_cout = len(selected_seg)
 
     param = {}
 
@@ -549,9 +584,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.logic.process(param)
     self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
     self.onProcessStarted()
-    self.progressBar = createProgressDialog(None, 0, 100)
-    self.progressBar.setWindowTitle("Starting...")
-    self.progressBar.connect('canceled()', self.onCancel)
+
     
     # self.OnEndProcess()
 
@@ -563,8 +596,26 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def onProcessStarted(self):
-    self.ui.PredictionButton.setVisible(False)
-    self.ui.CancelButton.setVisible(True)
+
+    # self.progressBar = createProgressDialog(None, 0, 100)
+    # self.progressBar.setWindowTitle("Starting...")
+    # self.progressBar.connect('canceled()', self.onCancel)
+
+    self.ui.PredScanProgressBar.setMaximum(self.scan_count)
+    self.ui.PredScanProgressBar.setValue(0)
+    self.ui.PredScanLabel.setText(f"Scan ready for segmentation : 0 / {self.scan_count}")
+
+    self.total_seg_progress = self.scan_count * self.seg_cout
+
+    self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
+    self.ui.PredSegProgressBar.setValue(0)
+    self.ui.PredSegLabel.setText(f"Segmented structures : 0 / {self.total_seg_progress}") 
+
+    self.prediction_step = 0
+    self.progress = 0
+
+
+    self.RunningUI(True)
 
     return
 
@@ -575,25 +626,61 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 
+  def UpdateProgressBar(self,progress):
+
+    # print("UpdateProgressBar")
+
+    if progress == 200:
+      self.prediction_step += 1
+
+      if self.prediction_step == 1:
+        self.progress = 0
+        # self.progressBar.maximum = self.scan_count
+        # self.progressBar.windowTitle = "Correcting contrast..."
+        # self.progressBar.setValue(0)
+
+      if self.prediction_step == 2:
+        self.progress = 0
+        self.ui.PredScanProgressBar.setValue(self.scan_count)
+
+        # self.progressBar.maximum = self.total_seg_progress
+        # self.progressBar.windowTitle = "Segmenting scans..."
+        # self.progressBar.setValue(0)
+
+
+    if progress == 100:
+
+      if self.prediction_step == 1:
+        # self.progressBar.setValue(self.progress)
+        self.ui.PredScanProgressBar.setValue(self.progress)
+        self.ui.PredScanLabel.setText(f"Scan ready for segmentation : {self.progress} / {self.scan_count}")
+
+      if self.prediction_step == 2:
+        # self.progressBar.setValue(self.progress)
+        self.ui.PredSegProgressBar.setValue(self.progress)
+        self.ui.PredSegLabel.setText(f"Segmented structures : {self.progress} / {self.total_seg_progress}") 
+
+      self.progress += 1
+
+
+
   def onProcessUpdate(self,caller,event):
 
     # print(caller.GetProgress(),caller.GetStatus())
 
     progress = caller.GetProgress()
+
+    # print("Progress : ",progress)
+
+    if progress == 0:
+      self.updateProgessBar = False
+
+    if progress != 0 and self.updateProgessBar == False:
+      self.updateProgessBar = True
+      self.UpdateProgressBar(progress)
+
     # print(progress)
 
-    if progress == 200:
-      self.progressBar.windowTitle = "Correcting contrast..."
-      self.progressBar.setValue(0)
-
-
-    elif progress == 300:
-      self.progressBar.windowTitle = "Segmenting scans..."
-      self.progressBar.setValue(0)
-
-
-    else:
-      self.progressBar.setValue(progress)
 
   
     if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
@@ -607,8 +694,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         errorText = self.logic.cliNode.GetErrorText()
         print("CLI execution failed: \n \n" + errorText)
 
-        self.progressBar.windowTitle = "FAILED 1"
-        self.progressBar.setValue(100)
+        # self.progressBar.windowTitle = "FAILED 1"
+        # self.progressBar.setValue(100)
 
         # msg = qt.QMessageBox()
         # msg.setText(f'There was an error during the process:\n \n {errorText} ')
@@ -622,21 +709,39 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onCancel(self):
     # print(self.logic.cliNode.GetOutputText())
     self.logic.cliNode.Cancel()
-    self.ui.PredictionButton.setVisible(True)
-    self.ui.CancelButton.setVisible(False)
+
     # self.ui.CLIProgressBar.setValue(0)
-    self.progressBar.close()
+    # self.progressBar.close()
+
+    self.RunningUI(False)
+
 
 
     print("Cancelled")
+    
+  def RunningUI(self, run = False):
+
+    self.ui.PredictionButton.setVisible(not run)
+
+    self.ui.CancelButton.setVisible(run)
+    self.ui.PredScanLabel.setVisible(run)
+    self.ui.PredScanProgressBar.setVisible(run)
+    self.ui.PredSegLabel.setVisible(run)
+    self.ui.PredSegProgressBar.setVisible(run)
+
+
+
     #endregion
+
 
     #region == SLICER BASICS ==
 
   def OnEndProcess(self):
+
+    
     print('PROCESS DONE.')
-    self.progressBar.setValue(100)
-    self.progressBar.close()
+    # self.progressBar.setValue(100)
+    # self.progressBar.close()
     print(self.logic.cliNode.GetOutputText())
     self.ui.PredictionButton.setVisible(True)
     self.ui.CancelButton.setVisible(False)
@@ -676,12 +781,20 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             displayNode.SetOpacity(0.2)
 
 
+    self.RunningUI(False)
 
 
   def cleanup(self):
     """
     Called when the application closes and the module widget is destroyed.
     """
+
+    temp_fold = os.path.join("..", "temp")
+    try:
+        shutil.rmtree(temp_fold)
+    except OSError as e:
+        print("Error: %s : %s" % (temp_fold, e.strerror))
+
 
     if self.logic.cliNode is not None:
       if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
