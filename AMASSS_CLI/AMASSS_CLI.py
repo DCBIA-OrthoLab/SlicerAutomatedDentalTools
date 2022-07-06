@@ -154,7 +154,7 @@ except ImportError:
 
 #region Global variables
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+# DEVICE = torch.device("cpu")
 
 TRANSLATE ={
   "Mandible" : "MAND",

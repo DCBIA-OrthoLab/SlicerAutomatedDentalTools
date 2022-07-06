@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>571</width>
-    <height>669</height>
+    <width>596</width>
+    <height>950</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -59,14 +59,14 @@
              </widget>
             </item>
             <item>
-             <widget class="QLabel" name="label_12">
+             <widget class="QLabel" name="SelectNodeLabel">
               <property name="text">
                <string>Select node</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QLabel" name="label_3">
+             <widget class="QLabel" name="ScanPathLabel">
               <property name="text">
                <string>Scan folder</string>
               </property>
@@ -93,7 +93,7 @@
              <number>0</number>
             </property>
             <item>
-             <widget class="QComboBox" name="comboBox">
+             <widget class="QComboBox" name="InputTypeComboBox">
               <item>
                <property name="text">
                 <string>CBCT - Work on Cone Beam CT scans </string>
@@ -107,7 +107,7 @@
              </widget>
             </item>
             <item>
-             <widget class="QComboBox" name="comboBox_2">
+             <widget class="QComboBox" name="InputComboBox">
               <item>
                <property name="text">
                 <string>File as input</string>
@@ -124,6 +124,11 @@
              <widget class="qMRMLNodeComboBox" name="MRMLNodeComboBox">
               <property name="enabled">
                <bool>true</bool>
+              </property>
+              <property name="nodeTypes">
+               <stringlist>
+                <string>vtkMRMLVolumeNode</string>
+               </stringlist>
               </property>
              </widget>
             </item>
@@ -164,7 +169,7 @@
              </widget>
             </item>
             <item>
-             <widget class="QLabel" name="label_14">
+             <widget class="QLabel" name="FillNodeLlabel">
               <property name="text">
                <string/>
               </property>
@@ -188,6 +193,27 @@
              </widget>
             </item>
            </layout>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_8">
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QPushButton" name="DownloadTestPushButton">
+            <property name="text">
+             <string>Download test file</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="DownloadModelPushButton">
+            <property name="text">
+             <string>Download latest models</string>
+            </property>
+           </widget>
           </item>
          </layout>
         </item>
@@ -270,7 +296,7 @@
           <item>
            <widget class="QLineEdit" name="SaveId">
             <property name="text">
-             <string extracomment="pred"/>
+             <string extracomment="pred">Pred</string>
             </property>
            </widget>
           </item>
@@ -521,6 +547,13 @@
        </layout>
       </item>
      </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="PrePredInfo">
+     <property name="text">
+      <string>Number of scans to process : 0</string>
+     </property>
     </widget>
    </item>
    <item>

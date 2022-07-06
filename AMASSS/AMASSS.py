@@ -171,6 +171,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.prediction_step = 0 # step of the prediction
     self.progress = 0 # progress of the prediction
 
+    self.startTime = 0 # start time of the prediction
+
 
   def setup(self):
     """
@@ -211,11 +213,11 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.SwitchInputType(0)
 
     # Input scan
-    self.ui.SearchScanFolder.connect('clicked(bool)',self.onSearchScanButton)
-
     self.ui.MRMLNodeComboBox_file.setMRMLScene(slicer.mrmlScene)
     self.ui.MRMLNodeComboBox_file.currentNodeChanged.connect(self.onNodeChanged)
     self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox_file.currentNodeID)
+
+    self.ui.SearchScanFolder.connect('clicked(bool)',self.onSearchScanButton)
 
     # model folder
     self.ui.SearchModelFolder.connect('clicked(bool)',self.onSearchModelButton)
@@ -601,6 +603,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # self.progressBar.setWindowTitle("Starting...")
     # self.progressBar.connect('canceled()', self.onCancel)
 
+    self.startTime = time.time()
+
     self.ui.PredScanProgressBar.setMaximum(self.scan_count)
     self.ui.PredScanProgressBar.setValue(0)
     self.ui.PredScanLabel.setText(f"Scan ready for segmentation : 0 / {self.scan_count}")
@@ -668,6 +672,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # print(caller.GetProgress(),caller.GetStatus())
 
+    # self.ui.TimerLabel.setText(f"Time : {self.startTime:.2f}s")
+    self.ui.TimerLabel.setText(f"Time : {time.time()-self.startTime:.2f}s")
+
     progress = caller.GetProgress()
 
     # print("Progress : ",progress)
@@ -704,6 +711,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
       else:
         # success
+
         self.OnEndProcess()
 
   def onCancel(self):
@@ -728,6 +736,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.PredScanProgressBar.setVisible(run)
     self.ui.PredSegLabel.setVisible(run)
     self.ui.PredSegProgressBar.setVisible(run)
+    self.ui.TimerLabel.setVisible(run)
 
 
 
@@ -743,12 +752,18 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # self.progressBar.setValue(100)
     # self.progressBar.close()
     print(self.logic.cliNode.GetOutputText())
+
+    stopTime = time.time()
+    # print(self.startTime)
+    logging.info(f'Processing completed in {stopTime-self.startTime:.2f} seconds')
+
+
     self.ui.PredictionButton.setVisible(True)
     self.ui.CancelButton.setVisible(False)
   
 
     if self.vtk_output_folder is not None:
-      print(self.vtk_output_folder)
+      # print(self.vtk_output_folder)
       files = []
       # get all .vtk files in self.vtk_output_folder
       for file in os.listdir(self.vtk_output_folder):
@@ -756,7 +771,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           files.append(self.vtk_output_folder + '/' +file)
 
 
-      print(files)
+      # print(files)
       # files = [files[0]]
 
       for models in files:
@@ -1091,9 +1106,9 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
     Can be used without GUI widget.
     """
 
-    startTime = time.time()
-    logging.info('Processing started')
 
+
+    logging.info('Processing started')
 
  
     print ('parameters : ', parameters)
@@ -1106,8 +1121,7 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
     # We don't need the CLI module node anymore, remove it to not clutter the scene with it
     # slicer.mrmlScene.RemoveNode(cliNode)
 
-    stopTime = time.time()
-    logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
+
 
     return AMASSSProcess
 

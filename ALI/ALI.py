@@ -6,25 +6,57 @@ import time
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
-# from UI_fct import (
-#   LMTab,
-# )
+import webbrowser
 
-#
-# ALI
-#
+# import csv
 
-import csv
+
+#region ========== FUNCTIONS ==========
+
+def PathFromNode(node):
+  storageNode=node.GetStorageNode()
+  if storageNode is not None:
+    filepath=storageNode.GetFullNameFromFileName()
+  else:
+    filepath=None
+  return filepath
+
+
+TEST_SCAN = {
+  "CBCT": 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz',
+  "IOS" : 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz',
+}
+
+MODELS_LINK = {
+  "CBCT": [
+    'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz',
+  ],
+  "IOS" : [
+    'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz',
+  ],
+}
+
 
 GROUPS_LANDMARKS = {
-    'CB' : ['Ba', 'S', 'N', 'RPo', 'LPo', 'RFZyg', 'LFZyg', 'C2', 'C3', 'C4'],
+  'Impacted canine' : ['UR3OIP','UL3OIP','UR3RIP','UL3RIP'],
 
-    'U' : ['RInfOr', 'LInfOr', 'LMZyg', 'RPF', 'LPF', 'PNS', 'ANS', 'A', 'UR3O', 'UR1O', 'UL3O', 'UR6DB', 'UR6MB', 'UL6MB', 'UL6DB', 'IF', 'ROr', 'LOr', 'RMZyg', 'RNC', 'LNC', 'UR7O', 'UR5O', 'UR4O', 'UR2O', 'UL1O', 'UL2O', 'UL4O', 'UL5O', 'UL7O', 'UL7R', 'UL5R', 'UL4R', 'UL2R', 'UL1R', 'UR2R', 'UR4R', 'UR5R', 'UR7R', 'UR6MP', 'UL6MP', 'UL6R', 'UR6R', 'UR6O', 'UL6O', 'UL3R', 'UR3R', 'UR1R'],
+  'Cranial base' : ['Ba', 'S', 'N', 'RPo', 'LPo', 'RFZyg', 'LFZyg', 'C2', 'C3', 'C4'],
 
-    'L' : ['RCo', 'RGo', 'Me', 'Gn', 'Pog', 'PogL', 'B', 'LGo', 'LCo', 'LR1O', 'LL6MB', 'LL6DB', 'LR6MB', 'LR6DB', 'LAF', 'LAE', 'RAF', 'RAE', 'LMCo', 'LLCo', 'RMCo', 'RLCo', 'RMeF', 'LMeF', 'RSig', 'RPRa', 'RARa', 'LSig', 'LARa', 'LPRa', 'LR7R', 'LR5R', 'LR4R', 'LR3R', 'LL3R', 'LL4R', 'LL5R', 'LL7R', 'LL7O', 'LL5O', 'LL4O', 'LL3O', 'LL2O', 'LL1O', 'LR2O', 'LR3O', 'LR4O', 'LR5O', 'LR7O', 'LL6R', 'LR6R', 'LL6O', 'LR6O', 'LR1R', 'LL1R', 'LL2R', 'LR2R'],
+  'Lower' : ['RCo', 'RGo', 'Me', 'Gn', 'Pog', 'PogL', 'B', 'LGo', 'LCo', 'LR1O', 'LL6MB', 'LL6DB', 'LR6MB', 'LR6DB', 'LAF', 'LAE', 'RAF', 'RAE', 'LMCo', 'LLCo', 'RMCo', 'RLCo', 'RMeF', 'LMeF', 'RSig', 'RPRa', 'RARa', 'LSig', 'LARa', 'LPRa', 'LR7R', 'LR5R', 'LR4R', 'LR3R', 'LL3R', 'LL4R', 'LL5R', 'LL7R', 'LL7O', 'LL5O', 'LL4O', 'LL3O', 'LL2O', 'LL1O', 'LR2O', 'LR3O', 'LR4O', 'LR5O', 'LR7O', 'LL6R', 'LR6R', 'LL6O', 'LR6O', 'LR1R', 'LL1R', 'LL2R', 'LR2R'],
 
-    'CI' : ['UR3OIP','UL3OIP','UR3RIP','UL3RIP']
+  'Upper' : ['RInfOr', 'LInfOr', 'LMZyg', 'RPF', 'LPF', 'PNS', 'ANS', 'A', 'UR3O', 'UR1O', 'UL3O', 'UR6DB', 'UR6MB', 'UL6MB', 'UL6DB', 'IF', 'ROr', 'LOr', 'RMZyg', 'RNC', 'LNC', 'UR7O', 'UR5O', 'UR4O', 'UR2O', 'UL1O', 'UL2O', 'UL4O', 'UL5O', 'UL7O', 'UL7R', 'UL5R', 'UL4R', 'UL2R', 'UL1R', 'UR2R', 'UR4R', 'UR5R', 'UR7R', 'UR6MP', 'UL6MP', 'UL6R', 'UR6R', 'UR6O', 'UL6O', 'UL3R', 'UR3R', 'UR1R'],
 }
+
+
+SURFACE_LANDMARKS = {
+  'Landmarks' : ['CL','CB','O','DB','MB','R','RIP','OIP'],
+  'Upper teeth' : ['UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7'],
+  'Lower teeth' : ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7'],
+}
+
+  # "Dental" :  ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7','UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7'] ,
+  
+  # "Landmarks type" : ['CL','CB','O','DB','MB','R','RIP','OIP']
 
 
 import json
@@ -125,6 +157,23 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self._parameterNode = None
     self._updatingGUIFromParameterNode = False
 
+
+    self.CBCT_as_input = True # True : CBCT image, False : surface IOS
+    self.folder_as_input = False # If use a folder as input
+
+    self.MRMLNode_scan = None # MRML node of the selected scan
+    self.input_path = None # path to the folder containing the scans
+
+    self.available_landmarks = [] # list of available landmarks to predict
+    
+
+
+    self.scan_count = 0 # number of scans in the input folder
+    self.landmark_cout = 0 # number of landmark to identify 
+
+
+
+
   def setup(self):
     """
     Called when the user opens the module the first time and the widget is initialized.
@@ -155,20 +204,39 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
-    # self.ui.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    # self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    # self.ui.imageThresholdSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
-    # self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
-    # self.ui.invertedOutputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+
+
+    self.lm_tab = LMTab()
+    # LM_tab_widget,LM_buttons_dic = GenLandmarkTab(Landmarks_group)
+    self.ui.OptionVLayout.addWidget(self.lm_tab.widget)
+
+    #region ===== INPUTS =====
+
+    self.ui.InputTypeComboBox.currentIndexChanged.connect(self.SwitchInputType)
+    self.SwitchInputType(0)
+
+    self.ui.MRMLNodeComboBox.setMRMLScene(slicer.mrmlScene)
+    self.ui.MRMLNodeComboBox.currentNodeChanged.connect(self.onNodeChanged)
+    self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox.currentNodeID)
+
+
+    self.ui.InputComboBox.currentIndexChanged.connect(self.SwitchInput)
+    self.SwitchInput(0)
+
+    self.ui.DownloadTestPushButton.connect('clicked(bool)',self.onTestDownloadButton)
+    self.ui.DownloadModelPushButton.connect('clicked(bool)',self.onModelDownloadButton)
+
+
+    #endregion
+
     self.ui.SavePredictCheckBox.connect("toggled(bool)", self.UpdateSaveType)
 
     self.ui.SearchSaveFolder.setHidden(True)
     self.ui.SaveFolderLineEdit.setHidden(True)
     self.ui.PredictFolderLabel.setHidden(True)
 
-    self.lm_tab = LMTab()
-    # LM_tab_widget,LM_buttons_dic = GenLandmarkTab(Landmarks_group)
-    self.ui.OptionVLayout.addWidget(self.lm_tab.widget)
+
+
 
     # Buttons
     self.ui.SearchScanFolder.connect('clicked(bool)',self.onSearchScanButton)
@@ -179,6 +247,78 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
+
+  #region ===== FUNCTIONS =====
+
+  #region ===== INPUTS =====
+
+  def SwitchInputType(self,index):
+
+    if index == 1:
+      self.CBCT_as_input = False
+      self.ui.MRMLNodeComboBox.nodeTypes = ['vtkMRMLModelNode']
+      self.lm_tab.Clear()
+      self.lm_tab.FillTab(SURFACE_LANDMARKS)
+
+    else:
+      self.CBCT_as_input = True
+      self.ui.MRMLNodeComboBox.nodeTypes = ['vtkMRMLVolumeNode']
+      self.lm_tab.Clear()
+      self.lm_tab.FillTab(GROUPS_LANDMARKS)
+
+    # print()
+
+
+  def SwitchInput(self,index):
+
+    if index == 1:
+      self.folder_as_input = True
+
+    else:
+      self.folder_as_input = False
+      self.onNodeChanged()
+
+    print("Input type : ", index)
+
+    self.ui.ScanPathLabel.setVisible(self.folder_as_input)
+    self.ui.lineEditScanPath.setVisible(self.folder_as_input)
+    self.ui.SearchScanFolder.setVisible(self.folder_as_input)
+
+    self.ui.SelectNodeLabel.setVisible(not self.folder_as_input)
+    self.ui.MRMLNodeComboBox.setVisible(not self.folder_as_input)
+    self.ui.FillNodeLlabel.setVisible(not self.folder_as_input)
+
+
+  def onNodeChanged(self):
+    selected = False
+    self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox.currentNodeID)
+    if self.MRMLNode_scan is not None:
+      print(PathFromNode(self.MRMLNode_scan))
+      self.input_path = PathFromNode(self.MRMLNode_scan)
+      self.scan_count = 1
+
+
+      self.ui.PrePredInfo.setText("Number of scans to process : 1")
+      selected = True
+
+    return selected
+
+  def onTestDownloadButton(self):
+    if self.CBCT_as_input:
+      webbrowser.open(TEST_SCAN["CBCT"])
+    else:
+      webbrowser.open(TEST_SCAN["IOS"])
+
+
+  def onModelDownloadButton(self):
+    if self.CBCT_as_input:
+      for link in MODELS_LINK["CBCT"]:
+        webbrowser.open(link)
+    else:
+      for link in MODELS_LINK["IOS"]:
+        webbrowser.open(link)
+
+
 
   def updateProgressBare(self,caller=None, event=None):
     self.ui.progressBar.value = 50
@@ -204,19 +344,27 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
       
 
-    
   def onSearchModelButton(self):
     model_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a model folder")
     if model_folder != '':
-      self.model_folder = model_folder
-      self.ui.lineEditModelPath.setText(self.model_folder)
 
-      lm_group = GetLandmarkGroup(GROUPS_LANDMARKS)
-      available_lm,brain_dic = GetAvailableLm(self.model_folder,lm_group)
-      # print(brain_dic)
-      
-      self.lm_tab.Clear()
-      self.lm_tab.FillTab(available_lm)
+
+      if self.CBCT_as_input:
+        lm_group = GetLandmarkGroup(GROUPS_LANDMARKS)
+        available_lm,brain_dic = GetAvailableLm(model_folder,lm_group)
+
+        if len(available_lm.keys()) == 0:
+          qt.QMessageBox.warning(self.parent, 'Warning', 'No models found in the selected folder\nPlease select a folder containing .pth files\nYou can download the latest models with\n  "Download latest models" button')
+          return
+        else:
+          self.model_folder = model_folder
+          self.ui.lineEditModelPath.setText(self.model_folder)
+          self.available_landmarks = available_lm.keys()
+          self.lm_tab.Clear()
+          self.lm_tab.FillTab(available_lm, enable = True)
+          # print(available_lm)
+          # print(brain_dic)
+
 
   def onSearchSaveButton(self):
     save_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
@@ -268,7 +416,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.scan_nbr = scan_nbr
     self.LM_nbr = LM_nbr
 
-    self.threadFunc()
 
     # self.logic = ALILogic()
     # self.logic.process(self.selectedLM)
@@ -283,27 +430,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     print("DONE")
     # print(self.logic.cliNode.GetStatus())
 
-  def threadFunc(self):
-    for i,scan in enumerate(self.scans):
-      ti = "Scan " + str(i+1) + " / " +str(self.scan_nbr) + "  -  " + scan["name"]
-      for j,lm in enumerate(self.selectedLM):
-        tj = "Landmark " + str(j+1) + " / " +str(self.LM_nbr) + "  -  " + lm
-        self.addLog(i,j,ti,tj)
-        print(tj)
-        time.sleep(1)
-    self.addLog(self.scan_nbr,self.LM_nbr,ti,tj)
+ 
     
-
-
-  def addLog(self, i,j,ti,tj):
-
-    self.ui.ScanNbrLabel.text = ti
-    self.ui.TotalrogressBar.value = i
-    self.ui.LandmarkNbrLabel.text = tj
-    self.ui.LandmarkProgressBar.value = j
-    
-
-    slicer.app.processEvents() # force update
 
 
   def cleanup(self):
@@ -481,9 +609,9 @@ class LMTab:
     def Clear(self):
       self.LM_tab_widget.clear()
 
-    def FillTab(self,lm_dic):
-      self.select_all_btn.setEnabled(True)
-      self.clear_all_btn.setEnabled(True)
+    def FillTab(self,lm_dic, enable = False):
+      self.select_all_btn.setEnabled(enable)
+      self.clear_all_btn.setEnabled(enable)
 
       self.lm_group_dic = lm_dic.copy()
       self.lm_group_dic["All"] = []
@@ -507,7 +635,7 @@ class LMTab:
           self.check_box_dic[new_cb] = lm
           lst_wid.append(new_cb)
 
-        new_lm_tab = self.GenNewTab(lst_wid)
+        new_lm_tab = self.GenNewTab(lst_wid,enable)
         self.LM_tab_widget.insertTab(0,new_lm_tab,group)
 
       self.LM_tab_widget.currentIndex = 0
@@ -527,6 +655,7 @@ class LMTab:
 
       for cb in self.check_box_dic.keys():
         cb.connect("toggled(bool)", self.CheckBox)
+        cb.setEnabled(enable)
 
     def CheckBox(self, caller=None, event=None):
       for cb,lm in self.check_box_dic.items():
@@ -549,13 +678,14 @@ class LMTab:
         self.UpdateLmSelect(lm,new_state)
 
 
-    def GenNewTab(self,widget_lst):
+    def GenNewTab(self,widget_lst,enable = False):
         new_widget = qt.QWidget()
         vb = qt.QVBoxLayout(new_widget)
         scr_box = qt.QScrollArea()
         vb.addWidget(scr_box)
-        pb = qt.QPushButton('Toggle group')
+        pb = qt.QPushButton('Switch group selection')
         pb.connect('clicked(bool)', self.ToggleSelection)
+        pb.setEnabled(enable)
         vb.addWidget(pb)
 
         wid = qt.QWidget()
@@ -598,8 +728,8 @@ class LMTab:
 
 def GetAvailableLm(mfold,lm_group):
   brain_dic = GetBrain(mfold)
-  # print(brain_dic)
-  available_lm = {"Other":[]}
+  print(brain_dic)
+  available_lm = {}
   for lm in brain_dic.keys():
     if lm in lm_group.keys():
       group = lm_group[lm]
@@ -609,6 +739,8 @@ def GetAvailableLm(mfold,lm_group):
       available_lm[group] = [lm]
     else:
       available_lm[group].append(lm)
+
+  # available_lm = brain_dic.keys()
 
   return available_lm,brain_dic
 
@@ -635,15 +767,15 @@ def GetBrain(dir_path):
                 brainDic[lab] = network
 
     # print(brainDic)
-    out_dic = {}
-    for l_key in brainDic.keys():
-        networks = []
-        for n_key in range(len(brainDic[l_key].keys())):
-            networks.append(brainDic[l_key][str(n_key)])
+    # out_dic = {}
+    # for l_key in brainDic.keys():
+    #     networks = []
+    #     for n_key in range(len(brainDic[l_key].keys())):
+    #         networks.append(brainDic[l_key][str(n_key)])
 
-        out_dic[l_key] = networks
+    #     out_dic[l_key] = networks
 
-    return out_dic
+    return brainDic
 
 #
 # ALILogic
