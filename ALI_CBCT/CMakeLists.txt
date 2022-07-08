@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME ALI_CLI)
+set(MODULE_NAME ALI_CBCT)
 
 SlicerMacroBuildScriptedCLI(
   NAME ${MODULE_NAME}

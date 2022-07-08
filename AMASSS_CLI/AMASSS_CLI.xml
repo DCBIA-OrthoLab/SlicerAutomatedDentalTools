@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <executable>
   <category>Examples</category>
+  <index>1</index>
   <title>AMASSS_CLI</title>
   <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
   <version>0.0.1</version>

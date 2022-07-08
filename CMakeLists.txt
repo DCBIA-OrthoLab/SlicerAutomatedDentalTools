@@ -23,7 +23,7 @@ include(${Slicer_USE_FILE})
 add_subdirectory(AMASSS)
 add_subdirectory(AMASSS_CLI)
 add_subdirectory(ALI)
-add_subdirectory(ALI_CLI)
+add_subdirectory(ALI_CBCT)
 
 add_subdirectory(TESTTAMER)
 ## NEXT_MODULE

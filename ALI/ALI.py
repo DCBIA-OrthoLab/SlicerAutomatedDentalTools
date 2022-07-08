@@ -1,4 +1,5 @@
 import os
+from re import I
 import unittest
 import logging
 import glob
@@ -48,10 +49,13 @@ GROUPS_LANDMARKS = {
 }
 
 
-SURFACE_LANDMARKS = {
-  'Landmarks' : ['CL','CB','O','DB','MB','R','RIP','OIP'],
+TEETH = {
   'Upper teeth' : ['UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7'],
   'Lower teeth' : ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7'],
+}
+
+SURFACE_LANDMARKS = {
+  'Landmarks' : ['CL','CB','O','DB','MB','R','RIP','OIP'],
 }
 
   # "Dental" :  ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7','UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7'] ,
@@ -163,10 +167,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.MRMLNode_scan = None # MRML node of the selected scan
     self.input_path = None # path to the folder containing the scans
+    self.model_folder = None
 
     self.available_landmarks = [] # list of available landmarks to predict
     
-
+    self.output_folder = None # If save the output in a folder
 
     self.scan_count = 0 # number of scans in the input folder
     self.landmark_cout = 0 # number of landmark to identify 
@@ -206,9 +211,19 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # (in the selected parameter node).
 
 
+    self.lm_selection_area = qt.QWidget()
+    self.lm_selection_layout = qt.QHBoxLayout(self.lm_selection_area)
+    self.ui.OptionVLayout.addWidget(self.lm_selection_area)
+
+
     self.lm_tab = LMTab()
     # LM_tab_widget,LM_buttons_dic = GenLandmarkTab(Landmarks_group)
-    self.ui.OptionVLayout.addWidget(self.lm_tab.widget)
+    self.lm_selection_layout.addWidget(self.lm_tab.widget)
+
+    self.tooth_lm = LMTab()
+    self.tooth_lm.Clear()
+    self.tooth_lm.FillTab(SURFACE_LANDMARKS)
+    self.lm_selection_layout.addWidget(self.tooth_lm.widget)
 
     #region ===== INPUTS =====
 
@@ -241,9 +256,15 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Buttons
     self.ui.SearchScanFolder.connect('clicked(bool)',self.onSearchScanButton)
     self.ui.SearchModelFolder.connect('clicked(bool)',self.onSearchModelButton)
+
     self.ui.SearchSaveFolder.connect('clicked(bool)',self.onSearchSaveButton)
 
+
     self.ui.PredictionButton.connect('clicked(bool)', self.onPredictButton)
+    self.ui.CancelButton.connect('clicked(bool)', self.onCancel)
+
+    self.RunningUI(False)
+
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
@@ -254,18 +275,20 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def SwitchInputType(self,index):
 
+    self.lm_tab.Clear()
+
     if index == 1:
       self.CBCT_as_input = False
       self.ui.MRMLNodeComboBox.nodeTypes = ['vtkMRMLModelNode']
-      self.lm_tab.Clear()
-      self.lm_tab.FillTab(SURFACE_LANDMARKS)
+      self.lm_tab.FillTab(TEETH,True)
 
     else:
       self.CBCT_as_input = True
       self.ui.MRMLNodeComboBox.nodeTypes = ['vtkMRMLVolumeNode']
-      self.lm_tab.Clear()
       self.lm_tab.FillTab(GROUPS_LANDMARKS)
 
+
+    self.tooth_lm.widget.setHidden(self.CBCT_as_input)
     # print()
 
 
@@ -273,12 +296,13 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     if index == 1:
       self.folder_as_input = True
+      self.input_path = None
 
     else:
       self.folder_as_input = False
       self.onNodeChanged()
 
-    print("Input type : ", index)
+    # print("Input type : ", index)
 
     self.ui.ScanPathLabel.setVisible(self.folder_as_input)
     self.ui.lineEditScanPath.setVisible(self.folder_as_input)
@@ -331,6 +355,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.SaveFolderLineEdit.setHidden(caller)
     self.ui.PredictFolderLabel.setHidden(caller)
 
+    if caller:
+      self.output_folder = None
+
     # self.ui.SearchSaveFolder.setEnabled(not caller)
     # self.ui.SaveFolderLineEdit.setEnabled(not caller)
     
@@ -339,8 +366,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onSearchScanButton(self):
     surface_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
     if surface_folder != '':
-      self.surface_folder = surface_folder
-      self.ui.lineEditScanPath.setText(self.surface_folder)
+      self.input_path = surface_folder
+      # self.surface_folder = surface_folder
+      self.ui.lineEditScanPath.setText(surface_folder)
 
       
 
@@ -369,75 +397,160 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onSearchSaveButton(self):
     save_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
     if save_folder != '':
-      self.save_folder = save_folder
-      self.ui.SaveFolderLineEdit.setText(self.save_folder)
+      self.output_folder = save_folder
+      self.ui.SaveFolderLineEdit.setText(save_folder)
 
   def onPredictButton(self):
 
-    # print(self.addLog)
+    ready = True
 
-    scan_folder = self.ui.lineEditScanPath.text
+    if self.folder_as_input:
+      if self.input_path == None:
+        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a scan folder')
+        ready = False
+    else:
+      if not self.onNodeChanged():
+        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select an input file')
+        ready = False
 
-    scans = []
-    if scan_folder != '':
-      normpath = os.path.normpath("/".join([scan_folder, '**', '']))
-      for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-          #  print(img_fn)
-          basename = os.path.basename(img_fn)
-
-          if True in [ext in img_fn for ext in [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]]:
-            scans.append({"name" : basename, "path":img_fn})
-
-    # print(scans)
-
-    selectedLM = self.lm_tab.GetSelectedLM()
-    LM_nbr = len(selectedLM)
-    self.ui.LandmarkProgressBar.maximum = LM_nbr
-    scan_nbr = len(scans)
-    self.ui.TotalrogressBar.maximum = scan_nbr
-    if LM_nbr == 0 or scan_nbr ==0:
-      print("Error")
-      msg = qt.QMessageBox()
-      msg_txt = "Missing parameters : \n"
-      if scan_nbr == 0:
-        msg_txt += "- No scan found in folder '" + scan_folder + "'\n"
-      if LM_nbr == 0:
-        msg_txt += "- 0 Landmark selected"
-
-
-      msg.setText(msg_txt)
-      msg.setWindowTitle("Error")
-      msg.exec_()
-      
+    if self.model_folder == None:
+      qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a model folder')
+      ready = False
+    
+    if not ready:
       return
 
-    self.scans = scans
-    self.selectedLM = selectedLM
-    self.scan_nbr = scan_nbr
-    self.LM_nbr = LM_nbr
 
 
-    # self.logic = ALILogic()
-    # self.logic.process(self.selectedLM)
+    # print("Selected landmarks : ", selected_lm_lst)
 
-    # self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
-    # self.onProcessStarted()
+    if self.output_folder == None:
+      if os.path.isfile(self.input_path):
+        outPath = os.path.dirname(self.input_path)
+      else:
+        outPath = self.input_path
 
-    # th = threading.Thread(target=self.threadFunc)
-    # th.start()
+    else:
+      outPath = self.output_folder
+
+    param = {}
+
+    if self.CBCT_as_input:
+
+      selected_lm_lst = self.lm_tab.GetSelected()
+      if len(selected_lm_lst) == 0:
+        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
+        return
+
+      selected_lm = " ".join(selected_lm_lst)
+
+      param["input"] = self.input_path
+      param["dir_models"] = self.model_folder
+      param["landmarks"] = selected_lm
+      param["save_in_folder"] = self.ui.GroupInFolderCheckBox.isChecked()
+      param["output_dir"] = outPath
+
+
+      
+
+    # print(param)
+
+
+
+
+    self.logic = ALILogic()
+    self.logic.process(param, self.CBCT_as_input)
+
+    self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
+    self.onProcessStarted()
+
+  def onProcessStarted(self):
+    self.startTime = time.time()
+
+    self.RunningUI(True)
+
+
+
 
   def onProcessUpdate(self,caller,event):
-    print("DONE")
-    # print(self.logic.cliNode.GetStatus())
 
+    timer = f"Time : {time.time()-self.startTime:.2f}s"
+    self.ui.TimerLabel.setText(timer)
+    progress = caller.GetProgress()
+
+
+    if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+      # process complete
+
+
+      if self.logic.cliNode.GetStatus() & self.logic.cliNode.ErrorsMask:
+        # error
+        print("\n\n ========= PROCESSED ========= \n")
+
+        print(self.logic.cliNode.GetOutputText())
+        print("\n\n ========= ERROR ========= \n")
+        errorText = self.logic.cliNode.GetErrorText()
+        print("CLI execution failed: \n \n" + errorText)
+
+        # self.progressBar.windowTitle = "FAILED 1"
+        # self.progressBar.setValue(100)
+
+        # msg = qt.QMessageBox()
+        # msg.setText(f'There was an error during the process:\n \n {errorText} ')
+        # msg.setWindowTitle("Error")
+        # msg.exec_()
+
+      else:
+        # success
+
+        self.OnEndProcess()
  
     
+  def OnEndProcess(self):
 
+      
+      print('PROCESS DONE.')
+      self.RunningUI(False)
+      print(self.logic.cliNode.GetOutputText())
+
+
+
+      stopTime = time.time()
+      # print(self.startTime)
+      logging.info(f'Processing completed in {stopTime-self.startTime:.2f} seconds')
+
+  def onCancel(self):
+    # print(self.logic.cliNode.GetOutputText())
+    self.logic.cliNode.Cancel()
+
+    # self.ui.CLIProgressBar.setValue(0)
+    # self.progressBar.close()
+
+    self.RunningUI(False)
+
+
+
+    print("Cancelled")
+    
+  def RunningUI(self, run = False):
+
+    self.ui.PredictionButton.setVisible(not run)
+
+    self.ui.CancelButton.setVisible(run)
+    self.ui.PredScanLabel.setVisible(run)
+    self.ui.PredScanProgressBar.setVisible(run)
+    self.ui.PredSegLabel.setVisible(run)
+    self.ui.PredSegProgressBar.setVisible(run)
+    self.ui.TimerLabel.setVisible(run)
 
   def cleanup(self):
     """
     Called when the application closes and the module widget is destroyed.
     """
+    if self.logic.cliNode is not None:
+      if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
+        self.logic.cliNode.Cancel() 
+
     self.removeObservers()
 
   def enter(self):
@@ -476,13 +589,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Parameter node stores all user choices in parameter values, node selections, etc.
     # so that when the scene is saved and reloaded, these settings are restored.
 
-    self.setParameterNode(self.logic.getParameterNode())
-
-    # Select default input nodes if nothing is selected yet to save a few clicks for the user
-    if not self._parameterNode.GetNodeReference("InputVolume"):
-      firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-      if firstVolumeNode:
-        self._parameterNode.SetNodeReferenceID("InputVolume", firstVolumeNode.GetID())
 
   def setParameterNode(self, inputParameterNode):
     """
@@ -490,8 +596,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
     """
 
-    if inputParameterNode:
-      self.logic.setDefaultParameters(inputParameterNode)
+    # if inputParameterNode:
+    self.setParameterNode(self.logic.getParameterNode())
 
     # Unobserve previously selected parameter node and add an observer to the newly selected.
     # Changes of parameter node are observed so that whenever parameters are changed by a script or any other module
@@ -713,7 +819,7 @@ class LMTab:
           cb.setChecked(state)
         self.lm_status_dic[lm_id] = state
 
-    def GetSelectedLM(self):
+    def GetSelected(self):
       selectedLM = []
       for lm,state in self.lm_status_dic.items():
         if state:
@@ -797,45 +903,36 @@ class ALILogic(ScriptedLoadableModuleLogic):
     """
     ScriptedLoadableModuleLogic.__init__(self)
 
-  def setDefaultParameters(self, parameterNode):
-    """
-    Initialize parameter node with default settings.
-    """
-    if not parameterNode.GetParameter("Threshold"):
-      parameterNode.SetParameter("Threshold", "100.0")
-    if not parameterNode.GetParameter("Invert"):
-      parameterNode.SetParameter("Invert", "false")
+    self.cliNode = None
 
-  def process(self, landmark_lst):
+
+  def process(self, parameters, ALI_CBCT = True):
     """
     Run the processing algorithm.
     Can be used without GUI widget.
     :param inputVolume: volume to be thresholded
 
     """
-    self.landmark_lst = landmark_lst
 
     # import time
     # startTime = time.time()
     logging.info('Processing started')
 
-    # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-    cliParams = {
-      'landmark_lst': landmark_lst,
-      }
-    # env = slicer.util.startupEnvironment()
-    # print('\n\n\n\n')
-    # #print ('parameters : ', parameters)
 
-    # with open('env.json', 'w') as convert_file:
-    #   convert_file.truncate(0)
-    #   convert_file.write(json.dumps(env))
-    
-    PredictProcess = slicer.modules.ali_cli
-    self.cliNode = slicer.cli.run(PredictProcess,None, cliParams)    
+    if ALI_CBCT:
+      PredictProcess = slicer.modules.ali_cbct
+    else:
+      PredictProcess = slicer.modules.ali_ios
+
+
+
+    self.cliNode = slicer.cli.run(PredictProcess, None, parameters)
+
+    # slicer.mrmlScene.RemoveNode(self.cliNode)
+
+    return PredictProcess
 
     # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-    slicer.mrmlScene.RemoveNode(self.cliNode)
 
     # stopTime = time.time()
     # logging.info('Processing completed in {0:.2f} seconds'.format(stopTime-startTime))
@@ -845,67 +942,67 @@ class ALILogic(ScriptedLoadableModuleLogic):
 # ALITest
 #
 
-class ALITest(ScriptedLoadableModuleTest):
-  """
-  This is the test case for your scripted module.
-  Uses ScriptedLoadableModuleTest base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
+# class ALITest(ScriptedLoadableModuleTest):
+#   """
+#   This is the test case for your scripted module.
+#   Uses ScriptedLoadableModuleTest base class, available at:
+#   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
+#   """
 
-  def setUp(self):
-    """ Do whatever is needed to reset the state - typically a scene clear will be enough.
-    """
-    slicer.mrmlScene.Clear()
+#   def setUp(self):
+#     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
+#     """
+#     slicer.mrmlScene.Clear()
 
-  def runTest(self):
-    """Run as few or as many tests as needed here.
-    """
-    self.setUp()
-    self.test_ALI1()
+#   def runTest(self):
+#     """Run as few or as many tests as needed here.
+#     """
+#     self.setUp()
+#     self.test_ALI1()
 
-  def test_ALI1(self):
-    """ Ideally you should have several levels of tests.  At the lowest level
-    tests should exercise the functionality of the logic with different inputs
-    (both valid and invalid).  At higher levels your tests should emulate the
-    way the user would interact with your code and confirm that it still works
-    the way you intended.
-    One of the most important features of the tests is that it should alert other
-    developers when their changes will have an impact on the behavior of your
-    module.  For example, if a developer removes a feature that you depend on,
-    your test should break so they know that the feature is needed.
-    """
+#   def test_ALI1(self):
+#     """ Ideally you should have several levels of tests.  At the lowest level
+#     tests should exercise the functionality of the logic with different inputs
+#     (both valid and invalid).  At higher levels your tests should emulate the
+#     way the user would interact with your code and confirm that it still works
+#     the way you intended.
+#     One of the most important features of the tests is that it should alert other
+#     developers when their changes will have an impact on the behavior of your
+#     module.  For example, if a developer removes a feature that you depend on,
+#     your test should break so they know that the feature is needed.
+#     """
 
-    self.delayDisplay("Starting the test")
+#     self.delayDisplay("Starting the test")
 
-    # Get/create input data
+#     # Get/create input data
 
-    import SampleData
-    registerSampleData()
-    inputVolume = SampleData.downloadSample('ALI1')
-    self.delayDisplay('Loaded test data set')
+#     import SampleData
+#     registerSampleData()
+#     inputVolume = SampleData.downloadSample('ALI1')
+#     self.delayDisplay('Loaded test data set')
 
-    inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(inputScalarRange[0], 0)
-    self.assertEqual(inputScalarRange[1], 695)
+#     inputScalarRange = inputVolume.GetImageData().GetScalarRange()
+#     self.assertEqual(inputScalarRange[0], 0)
+#     self.assertEqual(inputScalarRange[1], 695)
 
-    outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-    threshold = 100
+#     outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+#     threshold = 100
 
-    # Test the module logic
+#     # Test the module logic
 
-    logic = ALILogic()
+#     logic = ALILogic()
 
-    # Test algorithm with non-inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, True)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], threshold)
+#     # Test algorithm with non-inverted threshold
+#     logic.process(inputVolume, outputVolume, threshold, True)
+#     outputScalarRange = outputVolume.GetImageData().GetScalarRange()
+#     self.assertEqual(outputScalarRange[0], inputScalarRange[0])
+#     self.assertEqual(outputScalarRange[1], threshold)
 
-    # Test algorithm with inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, False)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], inputScalarRange[1])
+#     # Test algorithm with inverted threshold
+#     logic.process(inputVolume, outputVolume, threshold, False)
+#     outputScalarRange = outputVolume.GetImageData().GetScalarRange()
+#     self.assertEqual(outputScalarRange[0], inputScalarRange[0])
+#     self.assertEqual(outputScalarRange[1], inputScalarRange[1])
 
-    self.delayDisplay('Test passed')
+#     self.delayDisplay('Test passed')
 

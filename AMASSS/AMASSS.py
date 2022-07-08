@@ -314,7 +314,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     if index == 1:
       self.folder_as_input = True
-
+      self.input_path = None
+    
     else:
       self.folder_as_input = False
       self.onNodeChanged()

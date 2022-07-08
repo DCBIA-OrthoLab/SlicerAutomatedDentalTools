@@ -34,9 +34,10 @@ import sys
 
 from slicer.util import pip_install
 
-# # from slicer.util import pip_uninstall
+# from slicer.util import pip_uninstall
 # # pip_uninstall('torch torchvision torchaudio') 
-random
+
+# pip_uninstall('monai')
 
 try:
     import torch
@@ -63,49 +64,21 @@ try :
     from monai.networks.nets import UNETR
 except ImportError:
     pip_install('monai==0.7.0')
-
-
     from monai.networks.nets import UNETR
 
 from monai.data import (
     DataLoader,
     Dataset,
-    SmartCacheDataset,
-    load_decathlon_datalist,
-    decollate_batch,
 )
 
 from monai.transforms import (
-    AsDiscrete,
     AddChanneld,
-    AddChannel,
     Compose,
-    CropForegroundd,
-    LoadImage,
     LoadImaged,
-    Orientationd,
-    RandFlipd,
-    RandCropByPosNegLabeld,
-    RandSpatialCropd,
-    RandShiftIntensityd,
     ScaleIntensityd,
-    ScaleIntensity,
     Spacingd,
-    Spacing,
-    Rotate90d,
-    RandRotate90d,
     ToTensord,
-    ToTensor,
-    SaveImaged,
-    SaveImage,
-    RandCropByLabelClassesd,
-    Lambdad,
-    CastToTyped,
-    SpatialCrop,
-    BorderPadd,
-    RandAdjustContrastd,
-    HistogramNormalized,
-    NormalizeIntensityd,
+
 )
 
 from monai.inferers import sliding_window_inference
@@ -114,11 +87,7 @@ from monai.inferers import sliding_window_inference
 
 
 
-try:
-    import SimpleITK as sitk
-except ImportError:
-    pip_install('SimpleITK==2.1.1')
-    import SimpleITK as sitk
+
 
 try:
     import itk
@@ -327,6 +296,21 @@ def CreatePredTransform(spacing):
     )
     return pred_transforms
 
+
+def Create_SwinUNETR(input_channel, label_nbr,cropSize):
+
+    model = SwinUNETR(
+        img_size=cropSize,
+        in_channels=input_channel,
+        out_channels=label_nbr,
+        feature_size=48,
+        # drop_rate=0.0,
+        # attn_drop_rate=0.0,
+        # dropout_path_rate=0.0,
+        use_checkpoint=True,
+    )
+
+    return model
 
 def SavePrediction(img,ref_filepath, outpath, output_spacing):
 
@@ -702,8 +686,10 @@ def main(args):
 
     # region Read data
     cropSize = [128,128,128]
+    # cropSize = [96,96,96]
 
-    temp_fold = os.path.join(args["temp_fold"], "temp")
+
+    temp_fold = os.path.join(args["temp_fold"], "temp_AMASSS")
     if not os.path.exists(temp_fold):
         os.makedirs(temp_fold)
 
@@ -801,7 +787,8 @@ def main(args):
                 if not True in [txt in basename for txt in ["_Pred","seg","Seg"]]:
                     new_path = os.path.join(temp_fold,basename)
                     temp_pred_path = os.path.join(temp_fold,"temp_Pred.nii.gz")
-                    CorrectHisto(img_fn, new_path,0.01, 0.99)
+                    if not os.path.exists(new_path):
+                        CorrectHisto(img_fn, new_path,0.01, 0.99)
                     data_list.append({"scan":new_path, "name":img_fn, "temp_path":temp_pred_path})
                     counter += 1
                     print(f"""<filter-progress>{1}</filter-progress>""")
@@ -809,6 +796,8 @@ def main(args):
                     time.sleep(0.5)
                     print(f"""<filter-progress>{0}</filter-progress>""")
                     sys.stdout.flush()
+                    time.sleep(0.5)
+
 
 
     # print(f"""<filter-progress>{0.99}</filter-progress>""")
@@ -818,8 +807,6 @@ def main(args):
     #endregion
 
     # region prepare data
-
-    number_of_scans
 
     pred_transform = CreatePredTransform(spacing)
 
@@ -899,6 +886,11 @@ def main(args):
                     cropSize=cropSize
                 ).to(DEVICE)
                 
+                # net = Create_SwinUNETR(
+                #     input_channel = 1,
+                #     label_nbr= len(MODELS_DICT[model_id].keys()) + 1,
+                #     cropSize=cropSize
+                # ).to(DEVICE)
 
                 print("Loading model", model_path)
                 net.load_state_dict(torch.load(model_path,map_location=DEVICE))

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Examples</category>
+  <index>1</index>
+  <title>ALI_CBCT</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/username/project</documentation-url>
+  <license>Slicer</license>
+  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>input</name>
+      <label>input</label>
+      <index>0</index>
+      <description>Path for the input.</description>
+    </string>
+
+    <string>
+      <name>dir_models</name>
+      <label>dir_models</label>
+      <index>1</index>
+      <description>Path for models dir.</description>
+    </string>
+
+    <string>
+      <name>landmarks</name>
+      <label>landmarks</label>
+      <index>2</index>
+      <description>landmarks selected</description>
+    </string>
+
+    <boolean>
+      <name>save_in_folder</name>
+      <label>save_in_folder</label>
+      <index>3</index>
+      <description>save outputs in a folder</description>
+    </boolean>
+
+    <string>
+      <name>output_dir</name>
+      <label>output_dir</label>
+      <index>4</index>
+      <description>Path for the output dir.</description>
+    </string>
+
+  </parameters>
+</executable>
