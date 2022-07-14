@@ -1092,15 +1092,6 @@ def main(input):
 
     scale_spacing = args["spacing"]
 
-    print(f"""<filter-progress>{0}</filter-progress>""")
-    sys.stdout.flush()
-    time.sleep(0.5)
-    print(f"""<filter-progress>{2}</filter-progress>""")
-    sys.stdout.flush()
-    time.sleep(0.5)
-    print(f"""<filter-progress>{0}</filter-progress>""")
-    sys.stdout.flush()
-    time.sleep(0.5)
 
 
     patients = {}
@@ -1126,6 +1117,16 @@ def main(input):
     if not os.path.exists(temp_fold):
         os.makedirs(temp_fold)
 
+
+    print(f"""<filter-progress>{0}</filter-progress>""")
+    sys.stdout.flush()
+    time.sleep(0.5)
+    print(f"""<filter-progress>{2}</filter-progress>""")
+    sys.stdout.flush()
+    time.sleep(0.5)
+    print(f"""<filter-progress>{0}</filter-progress>""")
+    sys.stdout.flush()
+    time.sleep(0.5)
 
 
     for patient,data in patients.items():
@@ -1153,6 +1154,13 @@ def main(input):
             if not os.path.exists(outpath):
                 SetSpacing(tempPath,[sp,sp,sp],outpath)
             patients[patient]["scans"][spac] = outpath
+        
+        print(f"""<filter-progress>{1}</filter-progress>""")
+        sys.stdout.flush()
+        time.sleep(0.5)
+        print(f"""<filter-progress>{0}</filter-progress>""")
+        sys.stdout.flush()
+        time.sleep(0.5)
 
 
     # print("Patients : ",patients)
@@ -1220,7 +1228,19 @@ def main(input):
         agent.SetBrain(brain)
 
 
+    print(f"""<filter-progress>{0}</filter-progress>""")
+    sys.stdout.flush()
+    time.sleep(0.5)
+    print(f"""<filter-progress>{2}</filter-progress>""")
+    sys.stdout.flush()
+    time.sleep(0.5)
+    print(f"""<filter-progress>{0}</filter-progress>""")
+    sys.stdout.flush()
+    time.sleep(0.5)
+
+
     start_time = time.time()
+
 
     tot_step = 0
     fails = {}
@@ -1236,10 +1256,15 @@ def main(input):
             else:
                 tot_step += search_result
             # PlotAgentPath(agent)
+            print(f"""<filter-progress>{1}</filter-progress>""")
+            sys.stdout.flush()
+            time.sleep(0.5)
+            print(f"""<filter-progress>{0}</filter-progress>""")
+            sys.stdout.flush()
         
         outputdir = outPath
         if args["save_in_folder"]:
-            outputdir = outPath + "/" + environment.patient_id.split(".")[0]
+            outputdir = outPath + "/" + environment.patient_id.split(".")[0] + "_landmarks"
             # print("Output dir :",outputdir)
             if not os.path.exists(outputdir):
                 os.makedirs(outputdir)

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Examples</category>
+  <index>2</index>
+  <title>ALI_IOS</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/username/project</documentation-url>
+  <license>Slicer</license>
+  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+    
+    <string>
+      <name>input</name>
+      <label>input</label>
+      <index>0</index>
+      <description>Path for the input.</description>
+    </string>
+
+    <string>
+      <name>dir_models</name>
+      <label>dir_models</label>
+      <index>1</index>
+      <description>Path for models dir.</description>
+    </string>
+
+    <string>
+      <name>landmarks</name>
+      <label>landmarks</label>
+      <index>2</index>
+      <description>landmarks selected</description>
+    </string>
+
+    <string>
+      <name>teeth</name>
+      <label>teeth</label>
+      <index>3</index>
+      <description> list of teeth </description>
+    </string>
+
+    <boolean>
+      <name>save_in_folder</name>
+      <label>save_in_folder</label>
+      <index>4</index>
+      <description>save outputs in a folder</description>
+    </boolean>
+
+    <string>
+      <name>output_dir</name>
+      <label>output_dir</label>
+      <index>5</index>
+      <description>Path for the output dir.</description>
+    </string>
+
+
+    <!-- <float>
+      <name>sphere_radius</name>
+      <label>sphere_radius</label>
+      <index>7</index>
+      <description>Radius of the sphere with all the cameras </description>
+    </float>
+     -->
+<!-- 
+    <int>
+      <name>image_size</name>
+      <label>image_size</label>
+      <index>10</index>
+      <description> size of the 2D images </description>
+    </int>    
+    
+    <int>
+      <name>blur_radius</name>
+      <label>blur_radius</label>
+      <index>11</index>
+      <description> Blur parameter </description>
+    </int>    
+    
+    <int>
+      <name>faces_per_pixel</name>
+      <label>faces_per_pixel</label>
+      <index>12</index>
+      <description> number of faces per pixel </description>
+    </int>
+
+    <string>
+      <name>output_dir</name>
+      <label>output_dir</label>
+      <index>13</index>
+      <description> directory where saving the prediction </description>
+    </string> -->
+
+
+  </parameters>
+</executable>

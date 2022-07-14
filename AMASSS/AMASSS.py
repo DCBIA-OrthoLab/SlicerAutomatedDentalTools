@@ -758,10 +758,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # print(self.startTime)
     logging.info(f'Processing completed in {stopTime-self.startTime:.2f} seconds')
 
+    self.RunningUI(False)
 
-    self.ui.PredictionButton.setVisible(True)
-    self.ui.CancelButton.setVisible(False)
-  
 
     if self.vtk_output_folder is not None:
       # print(self.vtk_output_folder)
@@ -774,7 +772,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
       # print(files)
       # files = [files[0]]
-
+      print("Loading surface files...")
       for models in files:
         if models not in LOADED_VTK_FILES.keys():
           #open model vtk file

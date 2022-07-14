@@ -55,8 +55,16 @@ TEETH = {
 }
 
 SURFACE_LANDMARKS = {
-  'Landmarks' : ['CL','CB','O','DB','MB','R','RIP','OIP'],
+  'Cervical' : ['CL','CB','R','RIP','OIP'],
+  'Occlusal' : ['O','DB','MB'],
 }
+
+SURFACE_NETWORK = {
+  '_O_' : 'Occlusal',
+  '_C_' : 'Cervical'
+}
+
+
 
   # "Dental" :  ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7','UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7'] ,
   
@@ -172,9 +180,12 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.available_landmarks = [] # list of available landmarks to predict
     
     self.output_folder = None # If save the output in a folder
+    self.goup_output_files = False
 
     self.scan_count = 0 # number of scans in the input folder
     self.landmark_cout = 0 # number of landmark to identify 
+
+
 
 
 
@@ -215,15 +226,15 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.lm_selection_layout = qt.QHBoxLayout(self.lm_selection_area)
     self.ui.OptionVLayout.addWidget(self.lm_selection_area)
 
+    self.tooth_lm = LMTab()
+    self.tooth_lm.Clear()
+    self.tooth_lm.FillTab(TEETH,True)
+    self.lm_selection_layout.addWidget(self.tooth_lm.widget)
 
     self.lm_tab = LMTab()
     # LM_tab_widget,LM_buttons_dic = GenLandmarkTab(Landmarks_group)
     self.lm_selection_layout.addWidget(self.lm_tab.widget)
 
-    self.tooth_lm = LMTab()
-    self.tooth_lm.Clear()
-    self.tooth_lm.FillTab(SURFACE_LANDMARKS)
-    self.lm_selection_layout.addWidget(self.tooth_lm.widget)
 
     #region ===== INPUTS =====
 
@@ -280,13 +291,15 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if index == 1:
       self.CBCT_as_input = False
       self.ui.MRMLNodeComboBox.nodeTypes = ['vtkMRMLModelNode']
-      self.lm_tab.FillTab(TEETH,True)
+      self.lm_tab.FillTab(SURFACE_LANDMARKS)
 
     else:
       self.CBCT_as_input = True
       self.ui.MRMLNodeComboBox.nodeTypes = ['vtkMRMLVolumeNode']
       self.lm_tab.FillTab(GROUPS_LANDMARKS)
 
+    self.ui.lineEditModelPath.setText("")
+    self.model_folder = None
 
     self.tooth_lm.widget.setHidden(self.CBCT_as_input)
     # print()
@@ -363,12 +376,34 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     self.save_scan_folder = caller
 
+
+  def CountFileWithExtention(self,path,extentions = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"], exception = ["Seg", "seg", "Pred"]):
+
+    count = 0
+    normpath = os.path.normpath("/".join([path, '**', '']))
+    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
+        #  print(img_fn)
+        basename = os.path.basename(img_fn)
+
+        if True in [ext in basename for ext in extentions]:
+            if not True in [ex in basename for ex in exception]:
+                count += 1
+
+    return count
+
+
   def onSearchScanButton(self):
-    surface_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-    if surface_folder != '':
-      self.input_path = surface_folder
-      # self.surface_folder = surface_folder
-      self.ui.lineEditScanPath.setText(surface_folder)
+    scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+    if scan_folder != '':
+      nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
+      if nbr_scans == 0:
+        qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
+
+      else:
+        self.input_path = scan_folder
+        self.ui.lineEditScanPath.setText(self.input_path)
+        self.ui.PrePredInfo.setText("Number of scans to process : " + str(nbr_scans))
+        self.scan_count = nbr_scans
 
       
 
@@ -392,7 +427,39 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           self.lm_tab.FillTab(available_lm, enable = True)
           # print(available_lm)
           # print(brain_dic)
+      else:
+        available_lm = self.GetAvailableSurfLm(model_folder)
 
+        if len(available_lm.keys()) == 0:
+          qt.QMessageBox.warning(self.parent, 'Warning', 'No models found in the selected folder\nPlease select a folder containing .pth files\nYou can download the latest models with\n  "Download latest models" button')
+          return
+        else:
+          self.model_folder = model_folder
+          self.ui.lineEditModelPath.setText(self.model_folder)
+          self.available_landmarks = available_lm.keys()
+          self.lm_tab.Clear()
+          self.lm_tab.FillTab(available_lm, enable = True)
+
+
+
+  def GetAvailableSurfLm(self,model_folder):
+    available_lm = {}
+    networks = self.GetNetworks(model_folder)
+    for net in networks:
+      available_lm[net] = SURFACE_LANDMARKS[net]
+
+    return available_lm
+
+  def GetNetworks(self,dir_path):
+    networks = []
+    normpath = os.path.normpath("/".join([dir_path, '**', '']))
+    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
+        #  print(img_fn)
+        if os.path.isfile(img_fn) and ".pth" in img_fn:
+          for id, group in SURFACE_NETWORK.items():
+            if id in os.path.basename(img_fn):
+              networks.append(group)
+    return networks
 
   def onSearchSaveButton(self):
     save_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
@@ -433,11 +500,14 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     else:
       outPath = self.output_folder
 
+    self.output_folder = outPath
+
     param = {}
 
     if self.CBCT_as_input:
 
       selected_lm_lst = self.lm_tab.GetSelected()
+      self.landmark_cout = len(selected_lm_lst)
       if len(selected_lm_lst) == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
         return
@@ -447,13 +517,37 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       param["input"] = self.input_path
       param["dir_models"] = self.model_folder
       param["landmarks"] = selected_lm
-      param["save_in_folder"] = self.ui.GroupInFolderCheckBox.isChecked()
+
+      self.goup_output_files = self.ui.GroupInFolderCheckBox.isChecked()
+      param["save_in_folder"] = self.goup_output_files
       param["output_dir"] = outPath
 
+    
+    else:
+      selected_lm_lst = self.lm_tab.GetSelected()
+      selected_tooth_lst = self.tooth_lm.GetSelected()
 
-      
+      if len(selected_lm_lst) == 0:
+        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
+        return
 
-    # print(param)
+      if len(selected_tooth_lst) == 0:
+        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one tooth')
+        return
+
+      selected_lm = " ".join(selected_lm_lst)
+      selected_tooth = " ".join(selected_tooth_lst)
+
+      param["input"] = self.input_path
+      param["dir_models"] = self.model_folder
+      param["landmarks"] = selected_lm
+      param["teeth"] = selected_tooth
+
+      self.goup_output_files = self.ui.GroupInFolderCheckBox.isChecked()
+      param["save_in_folder"] = self.goup_output_files
+      param["output_dir"] = outPath
+
+    print(param)
 
 
 
@@ -467,8 +561,106 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onProcessStarted(self):
     self.startTime = time.time()
 
+    self.ui.PredScanProgressBar.setMaximum(self.scan_count)
+    self.ui.PredScanProgressBar.setValue(0)
+    self.ui.PredSegProgressBar.setValue(0)
+
+    if self.CBCT_as_input:
+      self.ui.PredScanLabel.setText(f"Scan ready: 0 / {self.scan_count}")
+
+      self.total_seg_progress = self.scan_count * self.landmark_cout
+
+      self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
+      self.ui.PredSegLabel.setText(f"Landmarks found : 0 / {self.total_seg_progress}") 
+
+    else:
+      self.ui.PredScanLabel.setText(f"Scan : 0 / {self.scan_count}")
+
+      model_used = []
+      for lm in self.lm_tab.GetSelected():
+        for model in SURFACE_LANDMARKS.keys():
+          if lm in SURFACE_LANDMARKS[model]:
+            if model not in model_used:
+              model_used.append(model)
+
+
+      self.total_seg_progress = self.scan_count * len(self.tooth_lm.GetSelected()) * len(model_used)
+
+      self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
+      self.ui.PredSegLabel.setText(f"Identified : 0 / {self.total_seg_progress}") 
+
+    self.prediction_step = 0
+    self.progress = 0
+
+
+
+
     self.RunningUI(True)
 
+
+  def UpdateALICBCT(self,progress):
+
+    if progress == 200:
+      self.prediction_step += 1
+
+      if self.prediction_step == 1:
+        self.progress = 0
+        # self.progressBar.maximum = self.scan_count
+        # self.progressBar.windowTitle = "Correcting contrast..."
+        # self.progressBar.setValue(0)
+
+      if self.prediction_step == 2:
+        self.progress = 0
+        self.ui.PredScanProgressBar.setValue(self.scan_count)
+        self.ui.PredScanLabel.setText(f"Scan ready: {self.scan_count} / {self.scan_count}")
+
+
+        # self.progressBar.maximum = self.total_seg_progress
+        # self.progressBar.windowTitle = "Segmenting scans..."
+        # self.progressBar.setValue(0)
+
+
+    if progress == 100:
+
+      if self.prediction_step == 1:
+        # self.progressBar.setValue(self.progress)
+        self.ui.PredScanProgressBar.setValue(self.progress)
+        self.ui.PredScanLabel.setText(f"Scan ready: {self.progress} / {self.scan_count}")
+
+      if self.prediction_step == 2:
+        # self.progressBar.setValue(self.progress)
+        self.ui.PredSegProgressBar.setValue(self.progress)
+        self.ui.PredSegLabel.setText(f"Landmarks found : {self.progress} / {self.total_seg_progress}") 
+
+      self.progress += 1
+
+  def UpdateALIIOS(self,progress):
+
+    if progress == 200:
+      self.prediction_step += 1
+      self.progress = 0
+      self.ui.PredScanProgressBar.setValue(self.prediction_step)
+      self.ui.PredScanLabel.setText(f"Scan : {self.prediction_step} / {self.scan_count}")
+      self.ui.PredSegProgressBar.setValue(self.progress)
+      self.ui.PredSegLabel.setText(f"Identified: {self.progress} / {self.total_seg_progress}") 
+
+
+    if progress == 100:
+
+      self.progress += 1
+      self.ui.PredSegProgressBar.setValue(self.progress)
+      self.ui.PredSegLabel.setText(f"Identified : {self.progress} / {self.total_seg_progress}") 
+
+
+
+  def UpdateProgressBar(self,progress):
+
+    # print("UpdateProgressBar")
+
+    if self.CBCT_as_input:
+      self.UpdateALICBCT(progress)
+    else:
+      self.UpdateALIIOS(progress)
 
 
 
@@ -478,6 +670,13 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.TimerLabel.setText(timer)
     progress = caller.GetProgress()
 
+    # print(progress)
+    if progress == 0:
+      self.updateProgessBar = False
+
+    if progress != 0 and self.updateProgessBar == False:
+      self.updateProgessBar = True
+      self.UpdateProgressBar(progress)
 
     if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
       # process complete
@@ -519,6 +718,24 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       # print(self.startTime)
       logging.info(f'Processing completed in {stopTime-self.startTime:.2f} seconds')
 
+
+      if not self.folder_as_input:
+
+        input_id = os.path.basename(self.input_path).split(".")[0] 
+
+        normpath = os.path.normpath("/".join([self.output_folder, '**', '']))
+        for img_fn in sorted(glob.iglob(normpath, recursive=True)):
+        #  print(img_fn)
+          basename = os.path.basename(img_fn)
+          if input_id in basename and ".json" in basename:
+            markupsNode = slicer.util.loadMarkups(img_fn)
+            displayNode = markupsNode.GetDisplayNode()
+            displayNode.SetVisibility(1)
+
+
+
+
+
   def onCancel(self):
     # print(self.logic.cliNode.GetOutputText())
     self.logic.cliNode.Cancel()
@@ -548,8 +765,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     Called when the application closes and the module widget is destroyed.
     """
     if self.logic.cliNode is not None:
-      if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
-        self.logic.cliNode.Cancel() 
+      # if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
+      self.logic.cliNode.Cancel() 
 
     self.removeObservers()
 
@@ -734,7 +951,7 @@ class LMTab:
       self.lm_status_dic = lmsd
 
 
-      for group,lm_lst in lm_dic.items():
+      for group,lm_lst in self.lm_group_dic.items():
         lst_wid = []
         for lm in lm_lst:
           new_cb = qt.QCheckBox(lm)

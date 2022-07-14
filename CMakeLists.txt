@@ -24,6 +24,8 @@ add_subdirectory(AMASSS)
 add_subdirectory(AMASSS_CLI)
 add_subdirectory(ALI)
 add_subdirectory(ALI_CBCT)
+add_subdirectory(ALI_IOS)
+
 
 add_subdirectory(TESTTAMER)
 ## NEXT_MODULE

@@ -83,10 +83,11 @@ from monai.transforms import (
 
 from monai.inferers import sliding_window_inference
 
-
-
-
-
+try:
+    import SimpleITK as sitk
+except ImportError:
+    pip_install('SimpleITK==2.1.1')
+    import SimpleITK as sitk
 
 
 try:
