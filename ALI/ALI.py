@@ -394,16 +394,19 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def onSearchScanButton(self):
     scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-    if scan_folder != '':
-      nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
-      if nbr_scans == 0:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
+    if self.CBCT_as_input:
+      nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"], ["Seg", "seg", "Pred"])
+    else:
+      nbr_scans = self.CountFileWithExtention(scan_folder, [".vtk"], [])
+    
+    if nbr_scans == 0:
+      qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
 
-      else:
-        self.input_path = scan_folder
-        self.ui.lineEditScanPath.setText(self.input_path)
-        self.ui.PrePredInfo.setText("Number of scans to process : " + str(nbr_scans))
-        self.scan_count = nbr_scans
+    else:
+      self.input_path = scan_folder
+      self.ui.lineEditScanPath.setText(self.input_path)
+      self.ui.PrePredInfo.setText("Number of scans to process : " + str(nbr_scans))
+      self.scan_count = nbr_scans
 
       
 
