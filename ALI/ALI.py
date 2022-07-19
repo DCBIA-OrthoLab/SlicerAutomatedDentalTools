@@ -395,7 +395,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onSearchScanButton(self):
     scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
     if scan_folder != '':
-      nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
+      if self.CBCT_as_input:
+        nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"], [])
+      else:
+        nbr_scans = self.CountFileWithExtention(scan_folder, [".vtk"], [])
+
       if nbr_scans == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
 
@@ -584,7 +588,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
               model_used.append(model)
 
 
-      self.total_seg_progress = self.scan_count * len(self.tooth_lm.GetSelected()) * len(model_used)
+      self.total_seg_progress = len(self.tooth_lm.GetSelected()) * len(model_used)
 
       self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
       self.ui.PredSegLabel.setText(f"Identified : 0 / {self.total_seg_progress}") 
@@ -599,6 +603,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def UpdateALICBCT(self,progress):
+
+    # print(progress)
 
     if progress == 200:
       self.prediction_step += 1

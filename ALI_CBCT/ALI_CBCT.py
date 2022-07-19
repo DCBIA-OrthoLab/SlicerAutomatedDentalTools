@@ -1211,21 +1211,21 @@ def main(input):
     trainsitionLayerSize = 1024
 
 
-    for agent in agent_lst:
-        brain = Brain(
-            network_type = DNet,
-            network_scales = SCALE_KEYS,
-            # model_dir = dir_path,
-            # model_name = target,
-            device = DEVICE,
-            in_channels = trainsitionLayerSize,
-            out_channels = len(MOVEMENTS["id"]),
-            batch_size= 1,
-            generate_tensorboard=False,
-            verbose=True
-            )
-        brain.LoadModels(brain_lst[agent.target])
-        agent.SetBrain(brain)
+    # for agent in agent_lst:
+    #     brain = Brain(
+    #         network_type = DNet,
+    #         network_scales = SCALE_KEYS,
+    #         # model_dir = dir_path,
+    #         # model_name = target,
+    #         device = DEVICE,
+    #         in_channels = trainsitionLayerSize,
+    #         out_channels = len(MOVEMENTS["id"]),
+    #         batch_size= 1,
+    #         generate_tensorboard=False,
+    #         verbose=True
+    #         )
+    #     brain.LoadModels(brain_lst[agent.target])
+    #     agent.SetBrain(brain)
 
 
     print(f"""<filter-progress>{0}</filter-progress>""")
@@ -1249,8 +1249,23 @@ def main(input):
         print(environment.patient_id)
         # print(environment)
         for agent in agent_lst:
+            brain = Brain(
+                network_type = DNet,
+                network_scales = SCALE_KEYS,
+                # model_dir = dir_path,
+                # model_name = target,
+                device = DEVICE,
+                in_channels = trainsitionLayerSize,
+                out_channels = len(MOVEMENTS["id"]),
+                batch_size= 1,
+                generate_tensorboard=False,
+                verbose=True
+                )
+            brain.LoadModels(brain_lst[agent.target])
+            agent.SetBrain(brain)
             agent.SetEnvironement(environment)
             search_result = agent.Search()
+            agent.SetBrain(None)
             if search_result == -1:
                 fails[agent.target] = fails.get(agent.target,0) + 1
             else:
