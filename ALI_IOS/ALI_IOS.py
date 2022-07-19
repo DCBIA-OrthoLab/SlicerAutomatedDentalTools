@@ -152,6 +152,18 @@ LABEL_L = ["18","19","20","21","22","23","24","25","26","27","28","29","30","31"
 
 LABEL_U = ["2","3","4","5","6","7","8","9","10","11","12","13","14","15"]
 
+MODELS_DICT = {
+                'O':{
+                    'O':0,
+                    'MB':1,
+                    'DB':2
+                },
+                'C':{
+                    'CL':0,
+                    'CB':1
+                }
+            }
+
 def GenPhongRenderer(image_size,blur_radius,faces_per_pixel,device):
     
     cameras = FoVPerspectiveCameras(znear=0.01,zfar = 10, fov= 90, device=device) # Initialize a perspective camera.
@@ -702,17 +714,6 @@ def main(args):
 
     # print(dic_label['O'])
     
-    MODELS_DICT = {
-        'O':{
-            'O':0,
-            'MB':1,
-            'DB':2
-        },
-        'C':{
-            'CL':0,
-            'CB':1
-        }
-    }
 
     # print(MODELS_DICT['O']['O'])
     dic_teeth = TradLabel(args["teeth"])
@@ -734,18 +735,31 @@ def main(args):
                 available_models[model_id]['Lower'] = (img_fn)
             else:
                 available_models[model_id]['Upper'] = (img_fn)
-    # print(available_models)
+    print('available_models :',available_models)
     
-    for model_id in MODELS_DICT.keys():
-        if model_id in args['lm_type']:
-            if model_id not in models_to_use.keys():
-                models_to_use[model_id] = {} 
-            if 'Lower' in dic_teeth.keys():
-                models_to_use[model_id]['Lower'] = available_models[model_id]['Lower']
-            if 'Upper' in dic_teeth.keys():
-                models_to_use[model_id]['Upper'] = available_models[model_id]['Upper']
+    # for model_id in MODELS_DICT.keys():
+    #     if model_id in args['lm_type']:
+    #         if model_id not in models_to_use.keys():
+    #             models_to_use[model_id] = {} 
+    #         if 'Lower' in dic_teeth.keys():
+    #             models_to_use[model_id]['Lower'] = available_models[model_id]['Lower']
+    #         if 'Upper' in dic_teeth.keys():
+    #             models_to_use[model_id]['Upper'] = available_models[model_id]['Upper']
 
-    # print(models_to_use)
+    for model_id in MODELS_DICT.keys():
+        if model_id in available_models:
+            for lmtype in args["lm_type"]:
+                if lmtype in MODELS_DICT[model_id].keys():
+                    if model_id not in models_to_use.keys():
+                        models_to_use[model_id] = available_models[model_id]
+                # if model_id not in models_to_use.keys():
+                #     models_to_use[model_id] = {} 
+                # if 'Lower' in dic_teeth.keys():
+                #     models_to_use[model_id]['Lower'] = available_models[model_id]['Lower']
+                # if 'Upper' in dic_teeth.keys():
+                #     models_to_use[model_id]['Upper'] = available_models[model_id]['Upper']
+
+    print('models_to_use :',models_to_use)
 
     
     # lst_label = args['landmarks']
@@ -781,7 +795,7 @@ def main(args):
                 # else:
                 #     dic_patients[patient_id]["Upper"] = vtkfile
 
-    print(dic_patients)
+    print('dic_patients :',dic_patients)
 
 
 
@@ -789,13 +803,15 @@ def main(args):
     for patient_id,patient_path in dic_patients.items():
         # num_patient = patient_id.split('_')[1]
 
-
-
         print(f"prediction for patient {patient_id}")
         dic_points = {}
         for models_type in models_to_use.keys():
             LABEL = dic_label[models_type]
-
+            if models_type == "O":
+                sphere_radius = 0.2
+            else:
+                sphere_radius = 0.3
+            print(dic_teeth)
             for jaw,lst_teeth in dic_teeth.items():
                 group_data = {}
 
@@ -814,7 +830,7 @@ def main(args):
                     agent = Agent(
                         renderer=phong_renderer,
                         renderer2=mask_renderer,
-                        radius=args["sphere_radius"],
+                        radius=sphere_radius,
                         camera_position = camera_position
                     )
 
@@ -1047,22 +1063,22 @@ if __name__ == "__main__":
         "image_size": 224,
         "blur_radius": 0,
         "faces_per_pixel": 1,
-        "sphere_radius": 0.2,
+        # "sphere_radius": 0.3,
     }
 
     
     # args = {
-    #         "input": '/home/luciacev-admin/Desktop/Data_allios_cli/Datas',
+    #         "input": '/home/luciacev-admin/Desktop/data_cervical/T1_14_L_segmented.vtk',
     #         "dir_models": '/home/luciacev-admin/Desktop/Data_allios_cli/Models',
-    #         "teeth": ['LL7'],#,'LL6'],#,'LL5','LL4','LL3','LL2','LR3','LR5','LR7','UL3','UR7'],
-    #         "lm_type": ["O"],
+    #         "teeth": ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7'],
+    #         "lm_type": ["C"],
     #         # "save_in_folder": sys.argv[4] == "true",
-    #         "output_dir": '/home/luciacev-admin/Desktop/Data_allios_cli/Prediction',
+    #         "output_dir": '/home/luciacev-admin/Desktop/data_cervical/test',
             
     #         "image_size": 224,
     #         "blur_radius": 0,
     #         "faces_per_pixel": 1,
-    #         "sphere_radius": 0.2,
+    #         "sphere_radius": 0.3,
 
     #     }
 

@@ -403,11 +403,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       if nbr_scans == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
 
-      else:
-        self.input_path = scan_folder
-        self.ui.lineEditScanPath.setText(self.input_path)
-        self.ui.PrePredInfo.setText("Number of scans to process : " + str(nbr_scans))
-        self.scan_count = nbr_scans
+    else:
+      self.input_path = scan_folder
+      self.ui.lineEditScanPath.setText(self.input_path)
+      self.ui.PrePredInfo.setText("Number of scans to process : " + str(nbr_scans))
+      self.scan_count = nbr_scans
 
       
 
