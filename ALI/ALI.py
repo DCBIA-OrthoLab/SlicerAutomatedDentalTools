@@ -25,15 +25,15 @@ def PathFromNode(node):
 
 TEST_SCAN = {
   "CBCT": 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz',
-  "IOS" : 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz',
+  "IOS" : 'https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.4',
 }
 
 MODELS_LINK = {
   "CBCT": [
-    'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz',
+    'https://github.com/Maxlo24/ALI_CBCT/releases/tag/v0.1-models',
   ],
   "IOS" : [
-    'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz',
+    'https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.3',
   ],
 }
 
@@ -86,7 +86,7 @@ class ALI(ScriptedLoadableModule):
     self.parent.title = "ALI"  # TODO: make this more human readable by adding spaces
     self.parent.categories = ["Automated dental tools"]  # TODO: set categories (folders where the module shows up in the module selector)
     self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-    self.parent.contributors = ["Maxime Gillot (UoM)"]  # TODO: replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = ["Maxime Gillot (UoM), Baptiste Baquero (UoM)"]  # TODO: replace with "Firstname Lastname (Organization)"
     # TODO: update with short description of the module and a link to online module documentation
     self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
@@ -739,9 +739,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             displayNode.SetVisibility(1)
 
 
-
-
-
   def onCancel(self):
     # print(self.logic.cliNode.GetOutputText())
     self.logic.cliNode.Cancel()
@@ -948,7 +945,8 @@ class LMTab:
       cbd = {}
       lmsd = {}
       for group,lm_lst in lm_dic.items():
-          for lm in lm_lst:
+          # lm_lst = lm_lst.sort()
+          for lm in sorted(lm_lst):
               if lm not in lmsd.keys():
                   lmsd[lm] = False
                   self.lm_group_dic["All"].append(lm)
@@ -959,7 +957,8 @@ class LMTab:
 
       for group,lm_lst in self.lm_group_dic.items():
         lst_wid = []
-        for lm in lm_lst:
+        # lm_lst = lm_lst.sort()
+        for lm in sorted(lm_lst):
           new_cb = qt.QCheckBox(lm)
           self.check_box_dic[new_cb] = lm
           lst_wid.append(new_cb)

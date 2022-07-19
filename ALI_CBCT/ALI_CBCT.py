@@ -1,5 +1,19 @@
 #!/usr/bin/env python-real
 
+"""
+AUTOMATIC LANDMARK IDENTIFICATION IN CBCT SCANS (ALI_CBCT)
+
+Authors :
+- Maxime Gillot (UoM)
+- Baptiste Baquero (UoM)
+
+"""
+
+
+
+
+
+
 #### ##     ## ########   #######  ########  ######## 
  ##  ###   ### ##     ## ##     ## ##     ##    ##    
  ##  #### #### ##     ## ##     ## ##     ##    ##    

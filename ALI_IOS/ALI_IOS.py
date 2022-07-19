@@ -1,5 +1,16 @@
 #!/usr/bin/env python-real
 
+"""
+AUTOMATIC LANDMARK IDENTIFICATION IN INTRAORAL SCANS (ALI_CBCT)
+
+Authors :
+- Maxime Gillot (UoM)
+- Baptiste Baquero (UoM)
+"""
+
+
+
+
 import time
 import os
 import shutil
@@ -144,6 +155,97 @@ dic_cam = { 'O':{
             }
 
     }   
+
+LOWER_DENTAL = ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7']
+
+UPPER_DENTAL = ['UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7']
+
+TYPE_LM = ['O','MB','DB','CL','CB']
+
+
+Lower = []
+Upper = []
+
+for tooth in LOWER_DENTAL:
+    for lmtype in TYPE_LM:
+        Lower.append(tooth+lmtype)   
+
+for tooth in UPPER_DENTAL:
+    for lmtype in TYPE_LM:
+        Upper.append(tooth+lmtype)
+
+LANDMARKS = {"L":Lower,"U":Upper}
+
+
+dic_label = {
+    'O' : {
+            "15" : LANDMARKS["U"][0:3],
+            "14" : LANDMARKS["U"][5:8],
+            "13" : LANDMARKS["U"][10:13],
+            "12" : LANDMARKS["U"][15:18],
+            "11" : LANDMARKS["U"][20:23],
+            "10" : LANDMARKS["U"][25:28],
+            "9" : LANDMARKS["U"][30:33],
+            "8" : LANDMARKS["U"][35:38],
+            "7" : LANDMARKS["U"][40:43],
+            "6" : LANDMARKS["U"][45:48],
+            "5" : LANDMARKS["U"][50:53],
+            "4" : LANDMARKS["U"][55:58],
+            "3" : LANDMARKS["U"][60:63],
+            "2" : LANDMARKS["U"][65:68],
+
+            "18" : LANDMARKS["L"][0:3],
+            "19" : LANDMARKS["L"][5:8],
+            "20" : LANDMARKS["L"][10:13],
+            "21" : LANDMARKS["L"][15:18],
+            "22" : LANDMARKS["L"][20:23],
+            "23" : LANDMARKS["L"][25:28],
+            "24" : LANDMARKS["L"][30:33],
+            "25" : LANDMARKS["L"][35:38],
+            "26" : LANDMARKS["L"][40:43],
+            "27" : LANDMARKS["L"][45:48],
+            "28" : LANDMARKS["L"][50:53],
+            "29" : LANDMARKS["L"][55:58],
+            "30" : LANDMARKS["L"][60:63],
+            "31" : LANDMARKS["L"][65:68]
+            
+        },
+
+    'C' : {
+        
+        "15" : LANDMARKS["U"][3:5],
+        "14" : LANDMARKS["U"][8:10],
+        "13" : LANDMARKS["U"][13:15],
+        "12" : LANDMARKS["U"][18:20],
+        "11" : LANDMARKS["U"][23:25],
+        "10" : LANDMARKS["U"][28:30],
+        "9" : LANDMARKS["U"][33:35],
+        "8" : LANDMARKS["U"][38:40],
+        "7" : LANDMARKS["U"][43:45],
+        "6" : LANDMARKS["U"][48:50],
+        "5" : LANDMARKS["U"][53:55],
+        "4" : LANDMARKS["U"][58:60],
+        "3" : LANDMARKS["U"][63:65],
+        "2" : LANDMARKS["U"][68:70],
+
+        "18" : LANDMARKS["L"][3:5],
+        "19" : LANDMARKS["L"][8:10],
+        "20" : LANDMARKS["L"][13:15],
+        "21" : LANDMARKS["L"][18:20],
+        "22" : LANDMARKS["L"][23:25],
+        "23" : LANDMARKS["L"][28:30],
+        "24" : LANDMARKS["L"][33:35],
+        "25" : LANDMARKS["L"][38:40],
+        "26" : LANDMARKS["L"][43:45],
+        "27" : LANDMARKS["L"][48:50],
+        "28" : LANDMARKS["L"][53:55],
+        "29" : LANDMARKS["L"][58:60],
+        "30" : LANDMARKS["L"][63:65],
+        "31" : LANDMARKS["L"][68:70]
+        }
+        
+    }
+
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
 # DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
@@ -621,97 +723,12 @@ def main(args):
             landmarks_selected.append(tooth+lm_type)
     print(landmarks_selected)
 
-    LOWER_DENTAL = ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7']
 
-    UPPER_DENTAL = ['UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7']
-    
-    TYPE_LM = ['O','MB','DB','CL','CB']
 
-    Lower = []
-    Upper = []
-
-    for tooth in LOWER_DENTAL:
-        for lmtype in TYPE_LM:
-            Lower.append(tooth+lmtype)   
-    
-    for tooth in UPPER_DENTAL:
-        for lmtype in TYPE_LM:
-            Upper.append(tooth+lmtype)
     
     
-    LANDMARKS = {"L":Lower,"U":Upper}
     print(LANDMARKS)
     
-    dic_label = {
-        'O' : {
-                "15" : LANDMARKS["U"][0:3],
-                "14" : LANDMARKS["U"][5:8],
-                "13" : LANDMARKS["U"][10:13],
-                "12" : LANDMARKS["U"][15:18],
-                "11" : LANDMARKS["U"][20:23],
-                "10" : LANDMARKS["U"][25:28],
-                "9" : LANDMARKS["U"][30:33],
-                "8" : LANDMARKS["U"][35:38],
-                "7" : LANDMARKS["U"][40:43],
-                "6" : LANDMARKS["U"][45:48],
-                "5" : LANDMARKS["U"][50:53],
-                "4" : LANDMARKS["U"][55:58],
-                "3" : LANDMARKS["U"][60:63],
-                "2" : LANDMARKS["U"][65:68],
-
-                "18" : LANDMARKS["L"][0:3],
-                "19" : LANDMARKS["L"][5:8],
-                "20" : LANDMARKS["L"][10:13],
-                "21" : LANDMARKS["L"][15:18],
-                "22" : LANDMARKS["L"][20:23],
-                "23" : LANDMARKS["L"][25:28],
-                "24" : LANDMARKS["L"][30:33],
-                "25" : LANDMARKS["L"][35:38],
-                "26" : LANDMARKS["L"][40:43],
-                "27" : LANDMARKS["L"][45:48],
-                "28" : LANDMARKS["L"][50:53],
-                "29" : LANDMARKS["L"][55:58],
-                "30" : LANDMARKS["L"][60:63],
-                "31" : LANDMARKS["L"][65:68]
-                
-            },
-
-        'C' : {
-            
-            "15" : LANDMARKS["U"][3:5],
-            "14" : LANDMARKS["U"][8:10],
-            "13" : LANDMARKS["U"][13:15],
-            "12" : LANDMARKS["U"][18:20],
-            "11" : LANDMARKS["U"][23:25],
-            "10" : LANDMARKS["U"][28:30],
-            "9" : LANDMARKS["U"][33:35],
-            "8" : LANDMARKS["U"][38:40],
-            "7" : LANDMARKS["U"][43:45],
-            "6" : LANDMARKS["U"][48:50],
-            "5" : LANDMARKS["U"][53:55],
-            "4" : LANDMARKS["U"][58:60],
-            "3" : LANDMARKS["U"][63:65],
-            "2" : LANDMARKS["U"][68:70],
-
-            "18" : LANDMARKS["L"][3:5],
-            "19" : LANDMARKS["L"][8:10],
-            "20" : LANDMARKS["L"][13:15],
-            "21" : LANDMARKS["L"][18:20],
-            "22" : LANDMARKS["L"][23:25],
-            "23" : LANDMARKS["L"][28:30],
-            "24" : LANDMARKS["L"][33:35],
-            "25" : LANDMARKS["L"][38:40],
-            "26" : LANDMARKS["L"][43:45],
-            "27" : LANDMARKS["L"][48:50],
-            "28" : LANDMARKS["L"][53:55],
-            "29" : LANDMARKS["L"][58:60],
-            "30" : LANDMARKS["L"][63:65],
-            "31" : LANDMARKS["L"][68:70]
-            }
-            
-        }
-    
-
     # print(dic_label['O'])
     
 
@@ -821,7 +838,7 @@ def main(args):
                     camera_position = dic_cam[models_type]['L']
                 else:
                     model = models_to_use[models_type]['Upper']
-                    camera_position = dic_cam[models_type]['L']
+                    camera_position = dic_cam[models_type]['U']
                 
                 for label in lst_teeth:         
                     print("Loading model :", model, "for patient :", patient_id, "label :", label)
