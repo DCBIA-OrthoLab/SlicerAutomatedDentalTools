@@ -47,10 +47,11 @@ It can be a single CBCT scan loaded on slicer or a folder containg CBCTs with th
 **Load models:**
 The user has to indicate the path of the folder containing the [trained models for AMASSS](https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/ALL_NEW_MODELS.zip).
 
+
 **Segmentation selection:**
 The user can choose the structure to segment using the selection tab.
 Depending on the type of CBCT to segment, the user can check the "Use small FOV models" for higher definition.
-
+![SegTab](https://user-images.githubusercontent.com/46842010/179851448-c05f654b-10a8-4b0e-bd4d-079264d0d3cc.png)
 
 ## ALI Module
 <img src="ALI/Resources/Icons/ALI.png" alt="Extension Logo" width="50"/>
@@ -71,6 +72,11 @@ It can be a single CBCT scan loaded on slicer or a folder containg CBCTs with th
 **Load models:**
 The user has to indicate the path of the folder containing the [trained models for ALI-CBCT](https://github.com/Maxlo24/ALI_CBCT/releases/tag/v0.1-models).
 
+**Landmark selection:**
+
+![LM_tab_ct](https://user-images.githubusercontent.com/46842010/179851959-e9098bbe-c56f-42ee-bb24-ab1cbf6f293f.png)
+
+
 - #### ALI-IOS
 
 **Input file:**
@@ -84,4 +90,7 @@ The input can be a single IOS loaded on slicer or a folder containg IOS with the
 **Load models:**
 The user has to indicate the path of the folder containing the [trained models for ALI-IOS](https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.3).
 
+**Landmark selection:**
+
+![LM_tab_ios](https://user-images.githubusercontent.com/46842010/179851997-c383a13d-c1f5-4e9a-8b54-afd56de36690.png)
 
