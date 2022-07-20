@@ -56,12 +56,13 @@ It can be a single CBCT scan loaded on slicer or a folder containg CBCTs with th
 ```
 **Load models:**
 The user has to indicate the path of the folder containing the [trained models for AMASSS](https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/ALL_NEW_MODELS.zip).
+![SegTab](https://user-images.githubusercontent.com/46842010/180010213-242a7e35-a16c-4ccd-b0c2-aaadae9b15c6.png)
 
 
 **Segmentation selection:**
 The user can choose the structure to segment using the selection table.
 Depending on the type of CBCT to segment, the user can select the "Use small FOV models" checkbox to use on higher definition scans.
-![SegTab](https://user-images.githubusercontent.com/46842010/179851448-c05f654b-10a8-4b0e-bd4d-079264d0d3cc.png)
+
 
 **Output option:**
 By selecting the **"Generate surface files"** checkbox. The user will also get a **surface model of the segmentation** that will be saved in a "VTK files" folder and will be automatically loaded in slicer at the end of the prediction if **working on a single file**.
@@ -93,7 +94,7 @@ The user has to indicate the path of the folder containing the [trained models f
 
 **Landmark selection:**
 Once the folder containing the trained models is loaded. The user can choose the landmark he want to identify with the table showing the available landmarks:
-![LM_tab_ct](https://user-images.githubusercontent.com/46842010/179851959-e9098bbe-c56f-42ee-bb24-ab1cbf6f293f.png)
+![SegTab](https://user-images.githubusercontent.com/46842010/180010603-37dce4c3-e7f8-4b3a-98a1-2874918320cb.png)
 
 
 - #### ALI-IOS
@@ -112,5 +113,6 @@ The user has to indicate the path of the folder containing the [trained models f
 **Landmark selection:**
 For the IOS landmarks, the user has to choose which tooth he need the landmakrs on by checking the label of the tooth on the left table.
 Once the folder containing the trained models is loaded. The user can choose the landmark he want to identify with the table on the right showing the available landmarks:
-![LM_tab_ios](https://user-images.githubusercontent.com/46842010/179851997-c383a13d-c1f5-4e9a-8b54-afd56de36690.png)
+![LM_tab_ios](https://user-images.githubusercontent.com/46842010/180010083-4f7b6e31-edd3-41a2-a696-6a6a1a4d9260.png)
+
 
