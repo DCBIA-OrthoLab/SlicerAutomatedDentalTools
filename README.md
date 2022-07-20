@@ -4,12 +4,12 @@ _Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM)_
 
 
 Slicer automated dental tools is an extension perform automatic **segmentation** and **landmark identification** using machine learning tools.
+<img src="SlicerAutomaticTools.png" alt="Extension Logo" width="100"/>
 This extension will allow you to :
 - segment CBCT scan using [AMASSS](https://github.com/Maxlo24/AMASSS_CBCT)
 - Identify landmarks in CBCT using [ALI-CBCT](https://github.com/Maxlo24/ALI_CBCT)
 - Identify landmarks in IOS using [ALI-IOS](https://github.com/baptistebaquero/ALIDDM)
 
-<img src="SlicerAutomaticTools.png" alt="Extension Logo" width="100"/>
 
 ## Requirements 
 
@@ -20,17 +20,20 @@ Slicer 5.1.0 or later
 
 ### :warning: Warning
 
-- All modules relies on machine learning tools that **requires GPU** for optimum use
+- All modules relies on machine learning tools that **requires GPU** for optimal use
 - The user will have to **download the trained networks**  required for each module
 
-
-
-
 ---
-# How to use the extension
+# How to use the modules
+
+On slicer, in the module selection table, a new option named **"Automated dental tools"** will allo you to choose between the modules :
+- AMASSS (Automatic Multi-Anatomical Skull Structure Segmentation)
+- ALI (Automatic Landmark Identification)
+
+Both modules shares common features :
 
 **Input**
-- All modules can work with one file or a whole semple as input.
+- All modules can work with one file or a whole sample (folder) as input.
 - If the input is a single file already loaded on slicer, the result of the predicton will directly show up on the slicer views.
 
 **Output**
@@ -40,6 +43,7 @@ Slicer 5.1.0 or later
 
 - The "Prediction ID" field is for the user to choose what will appear on the output file name. ("Pred" by default) 
 
+---
 
 ## AMASSS Module
 <img src="AMASSS/Resources/Icons/AMASSS.png" alt="Extension Logo" width="50"/>
@@ -56,12 +60,12 @@ It can be a single CBCT scan loaded on slicer or a folder containg CBCTs with th
 ```
 **Load models:**
 The user has to indicate the path of the folder containing the [trained models for AMASSS](https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/ALL_NEW_MODELS.zip).
-![SegTab](https://user-images.githubusercontent.com/46842010/180010213-242a7e35-a16c-4ccd-b0c2-aaadae9b15c6.png)
 
 
 **Segmentation selection:**
 The user can choose the structure to segment using the selection table.
 Depending on the type of CBCT to segment, the user can select the "Use small FOV models" checkbox to use on higher definition scans.
+![SegTab](https://user-images.githubusercontent.com/46842010/180010213-242a7e35-a16c-4ccd-b0c2-aaadae9b15c6.png)
 
 
 **Output option:**
@@ -72,15 +76,18 @@ By selecting the **"Generate surface files"** checkbox. The user will also get a
 - If the user whant to generate surface files, he can choose the smothness applied on the model.
 - Depending on your computer power, you can increase the CPU and GPU usage to increase the predictio speed.
 
+---
 
 ## ALI Module
 <img src="ALI/Resources/Icons/ALI.png" alt="Extension Logo" width="50"/>
 
-ALI module will allow you to identify landmarks on CBCT or IOS scan using [ALI-CBCT](https://github.com/Maxlo24/ALI_CBCT) or [ALI-IOS](https://github.com/baptistebaquero/ALIDDM) algortihm.
+ALI module as 2 modes that will allow the user to identify landmarks on:
+- CBCT scan using [ALI-CBCT](https://github.com/Maxlo24/ALI_CBCT) algortihm.
+- IOS scan using [ALI-IOS](https://github.com/baptistebaquero/ALIDDM) algortihm.
 
 
 
-- #### ALI-CBCT
+### ALI-CBCT
 **Input file:**
 The input has to be an oriented CBCT.
 It can be a single CBCT scan loaded on slicer or a folder containg CBCTs with the following extention:
@@ -96,8 +103,9 @@ The user has to indicate the path of the folder containing the [trained models f
 Once the folder containing the trained models is loaded. The user can choose the landmark he want to identify with the table showing the available landmarks:
 ![SegTab](https://user-images.githubusercontent.com/46842010/180010603-37dce4c3-e7f8-4b3a-98a1-2874918320cb.png)
 
+---
 
-- #### ALI-IOS
+### ALI-IOS
 
 **Input file:**
 The input has to be an oriented IOS segmented with the [Universal Numbering System](https://en.wikipedia.org/wiki/Universal_Numbering_System).
