@@ -33,7 +33,9 @@ import json
 import shutil
 from collections import deque
 
+
 from slicer.util import pip_install
+
 
 
 try:
@@ -1325,14 +1327,20 @@ if __name__ == "__main__":
         "landmarks": sys.argv[3].split(" "),
         "save_in_folder": sys.argv[4] == "true",
         "output_dir": sys.argv[5],
+        "temp_fold" : sys.argv[6],
 
         "spacing": [1,0.3],
         "speed_per_scale": [1,1],
         "agent_FOV":[64,64,64],
-        "temp_fold" : "..",
         "spawn_radius" : 10,
 
     }
+
+
+
+
+
+    # args["temp_fold"] = temp_dir
 
     # args = {
     #     # "input": "/home/luciacev/Desktop/TEST/TEST_ALI/MG_test_scan.nii.gz",
