@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16.3...3.19.7 FATAL_ERROR)
 
-project(Slicer Automatic Ortho Tools)
+project(SlicerAutomatedDentalTools)
 
 #-----------------------------------------------------------------------------
 # Extension meta-information
@@ -24,9 +24,6 @@ add_subdirectory(AMASSS_CLI)
 add_subdirectory(ALI)
 add_subdirectory(ALI_CBCT)
 add_subdirectory(ALI_IOS)
-
-
-add_subdirectory(TESTTAMER)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------

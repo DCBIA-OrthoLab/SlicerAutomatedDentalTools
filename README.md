@@ -3,9 +3,9 @@
 _Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM)_
 
 
+<img src="SlicerAutomaticTools.png" alt="Extension Logo" width="100"/>
 Slicer automated dental tools is an extension perform automatic **segmentation** and **landmark identification** using machine learning tools.
 
-<img src="SlicerAutomaticTools.png" alt="Extension Logo" width="100"/>
 
 
 This extension will allow you to :
