@@ -15,6 +15,7 @@ This extension will allow you to :
 
 ```
 Slicer 5.1.0 or later
+12GB of VRAM if possible
 ```
 
 ### :warning: Warning
@@ -28,7 +29,16 @@ Slicer 5.1.0 or later
 ---
 # How to use the extension
 
-All modules can work with one file or a whole semple as input.
+**Input**
+- All modules can work with one file or a whole semple as input.
+- If the input is a single file already loaded on slicer, the result of the predicton will directly show up on the slicer views.
+
+**Output**
+- By selecting the "Group output in a folder" checkbox, all the ouput files will be grouped in a single folder for each patient.
+
+- All modules allows the user to save the output in the input folder, or by unchecking the "Save prediction in scan folder" the user can choose a custom output folder.
+
+- The "Prediction ID" field is for the user to choose what will appear on the output file name. ("Pred" by default) 
 
 
 ## AMASSS Module
@@ -49,9 +59,18 @@ The user has to indicate the path of the folder containing the [trained models f
 
 
 **Segmentation selection:**
-The user can choose the structure to segment using the selection tab.
-Depending on the type of CBCT to segment, the user can check the "Use small FOV models" for higher definition.
+The user can choose the structure to segment using the selection table.
+Depending on the type of CBCT to segment, the user can select the "Use small FOV models" checkbox to use on higher definition scans.
 ![SegTab](https://user-images.githubusercontent.com/46842010/179851448-c05f654b-10a8-4b0e-bd4d-079264d0d3cc.png)
+
+**Output option:**
+By selecting the **"Generate surface files"** checkbox. The user will also get a **surface model of the segmentation** that will be saved in a "VTK files" folder and will be automatically loaded in slicer at the end of the prediction if **working on a single file**.
+
+**Advanced option:**
+- You can increase/decrease the precision of the segmentation (going above 50 will drastically increase the prediction time and is not necesary worth it, going under 50 will make the prediction much faster but less accurate)
+- If the user whant to generate surface files, he can choose the smothness applied on the model.
+- Depending on your computer power, you can increase the CPU and GPU usage to increase the predictio speed.
+
 
 ## ALI Module
 <img src="ALI/Resources/Icons/ALI.png" alt="Extension Logo" width="50"/>
@@ -73,7 +92,7 @@ It can be a single CBCT scan loaded on slicer or a folder containg CBCTs with th
 The user has to indicate the path of the folder containing the [trained models for ALI-CBCT](https://github.com/Maxlo24/ALI_CBCT/releases/tag/v0.1-models).
 
 **Landmark selection:**
-
+Once the folder containing the trained models is loaded. The user can choose the landmark he want to identify with the table showing the available landmarks:
 ![LM_tab_ct](https://user-images.githubusercontent.com/46842010/179851959-e9098bbe-c56f-42ee-bb24-ab1cbf6f293f.png)
 
 
@@ -91,6 +110,7 @@ The input can be a single IOS loaded on slicer or a folder containg IOS with the
 The user has to indicate the path of the folder containing the [trained models for ALI-IOS](https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.3).
 
 **Landmark selection:**
-
+For the IOS landmarks, the user has to choose which tooth he need the landmakrs on by checking the label of the tooth on the left table.
+Once the folder containing the trained models is loaded. The user can choose the landmark he want to identify with the table on the right showing the available landmarks:
 ![LM_tab_ios](https://user-images.githubusercontent.com/46842010/179851997-c383a13d-c1f5-4e9a-8b54-afd56de36690.png)
 
