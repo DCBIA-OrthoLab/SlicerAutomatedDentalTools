@@ -588,6 +588,12 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     param["gpu_usage"] = self.ui.spinBoxGPU.value
     param["cpu_usage"] = self.ui.spinBoxCPU.value
 
+    
+    documentsLocation = qt.QStandardPaths.DocumentsLocation
+    documents = qt.QStandardPaths.writableLocation(documentsLocation)
+    temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp")
+
+    param["temp_fold"] = temp_dir
 
 
     # print(param)

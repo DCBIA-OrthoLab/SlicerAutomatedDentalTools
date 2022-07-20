@@ -551,6 +551,13 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       param["save_in_folder"] = self.goup_output_files
       param["output_dir"] = outPath
 
+      documentsLocation = qt.QStandardPaths.DocumentsLocation
+      documents = qt.QStandardPaths.writableLocation(documentsLocation)
+      temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp")
+
+      param["temp_fold"] = temp_dir
+
+
     print(param)
 
 

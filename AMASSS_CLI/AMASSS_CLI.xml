@@ -106,5 +106,13 @@
       <description>Number of CPU to use</description>
     </integer>
 
+
+    <string>
+      <name>temp_fold</name>
+      <label>temp_fold</label>
+      <index>13</index>
+      <description>temp folder</description>
+    </string>
+
   </parameters>
 </executable>

@@ -1030,11 +1030,15 @@ if __name__ == "__main__":
         "prediction_ID": sys.argv[11],
         "nbr_GPU_worker": int(sys.argv[12]),
         "nbr_CPU_worker": int(sys.argv[13]),
+        "temp_fold" : sys.argv[14],
 
         "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC"],
 
-        "temp_fold" : "..",
     }
+
+
+
+    # args["temp_fold"] = temp_dir
 
     # args = {
     #     "input": '/home/luciacev/Desktop/REQUESTED_SEG/1_T1_scan_or.nii.gz',
