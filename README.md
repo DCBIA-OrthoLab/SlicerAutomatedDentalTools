@@ -6,6 +6,8 @@ _Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM)_
 Slicer automated dental tools is an extension perform automatic **segmentation** and **landmark identification** using machine learning tools.
 <img src="SlicerAutomaticTools.png" alt="Extension Logo" width="100"/>
 
+
+
 This extension will allow you to :
 - segment CBCT scan using [AMASSS](https://github.com/Maxlo24/AMASSS_CBCT)
 - Identify landmarks in CBCT using [ALI-CBCT](https://github.com/Maxlo24/ALI_CBCT)
@@ -25,6 +27,8 @@ Slicer 5.1.0 or later
 - The user will have to **download the trained networks**  required for each module
 
 ---
+
+<img src="ADT-exemple.png" alt="Exemples"/>
 # How to use the modules
 
 On slicer, in the module selection table, a new option named **"Automated dental tools"** will allo you to choose between the modules :
