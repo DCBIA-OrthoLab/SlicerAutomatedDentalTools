@@ -1,3 +1,11 @@
+"""
+Automatic multi-anatomical skull structure segmentation (AMASSS) of cone-beam computed tomography scans (CBCT)
+
+Authors :
+- Maxime Gillot (UoM)
+- Baptiste Baquero (UoM)
+
+"""
 
 from genericpath import isfile
 import os
