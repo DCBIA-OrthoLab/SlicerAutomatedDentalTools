@@ -35,6 +35,10 @@ from slicer.util import pip_install
 # from slicer.util import pip_uninstall
 # # pip_uninstall('torch torchvision torchaudio') 
 
+pip_install('--upgrade pip')
+pip_install('logic')
+
+
 # pip_uninstall('monai')
 
 try:

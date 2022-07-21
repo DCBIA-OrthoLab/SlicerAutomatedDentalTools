@@ -38,6 +38,13 @@ from slicer.util import pip_install
 # # pip_uninstall('torch torchvision torchaudio') 
 
 # pip_uninstall('monai')
+pip_install('--upgrade pip')
+pip_install('logic')
+
+# try :
+#     import logic
+# except ImportError:
+
 
 try:
     import torch
@@ -89,11 +96,6 @@ except ImportError:
     pip_install('SimpleITK==2.1.1')
     import SimpleITK as sitk
 
-try:
-    import logic
-except ImportError:
-    pip_install('logic')
-    import logic
 
 try:
     import itk
@@ -954,7 +956,7 @@ def main(args):
 
             save_vtk = args["gen_vtk"]
 
-            if "SEPARATE" in args["merge"]:
+            if "SEPARATE" in args["merge"] or len(args["skul_structure"]) == 1:
                 for struct,segmentation in seg_to_save.items():
                     file_path = os.path.join(outputdir,pred_name.replace('XXXX',struct))
                     SaveSeg(
@@ -989,6 +991,7 @@ def main(args):
                     save_vtk=save_vtk,
                     model_size=model_size
                 )
+                
 
             # print(f"""<filter-progress>{1}</filter-progress>""")
             # sys.stdout.flush()
@@ -1019,7 +1022,7 @@ def main(args):
 if __name__ == "__main__":
 
     print("Starting")
-    print(sys.argv)
+    # print(sys.argv)
 
     args = {
         "input": sys.argv[1],
@@ -1041,32 +1044,33 @@ if __name__ == "__main__":
 
     }
 
+    # print(args)
+
 
 
     # args["temp_fold"] = temp_dir
 
     # args = {
-    #     "input": '/home/luciacev/Desktop/REQUESTED_SEG/1_T1_scan_or.nii.gz',
+    #     "input": '/home/luciacev/Desktop/TEST/TEST_ALI/ALI_CBCT/AnaJ_Scan_T1_OR.gipl.gz',
     #     "dir_models": '/home/luciacev/Desktop/Maxime_Gillot/Data/AMASSS/FULL_FACE_MODELS',
     #     "high_def": False,
     #     "skul_structure": ["SKIN","CV","UAW","CB","MAX","MAND"],
     #     "merge": ["MERGE"],
     #     "gen_vtk": True,
     #     "save_in_folder": True,
-    #     "output_dir": '/home/luciacev/Desktop/REQUESTED_SEG/CranialBaseSegmentation',
+    #     "output_dir": '/home/luciacev/Desktop/TEST/TEST_ALI/ALI_CBCT/',
     #     "precision": 0.5,
     #     "vtk_smooth": 5,
     #     "prediction_ID": "Pred",
-
-    #     "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC"],
-
-    #     "temp_fold" : "..",
     #     "nbr_GPU_worker": 5,
     #     "nbr_CPU_worker": 5,
+    #     "temp_fold" : "/home/luciacev/Documents/Slicer_temp_AMASSS",
+
+    #     "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC"],
     # }
 
 
-    # print(args)
+    print(args)
 
 
 
