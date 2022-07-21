@@ -36,6 +36,8 @@ from collections import deque
 
 from slicer.util import pip_install
 
+pip_install('--upgrade pip')
+pip_install('logic')
 
 
 try:
