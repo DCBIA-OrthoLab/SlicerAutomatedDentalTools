@@ -89,6 +89,11 @@ except ImportError:
     pip_install('SimpleITK==2.1.1')
     import SimpleITK as sitk
 
+try:
+    import logic
+except ImportError:
+    pip_install('logic')
+    import logic
 
 try:
     import itk
