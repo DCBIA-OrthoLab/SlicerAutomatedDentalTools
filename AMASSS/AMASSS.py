@@ -591,7 +591,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     documentsLocation = qt.QStandardPaths.DocumentsLocation
     documents = qt.QStandardPaths.writableLocation(documentsLocation)
-    temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp")
+    temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp_AMASSS")
+
+    print(temp_dir)
 
     param["temp_fold"] = temp_dir
 

@@ -526,6 +526,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       param["save_in_folder"] = self.goup_output_files
       param["output_dir"] = outPath
 
+      documentsLocation = qt.QStandardPaths.DocumentsLocation
+      documents = qt.QStandardPaths.writableLocation(documentsLocation)
+      temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp_ALI")
+
+      param["temp_fold"] = temp_dir
     
     else:
       selected_lm_lst = self.lm_tab.GetSelected()
@@ -551,11 +556,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       param["save_in_folder"] = self.goup_output_files
       param["output_dir"] = outPath
 
-      documentsLocation = qt.QStandardPaths.DocumentsLocation
-      documents = qt.QStandardPaths.writableLocation(documentsLocation)
-      temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp")
 
-      param["temp_fold"] = temp_dir
 
 
     print(param)
@@ -971,6 +972,7 @@ class LMTab:
           lst_wid.append(new_cb)
 
         new_lm_tab = self.GenNewTab(lst_wid,enable)
+        # new_lm_tab.setEnabled(False)
         self.LM_tab_widget.insertTab(0,new_lm_tab,group)
 
       self.LM_tab_widget.currentIndex = 0
@@ -1063,7 +1065,7 @@ class LMTab:
 
 def GetAvailableLm(mfold,lm_group):
   brain_dic = GetBrain(mfold)
-  print(brain_dic)
+  # print(brain_dic)
   available_lm = {}
   for lm in brain_dic.keys():
     if lm in lm_group.keys():
