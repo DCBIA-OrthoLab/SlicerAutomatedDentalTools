@@ -690,7 +690,7 @@ def main(args):
     # cropSize = [96,96,96]
 
 
-    temp_fold = os.path.join(args["temp_fold"], "temp_AMASSS")
+    temp_fold = args["temp_fold"]
     if not os.path.exists(temp_fold):
         os.makedirs(temp_fold)
 

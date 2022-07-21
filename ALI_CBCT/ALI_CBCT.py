@@ -1129,7 +1129,8 @@ def main(input):
 
 
 
-    temp_fold = os.path.join(args["temp_fold"], "temp_ALI_CBCT")
+    temp_fold = args["temp_fold"]
+
     if not os.path.exists(temp_fold):
         os.makedirs(temp_fold)
 
@@ -1335,9 +1336,6 @@ if __name__ == "__main__":
         "spawn_radius" : 10,
 
     }
-
-
-
 
 
     # args["temp_fold"] = temp_dir
