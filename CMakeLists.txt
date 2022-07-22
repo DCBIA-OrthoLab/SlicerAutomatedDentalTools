@@ -9,7 +9,7 @@ set(EXTENSION_CATEGORY "SlicerCMF")
 set(EXTENSION_CONTRIBUTORS "Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Juan Carlos Prieto (University of North Carolina)")
 set(EXTENSION_DESCRIPTION "This extension will allow clinicians to perform automatic CBCT scan segmentation as well as automatic lamndmark identification in CBCT and IOS using machine learning tools.")
 set(EXTENSION_ICONURL "https://raw.githubusercontent.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/main/SlicerAutomaticTools.png")
-set(EXTENSION_SCREENSHOTURLS "https://raw.githubusercontent.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/blob/main/ADT-exemple.png")
+set(EXTENSION_SCREENSHOTURLS "https://raw.githubusercontent.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/main/ADT-exemple.png")
 set(EXTENSION_DEPENDS "NA") # Specified as a list or "NA" if no dependencies
 
 #-----------------------------------------------------------------------------
