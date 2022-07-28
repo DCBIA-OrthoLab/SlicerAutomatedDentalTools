@@ -1,7 +1,5 @@
 # Slicer Automated Dental Tools 
 
----------------
-
 
 Slicer automated dental tools is an extension for 3D Slicer for creating and executing simple modules (aka pipelines) via a GUI interface with no coding knowledge needed.
 
@@ -49,9 +47,13 @@ Slicer automated dental tools is an extension perform automatic **segmentation**
 - _This extension is under active development. Its content, API and behavior may change at any time !_ -->
 ---
 
-<img src="ADT-exemple.png" alt="Exemples"/>
 
 # How to use the modules
+
+<p align="center">
+<img src="ADT-exemple.png" alt="Exemples"/>
+</p>
+
 
 On slicer, in the module selection table, a new module category named **"Automated dental tools"** will allo you to choose between the modules :
 - AMASSS (Automatic Multi-Anatomical Skull Structure Segmentation)
