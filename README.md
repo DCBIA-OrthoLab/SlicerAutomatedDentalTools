@@ -1,7 +1,7 @@
 # Slicer Automated Dental Tools 
 
 
-Slicer automated dental tools is an extension for 3D Slicer for creating and executing simple modules (aka pipelines) via a GUI interface with no coding knowledge needed.
+Slicer automated dental tools is an extension for 3D Slicer for creating and executing simple modules via a GUI interface with no coding knowledge needed.
 
 
 <p align="center">
@@ -176,7 +176,7 @@ The input can be a single IOS loaded on slicer or a folder containg IOS with the
 .vtk
 ```
 
-Available sample data for testing: [T1_01_L_segmented.vtk and T1_01_U_segmented.vtk](https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.4)
+Available sample data for testing: [T1_01_L_segmented.vtk](https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.4) and [T1_01_U_segmented.vtk](https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.4)
 
 **Load models:**
 The user has to indicate the path of the folder containing the [trained models for ALI-IOS](https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.3).
