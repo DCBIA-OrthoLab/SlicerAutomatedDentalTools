@@ -251,6 +251,9 @@
           </property>
           <item>
            <widget class="QPushButton" name="DownloadTestPushButton">
+            <property name="toolTip">
+             <string>Initiate download of a test scan (~ 100MB) using an URL opened in default system browser</string>
+            </property>
             <property name="text">
              <string>Download test file</string>
             </property>
@@ -258,6 +261,12 @@
           </item>
           <item>
            <widget class="QPushButton" name="DownloadModelPushButton">
+            <property name="toolTip">
+             <string>Open a GitHub realease to download the trained models using an URL opened in default system browser</string>
+            </property>
+            <property name="statusTip">
+             <string/>
+            </property>
             <property name="text">
              <string>Download latest models</string>
             </property>
