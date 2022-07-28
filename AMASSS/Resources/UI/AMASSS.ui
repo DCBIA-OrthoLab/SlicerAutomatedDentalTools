@@ -175,6 +175,9 @@
           </property>
           <item>
            <widget class="QPushButton" name="DownloadScanButton">
+            <property name="toolTip">
+             <string>Initiate download of a test scan (~ 100MB) using an URL opened in default system browser</string>
+            </property>
             <property name="text">
              <string>Download test scan</string>
             </property>
@@ -182,6 +185,9 @@
           </item>
           <item>
            <widget class="QPushButton" name="DownloadButton">
+            <property name="toolTip">
+             <string>Initiate download of the trained model (&gt; 1GB) using an URL opened in default system browser</string>
+            </property>
             <property name="text">
              <string>Download latest models</string>
             </property>
