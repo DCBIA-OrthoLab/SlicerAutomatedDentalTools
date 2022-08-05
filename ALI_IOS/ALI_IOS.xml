@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <executable>
-  <category>Examples</category>
+  <category>Automated Dental Tools.Advanced</category>
   <index>2</index>
   <title>ALI_IOS</title>
   <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>

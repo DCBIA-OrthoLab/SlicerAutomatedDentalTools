@@ -27,14 +27,12 @@ Slicer automated dental tools is an extension perform automatic **segmentation**
 
 ## Modules
 
-These two modules provide a convenient user interface and are avaiable in the `Automated dental tools` module category.
-
 | Name | Description |
 |------|-------------|
 | [AMASSS](#amasss-module) | Perform automatic segmentation of CBCT scan. AMASS is an acronym for Automatic Multi-Anatomical Skull Structure Segmentation. |
 | [ALI](#ali-module) | Perform automatic landmark identification on either CBCT or IOS scans. ALI is an acronym for Automatic Landmark Identification. |
 
-Both modules shares common features :
+These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
 
 **Input**
 - All modules can work with one file or a whole sample (folder) as input.
@@ -46,7 +44,7 @@ Both modules shares common features :
 - The "Prediction ID" field is for the user to choose what will appear on the output file name. ("Pred" by default)
 
 
-Additionally, the following modules are implemented as python scripted command-line (CLI) modules and used internally by the modules described above.
+Additionally, the following modules are implemented as python scripted command-line (CLI) modules available in the `Automated Dental Tools.Advanced`  module category and are used internally by the modules described above.
 
 | Name | Description |
 |------|-------------|
