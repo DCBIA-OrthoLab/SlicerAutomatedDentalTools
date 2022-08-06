@@ -84,7 +84,7 @@ class ALI(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "ALI"  # TODO: make this more human readable by adding spaces
-    self.parent.categories = ["Automated dental tools"]  # TODO: set categories (folders where the module shows up in the module selector)
+    self.parent.categories = ["Automated Dental Tools"]  # set categories (folders where the module shows up in the module selector)
     self.parent.dependencies = []  # TODO: add here list of module names that this module requires
     self.parent.contributors = ["Maxime Gillot (UoM), Baptiste Baquero (UoM)"]  # TODO: replace with "Firstname Lastname (Organization)"
     # TODO: update with short description of the module and a link to online module documentation
