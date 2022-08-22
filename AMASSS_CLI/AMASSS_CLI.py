@@ -17,7 +17,6 @@ print("Importing librairies...")
 import time
 import os
 import shutil
-import random
 import glob
 import sys
 
@@ -38,8 +37,6 @@ from slicer.util import pip_install
 # # pip_uninstall('torch torchvision torchaudio') 
 
 # pip_uninstall('monai')
-pip_install('--upgrade pip')
-pip_install('logic')
 
 # try :
 #     import logic
@@ -53,18 +50,6 @@ except ImportError:
     import torch
 
 
-try:
-    import nibabel
-except ImportError:
-    pip_install('nibabel')
-    import nibabel
-
-
-try:
-    import einops
-except ImportError:
-    pip_install('einops')
-    import einops
 
 #region try import
 try :
@@ -90,32 +75,10 @@ from monai.transforms import (
 
 from monai.inferers import sliding_window_inference
 
-try:
-    import SimpleITK as sitk
-except ImportError:
-    pip_install('SimpleITK==2.1.1')
-    import SimpleITK as sitk
-
-
-try:
-    import itk
-except ImportError:
-    pip_install('itk==5.2.1')
-    import itk
-
-try:
-    import vtk
-except ImportError:
-    pip_install('vtk==9.1.0')
-    import vtk
-
-try:
-    import numpy as np
-except ImportError:
-    pip_install('numpy==1.22.3')
-    import numpy as np
-
-
+import SimpleITK as sitk
+import numpy as np
+import itk 
+import vtk
 
 try:
     import cc3d
