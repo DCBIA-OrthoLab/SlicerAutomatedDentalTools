@@ -7,14 +7,12 @@ Authors :
 
 """
 
-from genericpath import isfile
 import os
-import unittest
 import logging
 import glob
 import time
 import shutil
-import vtk, qt, ctk, slicer
+import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
