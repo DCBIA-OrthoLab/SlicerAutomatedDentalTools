@@ -1,10 +1,8 @@
 import os
-from re import I
-import unittest
 import logging
 import glob
 import time
-import vtk, qt, ctk, slicer
+import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 import webbrowser
