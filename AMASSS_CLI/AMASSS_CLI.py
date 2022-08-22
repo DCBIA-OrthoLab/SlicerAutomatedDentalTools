@@ -17,7 +17,6 @@ print("Importing librairies...")
 import time
 import os
 import shutil
-import random
 import glob
 import sys
 
@@ -52,19 +51,6 @@ except ImportError:
     pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
     import torch
 
-
-try:
-    import nibabel
-except ImportError:
-    pip_install('nibabel')
-    import nibabel
-
-
-try:
-    import einops
-except ImportError:
-    pip_install('einops')
-    import einops
 
 #region try import
 try :
