@@ -36,27 +36,10 @@ from collections import deque
 
 from slicer.util import pip_install
 
-pip_install('--upgrade pip')
-pip_install('logic')
 
-
-try:
-    import SimpleITK as sitk
-except ImportError:
-    pip_install('SimpleITK==2.1.1')
-    import SimpleITK as sitk
-
-try:
-    import numpy as np
-except ImportError:
-    pip_install('numpy==1.22.3')
-    import numpy as np
-
-try:
-    import itk
-except ImportError:
-    pip_install('itk==5.2.1')
-    import itk
+import SimpleITK as sitk
+import numpy as np
+import itk
 
 try:
     import torch
