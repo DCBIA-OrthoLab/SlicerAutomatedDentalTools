@@ -13,12 +13,11 @@ Authors :
 
 import time
 import os
-import shutil
-import random
 import glob
 import sys
 import json
-
+import vtk
+import numpy as np
 
 # try:
 #     import argparse
@@ -35,10 +34,6 @@ from slicer.util import pip_install
 # from slicer.util import pip_uninstall
 # # pip_uninstall('torch torchvision torchaudio') 
 
-pip_install('--upgrade pip')
-pip_install('logic')
-
-
 # pip_uninstall('monai')
 
 try:
@@ -47,40 +42,11 @@ except ImportError:
     pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
     import torch
 
-
-try:
-    import nibabel
-except ImportError:
-    pip_install('nibabel')
-    import nibabel
-
-
-try:
-    import einops
-except ImportError:
-    pip_install('einops')
-    import einops
-
 try :
     from monai.networks.nets import UNETR
 except ImportError:
     pip_install('monai==0.7.0')
     from monai.networks.nets import UNETR
-
-
-
-try:
-    import vtk
-except ImportError:
-    pip_install('vtk==9.1.0')
-    import vtk
-
-try:
-    import numpy as np
-except ImportError:
-    pip_install('numpy==1.22.3')
-    import numpy as np
-
 
 
 try:
