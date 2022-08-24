@@ -1,10 +1,8 @@
 import os
-from re import I
-import unittest
 import logging
 import glob
 import time
-import vtk, qt, ctk, slicer
+import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 import webbrowser
@@ -393,21 +391,21 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def onSearchScanButton(self):
-    scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+    file_explorer = qt.QFileDialog()
+    # file_explorer.setFileMode(qt.QFileDialog.AnyFile)
+    scan_folder = file_explorer.getExistingDirectory(self.parent, "Select a scan folder")
+  
     if scan_folder != '':
-      if self.CBCT_as_input:
-        nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"], [])
-      else:
-        nbr_scans = self.CountFileWithExtention(scan_folder, [".vtk"], [])
 
+      nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
       if nbr_scans == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
 
-    else:
-      self.input_path = scan_folder
-      self.ui.lineEditScanPath.setText(self.input_path)
-      self.ui.PrePredInfo.setText("Number of scans to process : " + str(nbr_scans))
-      self.scan_count = nbr_scans
+      else:
+        self.input_path = scan_folder
+        self.ui.lineEditScanPath.setText(self.input_path)
+        self.ui.PrePredInfo.setText("Number of scans to process : " + str(nbr_scans))
+        self.scan_count = nbr_scans
 
       
 
