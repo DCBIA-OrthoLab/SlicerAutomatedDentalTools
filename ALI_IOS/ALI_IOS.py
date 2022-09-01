@@ -384,6 +384,19 @@ def GetSurfProp(surf_unit, surf_mean, surf_scale):
     region_id = ToTensor(dtype=torch.int64, device=DEVICE)(vtk_to_numpy(surf.GetPointData().GetScalars("PredictedID")))
     region_id = torch.clamp(region_id, min=0)
 
+    #print("type(surf.GetPointData()) :",type(surf.GetPointData()))
+    #print("type(...GetScalars) :",type(surf.GetPointData().GetScalars("PredictedID")))
+    
+    '''
+    With a file that works
+    type(...GetScalars) : <class 'vtkmodules.vtkCommonCore.vtkTypeInt64Array'>
+    
+    with a file that isn't working
+    type(...GetScalars) : <class 'NoneType'>
+
+    AttributeError: 'NoneType' object has no attribute 'GetDataType'
+    '''
+        
     return verts.unsqueeze(0), faces.unsqueeze(0), color_normals.unsqueeze(0), region_id.unsqueeze(0)
 
 def GetColorArray(surf, array_name):
@@ -634,9 +647,13 @@ class Agent:
             renderer = self.renderer
             images = renderer(meshes_world=meshes.clone(), R=R, T=T.to(DEVICE))
             images = images.permute(0,3,1,2)
-            images = images[:,:-1,:,:]
-
-            pix_to_face, zbuf, bary_coords, dists = renderer.rasterizer(meshes.clone())
+            images = images[:,:-1,:,:]            
+            #pix_to_face, zbuf, bary_coords, dists = renderer.rasterizer(meshes.clone())
+            temp = renderer.rasterizer(meshes.clone())
+            pix_to_face, zbuf = temp.pix_to_face, temp.zbuf
+            
+            '''< Class : pytorch3d.renderer.mesh.rasterizer.Fragments >'''
+            '''TypeError: cannot unpack non-iterable Fragments object'''
             zbuf = zbuf.permute(0, 3, 1, 2)
             y = torch.cat([images, zbuf], dim=1)
 
