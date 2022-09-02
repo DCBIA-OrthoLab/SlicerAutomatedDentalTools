@@ -391,13 +391,13 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def onSearchScanButton(self):
-    file_explorer = qt.QFileDialog()
-    # file_explorer.setFileMode(qt.QFileDialog.AnyFile)
-    scan_folder = file_explorer.getExistingDirectory(self.parent, "Select a scan folder")
-  
+    scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
     if scan_folder != '':
+      if self.CBCT_as_input:
+        nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],[])
+      else:
+        nbr_scans = self.CountFileWithExtention(scan_folder, [".vtk"],[])
 
-      nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
       if nbr_scans == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
 
@@ -406,8 +406,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.lineEditScanPath.setText(self.input_path)
         self.ui.PrePredInfo.setText("Number of scans to process : " + str(nbr_scans))
         self.scan_count = nbr_scans
-
-      
 
   def onSearchModelButton(self):
     model_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a model folder")
