@@ -9,8 +9,6 @@ Authors :
 """
 
 
-
-
 import time
 import os
 import glob
@@ -48,22 +46,31 @@ except ImportError:
     pip_install('monai==0.7.0')
     from monai.networks.nets import UNETR
 
+from platform import system # to know which OS is used
 
-try:
-    import pytorch3d
-    if pytorch3d.__version__ != '0.6.2':
-        raise ImportError
-except ImportError:
+if system() == 'Darwin':  # MACOS
     try:
-    #   import torch
-      pyt_version_str=torch.__version__.split("+")[0].replace(".", "")
-      version_str="".join([f"py3{sys.version_info.minor}_cu",torch.version.cuda.replace(".",""),f"_pyt{pyt_version_str}"])
-      pip_install('--upgrade pip')
-      pip_install('fvcore==0.1.5.post20220305')
-      pip_install('--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
-    except: # install correct torch version
-      pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113') 
-      pip_install('--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
+        import pytorch3d
+    except ImportError:
+        pip_install('pytorch3d')
+        import pytorch3d
+
+else: # Linux or Windows
+    try:
+        import pytorch3d
+        if pytorch3d.__version__ != '0.6.2':
+            raise ImportError
+    except ImportError:
+        try:
+        #   import torch
+            pyt_version_str=torch.__version__.split("+")[0].replace(".", "")
+            version_str="".join([f"py3{sys.version_info.minor}_cu",torch.version.cuda.replace(".",""),f"_pyt{pyt_version_str}"])
+            pip_install('--upgrade pip')
+            pip_install('fvcore==0.1.5.post20220305')
+            pip_install('--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
+        except: # install correct torch version
+            pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113') 
+            pip_install('--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
 
 
 import torch.nn as nn
@@ -74,7 +81,7 @@ from pytorch3d.renderer.blending import (hard_rgb_blend,BlendParams)
 from pytorch3d.renderer.mesh.rasterizer import (Fragments)
 from pytorch3d.renderer.utils import TensorProperties
 from pytorch3d.renderer.lighting import PointLights
-from pytorch3d.common.types import Device
+# from pytorch3d.common.types import Device
 
 from vtk.util.numpy_support import vtk_to_numpy
 from monai.networks.nets import UNet
@@ -667,7 +674,7 @@ class MaskRenderer(nn.Module):
 
     def __init__(
         self,
-        device: Device = "cpu",
+        device = "cpu",
         cameras: Optional[TensorProperties] = None,
         lights: Optional[TensorProperties] = None,
         materials: Optional[Materials] = None,
@@ -681,7 +688,7 @@ class MaskRenderer(nn.Module):
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
 
-    def to(self, device: Device):
+    def to(self, device):
         # Manually move to device modules which are not subclasses of nn.Module
         cameras = self.cameras
         if cameras is not None:
@@ -868,7 +875,7 @@ def main(args):
                             inputs = torch.cat((inputs,batch.to(DEVICE)),dim=0) #[num_im*batch,channels,size,size]
 
                         inputs = inputs.to(dtype=torch.float32)
-                        net.load_state_dict(torch.load(model))
+                        net.load_state_dict(torch.load(model, map_location=DEVICE))
                         images_pred = net(inputs)
 
                         post_pred = AsDiscrete(argmax=True, to_onehot=True, num_classes=4)
