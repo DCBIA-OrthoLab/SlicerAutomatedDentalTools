@@ -10,7 +10,7 @@ Slicer automated dental tools is an extension for 3D Slicer to perform important
 
 ## Overview
 
-Slicer automated dental tools is an extension perform automatic **segmentation** and **landmark identification** on CBCT scans and Intra Oral Scan (IOS) using machine learning tools.
+Slicer automated dental tools is an extension that allows users to perform automatic **segmentation** and **landmark identification** on CBCT scans and Intra Oral Scan (IOS) using machine learning tools where the learning mdoels are continously updated.
 
 
 <p align="center">
