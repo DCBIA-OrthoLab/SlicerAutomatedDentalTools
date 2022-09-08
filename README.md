@@ -174,7 +174,7 @@ Once the folder containing the trained models is loaded. The user can choose the
 
 # Acknowledgements
 
-_Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC)_
+_Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin(UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
 
 Supported by NIDCR R01 024450, AA0F Grabber Family Teaching and Research Award and by Research Enhancement Award Activity 141 from the University of the Pacific, Arthur A. Dugoni School of Dentistry.
 
