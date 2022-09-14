@@ -39,7 +39,12 @@ from slicer.util import pip_install
 
 import SimpleITK as sitk
 import numpy as np
-import itk
+
+try:
+    import itk
+except ImportError:
+    pip_install('itk')
+    import itk
 
 try:
     import torch
