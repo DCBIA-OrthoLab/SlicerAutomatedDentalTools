@@ -49,6 +49,18 @@ except ImportError:
     pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
     import torch
 
+try:
+    import nibabel
+except ImportError:
+    pip_install('nibabel')
+    import nibabel
+
+try:
+    import einops
+except ImportError:
+    pip_install('einops')
+    import einops
+
 
 #region try import
 try :
@@ -75,9 +87,13 @@ from monai.transforms import (
 from monai.inferers import sliding_window_inference
 
 import SimpleITK as sitk
-import itk 
 import vtk
 import numpy as np
+try :
+    import itk 
+except ImportError:
+    pip_install('itk')
+    import itk
 
 
 try:
