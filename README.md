@@ -156,6 +156,7 @@ The implementation is based on the `ALI-IOS` algortihm originally developed by B
 The input has to be an oriented IOS segmented with the [Universal Numbering System](https://en.wikipedia.org/wiki/Universal_Numbering_System).
 This segmentation can be automatically done using the [SlicerJawSegmentation](https://github.com/MathieuLeclercq/SlicerJawSegmentation) extention.
 The input can be a single IOS loaded on slicer or a folder containg IOS with the following extention:
+The array name of labels in the vtk surface is: "Universal_ID" or "predictionid" or "PredictionID"
 ```
 .vtk
 ```
