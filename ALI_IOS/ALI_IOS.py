@@ -390,7 +390,7 @@ def GetSurfProp(surf_unit, surf_mean, surf_scale):
     faces = ToTensor(dtype=torch.int64, device=DEVICE)(vtk_to_numpy(surf.GetPolys().GetData()).reshape(-1, 4)[:,1:])
 
     try :
-        region_id = torch.tensor((vtk_to_numpy(surf.GetPointData().GetScalars("PredictedID".lower))),dtype=torch.int64)
+        region_id = torch.tensor((vtk_to_numpy(surf.GetPointData().GetScalars("PredictedID"))),dtype=torch.int64)
     except AttributeError :
         try :
             region_id = torch.tensor((vtk_to_numpy(surf.GetPointData().GetScalars("predictedId"))),dtype=torch.int64)
