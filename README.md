@@ -29,7 +29,7 @@ Slicer automated dental tools is an extension that allows users to perform autom
 
 | Name | Description |
 |------|-------------|
-| [AMASSS](#amasss-module) | Perform automatic segmentation of CBCT scan. AMASS is an acronym for Automatic Multi-Anatomical Skull Structure Segmentation. |
+| [AMASSS](#amasss-module) | Perform automatic segmentation of CBCT scan. AMASSS is an acronym for Automatic Multi-Anatomical Skull Structure Segmentation. |
 | [ALI](#ali-module) | Perform automatic landmark identification on either CBCT or IOS scans. ALI is an acronym for Automatic Landmark Identification. |
 
 These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
