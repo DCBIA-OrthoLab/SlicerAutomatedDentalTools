@@ -121,7 +121,9 @@ TRANSLATE ={
   "Mandibular-canal" : "MCAN",
   "Upper-airway" : "UAW",
   "Skin" : "SKIN",
-  "Teeth" : "TEETH"
+  "Teeth" : "TEETH",
+  "Cranial Base (Mask)" : "CBMASK",
+
 }
 
 INV_TRANSLATE = {}
@@ -174,6 +176,9 @@ MODELS_GROUP = {
         "SKIN":
         {
             "SKIN" : 1,
+        },
+        "CBMASK":{
+            "CBMASK" : 1,
         }
     },
 
@@ -690,6 +695,8 @@ def main(args):
         basename = os.path.basename(img_fn)
         if basename.endswith(".pth"):
             model_id = basename.split("_")[1]
+            if model_id == "Mask":
+                model_id = basename.split("_")[2] + "MASK"
             available_models[model_id] = img_fn
 
     print("Available models:", available_models)
