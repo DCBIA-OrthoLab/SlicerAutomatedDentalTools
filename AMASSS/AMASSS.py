@@ -59,7 +59,7 @@ SCAN_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_
 GROUPS_FF_SEG = {
   "Bones" : ["Mandible","Maxilla","Cranial base","Cervical vertebra"],
   "Soft tissue" :['Upper airway','Skin',],
-  "Masks" : ["Cranial Base (Mask)"],
+  "Masks" : ["Cranial Base (Mask)","Mandible (Mask)","Maxilla (Mask)"],
 }
 
 
@@ -87,6 +87,8 @@ TRANSLATE ={
   "Skin" : "SKIN",
   "Teeth" : "TEETH",
   "Cranial Base (Mask)" : "CBMASK",
+  "Mandible (Mask)" : "MANDMASK",
+  "Maxilla (Mask)" : "MAXMASK",
 }
 
 
