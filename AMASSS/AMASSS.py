@@ -52,7 +52,7 @@ def createProgressDialog(parent=None, value=0, maximum=100, windowTitle="Startin
 #region ========= GLOBAL VARIABLES =========
 
 # MODEL_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.0-alpha/ALL_MODELS.zip'
-MODEL_LINK = 'https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/AMASSS_Models.zip'
+MODEL_LINK = 'https://github.com/lucanchling/AMASSS_CBCT/releases/tag/v1.0.2'
 SCAN_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz'
 
 
