@@ -121,7 +121,10 @@ TRANSLATE ={
   "Mandibular-canal" : "MCAN",
   "Upper-airway" : "UAW",
   "Skin" : "SKIN",
-  "Teeth" : "TEETH"
+  "Teeth" : "TEETH",
+  "Cranial Base (Mask)" : "CBMASK",
+  "Mandible (Mask)" : "MANDMASK",
+  "Maxilla (Mask)" : "MAXMASK",
 }
 
 INV_TRANSLATE = {}
@@ -137,6 +140,9 @@ LABELS = {
         "MAX" : 4,
         "CV" : 5,
         "SKIN" : 6,
+        "CBMASK" : 7,
+        "MANDMASK" : 8,
+        "MAXMASK" : 9,
     },
     "SMALL":{
         "MAND" : 1,
@@ -174,7 +180,18 @@ MODELS_GROUP = {
         "SKIN":
         {
             "SKIN" : 1,
-        }
+        },
+        "CBMASK":{
+            "CBMASK" : 1,
+        },
+        "MANDMASK":
+        {
+            "MANDMASK" : 1,
+        },
+        "MAXMASK":
+        {
+            "MAXMASK" : 1,
+        },
     },
 
 
@@ -690,6 +707,8 @@ def main(args):
         basename = os.path.basename(img_fn)
         if basename.endswith(".pth"):
             model_id = basename.split("_")[1]
+            if model_id == "Mask":
+                model_id = basename.split("_")[2] + "MASK"
             available_models[model_id] = img_fn
 
     print("Available models:", available_models)
@@ -1019,7 +1038,7 @@ if __name__ == "__main__":
         "nbr_CPU_worker": int(sys.argv[13]),
         "temp_fold" : sys.argv[14],
 
-        "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC"],
+        "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC","CBMASK","MANDMASK","MAXMASK"],
 
     }
 
