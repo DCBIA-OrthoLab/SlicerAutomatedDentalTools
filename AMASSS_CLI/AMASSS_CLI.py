@@ -123,7 +123,8 @@ TRANSLATE ={
   "Skin" : "SKIN",
   "Teeth" : "TEETH",
   "Cranial Base (Mask)" : "CBMASK",
-
+  "Mandible (Mask)" : "MANDMASK",
+  "Maxilla (Mask)" : "MAXMASK",
 }
 
 INV_TRANSLATE = {}
@@ -139,6 +140,9 @@ LABELS = {
         "MAX" : 4,
         "CV" : 5,
         "SKIN" : 6,
+        "CBMASK" : 7,
+        "MANDMASK" : 8,
+        "MAXMASK" : 9,
     },
     "SMALL":{
         "MAND" : 1,
@@ -179,7 +183,15 @@ MODELS_GROUP = {
         },
         "CBMASK":{
             "CBMASK" : 1,
-        }
+        },
+        "MANDMASK":
+        {
+            "MANDMASK" : 1,
+        },
+        "MAXMASK":
+        {
+            "MAXMASK" : 1,
+        },
     },
 
 
@@ -1026,7 +1038,7 @@ if __name__ == "__main__":
         "nbr_CPU_worker": int(sys.argv[13]),
         "temp_fold" : sys.argv[14],
 
-        "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC"],
+        "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC","CBMASK","MANDMASK","MAXMASK"],
 
     }
 
