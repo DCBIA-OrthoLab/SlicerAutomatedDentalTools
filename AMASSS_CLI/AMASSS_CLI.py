@@ -1033,9 +1033,10 @@ def main(args):
                 basename = os.path.basename(img_fn)
 
                 if True in [ext in basename for ext in [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]]:
-                    data.append(img_fn)
-                    number_of_scans += 1
-        
+                    if True in [txt in basename for txt in ["_Pred","seg","Seg"]]:
+                        data.append(img_fn)
+                        number_of_scans += 1
+        print("NOMBRE DE SEG:",number_of_scans)
 
         print(f"""<filter-progress>{0}</filter-progress>""")
         sys.stdout.flush()
