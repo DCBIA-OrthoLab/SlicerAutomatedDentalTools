@@ -446,7 +446,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       if not self.isSegmentInput:
         nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
       else:
-        nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],exception=[])
+        nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],exception=["scan"])
       if nbr_scans == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
 
