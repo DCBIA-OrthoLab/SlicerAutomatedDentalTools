@@ -126,10 +126,7 @@ TRANSLATE ={
   "Mandible (Mask)" : "MANDMASK",
   "Maxilla (Mask)" : "MAXMASK",
 }
-
-INV_TRANSLATE = {}
-for k,v in TRANSLATE.items():
-    INV_TRANSLATE[v] = k
+NTRANSLATE = {v: v for k, v in TRANSLATE.items()}
 
 LABELS = {
 
@@ -164,7 +161,7 @@ LABEL_COLORS = {
 NAMES_FROM_LABELS = {"LARGE":{}, "SMALL":{}}
 for group,data in LABELS.items():
     for k,v in data.items():
-        NAMES_FROM_LABELS[group][v] = INV_TRANSLATE[k]
+        NAMES_FROM_LABELS[group][v] = NTRANSLATE[k]
 
 
 MODELS_GROUP = {
@@ -589,7 +586,10 @@ def SavePredToVTK(file_path,temp_folder,smoothing, out_folder, model_size):
         # print(SmoothPolyDataFilter.GetOutput())
 
         # outputFilename = "Test.vtk"
-        outpath = out_folder + "/VTK files/" + os.path.basename(file_path).split('.')[0] + f"_{NAMES_FROM_LABELS[model_size][label]}_model.vtk"
+        if len(present_labels)>1:
+            outpath = out_folder + "/VTK files/" + os.path.basename(file_path).split('.')[0].split('_MERGED')[0] + f"_{NAMES_FROM_LABELS[model_size][label]}_model.vtk"
+        else:
+            outpath = out_folder + "/VTK files/" + os.path.basename(file_path).split('.')[0].split('-')[0] + "_model.vtk"
 
         if not os.path.exists(os.path.dirname(outpath)):
             os.makedirs(os.path.dirname(outpath))
