@@ -6,14 +6,14 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>554</width>
+    <width>570</width>
     <height>978</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
-     <property name="text">
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
+     <property name="text" stdset="0">
       <string>Inputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_16">
@@ -100,11 +100,11 @@
              </widget>
             </item>
             <item>
-             <widget class="qMRMLNodeComboBox" name="MRMLNodeComboBox_file">
+             <widget class="qMRMLNodeComboBox" name="MRMLNodeComboBox_file" native="true">
               <property name="enabled">
                <bool>true</bool>
               </property>
-              <property name="nodeTypes">
+              <property name="nodeTypes" stdset="0">
                <stringlist>
                 <string>vtkMRMLVolumeNode</string>
                </stringlist>
@@ -134,9 +134,12 @@
              <number>0</number>
             </property>
             <item>
-             <widget class="QLabel" name="emptyInptType">
+             <widget class="QCheckBox" name="isSegmentationcheckBox">
+              <property name="toolTip">
+               <string>To generate only the mesh files from segmentation</string>
+              </property>
               <property name="text">
-               <string/>
+               <string>Segmentation</string>
               </property>
              </widget>
             </item>
@@ -201,8 +204,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton">
-     <property name="text">
+    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton" native="true">
+     <property name="text" stdset="0">
       <string>Segmentation selection</string>
      </property>
      <layout class="QFormLayout" name="formLayout_1">
@@ -240,8 +243,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton">
-     <property name="text">
+    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton" native="true">
+     <property name="text" stdset="0">
       <string>Outputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -402,8 +405,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton">
-     <property name="text">
+    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton" native="true">
+     <property name="text" stdset="0">
       <string>Advanced</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -487,7 +490,7 @@
              <number>5</number>
             </property>
             <item>
-             <widget class="QLabel" name="label_9">
+             <widget class="QLabel" name="labelPrecision">
               <property name="toolTip">
                <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Overlap porcentage of the segmentation windows. &lt;/p&gt;&lt;p&gt;High overlap will significantly increase the prediction time.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
               </property>
@@ -678,8 +681,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton">
-     <property name="text">
+    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton" native="true">
+     <property name="text" stdset="0">
       <string>Compute</string>
      </property>
      <layout class="QFormLayout" name="formLayout_1">
