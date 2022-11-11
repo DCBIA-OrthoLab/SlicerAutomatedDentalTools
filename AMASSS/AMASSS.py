@@ -150,6 +150,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.input_path = None # path to the folder containing the scans
     self.folder_as_input = False # 0 for file, 1 for folder 
 
+    self.isSegmentInput = False # Is the input (folder or file) is a Segmentation 
+
     self.output_folder = None # path to the folder where the segmentations will be saved
     self.vtk_output_folder = None
 
@@ -222,6 +224,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Input type
     self.ui.input_type_select.currentIndexChanged.connect(self.SwitchInputType)
     self.SwitchInputType(0)
+
+    # For Segmentation as input
+    self.ui.isSegmentationcheckBox.connect("toggled(bool)",self.isSegmentInputButton)
 
     # Input scan
     self.ui.MRMLNodeComboBox_file.setMRMLScene(slicer.mrmlScene)
@@ -339,7 +344,70 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.MRMLNodeComboBox_file.setVisible(not self.folder_as_input)
     self.ui.emptyLabelNodeSelect.setVisible(not self.folder_as_input)
 
+  def isSegmentInputButton(self):
+    
+    # Set the value to True when checked and vice-versa
+    self.isSegmentInput = not self.isSegmentInput
 
+    if self.isSegmentInput:
+      self.ui.label_folder_select.setText("Segmentation's Folder")
+      self.ui.OptionVLayout.removeWidget(self.seg_tab.widget)
+      self.ui.PrePredInfo.setText("Number of segmentation to process : 0")
+
+    else:
+      self.ui.label_folder_select.setText("Scan's Folder")
+      self.ui.OptionVLayout.addWidget(self.seg_tab.widget)
+      self.seg_tab.Clear()
+      self.seg_tab.FillTab(GROUPS_FF_SEG)
+      self.ui.PrePredInfo.setText("Number of scans to process : 0")
+    # Set to invisble all the unnecessary input
+    
+    self.ui.DownloadScanButton.setVisible(not self.isSegmentInput)
+    self.ui.DownloadButton.setVisible(not self.isSegmentInput)
+    self.ui.label_model_select.setVisible(not self.isSegmentInput)
+    self.ui.lineEditModelPath.setVisible(not self.isSegmentInput)
+    self.ui.SearchModelFolder.setVisible(not self.isSegmentInput)
+    
+    self.ui.smallFOVCheckBox.setVisible(not self.isSegmentInput)
+    self.ui.label_6.setVisible(not self.isSegmentInput)
+    
+    # OUTPUT
+    self.ui.CenterAllCheckBox.setVisible(not self.isSegmentInput)
+    self.ui.SaveAdjustedCheckBox.setVisible(not self.isSegmentInput)
+    
+    self.ui.label_2.setVisible(not self.isSegmentInput)
+    self.ui.OutputTypecomboBox.setVisible(not self.isSegmentInput)
+    
+    self.ui.label_9.setVisible(not self.isSegmentInput)
+    self.ui.SaveId.setVisible(not self.isSegmentInput)
+
+    self.ui.checkBoxSurfaceSelect.setVisible(not self.isSegmentInput)
+
+    
+
+
+    # ADVANCED
+    self.ui.labelSmoothing.setVisible(True)
+    self.ui.horizontalSliderSmoothing.setVisible(True)
+    self.ui.spinBoxSmoothing.setVisible(True)
+      
+    self.ui.saveInFolder.setVisible(not self.isSegmentInput)
+
+    self.ui.labelPrecision.setVisible(not self.isSegmentInput)
+    self.ui.horizontalSliderPrecision.setVisible(not self.isSegmentInput)
+    self.ui.spinBoxPrecision.setVisible(not self.isSegmentInput)
+
+    self.ui.label_3.setVisible(not self.isSegmentInput)
+    self.ui.horizontalSliderGPU.setVisible(not self.isSegmentInput)
+    self.ui.spinBoxGPU.setVisible(not self.isSegmentInput)
+    
+    self.ui.label_4.setVisible(not self.isSegmentInput)
+    self.ui.horizontalSliderCPU.setVisible(not self.isSegmentInput)
+    self.ui.spinBoxCPU.setVisible(not self.isSegmentInput)
+    
+
+    # self.ui..setVisible(not self.isSegmentInput)
+    
 
   def onNodeChanged(self):
     selected = False
@@ -375,8 +443,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     scan_folder = file_explorer.getExistingDirectory(self.parent, "Select a scan folder")
   
     if scan_folder != '':
-
-      nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
+      if not self.isSegmentInput:
+        nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
+      else:
+        nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],exception=["scan"])
       if nbr_scans == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
 
@@ -513,7 +583,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         qt.QMessageBox.warning(self.parent, 'Warning', 'Please select an input file')
         ready = False
 
-    if self.model_folder == None:
+    if self.model_folder == None and not self.isSegmentInput:
       qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a model folder')
       ready = False
 
@@ -543,12 +613,15 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     param = {}
 
     param["inputVolume"] = self.input_path
+    
+    if self.isSegmentInput:
+      self.model_folder = '/'
+
     param["modelDirectory"] = self.model_folder
     param["highDefinition"] = self.use_small_FOV
 
     param["skullStructure"] = " ".join(selected_seg)
     param["merge"] = self.output_selection
-    param["genVtk"] = self.save_surface
     param["save_in_folder"] = self.ui.saveInFolder.isChecked() or self.ui.checkBoxSurfaceSelect.isChecked()
 
 
@@ -588,6 +661,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     param["prediction_ID"] = self.ui.SaveId.text
 
     param["gpu_usage"] = self.ui.spinBoxGPU.value
+    if self.isSegmentInput:
+      param["gpu_usage"] = 6
     param["cpu_usage"] = self.ui.spinBoxCPU.value
 
     
@@ -599,8 +674,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     param["temp_fold"] = temp_dir
 
-
-    # print(param)
 
 
     self.logic.process(param)
@@ -627,7 +700,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.ui.PredScanProgressBar.setMaximum(self.scan_count)
     self.ui.PredScanProgressBar.setValue(0)
-    self.ui.PredScanLabel.setText(f"Scan ready for segmentation : 0 / {self.scan_count}")
+    if not self.isSegmentInput:
+      self.ui.PredScanLabel.setText(f"Scan ready for segmentation : 0 / {self.scan_count}")
+    else:
+      self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : 0 / {self.scan_count}")
 
     self.total_seg_progress = self.scan_count * self.seg_cout
 
@@ -677,7 +753,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       if self.prediction_step == 1:
         # self.progressBar.setValue(self.progress)
         self.ui.PredScanProgressBar.setValue(self.progress)
-        self.ui.PredScanLabel.setText(f"Scan ready for segmentation : {self.progress} / {self.scan_count}")
+        if not self.isSegmentInput:
+          self.ui.PredScanLabel.setText(f"Scan ready for segmentation : {self.progress} / {self.scan_count}")
+        else:
+          self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : {self.progress} / {self.scan_count}")
 
       if self.prediction_step == 2:
         # self.progressBar.setValue(self.progress)
@@ -754,8 +833,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.CancelButton.setVisible(run)
     self.ui.PredScanLabel.setVisible(run)
     self.ui.PredScanProgressBar.setVisible(run)
-    self.ui.PredSegLabel.setVisible(run)
-    self.ui.PredSegProgressBar.setVisible(run)
+    if not self.isSegmentInput:
+      self.ui.PredSegLabel.setVisible(run)
+      self.ui.PredSegProgressBar.setVisible(run)
     self.ui.TimerLabel.setVisible(run)
 
 
