@@ -495,7 +495,7 @@ def GenControlePoint(groupe_data,landmarks_selected):
                 "selected": true,
                 "locked": true,
                 "visibility": true,
-                "positionStatus": "preview"
+                "positionStatus": "defined"
             }
             lm_lst.append(controle_point)
 
