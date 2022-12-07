@@ -592,7 +592,10 @@ def SavePredToVTK(file_path,temp_folder,smoothing, out_folder, model_size,isSegm
             else:
                 outpath = out_folder + "/VTK files/" + os.path.basename(file_path).split('.')[0].split('-')[0] + "_model.vtk"
         else:
-            outpath = out_folder + "/"+ os.path.basename(file_path).split("_Seg")[0] + "_VTK/" + os.path.basename(file_path).split('.')[0].split('_MERGED')[0].split('_Seg')[0] + f"_{NAMES_FROM_LABELS[model_size][label]}_model.vtk"
+            if len(present_labels)>1:
+                outpath = out_folder + "/"+ os.path.basename(file_path).split("_Seg")[0].split('_MERGED')[0] + "_VTK/" + os.path.basename(file_path).split('.')[0].split('_MERGED')[0].split('_Seg')[0] + f"_{NAMES_FROM_LABELS[model_size][label]}_model.vtk"
+            else:
+                outpath = out_folder + "/"+ os.path.basename(file_path).split("-Seg")[0] + "_model.vtk"              
         if not os.path.exists(os.path.dirname(outpath)):
             os.makedirs(os.path.dirname(outpath))
         Write(model, outpath)
