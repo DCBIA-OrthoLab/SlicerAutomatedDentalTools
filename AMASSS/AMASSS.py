@@ -622,6 +622,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     param["skullStructure"] = " ".join(selected_seg)
     param["merge"] = self.output_selection
+    param["genVtk"] = self.save_surface
     param["save_in_folder"] = self.ui.saveInFolder.isChecked() or self.ui.checkBoxSurfaceSelect.isChecked()
 
 
