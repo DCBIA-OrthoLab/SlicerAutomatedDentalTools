@@ -113,6 +113,21 @@
       <index>13</index>
       <description>temp folder</description>
     </string>
+    
+    <string>
+      <name>SegmentInput</name>
+      <label>SegmentInput</label>
+      <index>14</index>
+      <description>whether or not the input is a segmentation file</description>
+    </string>
+
+    <string>
+      <name>DCMInput</name>
+      <label>DCMInput</label>
+      <index>15</index>
+      <description>temp folder</description>
+    </string>
+
 
   </parameters>
 </executable>
