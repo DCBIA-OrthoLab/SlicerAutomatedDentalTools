@@ -468,7 +468,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if scan_folder != '':
       if self.isSegmentInput:
         nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],exception=["scan"])
-      if self.isDCMInput:
+      elif self.isDCMInput:
         nbr_scans = len(os.listdir(scan_folder))
       else:
         nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
