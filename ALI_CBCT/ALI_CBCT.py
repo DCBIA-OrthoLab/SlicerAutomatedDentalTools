@@ -52,6 +52,12 @@ except ImportError:
     pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
     import torch
 
+try:
+    import dicom2nifti
+except ImportError:
+    pip_install('dicom2nifti')
+    import dicom2nifti
+    
 from torch import nn
 import torch.nn.functional as F
 
@@ -1074,7 +1080,46 @@ class DN(nn.Module):
         return output
 
 
+def search(path,*args):
+    """
+    Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
 
+    Example:
+    args = ('json',['.nii.gz','.nrrd'])
+    return:
+        {
+            'json' : ['path/a.json', 'path/b.json','path/c.json'],
+            '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
+            '.nrrd.gz' : ['path/c.nrrd']
+        }
+    """
+    arguments=[]
+    for arg in args:
+        if type(arg) == list:
+            arguments.extend(arg)
+        else:
+            arguments.append(arg)
+    return {key: [i for i in glob.iglob(os.path.normpath("/".join([path,'**','*'])),recursive=True) if i.endswith(key)] for key in arguments}
+
+def convertdicom2nifti(input_folder,output_folder=None):
+
+
+    patients_folders = os.listdir(input_folder)
+
+    if output_folder is None:
+        output_folder = os.path.join(input_folder,'NIFTI')
+
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+
+    for patient in patients_folders:
+        if not os.path.exists(os.path.join(output_folder,patient+".nii.gz")):    
+            print("Converting patient: {}...".format(patient))
+            current_directory = os.path.join(input_folder,patient)
+            dicom2nifti.convert_directory(current_directory,current_directory)
+            nifti_file = search(current_directory,'nii.gz')['nii.gz'][0]
+            os.rename(nifti_file,os.path.join(output_folder,patient+".nii.gz"))
 
 #endregion
 
@@ -1098,7 +1143,9 @@ def main(input):
 
     scale_spacing = args["spacing"]
 
-
+    # If input in DICOM Format --> CONVERT THEM INTO NIFTI
+    if args["isDCMInput"]:
+        convertdicom2nifti(args['input'])
 
     patients = {}
     if os.path.isfile(args["input"]):  
@@ -1319,6 +1366,7 @@ if __name__ == "__main__":
         "save_in_folder": sys.argv[4] == "true",
         "output_dir": sys.argv[5],
         "temp_fold" : sys.argv[6],
+        "isDCMInput": sys.argv[7] == "true",
 
         "spacing": [1,0.3],
         "speed_per_scale": [1,1],
