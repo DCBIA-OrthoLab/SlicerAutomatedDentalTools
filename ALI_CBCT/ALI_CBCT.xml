@@ -56,6 +56,14 @@
       <index>5</index>
       <description>temp folder</description>
     </string>
+    
+    <string>
+      <name>DCMInput</name>
+      <label>DCMInput</label>
+      <index>6</index>
+      <description>Dicom as input</description>
+    </string>
 
+    
   </parameters>
 </executable>

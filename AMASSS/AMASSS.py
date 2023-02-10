@@ -151,6 +151,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.folder_as_input = False # 0 for file, 1 for folder 
 
     self.isSegmentInput = False # Is the input (folder or file) is a Segmentation 
+    self.isDCMInput = False
 
     self.output_folder = None # path to the folder where the segmentations will be saved
     self.vtk_output_folder = None
@@ -225,8 +226,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.input_type_select.currentIndexChanged.connect(self.SwitchInputType)
     self.SwitchInputType(0)
 
-    # For Segmentation as input
-    self.ui.isSegmentationcheckBox.connect("toggled(bool)",self.isSegmentInputButton)
+    # For NIFTI, NRRD, GIPL, DICOM or Segmentation as input
+    self.ui.InputTypecomboBox.currentIndexChanged.connect(self.SwitchInputExtension)
 
     # Input scan
     self.ui.MRMLNodeComboBox_file.setMRMLScene(slicer.mrmlScene)
@@ -344,17 +345,39 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.MRMLNodeComboBox_file.setVisible(not self.folder_as_input)
     self.ui.emptyLabelNodeSelect.setVisible(not self.folder_as_input)
 
-  def isSegmentInputButton(self):
+  def SwitchInputExtension(self,index):
+    if index == 0: # NIFTI, NRRD, GIPL Files
+      self.isSegmentInputFunction(False)
+      self.SwitchInputType(0)
+      self.isDCMInput = False
+      
+      self.ui.label.setVisible(True)
+      self.ui.input_type_select.setVisible(True)
+    if index == 1: # DICOM Files
+      self.isSegmentInputFunction(False)
+      self.SwitchInputType(1)
+      self.ui.label.setVisible(False)
+      self.ui.input_type_select.setVisible(False)
+      self.ui.label_folder_select.setText('DICOM\'s Folder')
+      self.isDCMInput = True
+      
+    if index == 2: # Segmentation Files
+      self.isSegmentInputFunction(True)
+
+  def isSegmentInputFunction(self,SegInput):
     
     # Set the value to True when checked and vice-versa
-    self.isSegmentInput = not self.isSegmentInput
+    # self.isSegmentInput = not self.isSegmentInput
 
-    if self.isSegmentInput:
+    if SegInput:
+      self.isSegmentInput = True
+      self.isDCMInput = False
       self.ui.label_folder_select.setText("Segmentation's Folder")
       self.ui.OptionVLayout.removeWidget(self.seg_tab.widget)
       self.ui.PrePredInfo.setText("Number of segmentation to process : 0")
 
     else:
+      self.isSegmentInput = False
       self.ui.label_folder_select.setText("Scan's Folder")
       self.ui.OptionVLayout.addWidget(self.seg_tab.widget)
       self.seg_tab.Clear()
@@ -362,48 +385,48 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.ui.PrePredInfo.setText("Number of scans to process : 0")
     # Set to invisble all the unnecessary input
     
-    self.ui.DownloadScanButton.setVisible(not self.isSegmentInput)
-    self.ui.DownloadButton.setVisible(not self.isSegmentInput)
-    self.ui.label_model_select.setVisible(not self.isSegmentInput)
-    self.ui.lineEditModelPath.setVisible(not self.isSegmentInput)
-    self.ui.SearchModelFolder.setVisible(not self.isSegmentInput)
+    self.ui.DownloadScanButton.setVisible(not SegInput)
+    self.ui.DownloadButton.setVisible(not SegInput)
+    self.ui.label_model_select.setVisible(not SegInput)
+    self.ui.lineEditModelPath.setVisible(not SegInput)
+    self.ui.SearchModelFolder.setVisible(not SegInput)
     
-    self.ui.smallFOVCheckBox.setVisible(not self.isSegmentInput)
-    self.ui.label_6.setVisible(not self.isSegmentInput)
+    self.ui.smallFOVCheckBox.setVisible(not SegInput)
+    self.ui.label_6.setVisible(not SegInput)
     
     # OUTPUT
-    self.ui.CenterAllCheckBox.setVisible(not self.isSegmentInput)
-    self.ui.SaveAdjustedCheckBox.setVisible(not self.isSegmentInput)
+    self.ui.CenterAllCheckBox.setVisible(not SegInput)
+    self.ui.SaveAdjustedCheckBox.setVisible(not SegInput)
     
-    self.ui.label_2.setVisible(not self.isSegmentInput)
-    self.ui.OutputTypecomboBox.setVisible(not self.isSegmentInput)
+    self.ui.label_2.setVisible(not SegInput)
+    self.ui.OutputTypecomboBox.setVisible(not SegInput)
     
-    self.ui.label_9.setVisible(not self.isSegmentInput)
-    self.ui.SaveId.setVisible(not self.isSegmentInput)
+    self.ui.label_9.setVisible(not SegInput)
+    self.ui.SaveId.setVisible(not SegInput)
 
-    self.ui.checkBoxSurfaceSelect.setVisible(not self.isSegmentInput)
+    self.ui.checkBoxSurfaceSelect.setVisible(not SegInput)
 
     
 
 
     # ADVANCED
-    self.ui.labelSmoothing.setVisible(True)
-    self.ui.horizontalSliderSmoothing.setVisible(True)
-    self.ui.spinBoxSmoothing.setVisible(True)
+    self.ui.labelSmoothing.setVisible(SegInput)
+    self.ui.horizontalSliderSmoothing.setVisible(SegInput)
+    self.ui.spinBoxSmoothing.setVisible(SegInput)
       
-    self.ui.saveInFolder.setVisible(not self.isSegmentInput)
+    self.ui.saveInFolder.setVisible(not SegInput)
 
-    self.ui.labelPrecision.setVisible(not self.isSegmentInput)
-    self.ui.horizontalSliderPrecision.setVisible(not self.isSegmentInput)
-    self.ui.spinBoxPrecision.setVisible(not self.isSegmentInput)
+    self.ui.labelPrecision.setVisible(not SegInput)
+    self.ui.horizontalSliderPrecision.setVisible(not SegInput)
+    self.ui.spinBoxPrecision.setVisible(not SegInput)
 
-    self.ui.label_3.setVisible(not self.isSegmentInput)
-    self.ui.horizontalSliderGPU.setVisible(not self.isSegmentInput)
-    self.ui.spinBoxGPU.setVisible(not self.isSegmentInput)
+    self.ui.label_3.setVisible(not SegInput)
+    self.ui.horizontalSliderGPU.setVisible(not SegInput)
+    self.ui.spinBoxGPU.setVisible(not SegInput)
     
-    self.ui.label_4.setVisible(not self.isSegmentInput)
-    self.ui.horizontalSliderCPU.setVisible(not self.isSegmentInput)
-    self.ui.spinBoxCPU.setVisible(not self.isSegmentInput)
+    self.ui.label_4.setVisible(not SegInput)
+    self.ui.horizontalSliderCPU.setVisible(not SegInput)
+    self.ui.spinBoxCPU.setVisible(not SegInput)
     
 
     # self.ui..setVisible(not self.isSegmentInput)
@@ -443,10 +466,12 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     scan_folder = file_explorer.getExistingDirectory(self.parent, "Select a scan folder")
   
     if scan_folder != '':
-      if not self.isSegmentInput:
-        nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
-      else:
+      if self.isSegmentInput:
         nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],exception=["scan"])
+      elif self.isDCMInput:
+        nbr_scans = len(os.listdir(scan_folder))
+      else:
+        nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
       if nbr_scans == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
 
@@ -662,8 +687,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     param["prediction_ID"] = self.ui.SaveId.text
 
     param["gpu_usage"] = self.ui.spinBoxGPU.value
-    if self.isSegmentInput:
-      param["gpu_usage"] = 6
     param["cpu_usage"] = self.ui.spinBoxCPU.value
 
     
@@ -675,7 +698,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     param["temp_fold"] = temp_dir
 
+    param["SegmentInput"] = self.isSegmentInput
 
+    param["DCMInput"] = self.isDCMInput
 
     self.logic.process(param)
     self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
