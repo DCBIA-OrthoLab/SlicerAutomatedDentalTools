@@ -61,6 +61,11 @@ except ImportError:
     pip_install('einops')
     import einops
 
+try:
+    import dicom2nifti
+except ImportError:
+    pip_install('dicom2nifti')
+    import dicom2nifti
 
 #region try import
 try :
@@ -687,6 +692,47 @@ def GenerateMask(skin_seg_arr, radius):
     return out
 
 
+def search(path,*args):
+    """
+    Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
+
+    Example:
+    args = ('json',['.nii.gz','.nrrd'])
+    return:
+        {
+            'json' : ['path/a.json', 'path/b.json','path/c.json'],
+            '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
+            '.nrrd.gz' : ['path/c.nrrd']
+        }
+    """
+    arguments=[]
+    for arg in args:
+        if type(arg) == list:
+            arguments.extend(arg)
+        else:
+            arguments.append(arg)
+    return {key: [i for i in glob.iglob(os.path.normpath("/".join([path,'**','*'])),recursive=True) if i.endswith(key)] for key in arguments}
+
+def convertdicom2nifti(input_folder,output_folder=None):
+
+
+    patients_folders = os.listdir(input_folder)
+
+    if output_folder is None:
+        output_folder = os.path.join(input_folder,'NIFTI')
+
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+
+    for patient in patients_folders:
+        if not os.path.exists(os.path.join(output_folder,patient+".nii.gz")):    
+            print("Converting patient: {}...".format(patient))
+            current_directory = os.path.join(input_folder,patient)
+            dicom2nifti.convert_directory(current_directory,current_directory)
+            nifti_file = search(current_directory,'nii.gz')['nii.gz'][0]
+            os.rename(nifti_file,os.path.join(output_folder,patient+".nii.gz"))
+
 #endregion
 
 #region Main
@@ -751,6 +797,11 @@ def main(args):
 
 
         print(models_to_use)
+
+        # If input in DICOM Format --> CONVERT THEM INTO NIFTI
+        if args["isDCMInput"]:
+            convertdicom2nifti(args['input'])
+
 
         # load data
         data_list = []
@@ -1073,6 +1124,7 @@ def main(args):
 if __name__ == "__main__":
 
     print("Starting")
+    print(sys.argv)
     args = {
         "input": sys.argv[1],
         "dir_models": sys.argv[2],
@@ -1088,15 +1140,12 @@ if __name__ == "__main__":
         "nbr_GPU_worker": int(sys.argv[12]),
         "nbr_CPU_worker": int(sys.argv[13]),
         "temp_fold" : sys.argv[14],
+        "isSegmentInput" : sys.argv[15] == "true",
+        "isDCMInput": sys.argv[16] == "true",
 
         "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC","CBMASK","MANDMASK","MAXMASK"],
 
     }
-    
-    if args["nbr_GPU_worker"] == 6:
-        args['isSegmentInput'] = True
-    else:
-        args['isSegmentInput'] = False
     
     # print(args)
 

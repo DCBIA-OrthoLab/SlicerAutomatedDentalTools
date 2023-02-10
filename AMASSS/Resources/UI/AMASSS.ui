@@ -45,9 +45,16 @@
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_4">
             <item>
+             <widget class="QLabel" name="label_5">
+              <property name="text">
+               <string>Input Type</string>
+              </property>
+             </widget>
+            </item>
+            <item>
              <widget class="QLabel" name="label">
               <property name="text">
-               <string>Input </string>
+               <string>File or Folder</string>
               </property>
              </widget>
             </item>
@@ -85,6 +92,25 @@
             <property name="bottomMargin">
              <number>0</number>
             </property>
+            <item>
+             <widget class="QComboBox" name="InputTypecomboBox">
+              <item>
+               <property name="text">
+                <string>NIFTI, GIPL, NRRD</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>DICOM</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Segmentation</string>
+               </property>
+              </item>
+             </widget>
+            </item>
             <item>
              <widget class="QComboBox" name="input_type_select">
               <item>
@@ -134,17 +160,14 @@
              <number>0</number>
             </property>
             <item>
-             <widget class="QCheckBox" name="isSegmentationcheckBox">
-              <property name="toolTip">
-               <string>To generate only the mesh files from segmentation</string>
-              </property>
+             <widget class="QLabel" name="emptyLabelNodeSelect">
               <property name="text">
-               <string>Segmentation</string>
+               <string/>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QLabel" name="emptyLabelNodeSelect">
+             <widget class="QLabel" name="label_7">
               <property name="text">
                <string/>
               </property>

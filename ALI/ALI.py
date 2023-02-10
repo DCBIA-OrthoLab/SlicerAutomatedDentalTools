@@ -239,6 +239,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.InputTypeComboBox.currentIndexChanged.connect(self.SwitchInputType)
     self.SwitchInputType(0)
 
+    self.ui.ExtensioncomboBox.currentIndexChanged.connect(self.SwitchInputExtension)
+    self.SwitchInputExtension(0)
+
     self.ui.MRMLNodeComboBox.setMRMLScene(slicer.mrmlScene)
     self.ui.MRMLNodeComboBox.currentNodeChanged.connect(self.onNodeChanged)
     self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox.currentNodeID)
@@ -287,14 +290,19 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.lm_tab.Clear()
 
     if index == 1:
+      self.SwitchInputExtension(0)
       self.CBCT_as_input = False
       self.ui.MRMLNodeComboBox.nodeTypes = ['vtkMRMLModelNode']
       self.lm_tab.FillTab(SURFACE_LANDMARKS)
-
+      self.ui.ExtensionLabel.setVisible(False)
+      self.ui.ExtensioncomboBox.setVisible(False)
+    
     else:
       self.CBCT_as_input = True
       self.ui.MRMLNodeComboBox.nodeTypes = ['vtkMRMLVolumeNode']
       self.lm_tab.FillTab(GROUPS_LANDMARKS)
+      self.ui.ExtensionLabel.setVisible(True)
+      self.ui.ExtensioncomboBox.setVisible(True)
 
     self.ui.lineEditModelPath.setText("")
     self.model_folder = None
@@ -302,6 +310,21 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.tooth_lm.widget.setHidden(self.CBCT_as_input)
     # print()
 
+  def SwitchInputExtension(self,index):
+    
+    if index == 0: # NIFTI, NRRD, GIPL Files
+      self.SwitchInput(0)
+      self.isDCMInput = False
+      
+      self.ui.label_11.setVisible(True)
+      self.ui.InputComboBox.setVisible(True)
+    
+    if index == 1: # DICOM Files
+      self.SwitchInput(1)
+      self.ui.label_11.setVisible(False)
+      self.ui.InputComboBox.setVisible(False)
+      self.ui.ScanPathLabel.setText('DICOM\'s Folder')
+      self.isDCMInput = True
 
   def SwitchInput(self,index):
 
@@ -394,7 +417,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
     if scan_folder != '':
       if self.CBCT_as_input:
-        nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],[])
+        if self.isDCMInput:
+          print("DICOM")
+          nbr_scans = len(os.listdir(scan_folder))
+        else:
+          nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],[])
       else:
         nbr_scans = self.CountFileWithExtention(scan_folder, [".vtk"],[])
 
@@ -527,6 +554,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp_ALI")
 
       param["temp_fold"] = temp_dir
+
+      param["DCMInput"] = self.isDCMInput
     
     else:
       selected_lm_lst = self.lm_tab.GetSelected()
