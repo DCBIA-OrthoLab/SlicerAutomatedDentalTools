@@ -851,6 +851,7 @@ class Agent :
 
     def Search(self):
         # if self.verbose:
+        tic = time.time()
         print("Searching landmark :",self.target)
         self.GoToScale()
         self.SetPosAtCenter()
@@ -858,7 +859,7 @@ class Agent :
         self.SavePos()
         found = False
         tot_step = 0
-        while not found:
+        while not found and time.time()-tic < 15:
             # action = self.environement.GetBestMove(self.scale_state,self.position,self.target)
             tot_step+=1
             action = self.PredictAction()
@@ -879,6 +880,11 @@ class Agent :
                 self.search_atempt = 0
                 return -1
 
+        if not found: # Took too much time
+            print(self.target, "landmark not found")
+            self.search_atempt = 0
+            return -1
+        
         final_pos = self.Focus(self.position)
         print("Result :", final_pos)
         self.environement.AddPredictedLandmark(self.target,final_pos)
