@@ -34,7 +34,7 @@ import shutil
 from collections import deque
 
 
-from slicer.util import pip_install
+from slicer.util import pip_install, pip_uninstall
 
 
 import SimpleITK as sitk
@@ -61,12 +61,6 @@ except ImportError:
 from torch import nn
 import torch.nn.functional as F
 
-
-try :
-    from monai.networks.nets import UNETR
-except ImportError:
-    pip_install('monai==0.7.0')
-    from monai.networks.nets import UNETR
 
 from monai.data import (
     DataLoader,
