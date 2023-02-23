@@ -62,7 +62,7 @@ from torch import nn
 import torch.nn.functional as F
 
 pip_uninstall('monai')
-pip_install('monai')
+pip_install('monai==0.7.0')
 
 from monai.data import (
     DataLoader,
