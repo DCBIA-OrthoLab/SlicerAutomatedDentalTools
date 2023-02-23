@@ -61,6 +61,8 @@ except ImportError:
 from torch import nn
 import torch.nn.functional as F
 
+pip_uninstall('monai')
+pip_install('monai')
 
 from monai.data import (
     DataLoader,
