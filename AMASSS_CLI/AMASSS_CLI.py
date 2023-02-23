@@ -31,7 +31,7 @@ import sys
 # print(sys.argv)
 
 
-from slicer.util import pip_install
+from slicer.util import pip_install, pip_uninstall
 
 # from slicer.util import pip_uninstall
 # # pip_uninstall('torch torchvision torchaudio') 
@@ -68,11 +68,9 @@ except ImportError:
     import dicom2nifti
 
 #region try import
-try :
-    from monai.networks.nets import UNETR
-except ImportError:
-    pip_install('monai==0.7.0')
-    from monai.networks.nets import UNETR
+pip_uninstall('monai')
+pip_install('monai==0.7.0')
+from monai.networks.nets import UNETR
 
 from monai.data import (
     DataLoader,
