@@ -52,12 +52,6 @@ except ImportError:
     pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
     import torch
 
-try:
-    import dicom2nifti
-except ImportError:
-    pip_install('dicom2nifti')
-    import dicom2nifti
-    
 from torch import nn
 import torch.nn.functional as F
 
@@ -1105,7 +1099,6 @@ def search(path,*args):
 
 def convertdicom2nifti(input_folder,output_folder=None):
 
-
     patients_folders = os.listdir(input_folder)
 
     if output_folder is None:
@@ -1119,9 +1112,13 @@ def convertdicom2nifti(input_folder,output_folder=None):
         if not os.path.exists(os.path.join(output_folder,patient+".nii.gz")):    
             print("Converting patient: {}...".format(patient))
             current_directory = os.path.join(input_folder,patient)
-            dicom2nifti.convert_directory(current_directory,current_directory)
-            nifti_file = search(current_directory,'nii.gz')['nii.gz'][0]
-            os.rename(nifti_file,os.path.join(output_folder,patient+".nii.gz"))
+            
+            reader = sitk.ImageSeriesReader()
+            dicom_names = reader.GetGDCMSeriesFileNames(current_directory)
+            reader.SetFileNames(dicom_names)
+            image = reader.Execute()
+
+            sitk.WriteImage(image, os.path.join(output_folder,os.path.basename(current_directory)+'.nii.gz'))
 
 #endregion
 
