@@ -119,7 +119,7 @@ def main(args):
             directionVector_pred = model(scan.to(device))
         directionVector_pred = directionVector_pred.cpu().numpy()
         
-        if Loss(directionVector_pred,goal) > 0.05 and not smallFOV: # When angle is large enough to apply orientation modification
+        if Loss(directionVector_pred,goal) > 1 and not smallFOV: # When angle is large enough to apply orientation modification
             #                                    /!\ only to LargeFOV /!\
             angle, axis = AngleAndAxisVectors(goal,directionVector_pred[0])
             Rotmatrix = RotationMatrix(axis,angle)
