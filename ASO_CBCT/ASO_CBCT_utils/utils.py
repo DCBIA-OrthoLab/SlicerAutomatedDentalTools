@@ -646,7 +646,7 @@ def ICP(input_file,input_json_file,gold_file,gold_json_file,list_landmark):
     # Check if some landmarks are not well located
     ldmk_to_remove = GetLandmarkToRemove(input_json_file,gold_json_file)
     if len(ldmk_to_remove) > 0:
-        print("Patient {} --> Landmark not used:{}".format(os.path.basename(input_file).split('.'),ldmk_to_remove))
+        print("Patient {} --> Landmark not used:{}".format(os.path.basename(input_file).split('.')[0],ldmk_to_remove))
         list_landmark = [lm for lm in list_landmark if lm not in ldmk_to_remove]
     
     if len(list_landmark) <= 3:
