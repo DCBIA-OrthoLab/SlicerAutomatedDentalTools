@@ -10,7 +10,7 @@ Slicer automated dental tools is an extension for 3D Slicer to perform important
 
 ## Overview
 
-Slicer automated dental tools is an extension that allows users to perform automatic **segmentation** and **landmark identification** on CBCT scans and Intra Oral Scan (IOS) using machine learning tools where the learning mdoels are continously updated.
+Slicer automated dental tools is an extension that allows users to perform automatic **segmentation**, **landmark identification** and **Automatic Orientation** on CBCT scans and Intra Oral Scan (IOS) using machine learning tools where the learning mdoels are continously updated.
 
 
 <p align="center">
@@ -237,8 +237,10 @@ The user has to decide which **landmarks** he will use to run ASO.
 ### Models Selection
 
 For the **Fully-Automated** Mode, models are required as input, use the `Select` Button to automatically download, extract and select the selected models.
+    
+![ASOSADT](https://user-images.githubusercontent.com/72148963/227339216-61f04a0b-a8ab-410e-8265-d822309e1888.png)
 
-
+    
 # Acknowledgements
 
 _Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin(UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
