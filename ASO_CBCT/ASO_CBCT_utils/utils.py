@@ -352,6 +352,11 @@ def GetLandmarkToRemove(input_path,gold_path):
         if tot_count[lm] > len(test_ldmk):
             removed_landmarks.append(lm)
 
+    for lm in dir_count.keys():
+        if dir_count[lm] > int(len(test_ldmk)/2):
+            if lm not in removed_landmarks:
+                removed_landmarks.append(lm)
+
     return removed_landmarks
 
 '''
@@ -601,7 +606,7 @@ def InitICP(source,target, Print=False, BestLMList=None, search=False):
     # print("Rotation:\n{}".format(R))
     
     # ============ Compute Transform Matrix (Rotation + Translation) ==============
-    TransformMatrix = RotationTransformMatrix @ TranslationTransformMatrix
+    TransformMatrix = RotationTransformMatrix #@ TranslationTransformMatrix
 
     # ============ Pick another Random Landmark ==============
     if BestLMList is None:
@@ -668,49 +673,37 @@ def ICP(input_file,input_json_file,gold_file,gold_json_file,list_landmark):
     source_orig = source.copy()
     target = SortDict(target)
 
-    # save the source and target landmarks arrays
-    script_dir = os.path.dirname(__file__)
-
     # Apply Init ICP with only the best landmarks
     source_transformed, TransformMatrix, TransformList = InitICP(source,target, Print=False, BestLMList=FindOptimalLandmarks(source,target,nb_lmrk))
     
     # Apply ICP
     icp = ICP_Transform(source_transformed,target) 
     TransformMatrixBis = VTKMatrixToNumpy(icp.GetMatrix())
+    TransformMatrixBis[:3, 3] = [0,0,0]
 
     # Split the transform matrix into translation and rotation simpleitk transform
-    TransformMatrixsitk = sitk.VersorRigid3DTransform()
-    TransformMatrixsitk.SetTranslation(TransformMatrixBis[:3, 3].tolist())
-    try:
-        TransformMatrixsitk.SetMatrix(TransformMatrixBis[:3, :3].flatten().tolist())
-    except RuntimeError:
-        print('Error: The rotation matrix is not orthogonal')
-        mat = TransformMatrixBis[:3, :3]
-        print(mat)
-        print('det:', np.linalg.det(mat))
-        print('AxA^T:', mat @ mat.T)
+    TransformMatrixsitk = sitk.Euler3DTransform()
+    # TransformMatrixsitk.SetTranslation(TransformMatrixBis[:3, 3].tolist())
+    TransformMatrixsitk.SetMatrix(TransformMatrixBis[:3, :3].flatten().tolist())
     TransformList.append(TransformMatrixsitk)
 
 
     # Compute the final transform (inverse all the transforms)
-    TransformSITK = sitk.CompositeTransform(3)
-    for i in range(len(TransformList)-1,-1,-1):
+    TransformSITK = sitk.Transform()
+    for i in range(len(TransformList)-1,0,-1):
         TransformSITK.AddTransform(TransformList[i])
 
     TransformSITK = TransformSITK.GetInverse()
-    # Write the transform to a file
-    # sitk.WriteTransform(TransformSITK, 'data/output/transform.tfm')
 
     TransformMatrixFinal = TransformMatrixBis @ TransformMatrix
     # print(TransformMatrixFinal)
 
     # Apply the final transform matrix
-    source_transformed = ApplyTransform(source_transformed,TransformMatrixBis)
+    source_transformed = ApplyTransform(source_orig,TransformMatrixFinal)
     
-    source = ApplyTransform(source_orig,TransformMatrixFinal)
-        
     # Resample the source image with the final transform 
-    output = ResampleImage(input_image, gold_image, transform=TransformSITK)
+    output = ResampleImage(input_image,transform=TransformSITK)
+
     return output,source_transformed
 
 '''
@@ -724,7 +717,7 @@ Y88b  d88P   888       888     888   Y88b      Y88b  d88P     888     Y88b. .d88
  "Y8888P"  8888888     888     888    Y88b      "Y8888P"      888      "Y88888P"  888        888 
 '''
 
-def ResampleImage(image, target, transform):
+def ResampleImage(image, transform):
     '''
     Resample image using SimpleITK
     
@@ -742,27 +735,14 @@ def ResampleImage(image, target, transform):
     SimpleITK image
         Resampled image.
     '''
-    resample = sitk.ResampleImageFilter()
-    resample.SetReferenceImage(target)
-    resample.SetTransform(transform)
-    resample.SetInterpolator(sitk.sitkLinear)
-    orig_size = np.array(image.GetSize(), dtype=np.int)
-    ratio = np.array(image.GetSpacing())/np.array(target.GetSpacing())
-    new_size = orig_size*(ratio)+0.5
-    new_size = np.ceil(new_size).astype(np.int) #  Image dimensions are in integers
-    new_size = [int(s) for s in new_size]
-    resample.SetSize(new_size)
-    resample.SetDefaultPixelValue(0)
+    # Create resampler
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetReferenceImage(image)
+    resampler.SetInterpolator(sitk.sitkLinear)
+    resampler.SetDefaultPixelValue(0)
+    resampler.SetTransform(transform)
 
-    # Set New Origin
-    orig_origin = np.array(image.GetOrigin())
-    # apply transform to the origin
-    orig_center = np.array(image.TransformContinuousIndexToPhysicalPoint(np.array(image.GetSize())/2.0))
-    new_center = np.array(target.TransformContinuousIndexToPhysicalPoint(np.array(target.GetSize())/2.0))
-    new_origin = orig_origin - orig_center + new_center
-    resample.SetOutputOrigin(new_origin)
-    
-    return resample.Execute(image)
+    return resampler.Execute(image)
 
 '''
 88888888888 8888888b.         d8888 888b    888  .d8888b.  8888888888 .d88888b.  8888888b.  888b     d888  .d8888b.  
