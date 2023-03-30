@@ -6,6 +6,14 @@ import time
 import argparse
 import SimpleITK as sitk
 
+from slicer.util import pip_install
+
+try:
+    import torch
+except ImportError:
+    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
+    import torch
+
 fpath = os.path.join(os.path.dirname(__file__), '..')
 sys.path.append(fpath)
 
