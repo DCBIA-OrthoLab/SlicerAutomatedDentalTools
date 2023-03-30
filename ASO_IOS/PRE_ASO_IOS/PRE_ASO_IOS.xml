@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <index>2</index>
+  <title>PRE_ASO_IOS</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/username/project</documentation-url>
+  <license>Slicer</license>
+  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+    
+    <string>
+      <name>input</name>
+      <label>input</label>
+      <index>0</index>
+      <description>Path for the input.</description>
+    </string>
+
+    <string>
+      <name>gold_folder</name>
+      <label>gold_folder</label>
+      <index>1</index>
+      <description>Folder with gold landmark</description>
+    </string>
+
+    <string>
+      <name>output_folder</name>
+      <label>output_folder</label>
+      <index>2</index>
+      <description>Output Path</description>
+    </string>
+
+    <string>
+      <name>add_inname</name>
+      <label>add_inname</label>
+      <index>3</index>
+      <description>Something to add in name of each file</description>
+    </string>
+
+    <string>
+      <name>list_teeth</name>
+      <label>list_teeth</label>
+      <index>4</index>
+      <description>Landmark use for orientation</description>
+    </string>
+
+    <string>
+      <name>occlusion</name>
+      <label>occlusion</label>
+      <index>5</index>
+      <description>keep morphology of the mounth</description>
+    </string>  
+
+    <string>
+      <name>jaw</name>
+      <label>jaw</label>
+      <index>6</index>
+      <description>Jaw use to orient</description>
+    </string>
+
+
+    <string>
+      <name>folder_error</name>
+      <label>folder_error</label>
+      <index>7</index>
+      <description>path for error folder </description>
+    </string>
+
+
+
+
+    <string>
+      <name>log_path</name>
+      <label>log_path</label>
+      <index>8</index>
+      <description>path for the log</description>
+    </string>
+
+    
+
+
+
+
+
+
+
+
+  </parameters>
+</executable>

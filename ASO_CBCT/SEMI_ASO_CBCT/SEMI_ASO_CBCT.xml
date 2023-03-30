@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <index>2</index>
+  <title>SEMI_ASO_CBCT</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/username/project</documentation-url>
+  <license>Slicer</license>
+  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+    
+    <string>
+      <name>input</name>
+      <label>input</label>
+      <index>0</index>
+      <description>Path for the input.</description>
+    </string>
+
+    <string>
+      <name>gold_folder</name>
+      <label>gold_folder</label>
+      <index>1</index>
+      <description>Folder with gold landmark</description>
+    </string>
+
+    <string>
+      <name>output_folder</name>
+      <label>output_folder</label>
+      <index>2</index>
+      <description>Output Path</description>
+    </string>
+
+    <string>
+      <name>add_inname</name>
+      <label>add_inname</label>
+      <index>3</index>
+      <description>Something to add in name of each file</description>
+    </string>
+
+    <string>
+      <name>list_landmark</name>
+      <label>list_landmark</label>
+      <index>4</index>
+      <description>Landmarks use for orientation</description>
+    </string>
+
+  </parameters>
+</executable>
