@@ -689,7 +689,7 @@ def ICP(input_file,input_json_file,gold_file,gold_json_file,list_landmark):
 
 
     # Compute the final transform (inverse all the transforms)
-    TransformSITK = sitk.Transform()
+    TransformSITK = sitk.CompositeTransform(3)
     for i in range(len(TransformList)-1,0,-1):
         TransformSITK.AddTransform(TransformList[i])
 
