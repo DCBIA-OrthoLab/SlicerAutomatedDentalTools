@@ -30,13 +30,11 @@ class DisplayCrownSeg(Display):
 
     def __call__(self) -> Tuple[float, str]:
         self.progress += 1
-        progressbar_value = self.progress /(40+2) #40 number of rotation
-        nb_patient_treat = int(progressbar_value)
         if self.nb_scan_total == 0 :
             self.progress_bar = 0 
         else :
-            self.progress_bar = (progressbar_value/self.nb_scan_total*100)
-        self.message = f"Scan : {nb_patient_treat} / {self.nb_scan_total}"
+            self.progress_bar = ( self.progress/self.nb_scan_total*100)
+        self.message = f"Scan : { self.progress} / {self.nb_scan_total}"
 
         return self.progress_bar , self.message
 
