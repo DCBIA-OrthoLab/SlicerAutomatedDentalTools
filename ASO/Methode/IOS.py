@@ -215,11 +215,11 @@ class Auto_IOS(Methode):
 
         parameter_seg = {'input':path_input,
                         'output':path_seg,
-                        'rotation':40,
+                        'subdivision_level':2,
                         'resolution':320,
                         'model':self.__Model(kwargs['model_folder_segor']),
                         'predictedId':'Universal_ID',
-                        'sepOutputs':False,
+                        'sepOutputs':0,
                         'chooseFDI':0,
                         'logPath':kwargs['logPath']
                         }
