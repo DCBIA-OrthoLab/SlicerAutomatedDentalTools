@@ -497,6 +497,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 progress = qt.QProgressDialog(
                     "Downloading {} (File {}/{})".format(folder_name.split("/")[0],num_downl, total_downloads), "Cancel", 0, 100, self.parent
                 )
+                progress.setCancelButton(None)
                 progress.setWindowModality(qt.Qt.WindowModal)
                 progress.setWindowTitle("Downloading {}...".format(folder_name.split("/")[0]))
                 # progress.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
