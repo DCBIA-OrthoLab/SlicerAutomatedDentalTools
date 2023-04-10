@@ -43,20 +43,20 @@ import numpy as np
 try:
     import itk
 except ImportError:
-    pip_install('itk')
+    pip_install('itk -q')
     import itk
 
 try:
     import torch
 except ImportError:
-    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
+    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
     import torch
 
 from torch import nn
 import torch.nn.functional as F
 
-pip_uninstall('monai')
-pip_install('monai==0.7.0')
+pip_uninstall('monai -q')
+pip_install('monai==0.7.0 -q')
 
 from monai.data import (
     DataLoader,
