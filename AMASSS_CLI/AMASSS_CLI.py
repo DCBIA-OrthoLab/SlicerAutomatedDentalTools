@@ -46,24 +46,24 @@ from slicer.util import pip_install, pip_uninstall
 try:
     import torch
 except ImportError:
-    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
+    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
     import torch
 
 try:
     import nibabel
 except ImportError:
-    pip_install('nibabel')
+    pip_install('nibabel -q')
     import nibabel
 
 try:
     import einops
 except ImportError:
-    pip_install('einops')
+    pip_install('einops -q')
     import einops
 
 #region try import
-pip_uninstall('monai')
-pip_install('monai==0.7.0')
+pip_uninstall('monai -q')
+pip_install('monai==0.7.0 -q')
 from monai.networks.nets import UNETR
 
 from monai.data import (
@@ -89,14 +89,14 @@ import numpy as np
 try :
     import itk 
 except ImportError:
-    pip_install('itk')
+    pip_install('itk -q')
     import itk
 
 
 try:
     import cc3d
 except ImportError:
-    pip_install('connected-components-3d==3.9.1')
+    pip_install('connected-components-3d==3.9.1 -q')
     import cc3d
 
  #endregion
@@ -836,7 +836,7 @@ def main(args):
                 basename = os.path.basename(img_fn)
 
                 if True in [ext in basename for ext in [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]]:
-                    if not True in [txt in basename for txt in ["_Pred","seg","Seg"]]:
+                    if not True in [txt in basename for txt in ["_Pred","seg","Seg",'Mask','MASK']]:
                         number_of_scans += 1
 
 
@@ -846,7 +846,7 @@ def main(args):
                 basename = os.path.basename(img_fn)
 
                 if True in [ext in basename for ext in [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]]:
-                    if not True in [txt in basename for txt in ["_Pred","seg","Seg"]]:
+                    if not True in [txt in basename for txt in ["_Pred","seg","Seg",'Mask','MASK']]:
                         new_path = os.path.join(temp_fold,basename)
                         temp_pred_path = os.path.join(temp_fold,"temp_Pred.nii.gz")
                         if not os.path.exists(new_path):
@@ -934,6 +934,8 @@ def main(args):
 
                     if not os.path.exists(outputdir):
                         os.makedirs(outputdir)
+                else:
+                    outputdir = os.path.dirname(image)
                     
 
                 prediction_segmentation = {}

@@ -5,11 +5,11 @@ from slicer.util import pip_install, pip_uninstall
 try:
     import pytorch_lightning as pl
 except ImportError:
-    pip_install('pytorch_lightning')
+    pip_install('pytorch_lightning -q')
     import pytorch_lightning as pl
     
-pip_uninstall('monai')
-pip_install('monai')
+pip_uninstall('monai -q')
+pip_install('monai -q')
 from monai.networks.nets.densenet import DenseNet169
 
 # Different Network
