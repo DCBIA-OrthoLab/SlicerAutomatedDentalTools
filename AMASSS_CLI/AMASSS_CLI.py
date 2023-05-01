@@ -712,8 +712,7 @@ def search(path,*args):
     return {key: [i for i in glob.iglob(os.path.normpath("/".join([path,'**','*'])),recursive=True) if i.endswith(key)] for key in arguments}
 
 def convertdicom2nifti(input_folder,output_folder=None):
-
-    patients_folders = os.listdir(input_folder)
+    patients_folders = [folder for folder in os.listdir(input_folder) if os.path.isdir(os.path.join(input_folder,folder)) and folder != 'NIFTI']
 
     if output_folder is None:
         output_folder = os.path.join(input_folder,'NIFTI')
@@ -727,9 +726,11 @@ def convertdicom2nifti(input_folder,output_folder=None):
             current_directory = os.path.join(input_folder,patient)
             try:
                 reader = sitk.ImageSeriesReader()
+                sitk.ProcessObject_SetGlobalWarningDisplay(False)
                 dicom_names = reader.GetGDCMSeriesFileNames(current_directory)
                 reader.SetFileNames(dicom_names)
                 image = reader.Execute()
+                sitk.ProcessObject_SetGlobalWarningDisplay(True)
                 sitk.WriteImage(image, os.path.join(output_folder,os.path.basename(current_directory)+'.nii.gz'))
             except RuntimeError:
                 dicom2nifti.convert_directory(current_directory,output_folder)
