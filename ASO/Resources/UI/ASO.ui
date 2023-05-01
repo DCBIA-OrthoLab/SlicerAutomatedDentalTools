@@ -31,6 +31,13 @@
              </widget>
             </item>
             <item>
+             <widget class="QLabel" name="label_CBCTInputType">
+              <property name="text">
+               <string>Extension</string>
+              </property>
+             </widget>
+            </item>
+            <item>
              <widget class="QLabel" name="label_5">
               <property name="text">
                <string>Mode</string>
@@ -79,6 +86,20 @@
               <item>
                <property name="text">
                 <string>IOS - Work on Intra Oral Scans</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="CbCBCTInputType">
+              <item>
+               <property name="text">
+                <string>NIFTI, GIPL, NRRD</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>DICOM</string>
                </property>
               </item>
              </widget>
@@ -239,8 +260,8 @@
                   <rect>
                    <x>0</x>
                    <y>0</y>
-                   <width>627</width>
-                   <height>198</height>
+                   <width>225</width>
+                   <height>66</height>
                   </rect>
                  </property>
                  <layout class="QVBoxLayout" name="verticalLayout_14">
@@ -301,7 +322,7 @@
                   <rect>
                    <x>0</x>
                    <y>0</y>
-                   <width>627</width>
+                   <width>609</width>
                    <height>198</height>
                   </rect>
                  </property>

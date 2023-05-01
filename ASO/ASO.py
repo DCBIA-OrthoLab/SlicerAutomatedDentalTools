@@ -267,6 +267,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.dicchckbox = {}
         self.dicchckbox2 = {}
         self.display = Display
+        self.isDCMInput = False
         """
         exemple dic = {'teeth'=['A,....],'Type'=['O',...]}
         """
@@ -363,6 +364,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ButtonSuggestLmIOSSemi.clicked.connect(self.SelectSuggestLandmark)
         self.ui.CbInputType.currentIndexChanged.connect(self.SwitchType)
         self.ui.CbModeType.currentIndexChanged.connect(self.SwitchType)
+        self.ui.CbCBCTInputType.currentIndexChanged.connect(self.SwitchCBCTInputType)
         self.ui.ButtonTestFiles.clicked.connect(lambda: self.SearchScanLm(True))
         self.ui.checkBoxOcclusionAutoIOS.toggled.connect(partial(self.OcclusionCheckbox,self.MethodeDic['Auto_IOS'].getcheckbox()['Jaw']['Upper'],self.MethodeDic['Auto_IOS'].getcheckbox()['Jaw']['Lower'],self.MethodeDic['Semi_IOS'].getcheckbox()['Teeth']))
 
@@ -381,6 +383,11 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                                                                                                                                                     
 
     """
+    def SwitchCBCTInputType(self, index):
+        if index == 0: # NIFTI, NRRD, GIPL as input
+            self.isDCMInput = False
+        if index == 1: # DICOM as input
+            self.isDCMInput = True
 
     def SwitchMode(self, index):
         """Function to change the UI depending on the mode selected (Semi or Fully Automated)"""
@@ -466,6 +473,8 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.HideComputeItems()
 
+        if self.type == "IOS":
+            self.isDCMInput = False
         # best = ['Ba','N','RPo']
         # for checkbox in self.logic.iterillimeted(self.dicchckbox):
         #     if checkbox.text in best and checkbox.isEnabled():
@@ -535,12 +544,14 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     self.parent, "Select a scan folder for Input"
                 )
         else:
-            name,url = self.ActualMeth.getTestFileList()
-            
+            if self.isDCMInput:
+                name,url = self.ActualMeth.getTestFileListDCM()
+            else:
+                name,url = self.ActualMeth.getTestFileList()
             scan_folder = self.DownloadUnzip(
                 url=url,
                 directory=os.path.join(self.SlicerDownloadPath),
-                folder_name=os.path.join("Test_Files", name),
+                folder_name=os.path.join("Test_Files", name) if not self.isDCMInput else os.path.join("Test_Files", "DCM", name),
             )
             self.SearchReference(test=True)
             self.SearchModelSegOr()
@@ -548,8 +559,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.SearchModelALI(test=True)
 
         if not scan_folder == "":
-            nb_scans = self.ActualMeth.NumberScan(scan_folder)
-            error = self.ActualMeth.TestScan(scan_folder)
+            if self.isDCMInput:
+                nb_scans = self.ActualMeth.NumberScanDCM(scan_folder)
+                error = self.ActualMeth.TestScanDCM(scan_folder)
+            else:
+                nb_scans = self.ActualMeth.NumberScan(scan_folder)
+                error = self.ActualMeth.TestScan(scan_folder)
 
             if isinstance(error, str):
                 qt.QMessageBox.warning(self.parent, "Warning", error)
@@ -741,6 +756,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             add_in_namefile=self.ui.lineEditAddName.text,
             dic_checkbox=self.dicchckbox,
             smallFOV=str(self.ui.checkBoxSmallFOV.isChecked()),
+            isDCMInput=self.isDCMInput,
         )
 
         # print('error',error)
@@ -758,6 +774,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 dic_checkbox=self.dicchckbox,
                 logPath=self.log_path,
                 smallFOV=str(self.ui.checkBoxSmallFOV.isChecked()),
+                isDCMInput=self.isDCMInput,
             )
 
             self.nb_extension_launch = len(self.list_Processes_Parameters)
