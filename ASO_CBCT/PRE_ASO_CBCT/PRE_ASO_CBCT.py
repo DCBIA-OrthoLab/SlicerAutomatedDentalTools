@@ -17,7 +17,7 @@ import numpy as np
 fpath = os.path.join(os.path.dirname(__file__), '..')
 sys.path.append(fpath)
 
-from ASO_CBCT_utils import (ExtractFilesFromFolder, DenseNet, AngleAndAxisVectors, RotationMatrix, PreASOResample)
+from ASO_CBCT_utils import (ExtractFilesFromFolder, DenseNet, AngleAndAxisVectors, RotationMatrix, PreASOResample, convertdicom2nifti)
 # from ASO_CBCT_utils.ResamplePreASO import PreASOResample
 # from ASO_CBCT_utils.utils import ExtractFilesFromFolder, AngleAndAxisVectors, RotationMatrix
 # from ASO_CBCT_utils.Net import DenseNet
@@ -64,7 +64,10 @@ def ResampleImage(image, transform):
     
 def main(args):
 
-    input_dir, out_dir, smallFOV = args.input[0], args.output_folder[0], args.SmallFOV[0] == 'True'
+    input_dir, out_dir, smallFOV, isDCMInput = args.input[0], args.output_folder[0], args.SmallFOV[0] == 'true', args.DCMInput[0] == 'true'
+    
+    if isDCMInput:
+        convertdicom2nifti(input_dir)
 
     # RESAMPLE BEFORE USING MODELS
     temp_folder = args.temp_folder[0]
@@ -173,6 +176,7 @@ if __name__ == "__main__":
     parser.add_argument('model_folder',nargs=1)
     parser.add_argument('SmallFOV',nargs=1)
     parser.add_argument('temp_folder',nargs=1)
+    parser.add_argument('DCMInput',nargs=1)
 
     args = parser.parse_args()
     
