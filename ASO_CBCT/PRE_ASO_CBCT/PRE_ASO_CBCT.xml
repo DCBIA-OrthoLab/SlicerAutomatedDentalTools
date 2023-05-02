@@ -50,5 +50,12 @@
       <description>Temp folder for pre aso resample for lightning models</description>
     </string>    
 
+    <string>
+      <name>DCMInput</name>
+      <label>DCMInput</label>
+      <index>6</index>
+      <description>Is Dicom as Input</description>
+    </string>
+
   </parameters>
 </executable>

@@ -43,20 +43,26 @@ import numpy as np
 try:
     import itk
 except ImportError:
-    pip_install('itk')
+    pip_install('itk -q')
     import itk
 
 try:
     import torch
 except ImportError:
-    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
+    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
     import torch
+
+try:
+    import dicom2nifti
+except ImportError:
+    pip_install('dicom2nifti -q')
+    import dicom2nifti
 
 from torch import nn
 import torch.nn.functional as F
 
-pip_uninstall('monai')
-pip_install('monai==0.7.0')
+pip_uninstall('monai -q')
+pip_install('monai==0.7.0 -q')
 
 from monai.data import (
     DataLoader,
@@ -1098,27 +1104,30 @@ def search(path,*args):
     return {key: [i for i in glob.iglob(os.path.normpath("/".join([path,'**','*'])),recursive=True) if i.endswith(key)] for key in arguments}
 
 def convertdicom2nifti(input_folder,output_folder=None):
-
-    patients_folders = os.listdir(input_folder)
+    patients_folders = [folder for folder in os.listdir(input_folder) if os.path.isdir(os.path.join(input_folder,folder)) and folder != 'NIFTI']
 
     if output_folder is None:
         output_folder = os.path.join(input_folder,'NIFTI')
 
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-
-
+        
     for patient in patients_folders:
         if not os.path.exists(os.path.join(output_folder,patient+".nii.gz")):    
             print("Converting patient: {}...".format(patient))
             current_directory = os.path.join(input_folder,patient)
-            
-            reader = sitk.ImageSeriesReader()
-            dicom_names = reader.GetGDCMSeriesFileNames(current_directory)
-            reader.SetFileNames(dicom_names)
-            image = reader.Execute()
-
-            sitk.WriteImage(image, os.path.join(output_folder,os.path.basename(current_directory)+'.nii.gz'))
+            try:
+                reader = sitk.ImageSeriesReader()
+                sitk.ProcessObject_SetGlobalWarningDisplay(False)
+                dicom_names = reader.GetGDCMSeriesFileNames(current_directory)
+                reader.SetFileNames(dicom_names)
+                image = reader.Execute()
+                sitk.ProcessObject_SetGlobalWarningDisplay(True)
+                sitk.WriteImage(image, os.path.join(output_folder,os.path.basename(current_directory)+'.nii.gz'))
+            except RuntimeError:
+                dicom2nifti.convert_directory(current_directory,output_folder)
+                nifti_file = search(output_folder,'nii.gz')['nii.gz'][0]
+                os.rename(nifti_file,os.path.join(output_folder,patient+".nii.gz"))
 
 #endregion
 
