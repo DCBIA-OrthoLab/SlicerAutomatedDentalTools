@@ -40,7 +40,6 @@ class CBCT(Methode):
         return {
             "Occlusal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Occlusal_Midsagittal_Plane.zip",
             "Frankfurt Horizontal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Frankfurt_Horizontal_Midsagittal_Plane.zip",
-
         }
 
     def TestReference(self, ref_folder: str):
@@ -119,10 +118,7 @@ class CBCT(Methode):
                 }}
 
         return dic
-
-        
-
-        
+       
     def Suggest(self):
         return ['Ba','S','N','RPo','LPo','ROr','LOr']
 
@@ -146,13 +142,18 @@ class CBCT(Methode):
     
         return listchecked
     
+    def NumberScanDCM(self, scan_folder: str):
+        return len([folder for folder in os.listdir(scan_folder) if os.path.isdir(os.path.join(scan_folder,folder)) and folder != 'NIFTI'])
 
 class Semi_CBCT(CBCT):
     
 
     def getTestFileList(self):
-        return ("Semi-Automated", "https://github.com/lucanchling/ASO_CBCT/releases/download/TestFiles/Occlusal_Midsagittal_Test.zip")
+        return ("Semi-Automated", "https://github.com/lucanchling/ASO_CBCT/releases/download/TestFiles/SemiAuto.zip")
 
+    def getTestFileListDCM(self):
+        return ("Semi-Automated", "https://github.com/lucanchling/ASO_CBCT/releases/download/TestFiles/SemiAuto_DCM.zip")
+    
     def TestScan(self, scan_folder: str):
         out = ''
         scan_extension = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]
@@ -174,6 +175,29 @@ class Semi_CBCT(CBCT):
         if out == '':   # If no errors
             out = None
         return out
+
+    def TestScanDCM(self, scan_folder: str) -> str:
+        out = ''
+        lm_extension = [".json"]
+        lm_patient = [os.path.basename(i).split('_lm')[0].split('_Or')[0].split('.')[0] for i in self.search(scan_folder,lm_extension)['.json']]
+
+        if self.NumberScanDCM(scan_folder) == 0 :
+            return 'The selected folder must contain scans'
+        
+        patients = [folder for folder in os.listdir(scan_folder) if os.path.isdir(os.path.join(scan_folder,folder)) and folder != 'NIFTI']
+
+        for patient in patients:
+            if patient not in lm_patient:
+                out += "Missing landmark for patient : {}\n".format(patient)
+        for patient in lm_patient:
+            if patient not in patients:
+                out += "Missing scan for patient : {}\n".format(patient)
+
+        if out == '':   # If no errors
+            out = None
+        
+        return out
+
 
     def existsLandmark(self, input_dir, reference_dir, model_dir):
         out = None
@@ -228,10 +252,32 @@ class Semi_CBCT(CBCT):
 class Auto_CBCT(CBCT):
 
     def getTestFileList(self):
-        return ("Fully-Automated", "https://github.com/lucanchling/ASO_CBCT/releases/download/TestFiles/Test_Scan.zip")
+        return ("Fully-Automated", "https://github.com/lucanchling/ASO_CBCT/releases/download/TestFiles/FullyAuto.zip")
         
     def TestScan(self, scan_folder: str) -> str:
-        return None
+        out = ''
+        scan_extension = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]
+
+        if self.NumberScan(scan_folder) == 0 :
+            return 'The selected folder must contain scans'
+        
+        if out == '':
+            out = None
+
+        return out
+
+    def getTestFileListDCM(self):
+        return ("Fully-Automated", "https://github.com/lucanchling/ASO_CBCT/releases/download/TestFiles/FullyAuto_DCM.zip")
+        
+    def TestScanDCM(self, scan_folder: str) -> str:
+        out = ''
+        if self.NumberScanDCM(scan_folder) == 0 :
+            return 'The selected folder must contain scans'
+        
+        if out == '':
+            out = None
+        
+        return out
 
     def existsLandmark(self, input_dir, reference_dir, model_dir):
         out = None
@@ -269,7 +315,8 @@ class Auto_CBCT(CBCT):
                              'output_folder': temp_folder,#kwargs['input_folder'],
                              'model_folder':kwargs['model_folder_segor'],
                              'SmallFOV':kwargs['smallFOV'],
-                             'temp_folder': tempPREASO_folder}
+                             'temp_folder': tempPREASO_folder,
+                             'DCMInput':kwargs['isDCMInput']}
         
         PreOrientProcess = slicer.modules.pre_aso_cbct
 
@@ -311,7 +358,10 @@ class Auto_CBCT(CBCT):
                         {'Process':ALIProcess,'Parameter': parameter_ali,'Name':'ALI_CBCT'},
                         {'Process':OrientProcess,'Parameter':parameter_semi_aso,'Name':'SEMI_ASO_CBCT'}
         ]
-        nb_scan = self.NumberScan(kwargs['input_folder'])
+
+        nb_scan = self.NumberScan(kwargs['input_folder']) if not kwargs['isDCMInput'] else self.NumberScanDCM(kwargs['input_folder'])
+
+        print('nb_scan',nb_scan)
 
         display = {'ALI_CBCT':DisplayALICBCT(nb_landmark,nb_scan),
                    'SEMI_ASO_CBCT':DisplayASOCBCT(nb_scan),

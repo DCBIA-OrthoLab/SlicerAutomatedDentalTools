@@ -16,6 +16,7 @@ import SimpleITK as sitk
 import glob
 import os
 import shutil
+from slicer.util import pip_install
 
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import (
@@ -25,6 +26,11 @@ from vtkmodules.vtkCommonDataModel import (
 )
 from vtkmodules.vtkFiltersGeneral import vtkTransformPolyDataFilter
 
+try:
+    import dicom2nifti
+except ImportError:
+    pip_install('dicom2nifti -q')
+    import dicom2nifti
 
 cross = lambda x,y:np.cross(x,y) # to avoid unreachable code error on np.cross function
 
@@ -431,6 +437,32 @@ def PrintMatrix(transform):
     for i in range(4):
         print(transform.GetElement(i,0), transform.GetElement(i,1), transform.GetElement(i,2), transform.GetElement(i,3))
     print()
+
+def convertdicom2nifti(input_folder,output_folder=None):
+    patients_folders = [folder for folder in os.listdir(input_folder) if os.path.isdir(os.path.join(input_folder,folder)) and folder != 'NIFTI']
+
+    if output_folder is None:
+        output_folder = os.path.join(input_folder,'NIFTI')
+
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+        
+    for patient in patients_folders:
+        if not os.path.exists(os.path.join(output_folder,patient+".nii.gz")):    
+            print("Converting patient: {}...".format(patient))
+            current_directory = os.path.join(input_folder,patient)
+            try:
+                reader = sitk.ImageSeriesReader()
+                sitk.ProcessObject_SetGlobalWarningDisplay(False)
+                dicom_names = reader.GetGDCMSeriesFileNames(current_directory)
+                reader.SetFileNames(dicom_names)
+                image = reader.Execute()
+                sitk.ProcessObject_SetGlobalWarningDisplay(True)
+                sitk.WriteImage(image, os.path.join(output_folder,os.path.basename(current_directory)+'.nii.gz'))
+            except RuntimeError:
+                dicom2nifti.convert_directory(current_directory,output_folder)
+                nifti_file = search(output_folder,'nii.gz')['nii.gz'][0]
+                os.rename(nifti_file,os.path.join(output_folder,patient+".nii.gz"))
 
 '''
 888     888 88888888888 888    d8P       .d8888b.  88888888888 888     888 8888888888 8888888888 

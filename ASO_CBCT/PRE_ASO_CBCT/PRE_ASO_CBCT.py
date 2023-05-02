@@ -4,20 +4,20 @@ import argparse
 import SimpleITK as sitk
 import sys,os,time
 import numpy as np
-import slicer
+# import slicer
 
-from slicer.util import pip_install
+# from slicer.util import pip_install
 
-try:
-    import torch
-except ImportError:
-    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
-    import torch
+# try:
+#     import torch
+# except ImportError:
+#     pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
+#     import torch
 
 fpath = os.path.join(os.path.dirname(__file__), '..')
 sys.path.append(fpath)
 
-from ASO_CBCT_utils import (ExtractFilesFromFolder, DenseNet, AngleAndAxisVectors, RotationMatrix, PreASOResample)
+from ASO_CBCT_utils import (ExtractFilesFromFolder, DenseNet, AngleAndAxisVectors, RotationMatrix, PreASOResample, convertdicom2nifti)
 # from ASO_CBCT_utils.ResamplePreASO import PreASOResample
 # from ASO_CBCT_utils.utils import ExtractFilesFromFolder, AngleAndAxisVectors, RotationMatrix
 # from ASO_CBCT_utils.Net import DenseNet
@@ -64,7 +64,10 @@ def ResampleImage(image, transform):
     
 def main(args):
 
-    input_dir, out_dir, smallFOV = args.input[0], args.output_folder[0], args.SmallFOV[0] == 'True'
+    input_dir, out_dir, smallFOV, isDCMInput = args.input[0], args.output_folder[0], args.SmallFOV[0] == 'true', args.DCMInput[0] == 'true'
+    
+    if isDCMInput:
+        convertdicom2nifti(input_dir)
 
     # RESAMPLE BEFORE USING MODELS
     temp_folder = args.temp_folder[0]
@@ -78,17 +81,17 @@ def main(args):
         spacingFOV = 1.45
         ckpt_file = 'LargeFOV.ckpt'
 
-    PreASOResample(input_dir,temp_folder,spacing=spacingFOV) # /!\ large and small FOV choice for spacing choice /!\
+    # PreASOResample(input_dir,temp_folder,spacing=spacingFOV) # /!\ large and small FOV choice for spacing choice /!\
 
-    CosSim = torch.nn.CosineSimilarity() # /!\ if loss < 0.1 dont apply rotation /!\
-    Loss = lambda x,y: 1 - CosSim(torch.Tensor(x),torch.Tensor(y))
+    # CosSim = torch.nn.CosineSimilarity() # /!\ if loss < 0.1 dont apply rotation /!\
+    # Loss = lambda x,y: 1 - CosSim(torch.Tensor(x),torch.Tensor(y))
     
-    ckpt_path = os.path.join(args.model_folder[0],ckpt_file) # /!\ large and small FOV choice to include /!\ 
+    # ckpt_path = os.path.join(args.model_folder[0],ckpt_file) # /!\ large and small FOV choice to include /!\ 
 
-    model = DenseNet.load_from_checkpoint(checkpoint_path = ckpt_path)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    model.eval()
+    # model = DenseNet.load_from_checkpoint(checkpoint_path = ckpt_path)
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # model.to(device)
+    # model.eval()
     
     scan_extension = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]
     
@@ -109,39 +112,39 @@ def main(args):
         translation = sitk.TranslationTransform(3)
         translation.SetOffset(T.tolist())
         
-        goal = np.array((0.0,0.0,1.0)) # Direction vector for good orientation
+        # goal = np.array((0.0,0.0,1.0)) # Direction vector for good orientation
 
-        img_temp = sitk.ReadImage(os.path.join(temp_folder,os.path.basename(input_file).split('.')[0]+'.nii.gz'))
-        array = sitk.GetArrayFromImage(img_temp)
-        scan = torch.Tensor(array).unsqueeze(0).unsqueeze(0)
+        # img_temp = sitk.ReadImage(os.path.join(temp_folder,os.path.basename(input_file).split('.')[0]+'.nii.gz'))
+        # array = sitk.GetArrayFromImage(img_temp)
+        # scan = torch.Tensor(array).unsqueeze(0).unsqueeze(0)
 
-        with torch.no_grad():
-            directionVector_pred = model(scan.to(device))
-        directionVector_pred = directionVector_pred.cpu().numpy()
+        # with torch.no_grad():
+        #     directionVector_pred = model(scan.to(device))
+        # directionVector_pred = directionVector_pred.cpu().numpy()
         
-        if Loss(directionVector_pred,goal) > 1 and not smallFOV: # When angle is large enough to apply orientation modification
-            #                                    /!\ only to LargeFOV /!\
-            angle, axis = AngleAndAxisVectors(goal,directionVector_pred[0])
-            Rotmatrix = RotationMatrix(axis,angle)
+        # if Loss(directionVector_pred,goal) > 1 and not smallFOV: # When angle is large enough to apply orientation modification
+        #     #                                    /!\ only to LargeFOV /!\
+        #     angle, axis = AngleAndAxisVectors(goal,directionVector_pred[0])
+        #     Rotmatrix = RotationMatrix(axis,angle)
 
-            rotation = sitk.VersorRigid3DTransform()
-            Rotmatrix = np.linalg.inv(Rotmatrix)
-            rotation.SetMatrix(Rotmatrix.flatten().tolist())
+        #     rotation = sitk.VersorRigid3DTransform()
+        #     Rotmatrix = np.linalg.inv(Rotmatrix)
+        #     rotation.SetMatrix(Rotmatrix.flatten().tolist())
             
-            TransformList = [translation,rotation]
+        #     TransformList = [translation,rotation]
             
-            # Compute the final transform (inverse all the transforms)
-            TransformSITK = sitk.CompositeTransform(3)
-            for i in range(len(TransformList)-1,-1,-1):
-                TransformSITK.AddTransform(TransformList[i])
-            TransformSITK = TransformSITK.GetInverse()
+        #     # Compute the final transform (inverse all the transforms)
+        #     TransformSITK = sitk.CompositeTransform(3)
+        #     for i in range(len(TransformList)-1,-1,-1):
+        #         TransformSITK.AddTransform(TransformList[i])
+        #     TransformSITK = TransformSITK.GetInverse()
             
-            img_out = ResampleImage(img,TransformSITK)
+        #     img_out = ResampleImage(img,TransformSITK)
             
-        else: # When angle is too little --> only the center translation is applied
+        # else: # When angle is too little --> only the center translation is applied
 
-            img_trans = ResampleImage(img,translation.GetInverse())
-            img_out = img_trans
+        img_trans = ResampleImage(img,translation.GetInverse())
+        img_out = img_trans
         
         # Write Scan
         dir_scan = os.path.dirname(input_file.replace(input_dir,out_dir))
@@ -173,6 +176,7 @@ if __name__ == "__main__":
     parser.add_argument('model_folder',nargs=1)
     parser.add_argument('SmallFOV',nargs=1)
     parser.add_argument('temp_folder',nargs=1)
+    parser.add_argument('DCMInput',nargs=1)
 
     args = parser.parse_args()
     

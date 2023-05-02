@@ -46,24 +46,30 @@ from slicer.util import pip_install, pip_uninstall
 try:
     import torch
 except ImportError:
-    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
+    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
     import torch
 
 try:
     import nibabel
 except ImportError:
-    pip_install('nibabel')
+    pip_install('nibabel -q')
     import nibabel
 
 try:
     import einops
 except ImportError:
-    pip_install('einops')
+    pip_install('einops -q')
     import einops
 
+try:
+    import dicom2nifti
+except ImportError:
+    pip_install('dicom2nifti -q')
+    import dicom2nifti
+
 #region try import
-pip_uninstall('monai')
-pip_install('monai==0.7.0')
+pip_uninstall('monai -q')
+pip_install('monai==0.7.0 -q')
 from monai.networks.nets import UNETR
 
 from monai.data import (
@@ -89,14 +95,14 @@ import numpy as np
 try :
     import itk 
 except ImportError:
-    pip_install('itk')
+    pip_install('itk -q')
     import itk
 
 
 try:
     import cc3d
 except ImportError:
-    pip_install('connected-components-3d==3.9.1')
+    pip_install('connected-components-3d==3.9.1 -q')
     import cc3d
 
  #endregion
@@ -706,27 +712,30 @@ def search(path,*args):
     return {key: [i for i in glob.iglob(os.path.normpath("/".join([path,'**','*'])),recursive=True) if i.endswith(key)] for key in arguments}
 
 def convertdicom2nifti(input_folder,output_folder=None):
-
-    patients_folders = os.listdir(input_folder)
+    patients_folders = [folder for folder in os.listdir(input_folder) if os.path.isdir(os.path.join(input_folder,folder)) and folder != 'NIFTI']
 
     if output_folder is None:
         output_folder = os.path.join(input_folder,'NIFTI')
 
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-
-
+        
     for patient in patients_folders:
         if not os.path.exists(os.path.join(output_folder,patient+".nii.gz")):    
             print("Converting patient: {}...".format(patient))
             current_directory = os.path.join(input_folder,patient)
-            
-            reader = sitk.ImageSeriesReader()
-            dicom_names = reader.GetGDCMSeriesFileNames(current_directory)
-            reader.SetFileNames(dicom_names)
-            image = reader.Execute()
-
-            sitk.WriteImage(image, os.path.join(output_folder,os.path.basename(current_directory)+'.nii.gz'))
+            try:
+                reader = sitk.ImageSeriesReader()
+                sitk.ProcessObject_SetGlobalWarningDisplay(False)
+                dicom_names = reader.GetGDCMSeriesFileNames(current_directory)
+                reader.SetFileNames(dicom_names)
+                image = reader.Execute()
+                sitk.ProcessObject_SetGlobalWarningDisplay(True)
+                sitk.WriteImage(image, os.path.join(output_folder,os.path.basename(current_directory)+'.nii.gz'))
+            except RuntimeError:
+                dicom2nifti.convert_directory(current_directory,output_folder)
+                nifti_file = search(output_folder,'nii.gz')['nii.gz'][0]
+                os.rename(nifti_file,os.path.join(output_folder,patient+".nii.gz"))
 
 #endregion
 
@@ -836,7 +845,7 @@ def main(args):
                 basename = os.path.basename(img_fn)
 
                 if True in [ext in basename for ext in [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]]:
-                    if not True in [txt in basename for txt in ["_Pred","seg","Seg"]]:
+                    if not True in [txt in basename for txt in ["_Pred","seg","Seg",'Mask','MASK']]:
                         number_of_scans += 1
 
 
@@ -846,7 +855,7 @@ def main(args):
                 basename = os.path.basename(img_fn)
 
                 if True in [ext in basename for ext in [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]]:
-                    if not True in [txt in basename for txt in ["_Pred","seg","Seg"]]:
+                    if not True in [txt in basename for txt in ["_Pred","seg","Seg",'Mask','MASK']]:
                         new_path = os.path.join(temp_fold,basename)
                         temp_pred_path = os.path.join(temp_fold,"temp_Pred.nii.gz")
                         if not os.path.exists(new_path):
@@ -934,6 +943,8 @@ def main(args):
 
                     if not os.path.exists(outputdir):
                         os.makedirs(outputdir)
+                else:
+                    outputdir = os.path.dirname(image)
                     
 
                 prediction_segmentation = {}
