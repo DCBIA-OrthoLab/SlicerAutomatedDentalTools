@@ -889,7 +889,7 @@ def main(args):
             dataset=pred_ds,
             batch_size=1, 
             shuffle=False, 
-            num_workers=args["nbr_CPU_worker"], 
+            num_workers=1,#args["nbr_CPU_worker"], 
             pin_memory=True
         )
         # endregion
