@@ -45,7 +45,7 @@ def main(args):
         output, source_transformed = ICP(input_file,input_json_file,gold_file,gold_json_file,list_landmark)
         
         if output is None:
-            print("ICP failed for patient: ",patient)
+            print("ICP failed for patient:",patient)
             continue
 
         # Write JSON
