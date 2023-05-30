@@ -683,7 +683,7 @@ def ICP(input_file,input_json_file,gold_file,gold_json_file,list_landmark):
     # Check if some landmarks are not well located
     ldmk_to_remove = GetLandmarkToRemove(input_json_file,gold_json_file)
     if len(ldmk_to_remove) > 0:
-        print("Patient {} --> Landmark not used:{}".format(os.path.basename(input_file).split('.')[0],ldmk_to_remove))
+        print("Patient {} --> Landmark not used: {}".format(os.path.basename(input_file).split('.')[0],ldmk_to_remove))
         list_landmark = [lm for lm in list_landmark if lm not in ldmk_to_remove]
     
     if len(list_landmark) <= 3:
@@ -696,6 +696,10 @@ def ICP(input_file,input_json_file,gold_file,gold_json_file,list_landmark):
     # print('gold spacing:',gold_image.GetSpacing())
     source = LoadJsonLandmarks(input_json_file,list_landmark)
     nb_lmrk = len(source.keys())
+
+    if nb_lmrk < 3:
+        print("Patient {} --> Not enough landmarks".format(os.path.basename(input_file).split('.')[0]))
+        return None,None
 
     target = LoadJsonLandmarks(gold_json_file,list_landmark)
     target = {key:target[key] for key in source.keys()} # If source and target don't have the same number of landmarks

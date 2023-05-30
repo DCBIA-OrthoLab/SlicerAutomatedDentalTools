@@ -273,6 +273,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.SaveFolderLineEdit.setHidden(True)
     self.ui.PredictFolderLabel.setHidden(True)
 
+    self.ui.label_4.setVisible(False)
+    self.ui.horizontalSliderCPU.setVisible(False)
+    self.ui.spinBoxCPU.setVisible(False)
+
     #endregion
 
 
@@ -423,11 +427,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.label_3.setVisible(not SegInput)
     self.ui.horizontalSliderGPU.setVisible(not SegInput)
     self.ui.spinBoxGPU.setVisible(not SegInput)
-    
-    self.ui.label_4.setVisible(not SegInput)
-    self.ui.horizontalSliderCPU.setVisible(not SegInput)
-    self.ui.spinBoxCPU.setVisible(not SegInput)
-    
+       
 
     # self.ui..setVisible(not self.isSegmentInput)
     

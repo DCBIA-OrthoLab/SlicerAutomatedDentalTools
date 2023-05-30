@@ -17,7 +17,7 @@ import numpy as np
 fpath = os.path.join(os.path.dirname(__file__), '..')
 sys.path.append(fpath)
 
-from ASO_CBCT_utils import (ExtractFilesFromFolder, DenseNet, AngleAndAxisVectors, RotationMatrix, PreASOResample, convertdicom2nifti)
+from ASO_CBCT_utils import (ExtractFilesFromFolder, AngleAndAxisVectors, RotationMatrix, PreASOResample, convertdicom2nifti)
 # from ASO_CBCT_utils.ResamplePreASO import PreASOResample
 # from ASO_CBCT_utils.utils import ExtractFilesFromFolder, AngleAndAxisVectors, RotationMatrix
 # from ASO_CBCT_utils.Net import DenseNet
