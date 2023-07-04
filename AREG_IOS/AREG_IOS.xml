@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <index>2</index>
+  <title>AREG_IOS</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/username/project</documentation-url>
+  <license>Slicer</license>
+  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+    
+    <string>
+      <name>T1</name>
+      <label>T1</label>
+      <index>0</index>
+      <description>Path for the input.</description>
+    </string>
+
+    <string>
+      <name>T2</name>
+      <label>T2</label>
+      <index>1</index>
+      <description>Folder with gold landmark</description>
+    </string>
+
+    <string>
+      <name>output</name>
+      <label>output</label>
+      <index>2</index>
+      <description>Output Path</description>
+    </string>
+
+    <string>
+      <name>model</name>
+      <label>model</label>
+      <index>3</index>
+      <description>Something to add in name of each file</description>
+    </string>
+
+    <string>
+      <name>suffix</name>
+      <label>suffix</label>
+      <index>5</index>
+      <description>Jaw use to orient</description>
+    </string>
+
+    <string>
+      <name>log_path</name>
+      <label>log_path</label>
+      <index>6</index>
+      <description>path for the log</description>
+    </string>
+
+    
+
+
+
+
+
+
+
+
+  </parameters>
+</executable>
