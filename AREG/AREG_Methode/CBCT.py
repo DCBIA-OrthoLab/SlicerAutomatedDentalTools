@@ -57,7 +57,7 @@ class Semi_CBCT(Methode):
 
         if lineEditName == 'lineEditModel1':
             if len(super().search(model_folder,'pth')['pth']) == 0:
-                return 'Folder must have AMASSS masks models files'
+                return 'Folder must have models for mask segmentation'
             else:
                 return None
         
@@ -87,7 +87,7 @@ class Semi_CBCT(Methode):
             out += 'Please select an extension for output files\n'
 
         if kwargs['model_folder_1'] == '':
-            out += 'Please select a folder for AMASSS models\n'
+            out += 'Please select a folder for segmentation models\n'
 
         if out == '':
             out = None
@@ -95,7 +95,7 @@ class Semi_CBCT(Methode):
         return out
 
     def getModelUrl(self):
-        return {"AMASSS":{"Full Face Models":"https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/AMASSS_Models.zip","Mask Models":"https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/Masks_Models.zip"}}
+        return {"Segmentation":{"Full Face Models":"https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/AMASSS_Models.zip","Mask Models":"https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/Masks_Models.zip"}}
 
     def getALIModelList(self):
         return ("ALIModels", "https://github.com/lucanchling/ALI_CBCT/releases/download/models_v01/")
@@ -394,7 +394,7 @@ class Or_Auto_CBCT(Semi_CBCT):
 
     def getModelUrl(self):
         return {
-            "AMASSS": 
+            "Segmentation": 
                 {"Full Face Models":"https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/AMASSS_Models.zip",
                  "Mask Models":"https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/Masks_Models.zip"},
             "Orientation" : 
@@ -456,7 +456,7 @@ class Or_Auto_CBCT(Semi_CBCT):
             out += 'Please select an extension for output files\n'
 
         if kwargs['model_folder_1'] == '':
-            out += 'Please download the AMASSS models\n'
+            out += 'Please download the Segmentation models\n'
 
         if kwargs['model_folder_2'] == '':
             out += 'Please download the Orientation folder\n'

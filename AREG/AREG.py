@@ -354,9 +354,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ButtonSearchScan2.pressed.connect(
             lambda : self.SearchScan(self.ui.lineEditScanT2LmPath)
         )
-        self.ui.ButtonSearchModel1.pressed.connect(lambda : self.downloadModel(self.ui.lineEditModel1,self.ui.label_7.text.split('Folder ')[1]))
-        self.ui.ButtonSearchModel3.pressed.connect(lambda : self.downloadModel(self.ui.lineEditModel3,self.ui.label_4.text.split('Folder ')[1]))
-        self.ui.ButtonSearchModel2.pressed.connect(lambda : self.downloadModel(self.ui.lineEditModel2,self.ui.label_6.text.split('Folder ')[1]))
+        self.ui.ButtonSearchModel1.pressed.connect(lambda : self.downloadModel(self.ui.lineEditModel1,self.ui.label_7.text.split(' ')[0]))
+        self.ui.ButtonSearchModel3.pressed.connect(lambda : self.downloadModel(self.ui.lineEditModel3,self.ui.label_4.text.split(' ')[0]))
+        self.ui.ButtonSearchModel2.pressed.connect(lambda : self.downloadModel(self.ui.lineEditModel2,self.ui.label_6.text.split(' ')[0]))
         self.ui.ButtonOriented.connect("clicked(bool)", self.onPredictButton)
         self.ui.ButtonOutput.connect("clicked(bool)", self.ChosePathOutput)
         self.ui.ButtonCancel.connect("clicked(bool)", self.onCancel)
@@ -425,7 +425,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.lineEditModel2.setVisible(True)
                 self.ui.ButtonSearchModel2.setVisible(True)
                 self.ui.label_4.setVisible(False)
-                self.ui.label_6.setText("Model Folder Orientation")
+                self.ui.label_6.setText("Orientation Model Folder")
                 self.ui.lineEditModel3.setVisible(False)
                 self.ui.ButtonSearchModel3.setVisible(False)
                 self.ui.CbCBCTInputType.setVisible(False)
@@ -483,13 +483,13 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             elif self.ui.CbModeType.currentIndex == 0 :
                 self.ActualMeth = self.MethodeDic["Or_Auto_CBCT"]
                 self.ui.stackedWidget.setCurrentIndex(2)
-                self.ui.label_7.setText("Model Folder AMASSS")
+                self.ui.label_7.setText("Segmentation Model Folder")
                         
 
             elif  self.ui.CbModeType.currentIndex == 2 :
                 self.ActualMeth = self.MethodeDic["Auto_CBCT"]
                 self.ui.stackedWidget.setCurrentIndex(1)
-                self.ui.label_7.setText("Model Folder AMASSS")
+                self.ui.label_7.setText("Segmentation Model Folder")
 
             self.type = "CBCT"
             self.SwitchModeCBCT(self.ui.CbModeType.currentIndex)
@@ -663,7 +663,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.enableCheckbox()
 
         if self.type == "CBCT":
-            self.downloadModel(lineEdit=self.ui.lineEditModel1, name="AMASSS")
+            self.downloadModel(lineEdit=self.ui.lineEditModel1, name="Segmentation")
             if  self.ui.CbModeType.currentIndex == 0:
                 self.SearchModelALI()
                 self.downloadModel(lineEdit=self.ui.lineEditModel2, name="Orientation")
@@ -707,7 +707,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.CheckScan()
 
     def downloadModel(self, lineEdit, name):
-        print(f'lineEdit {lineEdit}, name {name}')
+        # print(f'lineEdit {lineEdit}, name {name}')
         listmodel = self.ActualMeth.getModelUrl()
 
 
