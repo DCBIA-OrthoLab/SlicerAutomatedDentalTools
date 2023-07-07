@@ -56,7 +56,7 @@ def MergeJson(data_dir,extension='MERGED'):
     # ==================== ALL JSON classified by patient  ====================
     dict_list = {}
     for file in json_file:
-        patient = '_'.join(file.split('/')[-3:-1])+'#'+file.split('/')[-1].split('.')[0].split('_lm')[0]+'_lm'
+        patient = '_'.join(file.split(os.sep)[-3:-1])+'#'+file.split(os.sep)[-1].split('.')[0].split('_lm')[0]+'_lm'
         if patient not in dict_list:
             dict_list[patient] = []
         dict_list[patient].append(file)
@@ -71,8 +71,8 @@ def MergeJson(data_dir,extension='MERGED'):
             with open(files[i], 'r') as f:
                 data = json.load(f)
             data1['markups'][0]['controlPoints'].extend(data['markups'][0]['controlPoints'])
-        outpath = os.path.normpath("/".join(files[0].split('/')[:-1]))        # Write the merged json file
-        with open(outpath+'/'+key.split('#')[1] + '_'+ extension +'.mrk.json', 'w') as f: 
+        outpath = os.path.normpath("/".join(files[0].split(os.sep)[:-1]))        # Write the merged json file
+        with open(os.path.join(outpath,key.split('#')[1] + '_'+ extension +'.mrk.json'), 'w') as f: 
             json.dump(data1, f, indent=4)
 
     # ==================== DELETE UNUSED JSON  ====================
