@@ -575,7 +575,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         out_path = os.path.join(directory, folder_name)
 
         if not os.path.exists(out_path):
-            # print("Downloading {}...".format(folder_name.split("/")[0]))
+            # print("Downloading {}...".format(folder_name.split(os.sep)[0]))
             os.makedirs(out_path)
 
             temp_path = os.path.join(directory, "temp.zip")
@@ -587,7 +587,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 # Pop up a progress bar with a QProgressDialog
                 progress = qt.QProgressDialog(
                     "Downloading {} (File {}/{})".format(
-                        folder_name.split("/")[0], num_downl, total_downloads
+                        folder_name.split(os.sep)[0], num_downl, total_downloads
                     ),
                     "Cancel",
                     0,
@@ -597,7 +597,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 progress.setCancelButton(None)
                 progress.setWindowModality(qt.Qt.WindowModal)
                 progress.setWindowTitle(
-                    "Downloading {}...".format(folder_name.split("/")[0])
+                    "Downloading {}...".format(folder_name.split(os.sep)[0])
                 )
                 # progress.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
                 progress.show()
