@@ -493,7 +493,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         out_path = os.path.join(directory, folder_name)
 
         if not os.path.exists(out_path):
-            # print("Downloading {}...".format(folder_name.split("/")[0]))
+            # print("Downloading {}...".format(folder_name.split(os.sep)[0]))
             os.makedirs(out_path)
 
             temp_path = os.path.join(directory, "temp.zip")
@@ -504,11 +504,11 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             ) as out_file:
                 # Pop up a progress bar with a QProgressDialog
                 progress = qt.QProgressDialog(
-                    "Downloading {} (File {}/{})".format(folder_name.split("/")[0],num_downl, total_downloads), "Cancel", 0, 100, self.parent
+                    "Downloading {} (File {}/{})".format(folder_name.split(os.sep)[0],num_downl, total_downloads), "Cancel", 0, 100, self.parent
                 )
                 progress.setCancelButton(None)
                 progress.setWindowModality(qt.Qt.WindowModal)
-                progress.setWindowTitle("Downloading {}...".format(folder_name.split("/")[0]))
+                progress.setWindowTitle("Downloading {}...".format(folder_name.split(os.sep)[0]))
                 # progress.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
                 progress.show()
                 length = response.info().get("Content-Length")
