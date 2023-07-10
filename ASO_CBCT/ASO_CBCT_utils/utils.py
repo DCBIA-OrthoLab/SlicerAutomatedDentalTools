@@ -923,23 +923,20 @@ def ExtractFilesFromFolder(folder_path, scan_extension, lm_extension=None, gold=
     else:
         return sorted(scan_files), sorted(json_files)
 
-def GetPatients(scan_files,json_files):
-    """To associate scan and json files to every patient in input folder of SEMI ASO"""
-
+def GetPatients(folder_path):
     patients = {}
+    normpath = os.path.join(folder_path, '**', '*')
+    for file in glob.iglob(normpath, recursive=True):
+        basename = os.path.basename(file)
+        patient = basename.split('_Or')[0].split('_OR')[0].split('_scan')[0].split("_Scanreg")[0].split('_Scan')[0].split('_lm')[0].split('.')[0]
 
-    for i in range(len(scan_files)):
-        patient = os.path.basename(scan_files[i]).split('_Or')[0].split('_OR')[0].split('_scan')[0].split("_Scanreg")[0].split('.')[0].split('Scan')[0]
-        
         if patient not in patients.keys():
-            patients[patient] = {"scan":scan_files[i],"json":""}
-        else:
-            patients[patient]["scan"] = scan_files[i]
+            patients[patient] = {}
 
-        patientjson = os.path.basename(json_files[i]).split('_Or')[0].split('_OR')[0].split('_lm')[0].split("_Scanreg")[0].split('.')[0].split('_scan')[0].split('Scan')[0]
-        if patientjson not in patients.keys():
-            patients[patientjson] = {"scan":"","json":json_files[i]}
-        else:
-            patients[patientjson]["json"] = json_files[i]
+        if True in [ext in basename for ext in [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]]:
+            patients[patient]["scan"] = file
+
+        if True in [ext in basename for ext in ['.json']]:
+            patients[patient]["json"] = file
 
     return patients
