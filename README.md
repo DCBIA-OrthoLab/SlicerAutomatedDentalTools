@@ -282,6 +282,20 @@ You can either download them using the link or  by using the `Test Files` button
 | **Fully-IOS** | [Test Files]()| Only Mesh [Reference](https://github.com/HUTIN1/ASO/releases/download/v1.0.0/Gold_file.zip) |
 | **Orientation and Registration for IOS** | [Test Files]() | Mesh and Fiducial List [Reference](https://github.com/HUTIN1/ASO/releases/download/v1.0.0/Gold_file.zip) |
 
+### Pipelines
+
+#### CBCT - AReg Pipeline
+![Workflow](https://github.com/HUTIN1/SlicerAutomatedDentalTools/assets/72148963/9e5e836c-ef33-4f26-a936-d53eaa8fd7cb)
+
+
+
+#### IOS - Patch prediction
+<img width="1668" alt="PipelinePrediction" src="https://github.com/HUTIN1/SlicerAutomatedDentalTools/assets/72148963/ec3b1b9d-7a73-42a6-a72f-f257ba345539">
+
+
+### Some Results
+![ARegResult](https://github.com/HUTIN1/SlicerAutomatedDentalTools/assets/72148963/44a7be88-4cee-4943-b9c5-3bd647faa6ba)
+
     
 # Acknowledgements
 
