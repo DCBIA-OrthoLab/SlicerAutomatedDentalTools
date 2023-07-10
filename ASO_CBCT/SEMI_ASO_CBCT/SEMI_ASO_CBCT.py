@@ -32,39 +32,41 @@ def main(args):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
     
-    input_files, input_json_files = ExtractFilesFromFolder(input_dir, scan_extension, lm_extension)
-    
-    patients = GetPatients(input_files,input_json_files)
+    patients = GetPatients(input_dir)
 
     gold_file, gold_json_file = ExtractFilesFromFolder(gold_dir, scan_extension, lm_extension, gold=True)
     
     for patient,data in patients.items():
         
-        input_file, input_json_file = data["scan"],data["json"]
+        try:
+            input_file, input_json_file = data["scan"],data["json"]
 
-        output, source_transformed = ICP(input_file,input_json_file,gold_file,gold_json_file,list_landmark)
-        
-        if output is None:
-            print("ICP failed for patient:",patient)
-            continue
+            output, source_transformed = ICP(input_file,input_json_file,gold_file,gold_json_file,list_landmark)
+            
+            if output is None:
+                print("ICP failed for patient:",patient)
+                continue
 
-        # Write JSON
-        dir_json = os.path.dirname(input_json_file.replace(input_dir,out_dir))
-        if not os.path.exists(dir_json):
-            os.makedirs(dir_json)
-        json_path = os.path.join(dir_json,patient+'_lm_'+args.add_inname[0]+'.mrk.json')
+            # Write JSON
+            dir_json = os.path.dirname(input_json_file.replace(input_dir,out_dir))
+            if not os.path.exists(dir_json):
+                os.makedirs(dir_json)
+            json_path = os.path.join(dir_json,patient+'_lm_'+args.add_inname[0]+'.mrk.json')
 
-        if not os.path.exists(json_path):
-            WriteJson(source_transformed,json_path)
+            if not os.path.exists(json_path):
+                WriteJson(source_transformed,json_path)
 
-        # Write Scan
-        dir_scan = os.path.dirname(input_file.replace(input_dir,out_dir))
-        if not os.path.exists(dir_scan):
-            os.makedirs(dir_scan)
-        
-        file_outpath = os.path.join(dir_scan,patient+'_'+args.add_inname[0]+'.nii.gz')
-        if not os.path.exists(file_outpath):
-            sitk.WriteImage(output, file_outpath)
+            # Write Scan
+            dir_scan = os.path.dirname(input_file.replace(input_dir,out_dir))
+            if not os.path.exists(dir_scan):
+                os.makedirs(dir_scan)
+            
+            file_outpath = os.path.join(dir_scan,patient+'_'+args.add_inname[0]+'.nii.gz')
+            if not os.path.exists(file_outpath):
+                sitk.WriteImage(output, file_outpath)
+
+        except KeyError:
+            print("patient {} does not have scan and/or json file(s)".format(patient))
 
         print(f"""<filter-progress>{0}</filter-progress>""")
         sys.stdout.flush()
