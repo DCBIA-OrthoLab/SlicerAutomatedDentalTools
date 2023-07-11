@@ -453,36 +453,36 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #registration and orientation
         if index == 0 :
             self.ui.label_7.setVisible(True)
-            self.ui.label_7.setText('Model Folder Registration')
+            self.ui.label_7.setText('Segmentation Model Folder')
             self.ui.ButtonSearchModel1.setVisible(True)
             self.ui.lineEditModel1.setVisible(True)
 
             self.ui.label_6.setVisible(True)
-            self.ui.label_6.setText('Reference Folder Orientation')
+            self.ui.label_6.setText('Reference Orientation Folder')
             self.ui.lineEditModel2.setVisible(True)
             self.ui.ButtonSearchModel2.setVisible(True)
 
             self.ui.label_4.setVisible(True)
-            self.ui.label_4.setText('Model Folder Segmentation')
+            self.ui.label_4.setText('Registration Model Folder')
             self.ui.lineEditModel3.setVisible(True)
             self.ui.ButtonSearchModel3.setVisible(True)
 
         #Registration
         if index ==1 :
-            self.ui.label_7.setVisible(True)
-            self.ui.label_7.setText('Model Folder Registration')
-            self.ui.ButtonSearchModel1.setVisible(True)
-            self.ui.lineEditModel1.setVisible(True)
+            self.ui.label_7.setVisible(False)
+            self.ui.label_7.setText('Segmentation Model Folder')
+            self.ui.ButtonSearchModel1.setVisible(False)
+            self.ui.lineEditModel1.setVisible(False)
 
             self.ui.label_6.setVisible(False)
-            self.ui.label_6.setText('Reference Folder Orientation')
+            self.ui.label_6.setText('Reference Orientation Folder')
             self.ui.lineEditModel2.setVisible(False)
             self.ui.ButtonSearchModel2.setVisible(False)
 
-            self.ui.label_4.setVisible(False)
-            self.ui.label_4.setText('Model Folder Segmentation')
-            self.ui.lineEditModel3.setVisible(False)
-            self.ui.ButtonSearchModel3.setVisible(False)
+            self.ui.label_4.setVisible(True)
+            self.ui.label_4.setText('Registration Model Folder')
+            self.ui.lineEditModel3.setVisible(True)
+            self.ui.ButtonSearchModel3.setVisible(True)
 
     def SwitchType(self):
         """Function to change the UI and the Method in AREG depending on the selected type (Semi CBCT, Fully CBCT...)"""
@@ -650,7 +650,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
         scan_folder_t1 = os.path.join(scan_folder, "T1")
         scan_folder_t2 = os.path.join(scan_folder, "T2")
-        
+
         if self.isDCMInput:
             nb_scans = self.ActualMeth.NumberScanDCM(scan_folder_t1, scan_folder_t2)
             error = self.ActualMeth.TestScanDCM(scan_folder_t1, scan_folder_t2)

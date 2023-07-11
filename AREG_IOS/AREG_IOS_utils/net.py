@@ -1,6 +1,7 @@
 import torch
 import monai
-import pytorch_lightning as pl
+# import pytorch_lightning as pl
+from pytorch_lightning import LightningModule
 import torchmetrics
 from pytorch3d.renderer import (
         FoVPerspectiveCameras, look_at_rotation, 
@@ -33,7 +34,10 @@ class TimeDistributed(torch.nn.Module):
 
         return output
     
-class MonaiUNetHRes(pl.LightningModule):
+class MonaiUNetHRes(LightningModule):
+    """
+    MonaiUnetHRes class allows rendering the mesh and predict the patch
+    """
     def __init__(self, args = None, out_channels=2, in_channels = 4,class_weights=None, image_size=320):
 
         super(MonaiUNetHRes, self).__init__()        
@@ -68,7 +72,7 @@ class MonaiUNetHRes(pl.LightningModule):
 
     def setup_ico_verts(self):
 
-        self.ico_verts = torch.tensor([[0,0,0.9],[0.2,0,0.9],[-0.2,0,0.9],[0,0.2,0.9],[0,-0.2,0.9],[-0.2,-0.2,0.9],[0.2,-0.2,0.9]],device=self.device).to(torch.float32)
+        self.ico_verts = torch.tensor([[0,0,0.9],[0.2,0,0.9],[-0.2,0,0.9],[0,0.2,0.9],[0,-0.2,0.9],[-0.2,-0.2,0.9],[0.2,-0.2,0.9]],device=self.device).to(torch.float32) #position of the camera
         self.number_image = self.ico_verts.shape[0]
 
 
@@ -106,23 +110,27 @@ class MonaiUNetHRes(pl.LightningModule):
     def to(self, device=None):
         self.renderer = self.renderer.to(device)
         return super().to(device)
-
+    
+    #call this function to predict the patch
     def forward(self, x):
 
         V, F, CN = x
 
-        V = V.to(self.device, non_blocking=True)
-        F = F.to(self.device, non_blocking=True)
-        CN = CN.to(self.device, non_blocking=True).to(torch.float32)
+        V = V.to(self.device, non_blocking=True) #mean vertex (1,number of vertex,3)
+        F = F.to(self.device, non_blocking=True) #mean faces (1,number of faces , 3)
+        CN = CN.to(self.device, non_blocking=True).to(torch.float32) #mean color normal (1, number of vertex , 3)
         
-        X, PF = self.render(V, F, CN)
-        x = self.model(X)
+        X, PF = self.render(V, F, CN) 
+        #PF mean pixel-to-faces, it s link between the pixel in image X and the faces of a mesh,   
+        # X.shape->(1,7,4,320,320) PF.shape->(1,7,1,320,320)
+        # 7 because 7 cameras, 4 because 4 channels :3 for rgb (normals) and 1 for the depth map
+        #320 dimension of the picture
+
+        x = self.model(X) # x is prediction of the neural network (1,7,2,320,320) 2 because 2 out channels
         
         return x, X, PF
 
     def render(self, V, F, CN):
-
-        # print(f'V {V.shape}, F {F.shape}, CN {CN.shape}')
 
         textures_normal = TexturesVertex(verts_features=CN)
         meshes = Meshes(verts=V, faces=F, textures=textures_normal)
@@ -138,7 +146,7 @@ class MonaiUNetHRes(pl.LightningModule):
 
             images = self.renderer(meshes_world=meshes.clone(), R=R, T=T)
             fragments = self.renderer.rasterizer(meshes.clone())
-            zbuf = fragments.zbuf
+            zbuf = fragments.zbuf #depth map
             pf = fragments.pix_to_face
 
 

@@ -59,6 +59,9 @@ class vtkIterTeeth(vtkTeeth):
 
 
 class vtkMeanTeeth(vtkTeeth):
+    """
+    vtkMeanTeeth is to compute the average of a segmentation label
+    """
     def __init__(self, list_teeth, property=None,automatic_property = False):
         super().__init__(list_teeth, property)
         self.automatic_property = automatic_property
@@ -72,6 +75,9 @@ class vtkMeanTeeth(vtkTeeth):
     
 
 class vtkMeshTeeth(vtkTeeth):
+    """
+    vtkMeshTeeth is to make a mesh of a segmentation label
+    """
     def __init__(self, list_teeth=None, property=None,automatic_property=False):
         super().__init__(list_teeth, property)
         self.automatic_property = automatic_property
