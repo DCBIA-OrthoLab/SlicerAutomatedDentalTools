@@ -27,6 +27,9 @@ add_subdirectory(ALI_IOS)
 add_subdirectory(ASO)
 add_subdirectory(ASO_IOS)
 add_subdirectory(ASO_CBCT)
+add_subdirectory(AREG_IOS)
+add_subdirectory(AREG_CBCT)
+add_subdirectory(AREG)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
