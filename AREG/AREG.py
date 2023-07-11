@@ -107,7 +107,7 @@ class AREG(ScriptedLoadableModule):
 
 class PopUpWindow(qt.QDialog):
     def __init__(
-        self, title="Title", listename=["1", "2", "3"], type="radio", tocheck=None
+        self, title="Title", text=None, listename=["1", "2", "3"], type=None, tocheck=None
     ):
         QWidget.__init__(self)
         self.setWindowTitle(title)
@@ -124,6 +124,14 @@ class PopUpWindow(qt.QDialog):
             self.checkbox(layout)
             if tocheck is not None:
                 self.toCheck(tocheck)
+
+        elif text is not None:
+            label = qt.QLabel(text)
+            layout.addWidget(label)
+            # add ok button to close the window
+            button = qt.QPushButton("OK")
+            button.connect("clicked()",self.onClickedOK)
+            layout.addWidget(button)
 
     def checkbox(self, layout):
         j = 0
@@ -179,6 +187,8 @@ class PopUpWindow(qt.QDialog):
         ]
         self.accept()
 
+    def onClickedOK(self):
+        self.accept()
 
 #
 # AREGWidget
@@ -1019,6 +1029,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         logging.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
 
+        s = PopUpWindow(title="Process Done",text="Successfully done in {} min and {} sec \nAverage time per Patient: {} min and {} sec".format(int(total_time / 60), int(total_time % 60),int(average_time / 60), int(average_time % 60)))
+        s.exec_()
+    
     def onCancel(self):
         self.process.Cancel()
 
