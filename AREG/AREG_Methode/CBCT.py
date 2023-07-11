@@ -399,9 +399,18 @@ class Or_Auto_CBCT(Semi_CBCT):
                  "Mask Models":"https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/Masks_Models.zip"},
             "Orientation" : 
                 {"PreASO":"https://github.com/lucanchling/ASO_CBCT/releases/download/v01_preASOmodels/PreASOModels.zip",
-                 "Reference":"https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Frankfurt_Horizontal_Midsagittal_Plane.zip"
+                 "Occlusal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Occlusal_Midsagittal_Plane.zip",
+                 "Frankfurt Horizontal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Frankfurt_Horizontal_Midsagittal_Plane.zip",
                  }
                  }
+
+    def ReferenceLandmarks(self,name_reference):
+        correspondance = {
+                        "Occlusal and Midsagittal Plane": ("IF ANS PNS UR1O UR6O UL6O",6),
+                        "Frankfurt Horizontal and Midsagittal Plane": ("N S Ba RPo LPo LOr ROr",7),
+        }
+
+        return correspondance[name_reference]
 
     def getTestFileList(self):
         return ("Oriented-Automated", "https://github.com/lucanchling/Areg_CBCT/releases/download/TestFiles/Or_FullyAuto.zip")
@@ -483,8 +492,9 @@ class Or_Auto_CBCT(Semi_CBCT):
         
         PreOrientProcess = slicer.modules.pre_aso_cbct
 
-        list_lmrk_str = "N S Ba RPo LPo LOr ROr"
-        nb_landmark = 7
+        OrientationReference = kwargs['OrientReference']
+
+        list_lmrk_str, nb_landmark = self.ReferenceLandmarks(OrientationReference)
 
         print('PRE_ASO param:', parameter_pre_aso)
         print()
@@ -504,7 +514,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         # SEMI ASO CBCT
         ASO_T1_Oriented = kwargs['input_t1_folder']+'Or'
         parameter_semi_aso = {'input':temp_folder,#kwargs['input_folder'],
-                    'gold_folder':os.path.join(kwargs['model_folder_2'],'Reference'),
+                    'gold_folder':os.path.join(kwargs['model_folder_2'],OrientationReference),
                     'output_folder':ASO_T1_Oriented,
                     'add_inname':'Or',
                     'list_landmark':list_lmrk_str,
