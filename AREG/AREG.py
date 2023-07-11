@@ -266,6 +266,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.dicchckbox2 = {}
         self.display = Display
         self.isDCMInput = False
+        self.CBCTOrientRef = "Frankfurt Horizontal and Midsagittal Plane"
         """
         exemple dic = {'teeth'=['A,....],'Type'=['O',...]}
         """
@@ -663,10 +664,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.enableCheckbox()
 
         if self.type == "CBCT":
-            self.downloadModel(lineEdit=self.ui.lineEditModel1, name="Segmentation")
+            self.downloadModel(lineEdit=self.ui.lineEditModel1, name="Segmentation", test=True)
             if  self.ui.CbModeType.currentIndex == 0:
-                self.SearchModelALI()
-                self.downloadModel(lineEdit=self.ui.lineEditModel2, name="Orientation")
+                self.SearchModelALI(self.CBCTOrientRef)
+                self.downloadModel(lineEdit=self.ui.lineEditModel2, name="Orientation",test=True)
 
         if self.ui.lineEditOutputPath.text == "":
             dir, spl = os.path.split(scan_folder)
@@ -706,8 +707,18 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if self.ui.lineEditScanT1LmPath.text != "" and self.ui.lineEditScanT2LmPath.text != "":
                 self.CheckScan()
 
-    def downloadModel(self, lineEdit, name):
-        # print(f'lineEdit {lineEdit}, name {name}')
+    def downloadModel(self, lineEdit, name, test=False):
+        # To select the reference files (CBCT Orientation and Registration mode only)
+        if self.type == "CBCT" and self.ui.CbModeType.currentIndex == 0 and not test: 
+            referenceList = self.ActualMeth.getReferenceList()
+            refList = list(referenceList.keys())
+
+            s = PopUpWindow(title="Choice of Reference Files",listename=refList,type="radio")
+            s.exec_()
+            self.CBCTOrientRef = s.checked
+
+            self.SearchModelALI(self.CBCTOrientRef)
+        
         listmodel = self.ActualMeth.getModelUrl()
 
 
@@ -744,7 +755,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 lineEdit.setText(model_folder)
                 self.enableCheckbox()
 
-    def SearchModelALI(self):
+    def SearchModelALI(self, reference_type=None):
         # listeLandmark = []
         # for key, data in self.ActualMeth.DicLandmark()["Landmark"].items():
         #     listeLandmark += data
@@ -758,9 +769,14 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #     )
         #     s.exec_()
         #     ret = s.checked
-
-        ret = ['Ba','S','N','RPo','LPo','ROr','LOr']
-
+        if reference_type is None:
+            ret = ['Ba','S','N','RPo','LPo','ROr','LOr']
+        else:
+            correspondance =  {"Occlusal and Midsagittal Plane": ["IF","ANS","PNS","UR1O","UR6O","UL6O"],
+                            "Frankfurt Horizontal and Midsagittal Plane": ["N","S","Ba","RPo","LPo","LOr","ROr"],
+                }
+            ret = correspondance[reference_type]
+                
         name, url = self.ActualMeth.getALIModelList()
         # dirr = self.SlicerDownloadPath.replace("AREG", "ASO")
         for i, model in enumerate(ret):
@@ -839,6 +855,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             add_in_namefile=self.ui.lineEditAddName.text,
             dic_checkbox=self.dicchckbox,
             isDCMInput = self.isDCMInput,
+            OrientReference = self.CBCTOrientRef,
         )
 
         # print('error',error)
@@ -863,7 +880,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 logPath=self.log_path,
                 merge_seg= merge_seg,
                 isDCMInput = self.isDCMInput,
-                slicerDownload = self.SlicerDownloadPath
+                slicerDownload = self.SlicerDownloadPath,
+                OrientReference = self.CBCTOrientRef,
             )
 
             self.nb_extension_launch = len(self.list_Processes_Parameters)
