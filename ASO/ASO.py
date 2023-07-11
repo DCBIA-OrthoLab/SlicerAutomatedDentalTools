@@ -810,7 +810,14 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.RunningUI(True)
 
     def onProcessUpdate(self, caller, event):
-        timer = f"Time : {time.time()-self.startTime:.2f}s"
+        currentTime = time.time() - self.startTime
+        if currentTime < 60:
+            timer = f"Time : {int(currentTime)}s"
+        elif currentTime < 3600:
+            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+        else:
+            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+        
         self.ui.LabelTimer.setText(timer)
         progress = caller.GetProgress()
         self.module_name = caller.GetModuleTitle()
@@ -887,8 +894,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.module_name_before = self.module_name
         self.nb_change_bystep = 0
-
+        total_time = time.time() - self.startTime
+        average_time = total_time / self.nb_patient
         print("PROCESS DONE.")
+        print("Done in {} min and {} sec".format(int(total_time / 60), int(total_time % 60)))
+        print("Average time per patient : {} min and {} sec".format(int(average_time / 60), int(average_time % 60)))
+        self.RunningUI(False)
         self.RunningUI(False)
 
         stopTime = time.time()
