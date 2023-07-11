@@ -279,8 +279,8 @@ You can either download them using the link or  by using the `Test Files` button
 | **Semi-CBCT** | [Test Files](https://github.com/lucanchling/Areg_CBCT/releases/download/TestFiles/SemiAuto.zip) | Scan and Masks segmentation|
 | **Fully-CBCT** | [Test File](https://github.com/lucanchling/Areg_CBCT/releases/download/TestFiles/FullyAuto.zip) | Only Oriented Scan|
 | **Orientation and Registration for CBCT** | [Test File](https://github.com/lucanchling/Areg_CBCT/releases/download/TestFiles/Or_FullyAuto.zip) | Only Scan|
-| **Fully-IOS** | [Test Files]()| Only Mesh [Reference](https://github.com/HUTIN1/ASO/releases/download/v1.0.0/Gold_file.zip) |
-| **Orientation and Registration for IOS** | [Test Files]() | Mesh and Fiducial List [Reference](https://github.com/HUTIN1/ASO/releases/download/v1.0.0/Gold_file.zip) |
+| **Fully-IOS** | [Test Files](https://github.com/HUTIN1/AREG/releases/download/v1.0.0/AREG_test_scans.zip)| Only Mesh ) |
+| **Orientation and Registration for IOS** | [Test Files](https://github.com/HUTIN1/AREG/releases/download/v1.0.0/AREG_test_scans.zip) | Only Mesh |
 
 ### Pipelines
 
