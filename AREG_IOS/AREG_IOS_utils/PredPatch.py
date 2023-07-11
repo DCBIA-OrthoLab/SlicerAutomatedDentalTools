@@ -8,6 +8,10 @@ from AREG_IOS_utils.post_process import RemoveIslands, DilateLabel, ErodeLabel
 
 
 class PredPatch:
+    """
+    PredPatch class is to predict/draw patch on the palate
+
+    """
     def __init__(self,path_model) -> None:
         self.model = MonaiUNetHRes()
         self.model.load_state_dict(torch.load(path_model)['state_dict'])
@@ -56,9 +60,9 @@ class PredPatch:
             V_labels_prediction.SetName('Butterfly')
             surf.GetPointData().AddArray(V_labels_prediction)
 
-            # WriteSurf(surf,os.path.join(args.out,f'{name}_palete.vtk'))
 
             #Post Process
+            #fill the holes in patch
             RemoveIslands(surf,V_labels_prediction,33,500, ignore_neg1=True)
             for label in range(2):
                 RemoveIslands(surf,V_labels_prediction, label, 200, ignore_neg1=True)
