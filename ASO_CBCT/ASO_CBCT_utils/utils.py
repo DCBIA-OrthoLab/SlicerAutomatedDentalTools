@@ -928,7 +928,7 @@ def GetPatients(folder_path):
     normpath = os.path.join(folder_path, '**', '*')
     for file in glob.iglob(normpath, recursive=True):
         basename = os.path.basename(file)
-        patient = basename.split('_Or')[0].split('_OR')[0].split('_scan')[0].split("_Scanreg")[0].split('_Scan')[0].split('_lm')[0].split('.')[0]
+        patient = basename.split('_Or')[0].split('_OR')[0].split('_scan')[0].split("_Scanreg")[0].split('_Scan')[0].split('_lm')[0].split('.')[0].split('_T1')[0].split('_T2')[0]
 
         if patient not in patients.keys():
             patients[patient] = {}
