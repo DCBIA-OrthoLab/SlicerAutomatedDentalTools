@@ -64,7 +64,7 @@ def ResampleImage(image, transform):
     
 def main(args):
 
-    input_dir, out_dir, smallFOV, isDCMInput = args.input[0], args.output_folder[0], args.SmallFOV[0] == 'true', args.DCMInput[0] == 'true'
+    input_dir, out_dir, smallFOV, isDCMInput = os.path.normpath(args.input[0]), os.path.normpath(args.output_folder[0]), args.SmallFOV[0] == 'true', args.DCMInput[0] == 'true'
     
     if isDCMInput:
         convertdicom2nifti(input_dir)
