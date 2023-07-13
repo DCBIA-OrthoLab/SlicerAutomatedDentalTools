@@ -57,6 +57,13 @@
       <description>Is the Input in DCM Format</description>
     </string>
 
+    <string>
+      <name>SegmentationLabel</name>
+      <label>SegmentationLabel</label>
+      <index>6</index>
+      <description>Segmentation Label</description>
+    </string>
+
     <!-- <string>
       <name>reg_lm</name>
       <label>reg_lm</label>

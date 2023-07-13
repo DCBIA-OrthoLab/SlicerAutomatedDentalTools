@@ -14,7 +14,8 @@ from AREG_CBCT_utils import GetDictPatients, VoxelBasedRegistration, LoadOnlyLan
 
 def main(args):
 
-    t1_folder, t2_folder, output_dir, reg_type, add_name = args.t1_folder[0], args.t2_folder[0], args.output_folder[0], args.reg_type[0], args.add_name[0]
+    t1_folder, t2_folder, output_dir, reg_type, add_name, SegLabel = args.t1_folder[0], args.t2_folder[0], args.output_folder[0], args.reg_type[0], args.add_name[0], int(args.SegmentationLabel[0])
+    if SegLabel == 0: SegLabel = None
 
     if args.DCMInput[0] == 'true':
         convertdicom2nifti(t1_folder)
@@ -28,7 +29,7 @@ def main(args):
         ScanOutPath, TransOutPath = os.path.join(outpath,patient+'_'+reg_type+'Scan'+add_name+'.nii.gz'),os.path.join(outpath,patient+'_'+reg_type+add_name+'_matrix.tfm')
 
         if not os.path.exists(ScanOutPath):
-            transform, resample_t2 = VoxelBasedRegistration(data['scanT1'],data['scanT2'],data['segT1'],approx=True)
+            transform, resample_t2 = VoxelBasedRegistration(data['scanT1'],data['scanT2'],data['segT1'],approx=True, SegLabel=SegLabel)
         
             if not os.path.exists(outpath):
                 os.makedirs(outpath)
@@ -58,6 +59,7 @@ if __name__ == "__main__":
     parser.add_argument('output_folder',nargs=1)
     parser.add_argument('add_name',nargs=1)
     parser.add_argument('DCMInput',nargs=1)
+    parser.add_argument('SegmentationLabel',nargs=1)
     # parser.add_argument('reg_lm',nargs=1)
 
     args = parser.parse_args()

@@ -2,6 +2,9 @@ from AREG_Methode.Methode import Methode
 from AREG_Methode.Progress import DisplayAREGCBCT, DisplayAMASSS, DisplayALICBCT, DisplayASOCBCT
 import os,sys
 
+import SimpleITK as sitk
+import numpy as np
+
 from glob import iglob
 import slicer
 import time
@@ -130,6 +133,17 @@ class Semi_CBCT(Methode):
             
         return out
 
+    def GetSegmentationLabel(self,seg_folder):
+        seg_label = []
+        patients = GetPatients(seg_folder)
+        seg_path = patients[list(patients.keys())[0]]['segT1']
+        seg = sitk.ReadImage(seg_path)
+        seg_array = sitk.GetArrayFromImage(seg)
+        labels = np.unique(seg_array)
+        for label in labels:
+            if label!=0 and label not in seg_label:
+                seg_label.append(label)
+        return seg_label
         
 
     def CheckboxisChecked(self,diccheckbox : dict, in_str = False):
@@ -230,6 +244,7 @@ class Semi_CBCT(Methode):
                         'output_folder':kwargs['folder_output'],
                         'add_name':kwargs['add_in_namefile'],
                         'DCMInput':False,
+                        'SegmentationLabel':kwargs['LabelSeg'],
                     }
             list_process.append({'Process':AREGProcess,'Parameter':parameter_areg_cbct,'Module':'AREG_CBCT for {}'.format(full_reg_struct[i]),'Display':DisplayAREGCBCT(nb_scan)})
         
