@@ -277,6 +277,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.display = Display
         self.isDCMInput = False
         self.CBCTOrientRef = "Frankfurt Horizontal and Midsagittal Plane"
+        self.SegmentationLabels = [0]
         """
         exemple dic = {'teeth'=['A,....],'Type'=['O',...]}
         """
@@ -489,7 +490,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self.ui.CbInputType.currentIndex == 0:
             if self.ui.CbModeType.currentIndex == 2 :
                 self.ActualMeth = self.MethodeDic["Semi_CBCT"]
-                self.ui.stackedWidget.setCurrentIndex(0)           
+                self.ui.stackedWidget.setCurrentIndex(0)
 
             elif self.ui.CbModeType.currentIndex == 0 :
                 self.ActualMeth = self.MethodeDic["Or_Auto_CBCT"]
@@ -497,7 +498,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.label_7.setText("Segmentation Model Folder")
                         
 
-            elif  self.ui.CbModeType.currentIndex == 2 :
+            elif  self.ui.CbModeType.currentIndex == 1 :
                 self.ActualMeth = self.MethodeDic["Auto_CBCT"]
                 self.ui.stackedWidget.setCurrentIndex(1)
                 self.ui.label_7.setText("Segmentation Model Folder")
@@ -713,7 +714,14 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         if not scan_folder == "":
             lineEdit.setText(scan_folder)
-            
+
+            if self.ui.lineEditScanT1LmPath.text != "" and self.ui.lineEditScanT2LmPath.text == "":
+                if self.ui.CbInputType.currentIndex == 0 and self.ui.CbModeType.currentIndex == 2:
+                    if self.SegmentationLabels == [0]:
+                        self.SegmentationLabels = self.ActualMeth.GetSegmentationLabel(self.ui.lineEditScanT1LmPath.text)
+                        for i in self.SegmentationLabels:
+                            self.ui.LabelSelectcomboBox.addItem(f"Label {i}")
+
             if self.ui.lineEditScanT1LmPath.text != "" and self.ui.lineEditScanT2LmPath.text != "":
                 self.CheckScan()
 
@@ -892,6 +900,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 isDCMInput = self.isDCMInput,
                 slicerDownload = self.SlicerDownloadPath,
                 OrientReference = self.CBCTOrientRef,
+                LabelSeg = str(self.SegmentationLabels[self.ui.LabelSelectcomboBox.currentIndex]),
             )
 
             self.nb_extension_launch = len(self.list_Processes_Parameters)

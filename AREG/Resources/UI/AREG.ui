@@ -272,7 +272,7 @@
       <item>
        <widget class="QStackedWidget" name="stackedWidget">
         <property name="currentIndex">
-         <number>3</number>
+         <number>0</number>
         </property>
         <widget class="QWidget" name="PageSemiCBCT">
          <layout class="QVBoxLayout" name="verticalLayout_11">
@@ -280,6 +280,32 @@
            <layout class="QVBoxLayout" name="verticalLayout_3">
             <item>
              <layout class="QVBoxLayout" name="LayoutSemiCBCT">
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_4">
+                <item alignment="Qt::AlignLeft">
+                 <widget class="QLabel" name="label_10">
+                  <property name="minimumSize">
+                   <size>
+                    <width>216</width>
+                    <height>0</height>
+                   </size>
+                  </property>
+                  <property name="text">
+                   <string>Label to Select for Registration</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QComboBox" name="LabelSelectcomboBox">
+                  <item>
+                   <property name="text">
+                    <string>Keep Entire File</string>
+                   </property>
+                  </item>
+                 </widget>
+                </item>
+               </layout>
+              </item>
               <item>
                <widget class="QLabel" name="tohideCBCT">
                 <property name="text">
