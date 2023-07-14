@@ -718,9 +718,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if self.ui.lineEditScanT1LmPath.text != "" and self.ui.lineEditScanT2LmPath.text == "":
                 if self.ui.CbInputType.currentIndex == 0 and self.ui.CbModeType.currentIndex == 2:
                     if self.SegmentationLabels == [0]:
-                        self.SegmentationLabels = self.ActualMeth.GetSegmentationLabel(self.ui.lineEditScanT1LmPath.text)
+                        self.SegmentationLabels += self.ActualMeth.GetSegmentationLabel(self.ui.lineEditScanT1LmPath.text)
                         for i in self.SegmentationLabels:
-                            self.ui.LabelSelectcomboBox.addItem(f"Label {i}")
+                            if i != 0:
+                                self.ui.LabelSelectcomboBox.addItem(f"Label {i}")
 
             if self.ui.lineEditScanT1LmPath.text != "" and self.ui.lineEditScanT2LmPath.text != "":
                 self.CheckScan()
