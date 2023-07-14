@@ -357,6 +357,7 @@ class Auto_CBCT(Semi_CBCT):
                         'output_folder':kwargs['folder_output'],
                         'add_name':kwargs['add_in_namefile'],
                         'DCMInput':False,
+                        'SegmentationLabel':"0",
                     }
             list_process.append({'Process':AREGProcess,'Parameter':parameter_areg_cbct,'Module':'AREG_CBCT for {}'.format(full_reg_struct[i]),'Display': DisplayAREGCBCT(nb_scan)})
 
@@ -599,6 +600,7 @@ class Or_Auto_CBCT(Semi_CBCT):
                         'output_folder':kwargs['folder_output'],
                         'add_name':kwargs['add_in_namefile'],
                         'DCMInput':kwargs['isDCMInput'],
+                        'SegmentationLabel':"0",
                     }
             list_process.append({'Process':AREGProcess,'Parameter':parameter_areg_cbct,'Module':'AREG_CBCT for {}'.format(full_reg_struct[i]),'Display': DisplayAREGCBCT(nb_scan)})
 
