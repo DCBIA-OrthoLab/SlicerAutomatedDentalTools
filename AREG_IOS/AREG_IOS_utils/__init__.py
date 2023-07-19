@@ -1,4 +1,4 @@
-from .dataset import TeethDatasetPatch
+from .dataset import DatasetPatch
 from .net import MonaiUNetHRes
 from .PredPatch import PredPatch
 from .vtkSegTeeth import vtkMeshTeeth

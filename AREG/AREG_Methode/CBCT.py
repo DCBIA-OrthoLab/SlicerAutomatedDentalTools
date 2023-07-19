@@ -2,6 +2,9 @@ from AREG_Methode.Methode import Methode
 from AREG_Methode.Progress import DisplayAREGCBCT, DisplayAMASSS, DisplayALICBCT, DisplayASOCBCT
 import os,sys
 
+import SimpleITK as sitk
+import numpy as np
+
 from glob import iglob
 import slicer
 import time
@@ -130,6 +133,17 @@ class Semi_CBCT(Methode):
             
         return out
 
+    def GetSegmentationLabel(self,seg_folder):
+        seg_label = []
+        patients = GetPatients(seg_folder)
+        seg_path = patients[list(patients.keys())[0]]['segT1']
+        seg = sitk.ReadImage(seg_path)
+        seg_array = sitk.GetArrayFromImage(seg)
+        labels = np.unique(seg_array)
+        for label in labels:
+            if label!=0 and label not in seg_label:
+                seg_label.append(label)
+        return seg_label
         
 
     def CheckboxisChecked(self,diccheckbox : dict, in_str = False):
@@ -230,6 +244,7 @@ class Semi_CBCT(Methode):
                         'output_folder':kwargs['folder_output'],
                         'add_name':kwargs['add_in_namefile'],
                         'DCMInput':False,
+                        'SegmentationLabel':kwargs['LabelSeg'],
                     }
             list_process.append({'Process':AREGProcess,'Parameter':parameter_areg_cbct,'Module':'AREG_CBCT for {}'.format(full_reg_struct[i]),'Display':DisplayAREGCBCT(nb_scan)})
         
@@ -342,6 +357,7 @@ class Auto_CBCT(Semi_CBCT):
                         'output_folder':kwargs['folder_output'],
                         'add_name':kwargs['add_in_namefile'],
                         'DCMInput':False,
+                        'SegmentationLabel':"0",
                     }
             list_process.append({'Process':AREGProcess,'Parameter':parameter_areg_cbct,'Module':'AREG_CBCT for {}'.format(full_reg_struct[i]),'Display': DisplayAREGCBCT(nb_scan)})
 
@@ -399,9 +415,18 @@ class Or_Auto_CBCT(Semi_CBCT):
                  "Mask Models":"https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/Masks_Models.zip"},
             "Orientation" : 
                 {"PreASO":"https://github.com/lucanchling/ASO_CBCT/releases/download/v01_preASOmodels/PreASOModels.zip",
-                 "Reference":"https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Frankfurt_Horizontal_Midsagittal_Plane.zip"
+                 "Occlusal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Occlusal_Midsagittal_Plane.zip",
+                 "Frankfurt Horizontal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Frankfurt_Horizontal_Midsagittal_Plane.zip",
                  }
                  }
+
+    def ReferenceLandmarks(self,name_reference):
+        correspondance = {
+                        "Occlusal and Midsagittal Plane": ("IF ANS PNS UR1O UR6O UL6O",6),
+                        "Frankfurt Horizontal and Midsagittal Plane": ("N S Ba RPo LPo LOr ROr",7),
+        }
+
+        return correspondance[name_reference]
 
     def getTestFileList(self):
         return ("Oriented-Automated", "https://github.com/lucanchling/Areg_CBCT/releases/download/TestFiles/Or_FullyAuto.zip")
@@ -483,8 +508,9 @@ class Or_Auto_CBCT(Semi_CBCT):
         
         PreOrientProcess = slicer.modules.pre_aso_cbct
 
-        list_lmrk_str = "N S Ba RPo LPo LOr ROr"
-        nb_landmark = 7
+        OrientationReference = kwargs['OrientReference']
+
+        list_lmrk_str, nb_landmark = self.ReferenceLandmarks(OrientationReference)
 
         print('PRE_ASO param:', parameter_pre_aso)
         print()
@@ -504,7 +530,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         # SEMI ASO CBCT
         ASO_T1_Oriented = kwargs['input_t1_folder']+'Or'
         parameter_semi_aso = {'input':temp_folder,#kwargs['input_folder'],
-                    'gold_folder':os.path.join(kwargs['model_folder_2'],'Reference'),
+                    'gold_folder':os.path.join(kwargs['model_folder_2'],OrientationReference),
                     'output_folder':ASO_T1_Oriented,
                     'add_inname':'Or',
                     'list_landmark':list_lmrk_str,
@@ -574,6 +600,7 @@ class Or_Auto_CBCT(Semi_CBCT):
                         'output_folder':kwargs['folder_output'],
                         'add_name':kwargs['add_in_namefile'],
                         'DCMInput':kwargs['isDCMInput'],
+                        'SegmentationLabel':"0",
                     }
             list_process.append({'Process':AREGProcess,'Parameter':parameter_areg_cbct,'Module':'AREG_CBCT for {}'.format(full_reg_struct[i]),'Display': DisplayAREGCBCT(nb_scan)})
 

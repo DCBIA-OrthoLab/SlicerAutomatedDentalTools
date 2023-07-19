@@ -32,6 +32,7 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [AMASSS](#amasss-module) | Perform automatic segmentation of CBCT scan. AMASSS is an acronym for Automatic Multi-Anatomical Skull Structure Segmentation. |
 | [ALI](#ali-module) | Perform automatic landmark identification on either CBCT or IOS scans. ALI is an acronym for Automatic Landmark Identification. |
 | [ASO](#aso-module) | Perform automatic orientation either on IOS or CBCT files. |
+| [AReg](#areg-module) | Perform automatic registration on IOS or CBCT files. |
 
 These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
 
@@ -49,11 +50,13 @@ Additionally, the following modules are implemented as python scripted command-l
 
 | Name | Description |
 |------|-------------|
-| [AMASSS_CLI](AMASSS_CLI) | Perform automatic segmentation of CBCT scan. |
-| [ALI-CBCT](ALI_CBCT) | Perform automatic landmark identification in CBCT |
-| [ALI-IOS](ALI_IOS) | Perform automatic landmark identification in IOS |
-| [ASO-CBCT](ASO_CBCT) | Perform automatic orientation either on CBCT |
-| [ASO-IOS](ASO_IOS) | Perform automatic orientation either on IOS |
+| [AMASSS_CLI](AMASSS_CLI) | Perform automatic segmentation of CBCT scans |
+| [ALI-CBCT](ALI_CBCT) | Perform automatic landmark identification of CBCT scans|
+| [ALI-IOS](ALI_IOS) | Perform automatic landmark identification of IOS scans|
+| [ASO-CBCT](ASO_CBCT) | Perform automatic orientation of CBCT scans |
+| [ASO-IOS](ASO_IOS) | Perform automatic orientation of IOS scans |
+| [AReg-CBCT](AREG_CBCT) | Perform automatic registration of CBCT scans |
+| [AReg-IOS](AREG_IOS) | Perform automatic registration of IOS scans |
 
 
 ## Requirements 
@@ -87,7 +90,7 @@ It can be a single CBCT scan loaded on slicer or a folder containg CBCTs with th
 Available sample data for testing: [MG_test_scan.nii.gz](https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz)
 
 **Load models:**
-The user has to indicate the path of the folder containing the [trained models for AMASSS](https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/ALL_NEW_MODELS.zip).
+The user has to indicate the path of the folder containing the [trained models for AMASSS](https://github.com/lucanchling/AMASSS_CBCT/releases/tag/v1.0.2).
  
 **Segmentation selection:**
 The user can choose the structure to segment using the selection table.
@@ -208,8 +211,8 @@ ASO module provide a convenient user interface allowing to orient different type
 You can either download them using the link or  by using the `Test Files` button.
 | Module Selected  | Download Link to Test Files | Information |
 | ----------- | ----------- | ----------- |
-| **Semi-CBCT** | [Test Files](https://github.com/lucanchling/ASO_CBCT/releases/download/TestFiles/Occlusal_Midsagittal_Test.zip) | Scan and Fiducial List for this [Reference](https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Occlusal_Midsagittal_Plane.zip)|
-| **Fully-CBCT** | [Test File](https://github.com/lucanchling/ASO_CBCT/releases/download/TestFiles/Test_File.nii.gz) | Only Scan|
+| **Semi-CBCT** | [Test Files](https://github.com/lucanchling/ASO_CBCT/releases/download/TestFiles/SemiAuto.zip) | Scan and Fiducial List for this [Reference](https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Occlusal_Midsagittal_Plane.zip)|
+| **Fully-CBCT** | [Test File](https://github.com/lucanchling/ASO_CBCT/releases/download/TestFiles/FullyAuto.zip) | Only Scan|
 | **Semi-IOS** | [Test Files](https://github.com/HUTIN1/ASO/releases/download/v1.0.2/input_test.zip) | Mesh and Fiducial List [Reference](https://github.com/HUTIN1/ASO/releases/download/v1.0.0/Gold_file.zip) |
 | **Fully-IOS** | [Test Files](https://github.com/HUTIN1/ASO/releases/download/v1.0.2/input_test.zip)| Only Mesh [Reference](https://github.com/HUTIN1/ASO/releases/download/v1.0.0/Gold_file.zip) |
 
@@ -240,10 +243,63 @@ For the **Fully-Automated** Mode, models are required as input, use the `Select`
     
 ![ASOSADT](https://user-images.githubusercontent.com/72148963/227339216-61f04a0b-a8ab-410e-8265-d822309e1888.png)
 
+## AReg Module
+
+<img src="AREG/Resources/Icons/AREG.png" alt="Extension Logo" width="60"/>
+
+AReg module provide a convenient user interface allowing to orient different type of scans:
+- **CBCT** scan
+- **IOS** scan
+
+## How the module works?
+
+### 3 Modes Available
+- **Semi-Automated** (to only run the automatic registration with masks segmentation and scans as input - ***only for CBCT***)
+- **Fully-Automated** (to perform the automatic registration with only scans as input)
+- **Orientation and Registration** (to perform the automatic orientation using [ASO](#aso-module) process and the automatic registration with only scans as input)
+
+| Mode | Input |
+| ----------- | ----------- |
+| Semi-Automated (only for **CBCT**) | Scans, Masks segmentation |
+| Fully-Automated | Scans, Segmentation Models |
+| Orientation and Registration | Scans, ALI Models (for **CBCT** files), Segmentation Models  |
+> For CBCT, a final step is added and consist of segmenting different skeletal structures using AMASSS process within each mode.
+
+### Input file:
+
+| Input Type  | Input Extension Type |
+| ----------- | ----------- |
+| **CBCT** | .nii, .nii.gz, .gipl.gz, .nrrd, .nrrd.gz  |
+| **IOS** | .vtk .stl .vtp .off .obj |
+
+**<ins>Test Files Available:**
+You can either download them using the link or  by using the `Test Files` button.
+| Module Selected  | Download Link to Test Files | Information |
+| ----------- | ----------- | ----------- |
+| **Semi-CBCT** | [Test Files](https://github.com/lucanchling/Areg_CBCT/releases/download/TestFiles/SemiAuto.zip) | Scan and Masks segmentation|
+| **Fully-CBCT** | [Test File](https://github.com/lucanchling/Areg_CBCT/releases/download/TestFiles/FullyAuto.zip) | Only Oriented Scan|
+| **Orientation and Registration for CBCT** | [Test File](https://github.com/lucanchling/Areg_CBCT/releases/download/TestFiles/Or_FullyAuto.zip) | Only Scan|
+| **Fully-IOS** | [Test Files](https://github.com/HUTIN1/AREG/releases/download/v1.0.0/AREG_test_scans.zip)| Only Mesh ) |
+| **Orientation and Registration for IOS** | [Test Files](https://github.com/HUTIN1/AREG/releases/download/v1.0.0/AREG_test_scans.zip) | Only Mesh |
+
+### Pipelines
+
+#### CBCT - AReg Pipeline
+![Workflow](https://github.com/HUTIN1/SlicerAutomatedDentalTools/assets/72148963/9e5e836c-ef33-4f26-a936-d53eaa8fd7cb)
+
+
+
+#### IOS - Patch prediction
+<img width="1668" alt="PipelinePrediction" src="https://github.com/HUTIN1/SlicerAutomatedDentalTools/assets/72148963/ec3b1b9d-7a73-42a6-a72f-f257ba345539">
+
+
+### Some Results
+![ARegResult](https://github.com/HUTIN1/SlicerAutomatedDentalTools/assets/72148963/44a7be88-4cee-4943-b9c5-3bd647faa6ba)
+
     
 # Acknowledgements
 
-_Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin(UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
+Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin (UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
 
 Supported by NIDCR R01 024450, AA0F Grabber Family Teaching and Research Award and by Research Enhancement Award Activity 141 from the University of the Pacific, Arthur A. Dugoni School of Dentistry.
 

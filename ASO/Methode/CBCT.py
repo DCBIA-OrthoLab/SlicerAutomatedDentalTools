@@ -25,7 +25,7 @@ class CBCT(Methode):
         for extension,files in dic.items():
             for file in files:
                 file_name = os.path.basename(file).split(".")[0]
-                patient = file_name.split('_scan')[0].split('_Scanreg')[0].split('_lm')[0]
+                patient = file_name.split('_scan')[0].split('_Scanreg')[0].split('_lm')[0].split('_T1')[0].split('_T2')[0].split('_Scan')[0].split('.')[0]
 
                 if patient not in patients.keys():
                     patients[patient] = {"dir": os.path.dirname(file),"lmrk":[]}

@@ -5,9 +5,13 @@ from AREG_IOS_utils.utils import ReadSurf, ComputeNormals, GetColorArray
 from vtk.util.numpy_support import vtk_to_numpy
 from AREG_IOS_utils.orientation import orientation
 from AREG_IOS_utils.transformation import ScaleSurf
+from AREG_IOS_utils.vtkSegTeeth import ToothNoExist, NoSegmentationSurf
 import glob
 
-class TeethDatasetPatch(Dataset):
+class DatasetPatch(Dataset):
+    """
+    DatasetPatch class allow to normalise the meshes and creating a bacth before the prediction of the patch
+    """
     def __init__(self,T1,T2,surf_property ):
         self.list_upper, self.list_lower = Sort(T1,T2)
         self.surf_property = surf_property
@@ -21,35 +25,30 @@ class TeethDatasetPatch(Dataset):
         index, time = args
 
         surf = ReadSurf(self.list_upper[index][time])
-       
+        name = os.path.basename(self.list_upper[index][time])
 
-        surf, matrix = orientation(surf,[[-0.5,-0.5,0],[0,0,0],[0.5,-0.5,0]],['3','8','9','14'])
-        
+        bool_error = False
+        try :
+            surf, matrix = orientation(surf,[[-0.5,-0.5,0],[0,0,0],[0.5,-0.5,0]],['3','8','9','14'])
+        except NoSegmentationSurf as error:
+            print(f'The surf {name} cant be oriented because {error}')
+            bool_error = True
+        except ToothNoExist:
+            print(f'The surf {name} was not oriented because the one of UR6, UR1, UL1 or UR6 is missing')
+            bool_error = True
+        if bool_error :
+            print(f'The prediction of the patch can be wrong if the scan has not been oriented beforehand')
 
         surf = ScaleSurf(surf)
-        # print(f'sruf scale { surf}')
 
         surf = ComputeNormals(surf) 
-        # print(f'sruf { surf}')
      
         V = torch.tensor(vtk_to_numpy(surf.GetPoints().GetData())).to(torch.float32)
         F = torch.tensor(vtk_to_numpy(surf.GetPolys().GetData()).reshape(-1, 4)[:,1:]).to(torch.int64)
         CN = torch.tensor(vtk_to_numpy(GetColorArray(surf, "Normals"))/255.0,dtype=torch.float32) 
 
-
         return V, F, CN 
         
-    
-    def getName(self,idx):
-        if isinstance(self.df,list):
-            path = self.df[idx]
-        else :
-            path = os.path.join(self.mount_point,self.df.iloc[idx]["surf"][1:])
-        name = os.path.basename(path)
-        name , _ = os.path.splitext(name)
-
-        return name
-    
     def isLower(self):
         out = True
         if self.list_lower == None:
@@ -69,6 +68,24 @@ class TeethDatasetPatch(Dataset):
         return self.list_lower[idx][time]
 
 def Sort(T1:str, T2 :str) -> tuple[list,list]:
+    """ 
+    Return two list of dictionnary, one with only Upper and the other with Lower.
+    The index is linked to the same patient.
+    If there are not lower scan in folders, the Lower list return None
+    Args:
+        T1 (str): T1 folder path
+        T2 (str): T12 folder path
+
+    Returns:
+        tuple[list,list]: 
+            list_reg_Upper = [{'T1':'path/P1_UpperT1.vtk', 'T2':'path/P1_UpperT2.vtk'},
+            ...,
+            {'T1':'path/PX_UpperT1.vtk', 'T2':'path/PX_UpperT2.vtk'}]
+
+            list_reg_Lower = [{'T1':'path/P1_LowerT1.vtk', 'T2':'path/P1_LowerT2.vtk'},
+            ...,
+            {'T1':'path/PX_LowerT1.vtk', 'T2':'path/PX_LowerT2.vtk'}]
+    """
     T1_files = glob.glob(os.path.join(T1,'*'))
     T2_files = glob.glob(os.path.join(T2,'*'))
     # print(f'in sort T1 files : {T1_files}')
@@ -78,7 +95,7 @@ def Sort(T1:str, T2 :str) -> tuple[list,list]:
         list_reg_Upper = sort(T1_files,T2_files)
         list_reg_Lower = None
 
-    else :  #if thehre are lower arches
+    else :  #if there are lower arches
 
         T1_Uppers = []
         T1_Lowers = []

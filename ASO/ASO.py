@@ -116,7 +116,7 @@ class PopUpWindow(qt.QDialog):
     """PopUpWindow class
     This class is used to create a pop-up window with a list of buttons
     """
-    def __init__(self,title="Title",listename=["1","2","3"],type="radio", tocheck=None):
+    def __init__(self, title="Title", text=None, listename=["1","2","3"], type=None, tocheck=None):
         QWidget.__init__(self)
         self.setWindowTitle(title)
         layout = QGridLayout()
@@ -133,6 +133,14 @@ class PopUpWindow(qt.QDialog):
             if tocheck is not None:
                 self.toCheck(tocheck)
     
+        elif text is not None:
+            label = qt.QLabel(text)
+            layout.addWidget(label)
+            # add ok button to close the window
+            button = qt.QPushButton("OK")
+            button.connect("clicked()",self.onClickedOK)
+            layout.addWidget(button)
+
     def checkbox(self,layout):
         j = 0
         for i in range(len(self.listename)):
@@ -184,6 +192,8 @@ class PopUpWindow(qt.QDialog):
         self.checked = self.listename[[button.isChecked() for button in self.ListButtons].index(True)]
         self.accept()
 
+    def onClickedOK(self):
+        self.accept()
 #
 # ASOWidget
 #
@@ -758,7 +768,6 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             smallFOV=str(self.ui.checkBoxSmallFOV.isChecked()),
             isDCMInput=self.isDCMInput,
         )
-
         # print('error',error)
         if isinstance(error, str):
             qt.QMessageBox.warning(self.parent, "Warning", error.replace(",", "\n"))
@@ -810,7 +819,14 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.RunningUI(True)
 
     def onProcessUpdate(self, caller, event):
-        timer = f"Time : {time.time()-self.startTime:.2f}s"
+        currentTime = time.time() - self.startTime
+        if currentTime < 60:
+            timer = f"Time : {int(currentTime)}s"
+        elif currentTime < 3600:
+            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+        else:
+            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+        
         self.ui.LabelTimer.setText(timer)
         progress = caller.GetProgress()
         self.module_name = caller.GetModuleTitle()
@@ -887,13 +903,20 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.module_name_before = self.module_name
         self.nb_change_bystep = 0
-
+        total_time = time.time() - self.startTime
+        average_time = total_time / self.nb_patient
         print("PROCESS DONE.")
+        print("Done in {} min and {} sec".format(int(total_time / 60), int(total_time % 60)))
+        print("Average time per patient : {} min and {} sec".format(int(average_time / 60), int(average_time % 60)))
+        self.RunningUI(False)
         self.RunningUI(False)
 
         stopTime = time.time()
 
         logging.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+
+        s = PopUpWindow(title="Process Done",text="Successfully done in {} min and {} sec \nAverage time per Patient: {} min and {} sec".format(int(total_time / 60), int(total_time % 60),int(average_time / 60), int(average_time % 60)))
+        s.exec_()
 
     def onCancel(self):
         self.process.Cancel()
