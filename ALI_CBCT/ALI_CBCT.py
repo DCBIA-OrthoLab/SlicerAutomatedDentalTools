@@ -32,7 +32,7 @@ import time
 import json
 import shutil
 from collections import deque
-
+import platform
 
 from slicer.util import pip_install, pip_uninstall
 
@@ -49,7 +49,10 @@ except ImportError:
 try:
     import torch
 except ImportError:
-    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
+    if platform.system() == "Windows":
+        pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118 -q')
+    else:
+        pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
     import torch
 
 try:

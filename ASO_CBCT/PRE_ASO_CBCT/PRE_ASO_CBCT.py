@@ -4,15 +4,6 @@ import argparse
 import SimpleITK as sitk
 import sys,os,time
 import numpy as np
-# import slicer
-
-# from slicer.util import pip_install
-
-# try:
-#     import torch
-# except ImportError:
-#     pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
-#     import torch
 
 fpath = os.path.join(os.path.dirname(__file__), '..')
 sys.path.append(fpath)
@@ -64,7 +55,7 @@ def ResampleImage(image, transform):
     
 def main(args):
 
-    input_dir, out_dir, smallFOV, isDCMInput = args.input[0], args.output_folder[0], args.SmallFOV[0] == 'true', args.DCMInput[0] == 'true'
+    input_dir, out_dir, smallFOV, isDCMInput = os.path.normpath(args.input[0]), os.path.normpath(args.output_folder[0]), args.SmallFOV[0] == 'true', args.DCMInput[0] == 'true'
     
     if isDCMInput:
         convertdicom2nifti(input_dir)

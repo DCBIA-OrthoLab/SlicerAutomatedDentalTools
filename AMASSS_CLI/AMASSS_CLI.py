@@ -19,7 +19,7 @@ import os
 import shutil
 import glob
 import sys
-
+import platform
 
 # try:
 #     import argparse
@@ -46,7 +46,10 @@ from slicer.util import pip_install, pip_uninstall
 try:
     import torch
 except ImportError:
-    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
+    if platform.system() == "Windows":
+        pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118 -q')
+    else:
+        pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
     import torch
 
 try:

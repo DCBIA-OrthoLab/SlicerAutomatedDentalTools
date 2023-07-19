@@ -365,10 +365,15 @@ def CorrectHisto(input_img,min_porcent=0.01,max_porcent = 0.99, i_min=-1500, i_m
 
     return image
 
-def applyMask(image, mask):
+def applyMask(image, mask, label):
     """Apply a mask to an image."""
     # Cast the image to float32
     # image = sitk.Cast(image, sitk.sitkFloat32)
+    array = sitk.GetArrayFromImage(mask)
+    if label is not None and label in np.unique(array):
+        array = np.where(array == label, 1, 0)
+        mask = sitk.GetImageFromArray(array)
+        mask.CopyInformation(image)
 
     return sitk.Mask(image, mask)
 
@@ -462,7 +467,7 @@ def SimpleElastixReg(fixed_image, moving_image):
 
     return resultImage, transformParameterMap
 
-def VoxelBasedRegistration(fixed_image_path,moving_image_path,fixed_seg_path,approx=False):
+def VoxelBasedRegistration(fixed_image_path,moving_image_path,fixed_seg_path,approx=False, SegLabel=None):
 
     # Copy T1 and T2 images to output directory
     # shutil.copyfile(fixed_image_path, os.path.join(outpath,patient+'_T1.nii.gz'))
@@ -475,7 +480,7 @@ def VoxelBasedRegistration(fixed_image_path,moving_image_path,fixed_seg_path,app
     moving_image = sitk.ReadImage(moving_image_path)
 
     # Apply mask to images
-    fixed_image_masked = applyMask(fixed_image, fixed_seg)
+    fixed_image_masked = applyMask(fixed_image, fixed_seg, label=SegLabel)
     # moving_image_masked = applyMask(moving_image, moving_seg)
 
     

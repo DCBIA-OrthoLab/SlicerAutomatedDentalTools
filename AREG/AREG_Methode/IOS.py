@@ -15,11 +15,12 @@ class Auto_IOS(Methode):
     def NumberScan(self, scan_folder_t1: str,scan_folder_t2 : str):
         files_T1 = self.search(scan_folder_t1,'.vtk')['.vtk']
         words_lower = ['Lower','_L','L_','Mandibule','Md']
-        count = 1
+        count = 0
         for file in files_T1 :
             name = os.path.basename(file)
             if True in [word in name for word in words_lower]:
                 count+=1
+
         return len(files_T1) - count
     
     def IsLower(self,list_files):
@@ -50,12 +51,12 @@ class Auto_IOS(Methode):
         if model_folder == '':
             out = 'Please five folder with one .pht file'
         else : 
-            if 'lineEditModel3' == lineEditName:
+            if 'lineEditModel1' == lineEditName:
                 files = self.search(model_folder,'.pth')['.pth']
                 if len(files) != 1 :
                     out = 'Please give folder with only one .pth file \n'
 
-            elif 'lineEditModel1' == lineEditName:
+            elif 'lineEditModel3' == lineEditName:
                 files = self.search(model_folder,'.ckpt')['.ckpt']
                 if len(files) != 1 :
                     out = 'Please give folder with only one .ckpt file \n'
@@ -94,7 +95,7 @@ class Auto_IOS(Methode):
 
     
     def getTestFileList(self):
-        return ("Fully-Automated","https://github.com/HUTIN1/ASO/releases/download/v1.0.1/Test_file_Full-IOS.zip")
+        return ("AREG_test_scan","https://github.com/HUTIN1/AREG/releases/download/v1.0.0/AREG_test_scans.zip")
         
     def getModel(self,path,extension = 'ckpt'):
         
@@ -105,7 +106,7 @@ class Auto_IOS(Methode):
 
     def getModelUrl(self):
         return {'Registration':'https://github.com/HUTIN1/AREG/releases/download/v1.0.0/AREG_model.zip',
-                 'Orientation':'https://github.com/HUTIN1/ASO/releases/download/v1.0.0/Gold_file.zip',
+                 'Reference':'https://github.com/HUTIN1/ASO/releases/download/v1.0.0/Gold_file.zip',
                 'Segmentation':'https://github.com/HUTIN1/ASO/releases/download/v1.0.0/segmentation_model.zip'
         }
     def getReferenceList(self):
@@ -131,13 +132,13 @@ class Auto_IOS(Methode):
         if kwargs['model_folder_1'] == '':
             out = out + 'Please select folder for the registration model\n'
 
-        if len(self.search(kwargs['model_folder_1'],'.ckpt')['.ckpt'])!=1:
+        if len(self.search(kwargs['model_folder_3'],'.ckpt')['.ckpt'])!=1:
             out = out + 'Please select folder with only one model for the registration\n'
 
         if kwargs['model_folder_3'] == '':
             out = out + 'Please select folder for the segmentation model\n'
 
-        if len(self.search(kwargs['model_folder_3'],'.pth')['.pth'])!=1:
+        if len(self.search(kwargs['model_folder_1'],'.pth')['.pth'])!=1:
             out = out + 'Please select folder with only one model for the segmentation\n'
 
 
@@ -233,7 +234,7 @@ class Auto_IOS(Methode):
                         'output':path_seg_T1,
                         'subdivision_level':2,
                         'resolution':320,
-                        'model':self.getModel(kwargs['model_folder_3'],extension='pth'),
+                        'model':self.getModel(kwargs['model_folder_1'],extension='pth'),
                         'predictedId':'Universal_ID',
                         'sepOutputs':0,
                         'chooseFDI':0,
@@ -244,7 +245,7 @@ class Auto_IOS(Methode):
                     'output':path_seg_T2,
                     'subdivision_level':2,
                     'resolution':320,
-                    'model':self.getModel(kwargs['model_folder_3'],extension='pth'),
+                    'model':self.getModel(kwargs['model_folder_1'],extension='pth'),
                     'predictedId':'Universal_ID',
                     'sepOutputs':0,
                     'chooseFDI':0,
@@ -274,7 +275,7 @@ class Auto_IOS(Methode):
         parameter_reg = {'T1':path_or_T1,
                         'T2':path_or_T2,
                         'output':kwargs['folder_output'],
-                        'model':self.getModel(kwargs['model_folder_1'],extension='ckpt'),
+                        'model':self.getModel(kwargs['model_folder_3'],extension='ckpt'),
                         'suffix':kwargs['add_in_namefile'],
                         'log_path':kwargs['logPath']
         }
@@ -328,10 +329,10 @@ class Semi_IOS(Auto_IOS):
         if kwargs['folder_output'] == '':
             out = out + "Please select output folder\n"
 
-        if kwargs['model_folder_1'] == '':
+        if kwargs['model_folder_3'] == '':
             out = out + 'Please select folder for the registration model\n'
 
-        if len(self.search(kwargs['model_folder_1'],'.ckpt')['.ckpt'])!=1:
+        if len(self.search(kwargs['model_folder_3'],'.ckpt')['.ckpt'])!=1:
             out = out + 'Please select folder with only one model for the registration\n'
 
         if out != '':
@@ -349,7 +350,7 @@ class Semi_IOS(Auto_IOS):
         parameter_reg = {'T1':kwargs['input_t1_folder'],
                         'T2':kwargs['input_t2_folder'],
                         'output':kwargs['folder_output'],
-                        'model':self.getModel(kwargs['model_folder_1'],extension='ckpt'),
+                        'model':self.getModel(kwargs['model_folder_3'],extension='ckpt'),
                         'suffix':kwargs['add_in_namefile'],
                         'log_path':kwargs['logPath']
         }
