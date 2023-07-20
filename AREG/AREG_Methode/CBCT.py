@@ -236,6 +236,7 @@ class Semi_CBCT(Methode):
 
         # AREG CBCT PROCESS
         AREGProcess = slicer.modules.areg_cbct
+        AReg_temp_folder = slicer.util.tempDirectory()
         for i,reg in enumerate(reg_struct.split(' ')):
             parameter_areg_cbct = {
                         't1_folder':kwargs['input_t1_folder'],
@@ -245,6 +246,7 @@ class Semi_CBCT(Methode):
                         'add_name':kwargs['add_in_namefile'],
                         'DCMInput':False,
                         'SegmentationLabel':kwargs['LabelSeg'],
+                        'temp_folder':AReg_temp_folder,
                     }
             list_process.append({'Process':AREGProcess,'Parameter':parameter_areg_cbct,'Module':'AREG_CBCT for {}'.format(full_reg_struct[i]),'Display':DisplayAREGCBCT(nb_scan)})
         
@@ -349,6 +351,7 @@ class Auto_CBCT(Semi_CBCT):
         reg_struct = self.TranslateModels(full_reg_struct, False)
         
         AREGProcess = slicer.modules.areg_cbct
+        AReg_temp_folder = slicer.util.tempDirectory()
         for i,reg in enumerate(reg_struct.split(' ')):
             parameter_areg_cbct = {
                         't1_folder':kwargs['input_t1_folder'],
@@ -358,6 +361,7 @@ class Auto_CBCT(Semi_CBCT):
                         'add_name':kwargs['add_in_namefile'],
                         'DCMInput':False,
                         'SegmentationLabel':"0",
+                        'temp_folder':AReg_temp_folder,
                     }
             list_process.append({'Process':AREGProcess,'Parameter':parameter_areg_cbct,'Module':'AREG_CBCT for {}'.format(full_reg_struct[i]),'Display': DisplayAREGCBCT(nb_scan)})
 
@@ -592,6 +596,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         reg_struct = self.TranslateModels(full_reg_struct, False)
         
         AREGProcess = slicer.modules.areg_cbct
+        AReg_temp_folder = slicer.util.tempDirectory()
         for i,reg in enumerate(reg_struct.split(' ')):
             parameter_areg_cbct = {
                         't1_folder':ASO_T1_Oriented,
@@ -601,6 +606,7 @@ class Or_Auto_CBCT(Semi_CBCT):
                         'add_name':kwargs['add_in_namefile'],
                         'DCMInput':kwargs['isDCMInput'],
                         'SegmentationLabel':"0",
+                        'temp_folder':AReg_temp_folder,
                     }
             list_process.append({'Process':AREGProcess,'Parameter':parameter_areg_cbct,'Module':'AREG_CBCT for {}'.format(full_reg_struct[i]),'Display': DisplayAREGCBCT(nb_scan)})
 
