@@ -64,6 +64,13 @@
       <description>Segmentation Label</description>
     </string>
 
+    <string>
+      <name>temp_folder</name>
+      <label>temp_folder</label>
+      <index>7</index>
+      <description>Temp folder for the masked image to be written</description>
+    </string>
+
     <!-- <string>
       <name>reg_lm</name>
       <label>reg_lm</label>

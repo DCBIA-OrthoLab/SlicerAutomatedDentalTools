@@ -12,16 +12,16 @@ import numpy as np
 import time
 from glob import iglob
 import os, json
+import SimpleITK as sitk
+
 from slicer.util import pip_install,pip_uninstall
 
 from pkg_resources import working_set
-installed_packages_list = [f"{i.key}" for i in working_set]
-if 'simpleitk-simpleelastix' in installed_packages_list:
-    pip_uninstall('SimpleITK-SimpleElastix SimpleITK -q')
-    pip_install('SimpleITK -q')
+if 'itk-elastix' in [f"{i.key}" for i in working_set]:
+    import itk
 else:
-    pip_install('SimpleITK -q')
-import SimpleITK as sitk
+    pip_install('itk-elastix -q')
+    import itk
 
 try:
     import dicom2nifti
@@ -389,33 +389,46 @@ def applyMask(image, mask, label):
 888   T88b 8888888888  "Y8888P88 8888888  "Y8888P"      888
 """
 
-def MatrixRetrieval(TransformParameterMap):
+def MatrixRetrieval(TransformParameterMapObject):
     """Retrieve the matrix from the transform parameter map"""
-    Transforms = []
-    
-    for ParameterMap in TransformParameterMap:
-        if ParameterMap['Transform'][0] == 'AffineTransform':
-            matrix = [float(i) for i in ParameterMap['TransformParameters']]
-            # Convert to a sitk transform
-            transform = sitk.AffineTransform(3)
-            transform.SetParameters(matrix)
-            Transforms.append(transform)
+    ParameterMap = TransformParameterMapObject.GetParameterMap(0)
 
-        elif ParameterMap['Transform'][0] == 'EulerTransform':
-            A = [float(i) for i in ParameterMap['TransformParameters'][0:3]]
-            B = [float(i) for i in ParameterMap['TransformParameters'][3:6]]
-            # Convert to a sitk transform
-            transform = sitk.Euler3DTransform()
-            transform.SetRotation(angleX=A[0], angleY=A[1], angleZ=A[2])
-            transform.SetTranslation(B)
-            Transforms.append(transform)
+    if ParameterMap['Transform'][0] == 'AffineTransform':
+        matrix = [float(i) for i in ParameterMap['TransformParameters']]
+        # Convert to a sitk transform
+        transform = sitk.AffineTransform(3)
+        transform.SetParameters(matrix)
     
-    # Create a composite transform
-    # final_transform = sitk.Transform()
-    # for transform in Transforms:
-    #     final_transform.AddTransform(transform)
+    elif ParameterMap['Transform'][0] == 'EulerTransform':
+        A = [float(i) for i in ParameterMap['TransformParameters'][0:3]]
+        B = [float(i) for i in ParameterMap['TransformParameters'][3:6]]
+        # Convert to a sitk transform
+        transform = sitk.Euler3DTransform()
+        transform.SetRotation(angleX=A[0], angleY=A[1], angleZ=A[2])
+        transform.SetTranslation(B)
     
-    return Transforms
+    return transform
+    
+def ElastixApprox(fixed_image, moving_image):
+    elastix_object = itk.ElastixRegistrationMethod.New(fixed_image, moving_image)
+    
+    # ParameterMap 
+    parameter_object = itk.ParameterObject.New()
+    default_rigid_parameter_map = parameter_object.GetDefaultParameterMap('rigid')
+    parameter_object.AddParameterMap(default_rigid_parameter_map)
+    parameter_object.SetParameter("WriteResultImage", "false")
+    
+    elastix_object.SetParameterObject(parameter_object)
+
+    # Additional parameters
+    elastix_object.SetLogToConsole(False)
+
+    # Execute registration
+    elastix_object.UpdateLargestPossibleRegion()
+    
+    TransParamObj = elastix_object.GetTransformParameterObject()
+    
+    return TransParamObj
 
 def SimpleElastixApprox(fixed_image, moving_image):
     elastixImageFilter = sitk.ElastixImageFilter()
@@ -439,6 +452,35 @@ def SimpleElastixApprox(fixed_image, moving_image):
 
     return resultImage, transformParameterMap
 
+def ElastixReg(fixed_image, moving_image, initial_transform=None):
+
+    elastix_object = itk.ElastixRegistrationMethod.New(fixed_image, moving_image)
+    # elastix_object.SetFixedMask(fixed_mask)
+
+    # ParameterMap 
+    parameter_object = itk.ParameterObject.New()
+    default_rigid_parameter_map = parameter_object.GetDefaultParameterMap('rigid')
+    parameter_object.AddParameterMap(default_rigid_parameter_map)
+    parameter_object.SetParameter("ErodeMask", "true")
+    parameter_object.SetParameter("WriteResultImage", "false")
+    parameter_object.SetParameter("MaximumNumberOfIterations", "10000")
+    parameter_object.SetParameter("NumberOfResolutions", "1")
+    parameter_object.SetParameter("NumberOfSpatialSamples", "10000")
+    # parameter_object.SetParameter("MaximumNumberOfSamplingAttempts", "25")
+
+    elastix_object.SetParameterObject(parameter_object)
+    if initial_transform is not None:
+        elastix_object.SetInitialTransformParameterObject(initial_transform)
+
+    # Additional parameters
+    elastix_object.SetLogToConsole(False)
+
+    # Execute registration
+    elastix_object.UpdateLargestPossibleRegion()
+    
+    TransParamObj = elastix_object.GetTransformParameterObject()
+    
+    return TransParamObj
 
 def SimpleElastixReg(fixed_image, moving_image):
     """Get the transform to register two images using SimpleElastix registration method"""
@@ -467,61 +509,76 @@ def SimpleElastixReg(fixed_image, moving_image):
 
     return resultImage, transformParameterMap
 
-def VoxelBasedRegistration(fixed_image_path,moving_image_path,fixed_seg_path,approx=False, SegLabel=None):
+def MaskedImage(fixed_image_path,fixed_seg_path,temp_folder,SegLabel=None):
+    # Mask the fixed image (using sitk)
+    fixed_image_sitk = sitk.ReadImage(fixed_image_path)
+    fixed_seg_sitk = sitk.ReadImage(fixed_seg_path)
+    fixed_seg_sitk.SetOrigin(fixed_image_sitk.GetOrigin())
+    fixed_image_masked = applyMask(fixed_image_sitk, fixed_seg_sitk, label=SegLabel)
 
-    # Copy T1 and T2 images to output directory
-    # shutil.copyfile(fixed_image_path, os.path.join(outpath,patient+'_T1.nii.gz'))
-    # shutil.copyfile(moving_image_path, os.path.join(outpath,patient+'_T2.nii.gz'))
+    # Write the masked image
+    output_path = os.path.join(temp_folder,'fixed_image_masked.nii.gz')
+    sitk.WriteImage(sitk.Cast(fixed_image_masked,sitk.sitkInt16), output_path)
+
+    return output_path
+
+def VoxelBasedRegistration(fixed_image_path,moving_image_path,fixed_seg_path,temp_folder,approx=False, SegLabel=None):
     
     # Read images and segmentations
-    fixed_image = sitk.ReadImage(fixed_image_path)
-    fixed_seg = sitk.ReadImage(fixed_seg_path)
-    fixed_seg.SetOrigin(fixed_image.GetOrigin())
-    moving_image = sitk.ReadImage(moving_image_path)
+    fixed_image = itk.imread(fixed_image_path, itk.F)
+    moving_image = itk.imread(moving_image_path, itk.F)
 
-    # Apply mask to images
-    fixed_image_masked = applyMask(fixed_image, fixed_seg, label=SegLabel)
-    # moving_image_masked = applyMask(moving_image, moving_seg)
+    # Mask the fixed image (using sitk)
+    masked_image_path = MaskedImage(fixed_image_path,fixed_seg_path,temp_folder,SegLabel=SegLabel)
+    fixed_image_masked = itk.imread(masked_image_path, itk.F)
 
-    
     # Register images
     Transforms = []
 
     if approx:
         # Approximate registration
-        # tic = time.time()
-        resample_approx, TransformParamMap = SimpleElastixApprox(fixed_image, moving_image)
-        Transforms_Approx = MatrixRetrieval(TransformParamMap)
-        # print('Registration time: ', round(time.time() - tic,2),'s')
-        Transforms = Transforms_Approx
+        TransformObj_Approx = ElastixApprox(fixed_image, moving_image)
+        transforms_Approx = MatrixRetrieval(TransformObj_Approx)
+        Transforms.append(transforms_Approx)
     else:
-        resample_approx = moving_image
-    
+        TransformObj_Approx = None
+
     # Fine tuning
     # tic = time.time()
-    resample_t2, TransformParamMap = SimpleElastixReg(fixed_image_masked, resample_approx)
-    Transforms_Fine = MatrixRetrieval(TransformParamMap)
+    TransformObj_Fine = ElastixReg(fixed_image_masked, moving_image, initial_transform=TransformObj_Approx)
+    transforms_Fine = MatrixRetrieval(TransformObj_Fine)
+    Transforms.append(transforms_Fine)
 
     # Combine transforms
-    Transforms += Transforms_Fine
-    transform = sitk.Transform()
-    for t in Transforms:
-        transform.AddTransform(t)
+    transform = ComputeFinalMatrix(Transforms)
     # Resample images and segmentations using the final transform
-    # tic = time.time()
-    resample_t2 = sitk.Cast(ResampleImage(moving_image, transform),sitk.sitkInt16)
-
-    
-    # Compare segmentations
-    # DiceStart,JaccardStart,HausdorfStart = CompareScans(fixed_seg, moving_seg)
-    # DiceEnd,JaccardEnd,HausdorfEnd = CompareScans(fixed_seg, resample_t2_seg)
-    # print("Delta Dice {} | Delta Jaccard {} | Delta Hausdorf {}".format(round(DiceEnd-DiceStart,5),round(JaccardEnd-JaccardStart,5),round(HausdorfEnd-HausdorfStart,5)))
-    # sitk.WriteImage(sitk.Cast(resample_t2,sitk.sitkInt16), os.path.join(outpath,patient+'_ScanReg.nii.gz'))
-    # print('Resampling time: ', round(time.time() - tic,2),'s')
+    resample_t2 = sitk.Cast(ResampleImage(sitk.ReadImage(moving_image_path), transform),sitk.sitkInt16)
 
     return transform, resample_t2
 
+def ComputeFinalMatrix(Transforms):
+    """Compute the final matrix from the list of matrices and translations"""
+    Rotation,Translation = [],[]
+    for i in range(len(Transforms)):
+        Rotation.append(Transforms[i].GetMatrix())
+        Translation.append(Transforms[i].GetTranslation())
 
+    # Compute the final rotation matrix
+    final_rotation = np.reshape(np.asarray(Rotation[0]),(3,3))
+    for i in range(1,len(Rotation)):
+        final_rotation = final_rotation @ np.reshape(np.asarray(Rotation[i]),(3,3))
+    
+    # Compute the final translation matrix
+    final_translation = np.reshape(np.asarray(Translation[0]),(1,3))
+    for i in range(1,len(Translation)):
+        final_translation = final_translation + np.reshape(np.asarray(Translation[i]),(1,3))
+
+    # Create the final transform
+    final_transform = sitk.Euler3DTransform()
+    final_transform.SetMatrix(final_rotation.flatten().tolist())
+    final_transform.SetTranslation(final_translation[0].tolist())
+
+    return final_transform
 """
 888     888 88888888888 8888888 888       .d8888b.  
 888     888     888       888   888      d88P  Y88b 
