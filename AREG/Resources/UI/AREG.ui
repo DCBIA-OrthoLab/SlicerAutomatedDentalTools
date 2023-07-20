@@ -281,6 +281,19 @@
             <item>
              <layout class="QVBoxLayout" name="LayoutSemiCBCT">
               <item>
+               <widget class="QCheckBox" name="ApproxcheckBox">
+                <property name="toolTip">
+                 <string>To include the registration estimation step</string>
+                </property>
+                <property name="text">
+                 <string>Include Approximation Step</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
                <layout class="QHBoxLayout" name="horizontalLayout_4">
                 <item alignment="Qt::AlignLeft">
                  <widget class="QLabel" name="label_10">
@@ -289,6 +302,9 @@
                     <width>216</width>
                     <height>0</height>
                    </size>
+                  </property>
+                  <property name="toolTip">
+                   <string>If mask has different label, to select one of them</string>
                   </property>
                   <property name="text">
                    <string>Label to Select for Registration</string>

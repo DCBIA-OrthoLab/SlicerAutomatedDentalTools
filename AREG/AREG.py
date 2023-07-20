@@ -902,6 +902,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 slicerDownload = self.SlicerDownloadPath,
                 OrientReference = self.CBCTOrientRef,
                 LabelSeg = str(self.SegmentationLabels[self.ui.LabelSelectcomboBox.currentIndex]),
+                ApproxStep = self.ui.ApproxcheckBox.isChecked(),
             )
 
             self.nb_extension_launch = len(self.list_Processes_Parameters)

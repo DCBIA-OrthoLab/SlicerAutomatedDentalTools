@@ -247,6 +247,7 @@ class Semi_CBCT(Methode):
                         'DCMInput':False,
                         'SegmentationLabel':kwargs['LabelSeg'],
                         'temp_folder':AReg_temp_folder,
+                        'ApproxReg':kwargs['ApproxStep'],
                     }
             list_process.append({'Process':AREGProcess,'Parameter':parameter_areg_cbct,'Module':'AREG_CBCT for {}'.format(full_reg_struct[i]),'Display':DisplayAREGCBCT(nb_scan)})
         
@@ -362,6 +363,7 @@ class Auto_CBCT(Semi_CBCT):
                         'DCMInput':False,
                         'SegmentationLabel':"0",
                         'temp_folder':AReg_temp_folder,
+                        'ApproxReg':kwargs['ApproxStep'],
                     }
             list_process.append({'Process':AREGProcess,'Parameter':parameter_areg_cbct,'Module':'AREG_CBCT for {}'.format(full_reg_struct[i]),'Display': DisplayAREGCBCT(nb_scan)})
 
@@ -607,6 +609,7 @@ class Or_Auto_CBCT(Semi_CBCT):
                         'DCMInput':kwargs['isDCMInput'],
                         'SegmentationLabel':"0",
                         'temp_folder':AReg_temp_folder,
+                        'ApproxReg':kwargs['ApproxStep'],
                     }
             list_process.append({'Process':AREGProcess,'Parameter':parameter_areg_cbct,'Module':'AREG_CBCT for {}'.format(full_reg_struct[i]),'Display': DisplayAREGCBCT(nb_scan)})
 
