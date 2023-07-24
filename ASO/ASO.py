@@ -416,18 +416,18 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if index == 0:  # Fully Automated
             self.ui.label_3.setText("Scan Folder")
             # self.ui.label_6.setVisible(True)
-            self.ui.label_7.setVisible(True)
-            self.ui.lineEditModelSegOr.setVisible(True)
-            self.ui.ButtonSearchModelSegOr.setVisible(True)
-            self.ui.checkBoxSmallFOV.setVisible(True)
+            self.ui.checkBoxSmallFOV.setVisible(False)
+            self.ui.lineEditModelAli.setVisible(False)
+            self.ui.ButtonSearchModelAli.setVisible(False)
+            self.ui.label_6.setVisible(False)
             if isinstance(self.ActualMeth,(Auto_IOS,Semi_IOS)):
-                self.ui.lineEditModelAli.setVisible(False)
-                self.ui.ButtonSearchModelAli.setVisible(False)
-                self.ui.label_6.setVisible(False)
+                self.ui.label_7.setVisible(True)
+                self.ui.lineEditModelSegOr.setVisible(True)
+                self.ui.ButtonSearchModelSegOr.setVisible(True)
             else :
-                self.ui.lineEditModelAli.setVisible(True)
-                self.ui.ButtonSearchModelAli.setVisible(True)
-                self.ui.label_6.setVisible(True)              
+                self.ui.label_7.setVisible(False)
+                self.ui.lineEditModelSegOr.setVisible(False)
+                self.ui.ButtonSearchModelSegOr.setVisible(False)
 
     def SwitchType(self):
         """Function to change the UI and the Method in ASO depending on the selected type (Semi CBCT, Fully CBCT...)"""
@@ -609,6 +609,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             ret = s.checked
             
         if ret == "Select your own folder":
+            #TODO: Change UI to show Orientation Model Folder and Model Folder ALI
             ref_folder = qt.QFileDialog.getExistingDirectory(
                 self.parent, "Select a scan folder for Reference"
             )
@@ -632,6 +633,17 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.lineEditRefFolder.setText(ref_folder)
                 self.enableCheckbox()
                 self.reference_lm = self.ActualMeth.ListLandmarksJson(self.ActualMeth.search(ref_folder,'json')['json'][0])
+                if self.type == "CBCT":
+                    if ret != "Select your own folder":
+                        self.SearchModelSegOr()
+                        self.SearchModelALI(test=True)
+                    else:
+                        self.ui.lineEditModelAli.setVisible(True)
+                        self.ui.ButtonSearchModelAli.setVisible(True)
+                        self.ui.label_6.setVisible(True)
+                        self.ui.label_7.setVisible(True)
+                        self.ui.lineEditModelSegOr.setVisible(True)
+                        self.ui.ButtonSearchModelSegOr.setVisible(True)
 
     def SearchModelSegOr(self):
         """Function to search the model folder of either the segmentation or the orientation model and to check if the model is valid"""
