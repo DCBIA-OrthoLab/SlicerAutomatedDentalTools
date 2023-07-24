@@ -728,7 +728,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def downloadModel(self, lineEdit, name, test=False):
         # To select the reference files (CBCT Orientation and Registration mode only)
-        if self.type == "CBCT" and self.ui.CbModeType.currentIndex == 0 and not test: 
+        if self.type == "CBCT" and self.ui.CbModeType.currentIndex == 0 and not test and name == "Orientation": 
             referenceList = self.ActualMeth.getReferenceList()
             refList = list(referenceList.keys())
 
