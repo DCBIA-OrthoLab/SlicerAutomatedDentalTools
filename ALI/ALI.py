@@ -37,7 +37,7 @@ MODELS_LINK = {
 
 
 GROUPS_LANDMARKS = {
-  'Impacted canine' : ['UR3OIP','UL3OIP','UR3RIP','UL3RIP'],
+  'Impacted canine' : ['UR3OI','UL3OI','UR3RI','UL3RI'],
 
   'Cranial base' : ['Ba', 'S', 'N', 'RPo', 'LPo', 'RFZyg', 'LFZyg', 'C2', 'C3', 'C4'],
 
