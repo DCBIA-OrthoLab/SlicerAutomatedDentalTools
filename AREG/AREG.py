@@ -801,22 +801,22 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for i, model in enumerate(ret):
             _ = self.DownloadUnzip(
                 url=os.path.join(url, "{}.zip".format(model)),
-                directory=self.SlicerDownloadPath,
-                folder_name=os.path.join("Models","Orientation", name, model),
+                directory=self.SlicerDownloadPath.replace("AREG", "ALI"),
+                folder_name=model,
                 num_downl=i + 1,
                 total_downloads=len(ret),
             )
 
-        model_folder = os.path.join(self.SlicerDownloadPath, "Models", name)
+        model_folder = self.SlicerDownloadPath.replace("AREG", "ALI")
 
         if not model_folder == "":
-            error = self.ActualMeth.TestModel(model_folder, self.ui.lineEditModel2.name)
+            error = self.ActualMeth.TestModel(model_folder, self.ui.lineEditModel3.name)
 
             if isinstance(error, str):
                 qt.QMessageBox.warning(self.parent, "Warning", error)
 
             else:
-                self.ui.lineEditModel2.setText(model_folder)
+                self.ui.lineEditModel3.setText(model_folder)
                 self.enableCheckbox()
 
     def ChosePathOutput(self):

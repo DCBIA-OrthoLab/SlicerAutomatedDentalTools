@@ -523,7 +523,7 @@ class Or_Auto_CBCT(Semi_CBCT):
 
         # ALI CBCT
         parameter_ali =  {'input': temp_folder, 
-                    'dir_models': os.path.join(kwargs['model_folder_2'],"ALIModels"), 
+                    'dir_models': kwargs['model_folder_3'], 
                     'landmarks': list_lmrk_str, 
                     'save_in_folder': False, 
                     'output_dir': temp_folder,

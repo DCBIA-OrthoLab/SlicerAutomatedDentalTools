@@ -687,13 +687,13 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for i,model in enumerate(ret):
             _ = self.DownloadUnzip(
                 url=os.path.join(url,"{}.zip".format(model)),
-                directory=os.path.join(self.SlicerDownloadPath),
-                folder_name=os.path.join("Models", name,model),
+                directory=os.path.join(self.SlicerDownloadPath.replace("ASO","ALI")),
+                folder_name=model,
                 num_downl=i+1,
                 total_downloads=len(ret)
             )
         
-        model_folder = os.path.join(self.SlicerDownloadPath,"Models", name)
+        model_folder = os.path.join(self.SlicerDownloadPath.replace("ASO","ALI"))
         
         if not model_folder == "":
             error = self.ActualMeth.TestModel(model_folder, self.ui.lineEditModelAli.name)
