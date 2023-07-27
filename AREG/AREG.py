@@ -106,6 +106,7 @@ class AREG(ScriptedLoadableModule):
 
 
 class PopUpWindow(qt.QDialog):
+    """Class to generate a popup window with text and button (either radio or checkbox)"""
     def __init__(
         self, title="Title", text=None, listename=["1", "2", "3"], type=None, tocheck=None
     ):
@@ -312,17 +313,11 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                               
         """
 
-        # self.initRadioButton(self.MethodeDic['Semi_IOS'],self.ui.LayoutLandmarkSemiIOS,self.ui.tohideIOS)
-        # self.initRadioButton(self.MethodeDic['Auto_IOS'],self.ui.LayoutLandmarkAutoIOS,self.ui.tohideIOS)
-        # self.initCheckboxIOS(
-        #     self.ui.verticalLayout_5
-        # )
-
         self.initCheckBoxCBCT(
             self.MethodeDic["Semi_CBCT"],
             self.ui.LayoutSemiCBCT,
             self.ui.tohideCBCT,
-        )  # a decommmente
+        )
 
         self.initCheckBoxCBCT(
             self.MethodeDic["Auto_CBCT"],
@@ -393,6 +388,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     """
     def SwitchCBCTInputType(self, index):
+        """Function to change the input type of the CBCT (NIFTI or DCM)"""
         if index == 0: # NIFTI as Input
             self.isDCMInput = False
         if index == 1: # DCM as Input
@@ -567,11 +563,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.label_CBCTInputType.setVisible(False)
             self.ui.label_CBCTInputType_2.setVisible(False)
             self.isDCMInput = False
-        
-        # best = ['Ba','N','RPo']
-        # for checkbox in self.logic.iterillimeted(self.dicchckbox):
-        #     if checkbox.text in best and checkbox.isEnabled():
-        #         checkbox.setCheckState(True)
 
     def ClearAllLineEdits(self):
         """Function to clear all the line edits"""
@@ -715,6 +706,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not scan_folder == "":
             lineEdit.setText(scan_folder)
 
+            # To check if the input segmentation (for the Semi-Auto CBCT mode) has different labels to show them in a combobox
             if self.ui.lineEditScanT1LmPath.text != "" and self.ui.lineEditScanT2LmPath.text == "":
                 if self.ui.CbInputType.currentIndex == 0 and self.ui.CbModeType.currentIndex == 2:
                     if self.SegmentationLabels == [0]:
@@ -727,6 +719,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.CheckScan()
 
     def downloadModel(self, lineEdit, name, test=False):
+        """Function to download the model files from the link in the getModelUrl function"""
+
         # To select the reference files (CBCT Orientation and Registration mode only)
         if self.type == "CBCT" and self.ui.CbModeType.currentIndex == 0 and not test and name == "Orientation": 
             referenceList = self.ActualMeth.getReferenceList()
@@ -775,19 +769,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.enableCheckbox()
 
     def SearchModelALI(self, reference_type=None):
-        # listeLandmark = []
-        # for key, data in self.ActualMeth.DicLandmark()["Landmark"].items():
-        #     listeLandmark += data
-
-        # else:
-        #     s = PopUpWindow(
-        #         title="Chose ALI Models to Download",
-        #         listename=sorted(listeLandmark),
-        #         type="checkbox",
-        #         tocheck=self.reference_lm,
-        #     )
-        #     s.exec_()
-        #     ret = s.checked
+        """Function to download the ALI CBCT model files"""
         if reference_type is None:
             ret = ['Ba','S','N','RPo','LPo','ROr','LOr']
         else:

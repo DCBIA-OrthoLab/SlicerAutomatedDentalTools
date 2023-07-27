@@ -425,19 +425,6 @@ def SortDict(input_dict):
     """
     return {k: input_dict[k] for k in sorted(input_dict)}
 
-def PrintMatrix(transform):
-    """
-    Prints a matrix
-    
-    Parameters
-    ----------
-    transform : vtk.vtkMatrix4x4
-        Matrix to be printed
-    """
-    for i in range(4):
-        print(transform.GetElement(i,0), transform.GetElement(i,1), transform.GetElement(i,2), transform.GetElement(i,3))
-    print()
-
 def convertdicom2nifti(input_folder,output_folder=None):
     patients_folders = [folder for folder in os.listdir(input_folder) if os.path.isdir(os.path.join(input_folder,folder)) and folder != 'NIFTI']
 
