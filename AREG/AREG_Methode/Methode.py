@@ -78,7 +78,6 @@ class Methode(ABC):
         """
         pass
 
-
     @abstractmethod
     def Process(self, **kwargs):
         """Launch extension"""
@@ -115,12 +114,12 @@ class Methode(ABC):
 
     @abstractmethod
     def getTestFileList(self):
-        """ Return a tuple with both the name and the Download link of the test files
-        
+        """Return a tuple with both the name and the Download link of the test files
+
         tuple = ('name','link')
         """
         pass
-    
+
     @abstractmethod
     def getReferenceList(self):
         """
@@ -146,14 +145,15 @@ class Methode(ABC):
     @abstractmethod
     def getALIModelList(self):
         """
-        Return a tuple with both the name and the Download link for ALI model
-else:
-            name, url = self.ActualMeth.getTestFileList()
+                Return a tuple with both the name and the Download link for ALI model
+        else:
+                    name, url = self.ActualMeth.getTestFileList()
 
-        tuple = ('name','link')
+                tuple = ('name','link')
 
         """
         pass
+
     def getcheckbox(self):
         return self.diccheckbox
 
@@ -206,7 +206,7 @@ else:
         ]
 
     def getTestFileListDCM(self):
-        """ Return a tuple with both the name and the Download link of the test files but only for DCM files (AREG CBCT)        
+        """Return a tuple with both the name and the Download link of the test files but only for DCM files (AREG CBCT)
         tuple = ('name','link')
         """
         pass
@@ -223,7 +223,7 @@ else:
             str or None: Return str with error message if something is wrong, else return None
         """
         pass
-    
+
     def NumberScanDCM(self, scan_folder_t1: str, scan_folder_t2: str):
         """
             Count the number of patient in folder for DCM as input
