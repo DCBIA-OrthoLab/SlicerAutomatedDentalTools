@@ -459,6 +459,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             and self.ui.CbModeType.currentIndex == 1
         ):
             self.ActualMeth = self.MethodeDic["Semi_CBCT"]
+            self.ui.CbCBCTInputType.setVisible(True)
             self.ui.stackedWidget.setCurrentIndex(0)
             self.type = "CBCT"
 
@@ -468,6 +469,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ):
             self.ActualMeth = self.MethodeDic["Auto_CBCT"]
             self.ui.stackedWidget.setCurrentIndex(1)
+            self.ui.CbCBCTInputType.setVisible(True)
             self.type = "CBCT"
             self.ui.label_7.setText("Orientation Model Folder")
 
@@ -477,6 +479,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ):
             self.ActualMeth = self.MethodeDic["Semi_IOS"]
             self.ui.stackedWidget.setCurrentIndex(2)
+            self.ui.CbCBCTInputType.setVisible(False)
             self.type = "IOS"
 
         elif (
@@ -485,6 +488,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ):
             self.ActualMeth = self.MethodeDic["Auto_IOS"]
             self.ui.stackedWidget.setCurrentIndex(3)
+            self.ui.CbCBCTInputType.setVisible(False)
             self.type = "IOS"
             self.ui.label_7.setText("Segmentation Model Folder")
         # UI Changes
