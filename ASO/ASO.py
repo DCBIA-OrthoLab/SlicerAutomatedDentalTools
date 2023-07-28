@@ -108,15 +108,24 @@ class ASO(ScriptedLoadableModule):
             nodeNames="ASO2",
         )
 
-
         # self.ui.ButtonSearchModelAli.clicked.connect(
         #     lambda: self.SearchModel(self.ui.lineEditModelAli)
         # )
+
+
 class PopUpWindow(qt.QDialog):
     """PopUpWindow class
     This class is used to create a pop-up window with a list of buttons
     """
-    def __init__(self, title="Title", text=None, listename=["1","2","3"], type=None, tocheck=None):
+
+    def __init__(
+        self,
+        title="Title",
+        text=None,
+        listename=["1", "2", "3"],
+        type=None,
+        tocheck=None,
+    ):
         QWidget.__init__(self)
         self.setWindowTitle(title)
         layout = QGridLayout()
@@ -125,23 +134,23 @@ class PopUpWindow(qt.QDialog):
         self.listename = listename
         self.type = type
 
-        if self.type == 'radio':
+        if self.type == "radio":
             self.radiobutton(layout)
 
-        elif self.type == 'checkbox':
+        elif self.type == "checkbox":
             self.checkbox(layout)
             if tocheck is not None:
                 self.toCheck(tocheck)
-    
+
         elif text is not None:
             label = qt.QLabel(text)
             layout.addWidget(label)
             # add ok button to close the window
             button = qt.QPushButton("OK")
-            button.connect("clicked()",self.onClickedOK)
+            button.connect("clicked()", self.onClickedOK)
             layout.addWidget(button)
 
-    def checkbox(self,layout):
+    def checkbox(self, layout):
         j = 0
         for i in range(len(self.listename)):
             button = qt.QCheckBox(self.listename[i])
@@ -152,51 +161,57 @@ class PopUpWindow(qt.QDialog):
         # Add a button to select and deselect all
         button = qt.QPushButton("Select All")
         button.connect("clicked()", self.onClickedSelectAll)
-        layout.addWidget(button, len(self.listename)+1, j-2)
+        layout.addWidget(button, len(self.listename) + 1, j - 2)
         button = qt.QPushButton("Deselect All")
         button.connect("clicked()", self.onClickedDeselectAll)
-        layout.addWidget(button, len(self.listename)+1, j-1)
+        layout.addWidget(button, len(self.listename) + 1, j - 1)
 
         # Add a button to close the dialog
         button = qt.QPushButton("OK")
         button.connect("clicked()", self.onClickedCheckbox)
-        layout.addWidget(button, len(self.listename)+1, j)
+        layout.addWidget(button, len(self.listename) + 1, j)
 
     def toCheck(self, tocheck):
         for i in range(len(self.listename)):
             if self.listename[i] in tocheck:
                 self.ListButtons[i].setChecked(True)
 
-
     def onClickedSelectAll(self):
         for button in self.ListButtons:
             button.setChecked(True)
-    
+
     def onClickedDeselectAll(self):
         for button in self.ListButtons:
             button.setChecked(False)
 
     def onClickedCheckbox(self):
         TrueFalse = [button.isChecked() for button in self.ListButtons]
-        self.checked = [self.listename[i] for i in range(len(self.listename)) if TrueFalse[i]]
+        self.checked = [
+            self.listename[i] for i in range(len(self.listename)) if TrueFalse[i]
+        ]
         self.accept()
-    
-    def radiobutton(self,layout):
+
+    def radiobutton(self, layout):
         for i in range(len(self.listename)):
             radiobutton = qt.QRadioButton(self.listename[i])
             self.ListButtons.append(radiobutton)
-            radiobutton.connect("clicked(bool)",self.onClickedRadio)
+            radiobutton.connect("clicked(bool)", self.onClickedRadio)
             layout.addWidget(radiobutton, i, 0)
-    
+
     def onClickedRadio(self):
-        self.checked = self.listename[[button.isChecked() for button in self.ListButtons].index(True)]
+        self.checked = self.listename[
+            [button.isChecked() for button in self.ListButtons].index(True)
+        ]
         self.accept()
 
     def onClickedOK(self):
         self.accept()
+
+
 #
 # ASOWidget
 #
+
 
 class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
@@ -319,14 +334,14 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.LayoutAutoIOS_tooth,
             self.ui.tohideAutoIOS_tooth,
             self.ui.LayoutLandmarkAutoIOS,
-            self.ui.checkBoxOcclusionAutoIOS
+            self.ui.checkBoxOcclusionAutoIOS,
         )
         self.initCheckboxIOS(
             self.MethodeDic["Semi_IOS"],
             self.ui.LayoutSemiIOS_tooth,
             self.ui.tohideSemiIOS_tooth,
             self.ui.LayoutLandmarkSemiIOS,
-            self.ui.checkBoxOcclusionSemiIOS
+            self.ui.checkBoxOcclusionSemiIOS,
         )
 
         self.initCheckbox(
@@ -376,7 +391,14 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.CbModeType.currentIndexChanged.connect(self.SwitchType)
         self.ui.CbCBCTInputType.currentIndexChanged.connect(self.SwitchCBCTInputType)
         self.ui.ButtonTestFiles.clicked.connect(lambda: self.SearchScanLm(True))
-        self.ui.checkBoxOcclusionAutoIOS.toggled.connect(partial(self.OcclusionCheckbox,self.MethodeDic['Auto_IOS'].getcheckbox()['Jaw']['Upper'],self.MethodeDic['Auto_IOS'].getcheckbox()['Jaw']['Lower'],self.MethodeDic['Semi_IOS'].getcheckbox()['Teeth']))
+        self.ui.checkBoxOcclusionAutoIOS.toggled.connect(
+            partial(
+                self.OcclusionCheckbox,
+                self.MethodeDic["Auto_IOS"].getcheckbox()["Jaw"]["Upper"],
+                self.MethodeDic["Auto_IOS"].getcheckbox()["Jaw"]["Lower"],
+                self.MethodeDic["Semi_IOS"].getcheckbox()["Teeth"],
+            )
+        )
 
     """
 
@@ -393,10 +415,11 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                                                                                                                                                     
 
     """
+
     def SwitchCBCTInputType(self, index):
-        if index == 0: # NIFTI, NRRD, GIPL as input
+        if index == 0:  # NIFTI, NRRD, GIPL as input
             self.isDCMInput = False
-        if index == 1: # DICOM as input
+        if index == 1:  # DICOM as input
             self.isDCMInput = True
 
     def SwitchMode(self, index):
@@ -420,11 +443,11 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditModelAli.setVisible(False)
             self.ui.ButtonSearchModelAli.setVisible(False)
             self.ui.label_6.setVisible(False)
-            if isinstance(self.ActualMeth,(Auto_IOS,Semi_IOS)):
+            if isinstance(self.ActualMeth, (Auto_IOS, Semi_IOS)):
                 self.ui.label_7.setVisible(True)
                 self.ui.lineEditModelSegOr.setVisible(True)
                 self.ui.ButtonSearchModelSegOr.setVisible(True)
-            else :
+            else:
                 self.ui.label_7.setVisible(False)
                 self.ui.lineEditModelSegOr.setVisible(False)
                 self.ui.ButtonSearchModelSegOr.setVisible(False)
@@ -497,8 +520,10 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.lineEditModelAli.setText("")
         self.ui.lineEditModelSegOr.setText("")
         self.ui.lineEditOutputPath.setText("")
-    
-    def DownloadUnzip(self, url, directory, folder_name=None, num_downl=1, total_downloads=1):
+
+    def DownloadUnzip(
+        self, url, directory, folder_name=None, num_downl=1, total_downloads=1
+    ):
         """Function to download and unzip a file from a url with a progress bar"""
         out_path = os.path.join(directory, folder_name)
 
@@ -514,11 +539,19 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             ) as out_file:
                 # Pop up a progress bar with a QProgressDialog
                 progress = qt.QProgressDialog(
-                    "Downloading {} (File {}/{})".format(folder_name.split(os.sep)[0],num_downl, total_downloads), "Cancel", 0, 100, self.parent
+                    "Downloading {} (File {}/{})".format(
+                        folder_name.split(os.sep)[0], num_downl, total_downloads
+                    ),
+                    "Cancel",
+                    0,
+                    100,
+                    self.parent,
                 )
                 progress.setCancelButton(None)
                 progress.setWindowModality(qt.Qt.WindowModal)
-                progress.setWindowTitle("Downloading {}...".format(folder_name.split(os.sep)[0]))
+                progress.setWindowTitle(
+                    "Downloading {}...".format(folder_name.split(os.sep)[0])
+                )
                 # progress.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
                 progress.show()
                 length = response.info().get("Content-Length")
@@ -543,25 +576,25 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # Delete the zip file
             os.remove(temp_path)
 
-
-
         return out_path
 
-    def SearchScanLm(self,test=False):
+    def SearchScanLm(self, test=False):
         """Function to search the scan folder and to check if the scans are valid"""
         if not test:
             scan_folder = qt.QFileDialog.getExistingDirectory(
-                    self.parent, "Select a scan folder for Input"
-                )
+                self.parent, "Select a scan folder for Input"
+            )
         else:
             if self.isDCMInput:
-                name,url = self.ActualMeth.getTestFileListDCM()
+                name, url = self.ActualMeth.getTestFileListDCM()
             else:
-                name,url = self.ActualMeth.getTestFileList()
+                name, url = self.ActualMeth.getTestFileList()
             scan_folder = self.DownloadUnzip(
                 url=url,
                 directory=os.path.join(self.SlicerDownloadPath),
-                folder_name=os.path.join("Test_Files", name) if not self.isDCMInput else os.path.join("Test_Files", "DCM", name),
+                folder_name=os.path.join("Test_Files", name)
+                if not self.isDCMInput
+                else os.path.join("Test_Files", "DCM", name),
             )
             self.SearchReference(test=True)
             self.SearchModelSegOr()
@@ -593,23 +626,24 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     dir, spl = os.path.split(scan_folder)
                     self.ui.lineEditOutputPath.setText(os.path.join(dir, spl + "Or"))
 
-
-    def SearchReference(self,test=False):
+    def SearchReference(self, test=False):
         """Function to search the reference folder and to check if the reference is valid"""
         referenceList = self.ActualMeth.getReferenceList()
         refList = list(referenceList.keys())
         refList.append("Select your own folder")
-        
+
         if test:
             ret = refList[0]
-        
-        else:    
-            s = PopUpWindow(title="Choice of Reference Files",listename=refList,type="radio")
+
+        else:
+            s = PopUpWindow(
+                title="Choice of Reference Files", listename=refList, type="radio"
+            )
             s.exec_()
             ret = s.checked
-            
+
         if ret == "Select your own folder":
-            #TODO: Change UI to show Orientation Model Folder and Model Folder ALI
+            # TODO: Change UI to show Orientation Model Folder and Model Folder ALI
             ref_folder = qt.QFileDialog.getExistingDirectory(
                 self.parent, "Select a scan folder for Reference"
             )
@@ -632,7 +666,9 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             else:
                 self.ui.lineEditRefFolder.setText(ref_folder)
                 self.enableCheckbox()
-                self.reference_lm = self.ActualMeth.ListLandmarksJson(self.ActualMeth.search(ref_folder,'json')['json'][0])
+                self.reference_lm = self.ActualMeth.ListLandmarksJson(
+                    self.ActualMeth.search(ref_folder, "json")["json"][0]
+                )
                 if self.type == "CBCT":
                     if ret != "Select your own folder":
                         self.SearchModelSegOr()
@@ -653,12 +689,13 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         model_folder = self.DownloadUnzip(
             url=url,
             directory=os.path.join(self.SlicerDownloadPath),
-            folder_name=os.path.join("Models", name)
+            folder_name=os.path.join("Models", name),
         )
-        
 
         if not model_folder == "":
-            error = self.ActualMeth.TestModel(model_folder, self.ui.lineEditModelSegOr.name)
+            error = self.ActualMeth.TestModel(
+                model_folder, self.ui.lineEditModelSegOr.name
+            )
 
             if isinstance(error, str):
                 qt.QMessageBox.warning(self.parent, "Warning", error)
@@ -667,36 +704,43 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.lineEditModelSegOr.setText(model_folder)
                 self.enableCheckbox()
 
-    def SearchModelALI(self,test=False):
+    def SearchModelALI(self, test=False):
         """Function to search the model folder of the ALI model and to check if the model is valid"""
         listeLandmark = []
-        for key,data in self.ActualMeth.DicLandmark()["Landmark"].items():
+        for key, data in self.ActualMeth.DicLandmark()["Landmark"].items():
             listeLandmark += data
-        
+
         if test:
             ret = self.reference_lm
 
         else:
-            
-            s = PopUpWindow(title="Chose ALI Models to Download",listename=sorted(listeLandmark),type="checkbox",tocheck=self.reference_lm)
+
+            s = PopUpWindow(
+                title="Chose ALI Models to Download",
+                listename=sorted(listeLandmark),
+                type="checkbox",
+                tocheck=self.reference_lm,
+            )
             s.exec_()
             ret = s.checked
 
         name, url = self.ActualMeth.getALIModelList()
 
-        for i,model in enumerate(ret):
+        for i, model in enumerate(ret):
             _ = self.DownloadUnzip(
-                url=os.path.join(url,"{}.zip".format(model)),
-                directory=os.path.join(self.SlicerDownloadPath.replace("ASO","ALI")),
+                url=os.path.join(url, "{}.zip".format(model)),
+                directory=os.path.join(self.SlicerDownloadPath.replace("ASO", "ALI")),
                 folder_name=model,
-                num_downl=i+1,
-                total_downloads=len(ret)
+                num_downl=i + 1,
+                total_downloads=len(ret),
             )
-        
-        model_folder = os.path.join(self.SlicerDownloadPath.replace("ASO","ALI"))
-        
+
+        model_folder = os.path.join(self.SlicerDownloadPath.replace("ASO", "ALI"))
+
         if not model_folder == "":
-            error = self.ActualMeth.TestModel(model_folder, self.ui.lineEditModelAli.name)
+            error = self.ActualMeth.TestModel(
+                model_folder, self.ui.lineEditModelAli.name
+            )
 
             if isinstance(error, str):
                 qt.QMessageBox.warning(self.parent, "Warning", error)
@@ -719,7 +763,6 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 checkbox.setCheckState(True)
             # else :
             #     checkbox.setCheckState(False)
-
 
     def enableCheckbox(self):
         """Function to enable the checkbox depending on the presence of landmarks"""
@@ -745,7 +788,9 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     pass
 
         if self.type == "CBCT":
-            for checkboxs, checkboxs2 in zip(self.dicchckbox.values(), self.dicchckbox2.values()):
+            for checkboxs, checkboxs2 in zip(
+                self.dicchckbox.values(), self.dicchckbox2.values()
+            ):
                 for checkbox, checkbox2 in zip(checkboxs, checkboxs2):
                     checkbox.setVisible(status[checkbox.text])
                     checkbox2.setVisible(status[checkbox2.text])
@@ -838,7 +883,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
         else:
             timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
-        
+
         self.ui.LabelTimer.setText(timer)
         progress = caller.GetProgress()
         self.module_name = caller.GetModuleTitle()
@@ -918,8 +963,16 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         total_time = time.time() - self.startTime
         average_time = total_time / self.nb_patient
         print("PROCESS DONE.")
-        print("Done in {} min and {} sec".format(int(total_time / 60), int(total_time % 60)))
-        print("Average time per patient : {} min and {} sec".format(int(average_time / 60), int(average_time % 60)))
+        print(
+            "Done in {} min and {} sec".format(
+                int(total_time / 60), int(total_time % 60)
+            )
+        )
+        print(
+            "Average time per patient : {} min and {} sec".format(
+                int(average_time / 60), int(average_time % 60)
+            )
+        )
         self.RunningUI(False)
         self.RunningUI(False)
 
@@ -927,7 +980,15 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         logging.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
 
-        s = PopUpWindow(title="Process Done",text="Successfully done in {} min and {} sec \nAverage time per Patient: {} min and {} sec".format(int(total_time / 60), int(total_time % 60),int(average_time / 60), int(average_time % 60)))
+        s = PopUpWindow(
+            title="Process Done",
+            text="Successfully done in {} min and {} sec \nAverage time per Patient: {} min and {} sec".format(
+                int(total_time / 60),
+                int(total_time % 60),
+                int(average_time / 60),
+                int(average_time % 60),
+            ),
+        )
         s.exec_()
 
     def onCancel(self):
@@ -1041,7 +1102,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         layout: QGridLayout,
         tohide: QLabel,
         layout2: QVBoxLayout,
-        occlusion : QCheckBox
+        occlusion: QCheckBox,
     ):
         """Function to create the checkbox at the beginning of the program for IOS"""
         diccheckbox = {"Adult": {}, "Child": {}}
@@ -1197,13 +1258,14 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
         layout.addWidget(lower_checkbox, 4, 0)
 
-        upper_checbox.toggled.connect(partial(self.UpperLowerChooseOcclusion,lower_checkbox,occlusion))
-        lower_checkbox.toggled.connect(partial(self.UpperLowerChooseOcclusion,upper_checbox,occlusion))
+        upper_checbox.toggled.connect(
+            partial(self.UpperLowerChooseOcclusion, lower_checkbox, occlusion)
+        )
+        lower_checkbox.toggled.connect(
+            partial(self.UpperLowerChooseOcclusion, upper_checbox, occlusion)
+        )
 
-
-
-
-        if isinstance(methode,Semi_IOS):
+        if isinstance(methode, Semi_IOS):
             dic1, dic2 = self.initCheckbox(methode, layout2, None)
 
             methode.setcheckbox(
@@ -1211,7 +1273,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     "Teeth": diccheckbox,
                     "Landmark": dic1,
                     "Jaw": {"Upper": upper_checbox, "Lower": lower_checkbox},
-                    "Occlusion" : occlusion
+                    "Occlusion": occlusion,
                 }
             )
             methode.setcheckbox2(
@@ -1219,44 +1281,47 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     "Teeth": diccheckbox,
                     "Landmark": dic2,
                     "Jaw": {"Upper": upper_checbox, "Lower": lower_checkbox},
-                    "Occlusion" : occlusion
+                    "Occlusion": occlusion,
                 }
             )
-        else : 
+        else:
 
             methode.setcheckbox(
                 {
                     "Teeth": diccheckbox,
                     "Jaw": {"Upper": upper_checbox, "Lower": lower_checkbox},
-                    "Occlusion" : occlusion
+                    "Occlusion": occlusion,
                 }
             )
             methode.setcheckbox2(
                 {
                     "Teeth": diccheckbox,
                     "Jaw": {"Upper": upper_checbox, "Lower": lower_checkbox},
-                    "Occlusion" : occlusion
+                    "Occlusion": occlusion,
                 }
             )
+
     def UpperLowerCheckbox(self, all_checkbox: dict, jaw, boolean):
-       
+
         for checkbox in all_checkbox[jaw]:
             checkbox.setEnabled(boolean)
             if (not boolean) and checkbox.isChecked():
                 checkbox.setChecked(False)
         self.enableCheckbox()
 
-    def OcclusionCheckbox(self, Upper : QCheckBox, Lower : QCheckBox, all_checkbox : dict , boolean : bool):
-       if boolean :
-           if Upper.isChecked() and Lower.isChecked():
-               Lower.setChecked(False)
-               Lower.setEnabled(True)
+    def OcclusionCheckbox(
+        self, Upper: QCheckBox, Lower: QCheckBox, all_checkbox: dict, boolean: bool
+    ):
+        if boolean:
+            if Upper.isChecked() and Lower.isChecked():
+                Lower.setChecked(False)
+                Lower.setEnabled(True)
 
-
-    def UpperLowerChooseOcclusion(self,opposit_jaw : QCheckBox, Occlusion_checkbox : QCheckBox ,booleean : bool):
-        if booleean and Occlusion_checkbox.isChecked() and opposit_jaw.isChecked() :
+    def UpperLowerChooseOcclusion(
+        self, opposit_jaw: QCheckBox, Occlusion_checkbox: QCheckBox, booleean: bool
+    ):
+        if booleean and Occlusion_checkbox.isChecked() and opposit_jaw.isChecked():
             opposit_jaw.setChecked(False)
-
 
     """
                           .d88888b.  88888888888 888    888 8888888888 8888888b.   .d8888b.  

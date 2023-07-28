@@ -5,14 +5,15 @@ from slicer.util import pip_install, pip_uninstall
 try:
     import pytorch_lightning as pl
 except ImportError:
-    pip_install('pytorch_lightning -q')
+    pip_install("pytorch_lightning -q")
     import pytorch_lightning as pl
-    
-pip_uninstall('monai -q')
-pip_install('monai -q')
+
+pip_uninstall("monai -q")
+pip_install("monai -q")
 from monai.networks.nets.densenet import DenseNet169
 
 # Different Network
+
 
 class DenseNet(pl.LightningModule):
     def __init__(self, lr=1e-4):
@@ -22,29 +23,29 @@ class DenseNet(pl.LightningModule):
         self.CosSimLoss = nn.CosineSimilarity()
 
     def forward(self, x):
-        return nn.functional.normalize(self.net(x),dim=1)
+        return nn.functional.normalize(self.net(x), dim=1)
 
     def training_step(self, batch, batch_idx):
         scan, directionVector, scan_path = batch
         batch_size = scan.shape[0]
 
         directionVector_hat = self(scan)
-        
-        loss = (1 - self.CosSimLoss(directionVector_hat, directionVector))
+
+        loss = 1 - self.CosSimLoss(directionVector_hat, directionVector)
         # Sum the loss over the batch
         loss = loss.sum()
-        self.log('train_loss', loss, batch_size=batch_size)
-                   
+        self.log("train_loss", loss, batch_size=batch_size)
+
         return loss
 
     def validation_step(self, batch, batch_idx):
         scan, directionVector, scan_path = batch
         batch_size = scan.shape[0]
         directionVector_hat = self(scan)
-        
-        loss = (1 - self.CosSimLoss(directionVector_hat, directionVector))
+
+        loss = 1 - self.CosSimLoss(directionVector_hat, directionVector)
         loss = loss.sum()
-        self.log('val_loss', loss, batch_size=batch_size)
+        self.log("val_loss", loss, batch_size=batch_size)
 
         return loss
 
@@ -53,11 +54,11 @@ class DenseNet(pl.LightningModule):
         batch_size = scan.shape[0]
 
         directionVector_hat = self(scan)
-        
-        loss = (1 - self.CosSimLoss(directionVector_hat, directionVector))
+
+        loss = 1 - self.CosSimLoss(directionVector_hat, directionVector)
         loss = loss.sum()
-        self.log('test_loss', loss, batch_size=batch_size)
-        
+        self.log("test_loss", loss, batch_size=batch_size)
+
         return loss
 
     def configure_optimizers(self):
