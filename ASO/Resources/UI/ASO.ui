@@ -197,7 +197,7 @@
       <item>
        <widget class="QStackedWidget" name="stackedWidget">
         <property name="currentIndex">
-         <number>3</number>
+         <number>2</number>
         </property>
         <widget class="QWidget" name="PageSemiCBCT">
          <layout class="QVBoxLayout" name="verticalLayout_11">
@@ -260,15 +260,15 @@
                   <rect>
                    <x>0</x>
                    <y>0</y>
-                   <width>225</width>
-                   <height>66</height>
+                   <width>627</width>
+                   <height>198</height>
                   </rect>
                  </property>
                  <layout class="QVBoxLayout" name="verticalLayout_14">
                   <item>
                    <widget class="QCheckBox" name="checkBoxOcclusionSemiIOS">
                     <property name="text">
-                     <string>Arches Oriented incclusion</string>
+                     <string>Arches Oriented in occlusion</string>
                     </property>
                    </widget>
                   </item>
@@ -322,7 +322,7 @@
                   <rect>
                    <x>0</x>
                    <y>0</y>
-                   <width>609</width>
+                   <width>627</width>
                    <height>198</height>
                   </rect>
                  </property>
@@ -330,7 +330,7 @@
                   <item>
                    <widget class="QCheckBox" name="checkBoxOcclusionAutoIOS">
                     <property name="text">
-                     <string>Arches oriented incclusion</string>
+                     <string>Arches oriented in occlusion</string>
                     </property>
                    </widget>
                   </item>
