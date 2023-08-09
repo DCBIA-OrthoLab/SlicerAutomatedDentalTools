@@ -1,12 +1,10 @@
-
-import os 
-import glob 
+import os
+import glob
 import vtk
 import numpy as np
 import json
 from vtk.util.numpy_support import vtk_to_numpy
 from ASO_IOS_utils.OFFReader import OFFReader
-
 
 
 def ReadSurf(path):
@@ -21,7 +19,7 @@ def ReadSurf(path):
         reader = vtk.vtkXMLPolyDataReader()
         reader.SetFileName(path)
         reader.Update()
-        surf = reader.GetOutput()    
+        surf = reader.GetOutput()
     elif extension == ".stl":
         reader = vtk.vtkSTLReader()
         reader.SetFileName(path)
@@ -39,12 +37,15 @@ def ReadSurf(path):
             obj_import.SetFileNameMTL(fname + ".mtl")
             textures_path = os.path.normpath(os.path.dirname(fname) + "/../images")
             if os.path.exists(textures_path):
-                textures_path = os.path.normpath(fname.replace(os.path.basename(fname), ''))
+                textures_path = os.path.normpath(
+                    fname.replace(os.path.basename(fname), "")
+                )
                 obj_import.SetTexturePath(textures_path)
             else:
-                textures_path = os.path.normpath(fname.replace(os.path.basename(fname), ''))                
+                textures_path = os.path.normpath(
+                    fname.replace(os.path.basename(fname), "")
+                )
                 obj_import.SetTexturePath(textures_path)
-                    
 
             obj_import.Read()
 
@@ -55,10 +56,10 @@ def ReadSurf(path):
             for i in range(actors.GetNumberOfItems()):
                 surfActor = actors.GetNextActor()
                 append.AddInputData(surfActor.GetMapper().GetInputAsDataSet())
-            
+
             append.Update()
             surf = append.GetOutput()
-            
+
         else:
             reader = vtk.vtkOBJReader()
             reader.SetFileName(path)
@@ -68,20 +69,20 @@ def ReadSurf(path):
     return surf
 
 
-def LoadJsonLandmarks(ldmk_path,full_landmark=True,list_landmark=[]):
+def LoadJsonLandmarks(ldmk_path, full_landmark=True, list_landmark=[]):
     """
     Load landmarks from json file
-    
+
     Parameters
     ----------
     img : sitk.Image
         Image to which the landmarks belong
- 
+
     Returns
     -------
     dict
         Dictionary of landmarks
-    
+
     Raises
     ------
     ValueError
@@ -90,48 +91,41 @@ def LoadJsonLandmarks(ldmk_path,full_landmark=True,list_landmark=[]):
 
     with open(ldmk_path) as f:
         data = json.load(f)
-    
+
     markups = data["markups"][0]["controlPoints"]
-    
+
     landmarks = {}
     for markup in markups:
-        lm_ph_coord = np.array([markup["position"][0],markup["position"][1],markup["position"][2]])
+        lm_ph_coord = np.array(
+            [markup["position"][0], markup["position"][1], markup["position"][2]]
+        )
         lm_coord = lm_ph_coord.astype(np.float64)
         landmarks[markup["label"]] = lm_coord
-    
+
     if not full_landmark:
-        out={}
+        out = {}
         for lm in list_landmark:
             out[lm] = landmarks[lm]
         landmarks = out
     return landmarks
 
 
-
-
-
-
-
-def WriteSurf(surf, output_folder,name,inname):
+def WriteSurf(surf, output_folder, name, inname):
     dir, name = os.path.split(name)
     name, extension = os.path.splitext(name)
 
     if not os.path.exists(output_folder):
         os.mkdir(output_folder)
 
-    if extension == '.vtk':
+    if extension == ".vtk":
         writer = vtk.vtkPolyDataWriter()
-    elif extension == '.vtp':
+    elif extension == ".vtp":
         writer = vtk.vtkXMLPolyDataWriter()
-    elif extension =='.obj':
+    elif extension == ".obj":
         writer = vtk.vtkWriter()
-    writer.SetFileName(os.path.join(output_folder,f"{name}{inname}{extension}"))
+    writer.SetFileName(os.path.join(output_folder, f"{name}{inname}{extension}"))
     writer.SetInputData(surf)
     writer.Update()
-
-
-
-
 
 
 def UpperOrLower(path_filename):
@@ -143,18 +137,16 @@ def UpperOrLower(path_filename):
     Returns:
         str: Upper or Lower, for the following exemple if Upper
     """
-    out = 'Lower'
-    st = '_U_'
-    st2= 'upper'
+    out = "Lower"
+    st = "_U_"
+    st2 = "upper"
     filename = os.path.basename(path_filename)
     if st in filename or st2 in filename.lower():
-        out ='Upper'
+        out = "Upper"
     return out
 
 
-
-
-def search(path,*args):
+def search(path, *args):
     """
     Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
 
@@ -167,95 +159,88 @@ def search(path,*args):
             '.nrrd.gz' : ['path/c.nrrd']
         }
     """
-    arguments=[]
+    arguments = []
     for arg in args:
         if type(arg) == list:
             arguments.extend(arg)
         else:
             arguments.append(arg)
-    return {key: [i for i in glob.iglob(os.path.normpath("/".join([path,'**','*'])),recursive=True) if i.endswith(key)] for key in arguments}
-
-
+    return {
+        key: [
+            i
+            for i in glob.iglob(
+                os.path.normpath("/".join([path, "**", "*"])), recursive=True
+            )
+            if i.endswith(key)
+        ]
+        for key in arguments
+    }
 
 
 def PatientNumber(filename):
-    number = ['1','2','3','4','5','6','7','8','9','0']
+    number = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
     for i in range(len(filename)):
         if filename[i] in number:
-            for y in range(i,len(filename)):
+            for y in range(i, len(filename)):
                 if not filename[y] in number:
                     return int(filename[i:y])
 
 
-
-
-
-def WriteJsonLandmarks(landmarks,output_file,input_file_json,add_innamefile,output_folder):
-    '''
+def WriteJsonLandmarks(
+    landmarks, output_file, input_file_json, add_innamefile, output_folder
+):
+    """
     Write the landmarks to a json file
-    
+
     Parameters
     ----------
     landmarks : dict
         landmarks to write
     output_file : str
         output file name
-    '''
+    """
     # # Load the input image
     # spacing, origin = LoadImage(input_file)
-    dirname , name  = os.path.split(output_file)
+    dirname, name = os.path.split(output_file)
     name, extension = os.path.splitext(name)
-    output_file = os.path.join(output_folder,name+add_innamefile+extension)
+    output_file = os.path.join(output_folder, name + add_innamefile + extension)
     if not os.path.exists(output_folder):
         os.mkdir(output_folder)
-    
 
-    with open(input_file_json, 'r') as outfile:
+    with open(input_file_json, "r") as outfile:
         tempData = json.load(outfile)
     for i in range(len(landmarks)):
-        pos = landmarks[tempData['markups'][0]['controlPoints'][i]['label']]
+        pos = landmarks[tempData["markups"][0]["controlPoints"][i]["label"]]
         # pos = (pos + abs(inorigin)) * inspacing
-        tempData['markups'][0]['controlPoints'][i]['position'] = [pos[0],pos[1],pos[2]]
-    with open(output_file, 'w') as outfile:
+        tempData["markups"][0]["controlPoints"][i]["position"] = [
+            pos[0],
+            pos[1],
+            pos[2],
+        ]
+    with open(output_file, "w") as outfile:
 
         json.dump(tempData, outfile, indent=4)
 
 
-
-
 def listlandmark2diclandmark(list_landmark):
-    upper =[]
-    lower=[]
-    list_landmark=list_landmark.split(',')
+    upper = []
+    lower = []
+    list_landmark = list_landmark.split(",")
     for landmark in list_landmark:
-        if 'U' == landmark[0]:
+        if "U" == landmark[0]:
             upper.append(landmark)
-        else :
+        else:
             lower.append(landmark)
 
-    out ={'Upper':upper,'Lower':lower}
+    out = {"Upper": upper, "Lower": lower}
 
     return out
 
 
-
-def WritefileError(file,folder_error,message):
+def WritefileError(file, folder_error, message):
     if not os.path.exists(folder_error):
         os.mkdir(folder_error)
     name = os.path.basename(file)
-    name , _ = os.path.splitext(name)
-    with open(os.path.join(folder_error,f'{name}Error.txt'),'w') as f:
+    name, _ = os.path.splitext(name)
+    with open(os.path.join(folder_error, f"{name}Error.txt"), "w") as f:
         f.write(message)
-
-
-
-
-
-
-
-
-
-
-
-
-
