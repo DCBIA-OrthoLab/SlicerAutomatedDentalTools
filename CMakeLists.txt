@@ -30,6 +30,7 @@ add_subdirectory(ASO_CBCT)
 add_subdirectory(AREG_IOS)
 add_subdirectory(AREG_CBCT)
 add_subdirectory(AREG)
+add_subdirectory(AutoMatrix)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
