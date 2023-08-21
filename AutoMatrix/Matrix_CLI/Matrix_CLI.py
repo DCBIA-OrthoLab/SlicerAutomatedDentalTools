@@ -24,6 +24,8 @@ def main(args):
     idx = 0
     patients,nb_files = amu.GetPatientsVTK(args.path_patient_intput,args.path_matrix_intput)
     nb_worker = 6
+    print(patients)
+    print(nb_files)
     if nb_files!=0:
         nb_scan_done = mp.Manager().list([0 for i in range(nb_worker)])
         idxProcess = mp.Value('i',idx)

@@ -178,7 +178,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
         #MATRIX 47
-        self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/AutoMatrix/r_47_VTK_TFM_NIIGZ/")
+        self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/AutoMatrix/Matrix_miror.tfm")
 
 
 
@@ -186,14 +186,13 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # self.ui.LineEditPatient.setText("/home/luciacev/Desktop/Gaelle/Test_file_Full-IOS")
         # self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/Gaelle/Matrix_test")
         self.ui.ComboBoxPatient.setCurrentIndex(0)
-        self.ui.ComboBoxMatrix.setCurrentIndex(1)
+        self.ui.ComboBoxMatrix.setCurrentIndex(0)
 
     
     def openFinder(self,nom : str,_) -> None : 
         """
          Open finder to let the user choose is files or folder
         """ 
-        print("test")
         
         
         if nom=="Matrix":
