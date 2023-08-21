@@ -296,7 +296,62 @@ You can either download them using the link or  by using the `Test Files` button
 ### Some Results
 ![ARegResult](https://github.com/HUTIN1/SlicerAutomatedDentalTools/assets/72148963/44a7be88-4cee-4943-b9c5-3bd647faa6ba)
 
+### Models Selection
+
+For the **Fully-Automated** Mode, models are required as input, use the `Select` Button to automatically download, extract and select the selected models.
     
+![ASOSADT](https://user-images.githubusercontent.com/72148963/227339216-61f04a0b-a8ab-410e-8265-d822309e1888.png)
+
+## AutoMatrix Module
+
+<img src="AutoMatrix/Resources/Icons/AutoMatrix.png" alt="Extension Logo" width="70"/>
+
+The AutoMatrix module provides a user interface to apply a matrix to a folder for different types of scans or segmentations:
+- **CBCT**
+- **IOS**
+## How the module works?
+
+### General Requirement and Warning
+- Segmentations and scans for IOS and CBCT must be centered first. 
+- Applying a matrix with a large translation may move the scan/segmentation out of the rendering box. This will result in automatic cropping.
+
+### How to name the new files and where they are stored
+The module will create the same path you had in the input folder in the output folder.
+The new files will be named by the name of the original file + the suffix you entered + the name of the matrix files that were applied.
+
+Example :  
+Input file : patient1_T1_MA.nii.gz  
+Input matrix : patient1_matrix1.tfm  
+Input suffix : _apply  
+Output file : patient1_T1_MA_apply_matrix1.nii.gz
+
+
+### 4 Modes available 
+Sometimes a LinkName is required. See the information below.
+| Mode | Download Link to Test Files | Information | 
+| ----------- | ----------- | ----------- |
+| File patient and file matrix| [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease1.zip) |  LinkName is not required. The matrix is applied to the input file. This new file is save in the output folder.
+| File patient and folder matrix | [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease2.zip) | LinkName required. For each matrix applied, a new file is created.
+| Folder patient and file matrix | [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease3.zip) | LinkName is not required.  The matrix will be applied to all files in the input folder. 
+| Folder patient and folder matrix| [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease4.zip) | LinkName required. For each matrix applied, a new file is created. You can have more than one file with the same patient name.
+
+#### When a LinkName is required :
+The name of the matrix files and the name of the seg/scan files must begin with the same patient name. After the patient name, you must put and underscore before any other information.  
+Example :   
+Name file patient : patient1_T1_MA.nii.gz  
+Name matrix files : patient1_left_MA.tfm  
+
+  
+### Input file:
+
+| Input Type  | Input Extension Type | Input Matrix Extension |
+| ----------- | ----------- | ----------- |
+| **CBCT** | .nii.gz | .tfm | 
+| **IOS** | .vtk .stl .vtp .off .obj | .tfm .npy .h5 .mat .txt|
+
+
+
+  
 # Acknowledgements
 
 Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin (UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
