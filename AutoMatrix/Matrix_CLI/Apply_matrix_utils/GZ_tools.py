@@ -82,7 +82,12 @@ def ApplyMatrixGZ(patients:list,keys:list,input_path:str, out_path:str, num_work
                         if not os.path.exists(os.path.dirname(outpath)):
                             os.makedirs(os.path.dirname(outpath))
 
-                        matrix_name = os.path.basename(matrix).split('.tfm')[0].split(key)[1]
+
+                        try : 
+                            matrix_name = os.path.basename(matrix).split('.tfm')[0].split(key)[1]
+                        except : 
+                            matrix_name = os.path.basename(matrix).split('.tfm')[0]
+                            
                         sitk.WriteImage(resampled,outpath.split('.nii.gz')[0]+suffix+matrix_name+'.nii.gz')
 
                     except:
