@@ -33,6 +33,7 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [ALI](#ali-module) | Perform automatic landmark identification on either CBCT or IOS scans. ALI is an acronym for Automatic Landmark Identification. |
 | [ASO](#aso-module) | Perform automatic orientation either on IOS or CBCT files. |
 | [AReg](#areg-module) | Perform automatic registration on IOS or CBCT files. |
+| [AutoCrop3D](#autocrop3d-module) | Perform automatic cropping on volumes and generates VTK files from Segmentation cropped. |
 
 These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
 
@@ -296,7 +297,44 @@ You can either download them using the link or  by using the `Test Files` button
 ### Some Results
 ![ARegResult](https://github.com/HUTIN1/SlicerAutomatedDentalTools/assets/72148963/44a7be88-4cee-4943-b9c5-3bd647faa6ba)
 
-    
+## AutoCrop3D
+
+<img src="AutoCrop3D/Crop_Volumes_UI/Resources/Icons/AutoCrop3D.png" alt="Extension Logo" width="60"/>
+
+AutoCrop3D stands for "Scans automatically cropped" according to a region of interest.
+
+
+## How does the module work?
+
+### Input:
+
+|Input | Input Type  | Input Extension Type | Files to Test
+| ----------- | ----------- | ----------- | ----------- |
+|**File or Folder**| **CBCT** | .nii, .nii.gz, .gipl.gz, .nrrd, .nrrd.gz  |[Segmentation.zip](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/files/12401589/Segmentation.zip) |
+|**Region of Interest***| **Volume** | .json |[ROI.mrk.zip](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/files/12401594/Crop_Volume_ROI_R_Centered.mrk.zip) |
+
+
+You can choose a suffix which will be added to the existing name of your file(s).
+
+If you want to **generate VTK files** from your Segmentations, the Segmentation files must have "Seg" somewhere in the name. 
+For example: `patientName_Seg.nii.gz`
+
+### How to create a Region Of Interest (ROI)?
+
+Use the module "Volume Rendering" to create your ROI and then save it as a .json file.
+1. Upload a scan file
+2. Choose the option `Display ROI`
+3. Change the ROI as you like
+4. Save it
+
+![Tuto1](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/assets/91120559/cf5ddce6-1582-44f0-a03c-ea74e4516bf5)
+![Tuto2](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/assets/91120559/dcb33691-959e-4e79-b357-d6e4bca48ea5)
+
+
+
+
+
+  
 # Acknowledgements
 
 Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin (UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
