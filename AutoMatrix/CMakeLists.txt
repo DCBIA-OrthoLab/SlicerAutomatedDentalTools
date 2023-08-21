@@ -1,27 +1,33 @@
-cmake_minimum_required(VERSION 3.16.3...3.19.7 FATAL_ERROR)
-
-project(AutoMatrix)
+#-----------------------------------------------------------------------------
+set(MODULE_NAME AutoMatrix)
 
 #-----------------------------------------------------------------------------
-# Extension meta-information
-set(EXTENSION_HOMEPAGE "https://www.slicer.org/wiki/Documentation/Nightly/Extensions/Apply_matrix_bis")
-set(EXTENSION_CATEGORY "Tuto")
-set(EXTENSION_CONTRIBUTORS "Gaelle Leroux (DCBIA)")
-set(EXTENSION_DESCRIPTION "This is an example of a simple extension")
-set(EXTENSION_ICONURL "https://www.example.com/Slicer/Extensions/Apply_matrix_bis.png")
-set(EXTENSION_SCREENSHOTURLS "https://www.example.com/Slicer/Extensions/Apply_matrix_bis/Screenshots/1.png")
-set(EXTENSION_DEPENDS "NA") # Specified as a list or "NA" if no dependencies
+set(MODULE_PYTHON_SCRIPTS
+  ${MODULE_NAME}.py
+  Matrix_CLI/Matrix_CLI.py
+  )
+
+set(MODULE_PYTHON_RESOURCES
+  Resources/Icons/${MODULE_NAME}.png
+  Resources/UI/${MODULE_NAME}.ui
+  )
 
 #-----------------------------------------------------------------------------
-# Extension dependencies
-find_package(Slicer REQUIRED)
-include(${Slicer_USE_FILE})
+slicerMacroBuildScriptedModule(
+  NAME ${MODULE_NAME}
+  SCRIPTS ${MODULE_PYTHON_SCRIPTS}
+  RESOURCES ${MODULE_PYTHON_RESOURCES}
+  WITH_GENERIC_TESTS
+  )
+
 
 #-----------------------------------------------------------------------------
-# Extension modules
-add_subdirectory(Matrix_CLI)
-## NEXT_MODULE
+if(BUILD_TESTING)
 
-#-----------------------------------------------------------------------------
-include(${Slicer_EXTENSION_GENERATE_CONFIG})
-include(${Slicer_EXTENSION_CPACK})
+  # Register the unittest subclass in the main script as a ctest.
+  # Note that the test will also be available at runtime.
+  slicer_add_python_unittest(SCRIPT ${MODULE_NAME}.py)
+
+  # Additional build-time testing
+  add_subdirectory(Testing)
+endif()
