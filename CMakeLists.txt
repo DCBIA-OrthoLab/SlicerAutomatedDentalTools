@@ -6,7 +6,7 @@ project(SlicerAutomatedDentalTools)
 # Extension meta-information
 set(EXTENSION_HOMEPAGE "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/blob/main/README.md")
 set(EXTENSION_CATEGORY "SlicerCMF")
-set(EXTENSION_CONTRIBUTORS "Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Juan Carlos Prieto (University of North Carolina), Nathan Hutin (University of Michigan), Luc Anchling (University of Michigan)")
+set(EXTENSION_CONTRIBUTORS "Maxime Gillot (University of Michigan, Baptiste Baquero (UoM), Juan Carlos Prieto (University of North Carolina), Nathan Hutin (UoM), Luc Anchling (UoM), Jeanne Claret (UoM)")
 set(EXTENSION_DESCRIPTION "This extension will allow clinicians to perform automatic CBCT scan segmentation as well as automatic lamndmark identification in CBCT and IOS using machine learning tools.")
 set(EXTENSION_ICONURL "https://raw.githubusercontent.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/main/SlicerAutomaticTools.png")
 set(EXTENSION_SCREENSHOTURLS "https://raw.githubusercontent.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/main/ADT-exemple.png")
@@ -30,6 +30,7 @@ add_subdirectory(ASO_CBCT)
 add_subdirectory(AREG_IOS)
 add_subdirectory(AREG_CBCT)
 add_subdirectory(AREG)
+add_subdirectory(AutoCrop3D)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
