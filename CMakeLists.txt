@@ -31,6 +31,7 @@ add_subdirectory(AREG_IOS)
 add_subdirectory(AREG_CBCT)
 add_subdirectory(AREG)
 add_subdirectory(AutoMatrix)
+add_subdirectory(AutoMatrix/Matrix_CLI)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
