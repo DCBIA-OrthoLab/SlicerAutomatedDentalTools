@@ -2,12 +2,12 @@
 <executable>
   <category>Segmentation.Advanced</category>
   <index>0</index>
-  <title>CropVolumesAutoCLI</title>
+  <title>AutoCrop3D_CLI</title>
   <description><![CDATA[CLI module that can be built into an extension]]></description>
   <version>0.1.0.</version>
   <documentation-url>https://github.com/Jeanneclre/DCBIA-code</documentation-url>
   <license/>
-  <contributor>Jeanne Claret</contributor>
+  <contributor>Jeanne Claret (University of Michigan)</contributor>
   <acknowledgements><![CDATA[...]]></acknowledgements>
 
   <parameters>
