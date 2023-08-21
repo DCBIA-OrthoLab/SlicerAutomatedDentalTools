@@ -20,18 +20,18 @@ import time
 #import Crop_Volumes_CLI.Crop_Volumes_utils as cpu
 
 #
-# t_crop_volumes
+# AutoCrop3D
 #
 
-class t_crop_volumes(ScriptedLoadableModule):
+class AutoCrop3D(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "Crop Volumes Auto"  # TODO: make this more human readable by adding spaces
-        self.parent.categories = ["Tutorials"]  # TODO: set categories (folders where the module shows up in the module selector)
+        self.parent.title = "AutoCrop3D"  # TODO: make this more human readable by adding spaces
+        self.parent.categories = ["Automated Dental Tools"]  # TODO: set categories (folders where the module shows up in the module selector)
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
         self.parent.contributors = ["Jeanne Claret (DCBIA lab)"]  # TODO: replace with "Firstname Lastname (Organization)"
         # TODO: update with short description of the module and a link to online module documentation
@@ -66,44 +66,44 @@ def registerSampleData():
     # To ensure that the source code repository remains small (can be downloaded and installed quickly)
     # it is recommended to store data sets that are larger than a few MB in a Github release.
 
-    # t_crop_volumes1
+    # AutoCrop3D1
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
-        category='t_crop_volumes',
-        sampleName='t_crop_volumes1',
+        category='AutoCrop3D',
+        sampleName='AutoCrop3D1',
         # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
         # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, 't_crop_volumes1.png'),
+        thumbnailFileName=os.path.join(iconsPath, 'AutoCrop3D.png'),
         # Download URL and target file name
         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        fileNames='t_crop_volumes1.nrrd',
+        fileNames='AutoCrop3D1.nrrd',
         # Checksum to ensure file integrity. Can be computed by this command:
         #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
         checksums='SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
         # This node name will be used when the data set is loaded
-        nodeNames='t_crop_volumes1'
+        nodeNames='AutoCrop3D1'
     )
 
-    # t_crop_volumes2
+    # AutoCrop3D2
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
-        category='t_crop_volumes',
-        sampleName='t_crop_volumes2',
-        thumbnailFileName=os.path.join(iconsPath, 't_crop_volumes2.png'),
+        category='AutoCrop3D',
+        sampleName='AutoCrop3D2',
+        thumbnailFileName=os.path.join(iconsPath, 'AutoCrop3D2.png'),
         # Download URL and target file name
         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        fileNames='t_crop_volumes2.nrrd',
+        fileNames='AutoCrop3D2.nrrd',
         checksums='SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
         # This node name will be used when the data set is loaded
-        nodeNames='t_crop_volumes2'
+        nodeNames='AutoCrop3D2'
     )
 
 
 #
-# t_crop_volumesWidget
+# AutoCrop3DWidget
 #
 
-class t_crop_volumesWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
+class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -128,7 +128,7 @@ class t_crop_volumesWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath('UI/t_crop_volumes.ui'))
+        uiWidget = slicer.util.loadUI(self.resourcePath('UI/AutoCrop3D.ui'))
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
@@ -139,7 +139,7 @@ class t_crop_volumesWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
-        self.logic = t_crop_volumesLogic()
+        self.logic = AutoCrop3DLogic()
 
         # Connections
         self.ui.SearchPathButtonF.connect("clicked(bool)", partial(self.SearchPath,"Folder_file"))
@@ -304,7 +304,7 @@ class t_crop_volumesWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #     print("Error input")
 
 
-            self.logic = t_crop_volumesLogic(self.ui.editPathF.text,
+            self.logic = AutoCrop3DLogic(self.ui.editPathF.text,
                                             self.ui.editPathVolume.text,
                                             self.ui.editPathOutput.text, 
                                             self.ui.editSuffix.text,
@@ -561,10 +561,10 @@ class t_crop_volumesWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             result = False
             return result
 #
-# t_crop_volumesLogic
+# AutoCrop3D Logic
 #
 
-class t_crop_volumesLogic(ScriptedLoadableModuleLogic):
+class AutoCrop3DLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -649,10 +649,10 @@ class t_crop_volumesLogic(ScriptedLoadableModuleLogic):
 
 
 #
-# t_crop_volumesTest
+# AutoCrop3DTest
 #
 
-class t_crop_volumesTest(ScriptedLoadableModuleTest):       
+class AutoCrop3DTest(ScriptedLoadableModuleTest):       
     """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -668,9 +668,9 @@ class t_crop_volumesTest(ScriptedLoadableModuleTest):
         """Run as few or as many tests as needed here.
         """
         self.setUp()
-        self.test_t_crop_volumes1()
+        self.test_AutoCrop3D1()
 
-    def test_t_crop_volumes1(self):
+    def test_AutoCrop3D1(self):
         """ Ideally you should have several levels of tests.  At the lowest level
         tests should exercise the functionality of the logic with different inputs
         (both valid and invalid).  At higher levels your tests should emulate the
@@ -688,7 +688,7 @@ class t_crop_volumesTest(ScriptedLoadableModuleTest):
 
         import SampleData
         registerSampleData()
-        inputVolume = SampleData.downloadSample('t_crop_volumes1')
+        inputVolume = SampleData.downloadSample('AutoCrop3D')
         self.delayDisplay('Loaded test data set')
 
         inputScalarRange = inputVolume.GetImageData().GetScalarRange()
@@ -700,7 +700,7 @@ class t_crop_volumesTest(ScriptedLoadableModuleTest):
 
         # Test the module logic
 
-        logic = t_crop_volumesLogic()
+        logic = AutoCrop3DLogic()
 
         # Test algorithm with non-inverted threshold
         logic.process(inputVolume, outputVolume, threshold, True)
