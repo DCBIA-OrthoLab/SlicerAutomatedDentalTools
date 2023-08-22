@@ -145,7 +145,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SearchPathButtonF.connect("clicked(bool)", partial(self.SearchPath,"Folder_file"))
         self.ui.SearchPathButtonV.connect("clicked(bool)", partial(self.SearchPath,"Volume"))
         self.ui.SearchPathButtonOut.connect("clicked(bool)", partial(self.SearchPath,"Output"))
-        self.ui.TestFiles.connect("clicked(bool)",self.Autofill)
+        #self.ui.TestFiles.connect("clicked(bool)",self.Autofill)
         #self.ui.chooseType.connect("clicked(bool)", self.SearchPath)
        
 
@@ -180,9 +180,9 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
        
 
     def Autofill(self):
-        self.ui.editPathF.setText("/home/luciacev/Desktop/Jeanne/Data/Input")
-        self.ui.editPathVolume.setText("/home/luciacev/Desktop/Jeanne/Data/Volume/Crop_Volume_ROI_1.mrk.json")
-        self.ui.editPathOutput.setText("/home/luciacev/Desktop/Jeanne/Data/Output")
+        self.ui.editPathF.setText("/home/luciacev/Desktop/Jeanne/DJD_Data/Input")
+        self.ui.editPathVolume.setText("/home/luciacev/Desktop/Jeanne/DJD_Data/Volume/Crop_Volume_ROI_1.mrk.json")
+        self.ui.editPathOutput.setText("/home/luciacev/Desktop/Jeanne/DJD_Data/Output")
         self.ui.chooseType.setCurrentIndex(1)
 
     def cleanup(self):

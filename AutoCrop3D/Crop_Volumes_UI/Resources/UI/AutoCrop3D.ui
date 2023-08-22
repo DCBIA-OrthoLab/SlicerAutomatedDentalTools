@@ -31,7 +31,7 @@
           <item>
            <widget class="QLineEdit" name="editPathF">
             <property name="text">
-             <string>/home/luciacev/Desktop/Jeanne/Data/Input</string>
+             <string/>
             </property>
            </widget>
           </item>
@@ -73,7 +73,7 @@
           <item>
            <widget class="QLineEdit" name="editPathVolume">
             <property name="text">
-             <string>/home/luciacev/Desktop/Jeanne/Data/Volume/Crop_Volume_ROI_1.mrk.json</string>
+             <string/>
             </property>
            </widget>
           </item>
@@ -87,15 +87,7 @@
          </layout>
         </item>
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_11">
-          <item>
-           <widget class="QPushButton" name="TestFiles">
-            <property name="text">
-             <string>Test Files</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
+         <layout class="QHBoxLayout" name="horizontalLayout_11"/>
         </item>
        </layout>
       </item>
@@ -122,7 +114,7 @@
           <item>
            <widget class="QLineEdit" name="editPathOutput">
             <property name="text">
-             <string>/home/luciacev/Desktop/Jeanne/Data/Output</string>
+             <string/>
             </property>
            </widget>
           </item>
