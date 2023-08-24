@@ -89,12 +89,18 @@ def WriteSurf(surf, output_folder:str,name:str,inname:str)->None:
         if not os.path.exists(out_path):
             os.makedirs(out_path)
 
+        print("test")
+
         if extension == '.vtk':
             writer = vtk.vtkPolyDataWriter()
         elif extension == '.vtp':
             writer = vtk.vtkXMLPolyDataWriter()
         elif extension =='.obj':
             writer = vtk.vtkWriter()
+        elif extension == '.stl':
+            writer = vtk.vtkSTLWriter()
+        elif extension == '.off':
+            writer = vtk.vtkOFFWriter()
         writer.SetFileName(os.path.join(out_path,f"{name}{inname}{extension}"))
         writer.SetInputData(surf)
         writer.Update()

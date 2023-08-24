@@ -148,6 +148,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SearchButtonOutput.connect("clicked(bool)",partial(self.openFinder,"Output"))
         self.ui.ButtonAutoFill.connect("clicked(bool)",self.Autofill)
         self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
+        self.ui.CheckBoxMirror.connect('clicked(bool)', self.Mirror)
 
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
@@ -165,6 +166,21 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.label_info.setVisible(False)
         self.ui.ComboBoxPatient.setCurrentIndex(1)
         self.ui.ComboBoxMatrix.setCurrentIndex(1)
+
+    def Mirror(self):
+        if self.ui.CheckBoxMirror.isChecked():
+            self.ui.SearchButtonMatrix.setEnabled(False)
+            self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/Matrix_miror.tfm")
+            self.ui.LineEditMatrix.setEnabled(False)
+            self.ui.ComboBoxMatrix.setCurrentIndex(0)
+            self.ui.ComboBoxMatrix.setEnabled(False)
+
+        else : 
+            self.ui.SearchButtonMatrix.setEnabled(True)
+            self.ui.LineEditMatrix.setEnabled(True)
+            self.ui.ComboBoxMatrix.setCurrentIndex(1)
+            self.ui.ComboBoxMatrix.setEnabled(True)
+
 
     def Autofill(self):
 
