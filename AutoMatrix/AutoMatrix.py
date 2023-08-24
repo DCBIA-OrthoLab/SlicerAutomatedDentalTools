@@ -1,6 +1,6 @@
 
 import logging
-import os
+import os,sys,time,zipfile,urllib.request,shutil
 
 import vtk
 
@@ -167,13 +167,16 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ComboBoxPatient.setCurrentIndex(1)
         self.ui.ComboBoxMatrix.setCurrentIndex(1)
 
+        self.ui.ButtonAutoFill.setVisible(False)
+
     def Mirror(self):
         if self.ui.CheckBoxMirror.isChecked():
             self.ui.SearchButtonMatrix.setEnabled(False)
-            self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/Matrix_miror.tfm")
+            # self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/Matrix_miror.tfm")
             self.ui.LineEditMatrix.setEnabled(False)
             self.ui.ComboBoxMatrix.setCurrentIndex(0)
             self.ui.ComboBoxMatrix.setEnabled(False)
+            self.DownloadMirror()
 
         else : 
             self.ui.SearchButtonMatrix.setEnabled(True)
@@ -182,10 +185,89 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.ComboBoxMatrix.setEnabled(True)
 
 
+    def DownloadUnzip(self, url, directory, folder_name=None, num_downl=1, total_downloads=1):
+        """Function to download and unzip a file from a url with a progress bar"""
+        out_path = os.path.join(directory, folder_name)
+
+        if not os.path.exists(out_path):
+            # print("Downloading {}...".format(folder_name.split(os.sep)[0]))
+            os.makedirs(out_path)
+
+            temp_path = os.path.join(directory, "temp.zip")
+
+            # Download the zip file from the url
+            with urllib.request.urlopen(url) as response, open(
+                temp_path, "wb"
+            ) as out_file:
+                # Pop up a progress bar with a QProgressDialog
+                progress = qt.QProgressDialog(
+                    "Downloading {} (File {}/{})".format(
+                        folder_name.split(os.sep)[0], num_downl, total_downloads
+                    ),
+                    "Cancel",
+                    0,
+                    100,
+                    self.parent,
+                )
+                progress.setCancelButton(None)
+                progress.setWindowModality(qt.Qt.WindowModal)
+                progress.setWindowTitle(
+                    "Downloading {}...".format(folder_name.split(os.sep)[0])
+                )
+                # progress.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
+                progress.show()
+                length = response.info().get("Content-Length")
+                if length:
+                    length = int(length)
+                    blocksize = max(4096, length // 100)
+                    read = 0
+                    while True:
+                        buffer = response.read(blocksize)
+                        if not buffer:
+                            break
+                        read += len(buffer)
+                        out_file.write(buffer)
+                        progress.setValue(read * 100.0 / length)
+                        qt.QApplication.processEvents()
+                shutil.copyfileobj(response, out_file)
+
+            # Unzip the file
+            with zipfile.ZipFile(temp_path, "r") as zip:
+                zip.extractall(out_path)
+
+            # Delete the zip file
+            os.remove(temp_path)
+
+        return out_path
+
+
+    def DownloadMirror(self):
+        url = "https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixMirror/Mirror.zip"
+        name = "Mirror_matrix"
+
+        documentsLocation = qt.QStandardPaths.DocumentsLocation
+        self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        self.SlicerDownloadPath = os.path.join(
+            self.documents,
+            slicer.app.applicationName + "Downloads",
+        )
+        self.isDCMInput = False
+        if not os.path.exists(self.SlicerDownloadPath):
+            os.makedirs(self.SlicerDownloadPath)
+
+        scan_folder = self.DownloadUnzip(
+                url=url,
+                directory=os.path.join(self.SlicerDownloadPath),
+                folder_name=os.path.join(name)
+                if not self.isDCMInput
+                else os.path.join(name),
+            )
+        self.ui.LineEditMatrix.setText(os.path.join(scan_folder,"Mirror/Matrix_mirror.tfm"))
+
     def Autofill(self):
 
         #SCAN 47
-        self.ui.LineEditPatient.setText("/home/luciacev/Desktop/AutoMatrix/Centered_Merged_Original/Scans_Centered/Scans_Controls_per_patients/r_47/T1/r_47_T1_.nii.gz")
+        self.ui.LineEditPatient.setText("/home/luciacev/Desktop/AutoMatrix/r_47_VTK_TFM_NIIGZ/P1_T1_IOS_L.stl")
         
 
 
@@ -194,7 +276,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
         #MATRIX 47
-        self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/AutoMatrix/Matrix_miror.tfm")
+        # self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/AutoMatrix/Matrix_mirror.tfm")
 
 
 
@@ -202,7 +284,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # self.ui.LineEditPatient.setText("/home/luciacev/Desktop/Gaelle/Test_file_Full-IOS")
         # self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/Gaelle/Matrix_test")
         self.ui.ComboBoxPatient.setCurrentIndex(0)
-        self.ui.ComboBoxMatrix.setCurrentIndex(0)
+        # self.ui.ComboBoxMatrix.setCurrentIndex(0)
 
     
     def openFinder(self,nom : str,_) -> None : 
@@ -519,15 +601,15 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self.ui.LineEditMatrix.text=="":
             if self.ui.ComboBoxMatrix.currentIndex==1 : # folder option
                 warning_text = warning_text + "Enter folder matrix" + "\n"
-            elif self.ui.ComboBoxMatrix.currentIndex==0 : # file option
+            elif self.ui.ComboBoxMatrix.currentIndex==0 and self.ui.CheckBoxMirror.isChecked()==False : # file option
                 warning_text = warning_text + "Enter file matrix" + "\n"
         else :
-            if self.ui.ComboBoxMatrix.currentIndex==1 :
+            if self.ui.ComboBoxMatrix.currentIndex==1 : # folder option
                 dico_matrix=self.search(self.ui.LineEditMatrix.text,'.npy','.h5','.tfm','.mat','.txt')
                 if len(dico_matrix['.npy'])==0 and len(dico_matrix['.h5'])==0 and len(dico_matrix['.tfm'])==0 and len(dico_matrix['.mat'])==0 and len(dico_matrix['.txt'])==0 :
                     warning_text = warning_text + "Folder empty or wrong type of files matrix " + "\n"
                     warning_text = warning_text + "File authorized : .npy / .h5 / .tfm / . mat / .txt" + "\n"
-            elif self.ui.ComboBoxMatrix.currentIndex==0 : # file option
+            elif self.ui.ComboBoxMatrix.currentIndex==0 and self.ui.CheckBoxMirror.isChecked()==False: # file option
                 fname, extension = os.path.splitext(os.path.basename(self.ui.LineEditMatrix.text))
                 if extension != ".npy"  and extension != ".h5" and extension != ".tfm" and extension != ".mat" and extension != ".txt":
                         warning_text = warning_text + "Wrong type of file matrix detect" + "\n"
