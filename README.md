@@ -341,6 +341,8 @@ Example :
 Name file patient : patient1_T1_MA.nii.gz  
 Name matrix files : patient1_left_MA.tfm  
 
+#### Mirror : 
+There is button "Mirror" that will automatically download the matrix mirror and put in input.  
   
 ### Input file:
 
