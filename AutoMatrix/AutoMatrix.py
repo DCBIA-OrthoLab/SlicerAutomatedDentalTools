@@ -172,7 +172,6 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def Mirror(self):
         if self.ui.CheckBoxMirror.isChecked():
             self.ui.SearchButtonMatrix.setEnabled(False)
-            # self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/Matrix_miror.tfm")
             self.ui.LineEditMatrix.setEnabled(False)
             self.ui.ComboBoxMatrix.setCurrentIndex(0)
             self.ui.ComboBoxMatrix.setEnabled(False)
@@ -183,6 +182,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.LineEditMatrix.setEnabled(True)
             self.ui.ComboBoxMatrix.setCurrentIndex(1)
             self.ui.ComboBoxMatrix.setEnabled(True)
+            self.ui.LineEditMatrix.setText("")
 
 
     def DownloadUnzip(self, url, directory, folder_name=None, num_downl=1, total_downloads=1):
