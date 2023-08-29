@@ -300,7 +300,14 @@ You can either download them using the link or  by using the `Test Files` button
 
 <img src="AutoCrop3D/Crop_Volumes_UI/Resources/Icons/AutoCrop3D.png" alt="Extension Logo" width="60"/>
 
-AutoCrop3D stands for "Scans automatically cropped" according to a region of interest.
+AutoCrop3D stands for "Scans automatically cropped" according to a Region Of Interest (ROI). 
+
+## Useful Information
+
+This module has the same utility as "Crop Volume", which offers more interactive feedbacks to the user, but "AutoCrop3D" allows you to easily trim the ROI of all the cases in your study.
+Then you can load your files into Slicer to view them. [More Information about Crop Volume](https://slicer.readthedocs.io/en/latest/user_guide/modules/cropvolume.html)
+
+It solves the issue of files that may be too heavy for "Crop Volume Sequence" [More Information about Crop volume Sequence](https://slicer.readthedocs.io/en/latest/user_guide/modules/cropvolumesequence.html).
 
 
 ## How does the module work?
@@ -318,7 +325,7 @@ You can choose a suffix which will be added to the existing name of your file(s)
 If you want to **generate VTK files** from your Segmentations, the Segmentation files must have "Seg" somewhere in the name. 
 For example: `patientName_Seg.nii.gz`
 
-### How to create a Region Of Interest (ROI)?
+### How to create a Region Of Interest?
 
 Use the module "Volume Rendering" to create your ROI and then save it as a .json file.
 1. Upload a scan file
