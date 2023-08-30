@@ -15,7 +15,8 @@ from qt import QFileDialog,QMessageBox
 from functools import partial
 import SimpleITK as sitk
 
-# import Apply_matrix_utils as amu
+from Matrix_CLI.Apply_matrix_utils.GZ_tools import GetPatients
+
 #
 # AutoMatrix
 #test
@@ -167,7 +168,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ComboBoxPatient.setCurrentIndex(1)
         self.ui.ComboBoxMatrix.setCurrentIndex(1)
 
-        self.ui.ButtonAutoFill.setVisible(False)
+        self.ui.ButtonAutoFill.setVisible(True)
 
     def Mirror(self):
         if self.ui.CheckBoxMirror.isChecked():
@@ -266,25 +267,19 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def Autofill(self):
 
-        #SCAN 47
-        self.ui.LineEditPatient.setText("/home/luciacev/Desktop/AutoMatrix/r_47_VTK_TFM_NIIGZ/P1_T1_IOS_L.stl")
-        
-
-
         #SEG 47
-        # self.ui.LineEditPatient.setText("/home/luciacev/Desktop/Gaelle/Centered_Merged_Mirror/Merged_Seg_Centered/Seg_Controls_per_patients/r_47/T1/r_47_T1_MAND_Seg.nii.gz")
+        self.ui.LineEditPatient.setText("/home/luciacev/Desktop/AutoMatrix/AutoMatrixRelease4/r_2_patient_files")
 
 
         #MATRIX 47
-        # self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/AutoMatrix/Matrix_mirror.tfm")
+        self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/AutoMatrix/AutoMatrixRelease4/r_2_matrix")
 
 
 
-        self.ui.LineEditOutput.setText("/home/luciacev/Desktop/AutoMatrix/output/")
-        # self.ui.LineEditPatient.setText("/home/luciacev/Desktop/Gaelle/Test_file_Full-IOS")
-        # self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/Gaelle/Matrix_test")
-        self.ui.ComboBoxPatient.setCurrentIndex(0)
-        # self.ui.ComboBoxMatrix.setCurrentIndex(0)
+        self.ui.LineEditOutput.setText("/home/luciacev/Desktop/AutoMatrix/output")
+
+        self.ui.ComboBoxPatient.setCurrentIndex(1)
+        self.ui.ComboBoxMatrix.setCurrentIndex(1)
 
     
     def openFinder(self,nom : str,_) -> None : 
@@ -466,7 +461,9 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.progressBar.setTextVisible(True)
             
             self.ui.label_info.setVisible(True)
-        
+            output = self.ui.LineEditOutput.text
+            input = self.ui.LineEditPatient.text
+            suffix = self.ui.LineEditSuffix.text
             self.logic = AutoMatrixLogic(self.ui.LineEditPatient.text,
                                             self.ui.LineEditMatrix.text,
                                             self.ui.LineEditOutput.text, 
@@ -477,11 +474,87 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.logic.process()
             self.addObserver(self.logic.cliNode,vtk.vtkCommand.ModifiedEvent,self.onProcessUpdate)
             self.onProcessStarted()
-            
-                            
-                    
 
-                
+            
+           
+
+                            
+
+        
+    def ProcessVolume(self)->None:
+        patients,nb_files = GetPatients(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
+
+        if nb_files!=0:
+            for key,values in patients.items():
+                for scan in values['scan']:
+                    image = slicer.util.loadVolume(scan)
+                    for matrix in values['matrix']:
+                        try:
+                            tform = slicer.util.loadTransform(matrix)
+                            image.SetAndObserveTransformNodeID(tform.GetID())
+                            image.HardenTransform()
+                            outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
+                            try : 
+                                matrix_name = os.path.basename(matrix).split('.tfm')[0].split(key)[1]
+                            except : 
+                                matrix_name = os.path.basename(matrix).split('.tfm')[0]
+                            
+                            if not os.path.exists(os.path.dirname(outpath)):
+                                os.makedirs(os.path.dirname(outpath))
+
+                            slicer.util.saveNode(image,outpath.split('.nii.gz')[0]+self.ui.LineEditSuffix.text+matrix_name+'.nii.gz')
+
+                        except:
+                            print("An issue occured")
+                            pass
+                    self.UpdateProgressBar(False)
+        
+
+
+              
+
+    def UpdateProgressBar(self,end:bool)->None:
+        if not end:
+            self.progress+=1
+            progressbar_value = (self.progress-1) /self.nbFiles * 100
+            if progressbar_value < 100 :
+                self.ui.progressBar.setValue(progressbar_value)
+                self.ui.progressBar.setFormat(str(round(progressbar_value,2))+"%")
+            else:
+                self.ui.progressBar.setValue(99)
+                self.ui.progressBar.setFormat("99%")
+            self.ui.label_info.setText("Number of processed files : "+str(self.progress-1)+"/"+str(self.nbFiles))
+
+        else : 
+            # success
+            print('PROCESS DONE.')
+            print(self.logic.cliNode.GetOutputText())
+            self.ui.progressBar.setValue(100)
+            self.ui.progressBar.setFormat("100%")
+
+            # qt.QMessageBox.information(self.parent,"Matrix applied with sucess")
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+        
+            # setting message for Message Box
+            msg.setText("Matrix applied with success")
+            
+            # setting Message box window title
+            msg.setWindowTitle("Information")
+            
+            # declaring buttons on Message Box
+            msg.setStandardButtons(QMessageBox.Ok)
+            msg.exec_()
+
+            self.ui.progressBar.setVisible(False)
+            self.ui.label_info.setVisible(False)
+            self.ui.LineEditOutput.setText("")
+            self.ui.LineEditPatient.setText("")
+            self.ui.LineEditMatrix.setText("")
+            self.ui.ComboBoxMatrix.setCurrentIndex(1)
+            self.ui.ComboBoxPatient.setCurrentIndex(1)
+
+
             
 
     def onProcessStarted(self)->None:   
@@ -498,6 +571,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setEnabled(True)
         self.ui.progressBar.setHidden(False)
         self.ui.progressBar.setTextVisible(True)
+        self.ui.progressBar.setFormat("0%")
 
 
     def onProcessUpdate(self,caller,event)->None:
@@ -522,7 +596,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 
                 
 
-        if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+        if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed :
             self.ui.applyButton.setEnabled(True)
 
             if self.logic.cliNode.GetStatus() & self.logic.cliNode.ErrorsMask:
@@ -530,7 +604,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 errorText = self.logic.cliNode.GetErrorText()
                 print("CLI execution failed: \n \n" + errorText)
                 msg = qt.QMessageBox()
-                msg.setText(f'There was an error during the process:\n \n {errorText} ')
+                msg.setText(f'There was an error during the process :\n \n {errorText} ')
                 msg.setWindowTitle("Error")
                 msg.exec_()
 
@@ -538,30 +612,9 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 # success
                 print('PROCESS DONE.')
                 print(self.logic.cliNode.GetOutputText())
-                self.ui.progressBar.setValue(100)
-                self.ui.progressBar.setFormat("100%")
 
-                #qt.QMessageBox.information(self.parent,"Matrix applied with sucess")
-                msg = QMessageBox()
-                msg.setIcon(QMessageBox.Information)
-            
-                # setting message for Message Box
-                msg.setText("Matrix applied with success")
-                
-                # setting Message box window title
-                msg.setWindowTitle("Information")
-                
-                # declaring buttons on Message Box
-                msg.setStandardButtons(QMessageBox.Ok)
-                msg.exec_()
-
-                self.ui.progressBar.setVisible(False)
-                self.ui.label_info.setVisible(False)
-                self.ui.LineEditOutput.setText("")
-                self.ui.LineEditPatient.setText("")
-                self.ui.LineEditMatrix.setText("")
-                self.ui.ComboBoxMatrix.setCurrentIndex(1)
-                self.ui.ComboBoxPatient.setCurrentIndex(1)
+                self.ProcessVolume()
+                self.UpdateProgressBar(True)
                 
     
 

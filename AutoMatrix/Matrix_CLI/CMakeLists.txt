@@ -13,6 +13,7 @@ set(MODULE_PYTHON_SCRIPTS
   ${FOLDER_LIBRARY}/Matrix_tools.py 
   ${FOLDER_LIBRARY}/OFFReader.py 
   ${FOLDER_LIBRARY}/VTK_tools.py 
+  ${FOLDER_LIBRARY}/GZ_tools.py 
   )
 
   slicerMacroBuildScriptedModule(

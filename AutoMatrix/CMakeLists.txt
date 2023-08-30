@@ -1,11 +1,7 @@
 #-----------------------------------------------------------------------------
 set(MODULE_NAME AutoMatrix)
 
-#-----------------------------------------------------------------------------
-set(MODULE_PYTHON_SCRIPTS
-  ${MODULE_NAME}.py
-  Matrix_CLI/Matrix_CLI.py
-  )
+
 
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
