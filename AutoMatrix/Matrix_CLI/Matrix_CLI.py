@@ -22,25 +22,25 @@ def main(args):
     ## The update of the file log for the progress bare is in the function CheckSharedListVTK
 
     idx = 0
-    patients,nb_files = amu.GetPatientsVTK(args.path_patient_intput,args.path_matrix_intput)
-    nb_worker = 6
-    if nb_files!=0:
-        nb_scan_done = mp.Manager().list([0 for i in range(nb_worker)])
-        idxProcess = mp.Value('i',idx)
-        check = mp.Process(target=amu.CheckSharedListVTK,args=(nb_scan_done,nb_files,args.logPath,idxProcess)) 
-        check.start()
+    # patients,nb_files = amu.GetPatientsVTK(args.path_patient_intput,args.path_matrix_intput)
+    # nb_worker = 6
+    # if nb_files!=0:
+    #     nb_scan_done = mp.Manager().list([0 for i in range(nb_worker)])
+    #     idxProcess = mp.Value('i',idx)
+    #     check = mp.Process(target=amu.CheckSharedListVTK,args=(nb_scan_done,nb_files,args.logPath,idxProcess)) 
+    #     check.start()
 
-        splits = np.array_split(list(patients.keys()),nb_worker)
+    #     splits = np.array_split(list(patients.keys()),nb_worker)
         
-        if path_patient_input.is_dir() : 
-            processess = [mp.Process(target=amu.ApplyMatrixVTK,args=(patients,keys,args.path_patient_intput,args.path_patient_output,i,nb_scan_done,args.logPath,idx,args.suffix)) for i,keys in enumerate(splits)]
+    #     if path_patient_input.is_dir() : 
+    #         processess = [mp.Process(target=amu.ApplyMatrixVTK,args=(patients,keys,args.path_patient_intput,args.path_patient_output,i,nb_scan_done,args.logPath,idx,args.suffix)) for i,keys in enumerate(splits)]
         
-        elif path_patient_input.is_file() : 
-            processess = [mp.Process(target=amu.ApplyMatrixVTK,args=(patients,keys,os.path.dirname(args.path_patient_intput),args.path_patient_output,i,nb_scan_done,args.logPath,idx,args.suffix)) for i,keys in enumerate(splits)]    
+    #     elif path_patient_input.is_file() : 
+    #         processess = [mp.Process(target=amu.ApplyMatrixVTK,args=(patients,keys,os.path.dirname(args.path_patient_intput),args.path_patient_output,i,nb_scan_done,args.logPath,idx,args.suffix)) for i,keys in enumerate(splits)]    
 
-        for proc in processess: proc.start()
-        for proc in processess: proc.join()
-        check.join()
+    #     for proc in processess: proc.start()
+    #     for proc in processess: proc.join()
+    #     check.join()
 
     
 
