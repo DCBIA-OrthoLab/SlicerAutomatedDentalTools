@@ -297,9 +297,15 @@ class Auto_IOS(Methode):
             "log_path": kwargs["logPath"],
         }
 
+        print('-' * 70)
         print("parameter seg", parameter_segteeth_T1)
-        print("parameter aso", parameter_pre_aso_T1)
+        print('-' * 70)
+        print("parameter pre_aso1 : ", parameter_pre_aso_T1)
+        print('-' * 70)
+        print("parameter pre_aso2 : ", parameter_pre_aso_T2)
+        print('-' * 70)
         print("parameter reg", parameter_reg)
+        print('-' * 70)
 
         PreOrientProcess = slicer.modules.pre_aso_ios
         SegProcess = slicer.modules.crownsegmentationcli

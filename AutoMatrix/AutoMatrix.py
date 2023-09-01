@@ -16,6 +16,7 @@ from functools import partial
 import SimpleITK as sitk
 
 from Matrix_CLI.Apply_matrix_utils.GZ_tools import GetPatients
+from Matrix_CLI.Apply_matrix_utils.VTK_tools import GetPatientsVTK
 
 #
 # AutoMatrix
@@ -469,7 +470,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                             self.ui.LineEditOutput.text, 
                                             self.ui.LineEditSuffix.text,
                                             self.log_path)
-
+            
 
             self.logic.process()
             self.addObserver(self.logic.cliNode,vtk.vtkCommand.ModifiedEvent,self.onProcessUpdate)
@@ -508,7 +509,39 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             print("An issue occured")
                             pass
                     self.UpdateProgressBar(False)
+
+        patients,nb_files = GetPatientsVTK(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
+
+        if nb_files!=0:
+            for key,values in patients.items():
+                for scan in values['scan']:
+                    model = slicer.util.loadModel(scan)
+                    for matrix in values['matrix']:
+                        try:
+                            tform = slicer.util.loadTransform(matrix)
+                            model.SetAndObserveTransformNodeID(tform.GetID())
+                            model.HardenTransform()
+                            outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
+                            try : 
+                                matrix_name = os.path.basename(matrix).split('.tfm')[0].split(key)[1]
+                            except : 
+                                matrix_name = os.path.basename(matrix).split('.tfm')[0]
+                            
+                            if not os.path.exists(os.path.dirname(outpath)):
+                                os.makedirs(os.path.dirname(outpath))
+
+                            fname, extension = os.path.splitext(os.path.basename(scan))
+                            extension = extension.lower()
+
+                            slicer.util.saveNode(model,outpath.split(extension)[0]+self.ui.LineEditSuffix.text+matrix_name+extension)
+
+                        except:
+                            print("An issue occured")
+                            pass
+                    self.UpdateProgressBar(False)
+
         
+
 
 
               
