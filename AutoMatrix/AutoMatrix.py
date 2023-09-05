@@ -509,6 +509,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             print("An issue occured")
                             pass
                     self.UpdateProgressBar(False)
+                    slicer.mrmlScene.Clear(0)
 
         patients,nb_files = GetPatientsVTK(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
 
@@ -539,6 +540,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             print("An issue occured")
                             pass
                     self.UpdateProgressBar(False)
+                    slicer.mrmlScene.Clear(0)
 
         
 
