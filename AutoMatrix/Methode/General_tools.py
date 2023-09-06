@@ -35,11 +35,11 @@ def search(path, *args):
 
 def GetPatients(file_path:str,matrix_path:str):
         """
-            Return a dictionnary with the patients names for the key. Their .nii.gz files and their matrix.
+            Return a dictionnary with the patients names for the key. Their .nii.gz/.vtk/.vtp/.stl./.off files and their matrix.
             exemple :
             input : file_path matrix_path
             output : 
-            ('patient1': {'scan':[file_path_1_patient1.nii.gz,file_path_2_patient1.nii.gz],'matrix':[matrix_path_1_patient1.tfm,matrix_path_2_patient1.tfm]})
+            ('patient1': {'scan':[file_path_1_patient1.nii.gz,file_path_2_patient1.vtk],'matrix':[matrix_path_1_patient1.tfm,matrix_path_2_patient1.h5]})
         """
         patients = {}
         files = []
@@ -79,8 +79,15 @@ def GetPatients(file_path:str,matrix_path:str):
                 patients[file_pat]['scan'].append(file)
         
         else : 
-            name, extension = os.path.splitext(file_path)
-            if extension ==".vtk" or extension ==".vtp" or extension ==".stl" or extension ==".off" or extension ==".obj" :
+            fname, extension = os.path.splitext(file_path)
+
+            try : 
+                fname, extension2 = os.path.splitext(os.path.basename(fname))
+                extension = extension2+extension
+            except : 
+                print("not a .nii.gz")
+
+            if extension ==".vtk" or extension ==".vtp" or extension ==".stl" or extension ==".off" or extension ==".obj" or extension==".nii.gz" :
                 files = [file_path]
                 file_pat = os.path.basename(file_path).split('_Seg')[0].split('_seg')[0].split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0].replace('.','')
                 for i in range(50):
