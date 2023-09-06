@@ -311,10 +311,6 @@ The AutoMatrix module provides a user interface to apply a matrix to a folder fo
 - **IOS**
 ## How the module works?
 
-### General Requirement and Warning
-- Segmentations and scans for IOS and CBCT must be centered first. 
-- Applying a matrix with a large translation may move the scan/segmentation out of the rendering box. This will result in automatic cropping.
-
 ### How to name the new files and where they are stored
 The module will create the same path you had in the input folder in the output folder.
 The new files will be named by the name of the original file + the suffix you entered + the name of the matrix files that were applied.
@@ -348,7 +344,7 @@ There is button "Mirror" that will automatically download the matrix mirror and 
 
 | Input Type  | Input Extension Type | Input Matrix Extension |
 | ----------- | ----------- | ----------- |
-| **CBCT** | .nii.gz | .tfm | 
+| **CBCT** | .nii.gz | .tfm .npy .h5 .mat .txt | 
 | **IOS** | .vtk .stl .vtp .off .obj | .tfm .npy .h5 .mat .txt|
 
 
