@@ -166,7 +166,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ComboBoxPatient.setCurrentIndex(1)
         self.ui.ComboBoxMatrix.setCurrentIndex(1)
 
-        self.ui.ButtonAutoFill.setVisible(True)
+        self.ui.ButtonAutoFill.setVisible(False)
 
     def Mirror(self):
         if self.ui.CheckBoxMirror.isChecked():
