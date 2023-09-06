@@ -139,7 +139,7 @@ def GetPatientsVTK(file_path:str,matrix_path:str):
     files = []
 
     if Path(file_path).is_dir():
-        files_original = search(file_path,'.vtk','.vtp','.stl','.off','.obj')
+        files_original = search(file_path,'.vtk','.vtp','.stl','.off','.obj','.nii.gz')
         files = []
         for i in range(len(files_original['.vtk'])):
             files.append(files_original['.vtk'][i])
@@ -155,6 +155,9 @@ def GetPatientsVTK(file_path:str,matrix_path:str):
 
         for i in range(len(files_original['.obj'])):
             files.append(files_original['.obj'][i])
+
+        for i in range(len(files_original['.nii.gz'])):
+            files.append(files_original['.nii.gz'][i])
 
         for i in range(len(files)):
             file = files[i]
