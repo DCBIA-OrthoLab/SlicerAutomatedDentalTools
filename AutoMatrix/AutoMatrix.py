@@ -477,7 +477,10 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                 outpath = scan.replace(os.path.dirname(self.ui.LineEditPatient.text),self.ui.LineEditOutput.text)
 
                             try : 
-                                matrix_name = os.path.basename(matrix).split(extension_mat)[0].split(key)[1]
+                                if Path(self.ui.LineEditMatrix.text).is_dir():
+                                    matrix_name = os.path.basename(matrix).split(extension_mat)[0].split(key)[1]
+                                else :
+                                    matrix_name = os.path.basename(matrix).split(extension_mat)[0]
                             except : 
                                 print('Impossible to extract the name of the matrix')
                                 matrix_name="matrix_name"
