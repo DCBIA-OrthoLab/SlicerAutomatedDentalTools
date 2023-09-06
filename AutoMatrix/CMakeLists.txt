@@ -16,7 +16,6 @@ slicerMacroBuildScriptedModule(
   WITH_GENERIC_TESTS
   )
 
-  add_subdirectory(Matrix_CLI)
 #-----------------------------------------------------------------------------
 if(BUILD_TESTING)
 
