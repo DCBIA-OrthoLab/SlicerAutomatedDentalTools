@@ -14,6 +14,7 @@ import numpy as np
 from qt import QFileDialog,QMessageBox
 from functools import partial
 import SimpleITK as sitk
+from pathlib import Path
 
 import Methode.General_tools as gt
 
@@ -183,7 +184,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.LineEditMatrix.setText("")
 
 
-    def DownloadUnzip(self, url, directory, folder_name=None, num_downl=1, total_downloads=1):
+    def DownloadUnzip(self, url:str, directory:str, folder_name=None, num_downl=1, total_downloads=1) -> str:
         """Function to download and unzip a file from a url with a progress bar"""
         out_path = os.path.join(directory, folder_name)
 
@@ -239,7 +240,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return out_path
 
 
-    def DownloadMirror(self):
+    def DownloadMirror(self) -> None:
         url = "https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixMirror/Mirror.zip"
         name = "Mirror_matrix"
 
@@ -435,7 +436,10 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                 
 
         
-    def ProcessVolume(self)->None:
+    def ProcessVolume(self)-> None:
+        '''
+        Function that will apply the matrix to all the files
+        '''
 
         patients,nb_files = gt.GetPatients(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
 
@@ -467,7 +471,11 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
                             model.SetAndObserveTransformNodeID(tform.GetID())
                             model.HardenTransform()
-                            outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
+                            if Path(self.ui.LineEditPatient.text).is_dir():
+                                outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
+                            else : 
+                                outpath = scan.replace(os.path.dirname(self.ui.LineEditPatient.text),self.ui.LineEditOutput.text)
+
                             try : 
                                 matrix_name = os.path.basename(matrix).split(extension_mat)[0].split(key)[1]
                             except : 
@@ -493,6 +501,9 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
               
 
     def UpdateProgressBar(self,end:bool)->None:
+        '''
+        Update the progress bar every time it's call
+        '''
         if not end:
             self.progress+=1
             progressbar_value = (self.progress-1) /self.nbFiles * 100
