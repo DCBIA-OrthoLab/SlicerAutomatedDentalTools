@@ -15,8 +15,8 @@ from qt import QFileDialog,QMessageBox
 from functools import partial
 import SimpleITK as sitk
 
-from Matrix_CLI.Apply_matrix_utils.GZ_tools import GetPatients
-from Matrix_CLI.Apply_matrix_utils.VTK_tools import GetPatientsVTK
+import Methode.General_tools as gt
+
 
 #
 # AutoMatrix
@@ -420,37 +420,6 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._parameterNode.EndModify(wasModified)
 
 
-    
-    def search(self,path, *args):
-        """
-        Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
-
-        Example:
-        args = ('json',['.nii.gz','.nrrd'])
-        return:
-            {
-                'json' : ['path/a.json', 'path/b.json','path/c.json'],
-                '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
-                '.nrrd.gz' : ['path/c.nrrd']
-            }
-        """
-        arguments = []
-        for arg in args:
-            if type(arg) == list:
-                arguments.extend(arg)
-            else:
-                arguments.append(arg)
-        return {
-            key: [
-                i
-                for i in glob.iglob(
-                    os.path.normpath("/".join([path, "**", "*"])), recursive=True
-                )
-                if i.endswith(key)
-            ]
-            for key in arguments
-        }
-    
 
     def onApplyButton(self,_)->None:
         """
@@ -462,85 +431,64 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.progressBar.setTextVisible(True)
             
             self.ui.label_info.setVisible(True)
-            output = self.ui.LineEditOutput.text
-            input = self.ui.LineEditPatient.text
-            suffix = self.ui.LineEditSuffix.text
-            self.logic = AutoMatrixLogic(self.ui.LineEditPatient.text,
-                                            self.ui.LineEditMatrix.text,
-                                            self.ui.LineEditOutput.text, 
-                                            self.ui.LineEditSuffix.text,
-                                            self.log_path)
-            
 
-            self.logic.process()
-            self.addObserver(self.logic.cliNode,vtk.vtkCommand.ModifiedEvent,self.onProcessUpdate)
             self.onProcessStarted()
+            self.ProcessVolume()
+            self.UpdateProgressBar(True)
 
-            
-           
-
-                            
+                                
 
         
     def ProcessVolume(self)->None:
-        patients,nb_files = GetPatients(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
+
+        patients,nb_files = gt.GetPatients(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
 
         if nb_files!=0:
             for key,values in patients.items():
                 for scan in values['scan']:
-                    image = slicer.util.loadVolume(scan)
+                    fname, extension_scan = os.path.splitext(scan)
+                    try : 
+                        fname, extension2 = os.path.splitext(os.path.basename(fname))
+                        extension_scan = extension2+extension_scan
+                    except : 
+                        print("not a .nii.gz")
+
+                    if extension_scan!=".nii.gz":
+                        model = slicer.util.loadModel(scan)
+                    else :
+                        model = slicer.util.loadVolume(scan)
+                        
                     for matrix in values['matrix']:
                         try:
-                            tform = slicer.util.loadTransform(matrix)
-                            image.SetAndObserveTransformNodeID(tform.GetID())
-                            image.HardenTransform()
-                            outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
-                            try : 
-                                matrix_name = os.path.basename(matrix).split('.tfm')[0].split(key)[1]
-                            except : 
-                                matrix_name = os.path.basename(matrix).split('.tfm')[0]
-                            
-                            if not os.path.exists(os.path.dirname(outpath)):
-                                os.makedirs(os.path.dirname(outpath))
+                            fname, extension_mat = os.path.splitext(os.path.basename(matrix))
+                            if extension_mat==".npy":
+                                array = np.load(matrix)
+                                tform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
+                                tform.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(array))
 
-                            slicer.util.saveNode(image,outpath.split('.nii.gz')[0]+self.ui.LineEditSuffix.text+matrix_name+'.nii.gz')
+                            else :
+                                tform = slicer.util.loadTransform(matrix)
 
-                        except:
-                            print("An issue occured")
-                            pass
-                    self.UpdateProgressBar(False)
-                    slicer.mrmlScene.Clear(0)
-
-        patients,nb_files = GetPatientsVTK(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
-
-        if nb_files!=0:
-            for key,values in patients.items():
-                for scan in values['scan']:
-                    model = slicer.util.loadModel(scan)
-                    for matrix in values['matrix']:
-                        try:
-                            tform = slicer.util.loadTransform(matrix)
                             model.SetAndObserveTransformNodeID(tform.GetID())
                             model.HardenTransform()
                             outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
                             try : 
-                                matrix_name = os.path.basename(matrix).split('.tfm')[0].split(key)[1]
+                                matrix_name = os.path.basename(matrix).split(extension_mat)[0].split(key)[1]
                             except : 
-                                matrix_name = os.path.basename(matrix).split('.tfm')[0]
+                                print('Impossible to extract the name of the matrix')
+                                matrix_name="matrix_name"
                             
                             if not os.path.exists(os.path.dirname(outpath)):
                                 os.makedirs(os.path.dirname(outpath))
 
-                            fname, extension = os.path.splitext(os.path.basename(scan))
-                            extension = extension.lower()
-
-                            slicer.util.saveNode(model,outpath.split(extension)[0]+self.ui.LineEditSuffix.text+matrix_name+extension)
+                            slicer.util.saveNode(model,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
 
                         except:
                             print("An issue occured")
                             pass
                     self.UpdateProgressBar(False)
-                    slicer.mrmlScene.Clear(0)
+                    slicer.mrmlScene.RemoveNode(model)
+                    
 
         
 
@@ -563,7 +511,6 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else : 
             # success
             print('PROCESS DONE.')
-            print(self.logic.cliNode.GetOutputText())
             self.ui.progressBar.setValue(100)
             self.ui.progressBar.setFormat("100%")
 
@@ -607,50 +554,6 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setHidden(False)
         self.ui.progressBar.setTextVisible(True)
         self.ui.progressBar.setFormat("0%")
-
-
-    def onProcessUpdate(self,caller,event)->None:
-        """
-        Call at each event to update the progress bar.
-        """ 
-    # check log file
-        if os.path.isfile(self.log_path):
-            time = os.path.getmtime(self.log_path)
-            if time != self.time_log:
-                # if progress was made
-                self.time_log = time
-                self.progress += 1
-                progressbar_value = (self.progress-1) /self.nbFiles * 100
-                if progressbar_value < 100 :
-                    self.ui.progressBar.setValue(progressbar_value)
-                    self.ui.progressBar.setFormat(str(round(progressbar_value,2))+"%")
-                else:
-                    self.ui.progressBar.setValue(99)
-                    self.ui.progressBar.setFormat("99%")
-                self.ui.label_info.setText("Number of processed files : "+str(self.progress-1)+"/"+str(self.nbFiles))
-                
-                
-
-        if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed :
-            self.ui.applyButton.setEnabled(True)
-
-            if self.logic.cliNode.GetStatus() & self.logic.cliNode.ErrorsMask:
-                # error
-                errorText = self.logic.cliNode.GetErrorText()
-                print("CLI execution failed: \n \n" + errorText)
-                msg = qt.QMessageBox()
-                msg.setText(f'There was an error during the process :\n \n {errorText} ')
-                msg.setWindowTitle("Error")
-                msg.exec_()
-
-            else:
-                # success
-                print('PROCESS DONE.')
-                print(self.logic.cliNode.GetOutputText())
-
-                self.ProcessVolume()
-                self.UpdateProgressBar(True)
-                
     
 
     
@@ -670,7 +573,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 warning_text = warning_text + "Enter file patient" + "\n"
         else :
             if self.ui.ComboBoxPatient.currentIndex==1 : #folder option
-                self.dico_patient=self.search(self.ui.LineEditPatient.text,'.vtk','.vtp','.stl','.off','.obj','.nii.gz')
+                self.dico_patient=gt.search(self.ui.LineEditPatient.text,'.vtk','.vtp','.stl','.off','.obj','.nii.gz')
                 if len(self.dico_patient['.vtk'])==0 and len(self.dico_patient['.vtp']) and len(self.dico_patient['.stl']) and len(self.dico_patient['.off']) and len(self.dico_patient['.obj']) and len(self.dico_patient['.nii.gz']) :
                     warning_text = warning_text + "Folder empty or wrong type of file patient" + "\n"
                     warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz" + "\n"
@@ -693,7 +596,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 warning_text = warning_text + "Enter file matrix" + "\n"
         else :
             if self.ui.ComboBoxMatrix.currentIndex==1 : # folder option
-                dico_matrix=self.search(self.ui.LineEditMatrix.text,'.npy','.h5','.tfm','.mat','.txt')
+                dico_matrix=gt.search(self.ui.LineEditMatrix.text,'.npy','.h5','.tfm','.mat','.txt')
                 if len(dico_matrix['.npy'])==0 and len(dico_matrix['.h5'])==0 and len(dico_matrix['.tfm'])==0 and len(dico_matrix['.mat'])==0 and len(dico_matrix['.txt'])==0 :
                     warning_text = warning_text + "Folder empty or wrong type of files matrix " + "\n"
                     warning_text = warning_text + "File authorized : .npy / .h5 / .tfm / . mat / .txt" + "\n"
@@ -754,17 +657,7 @@ class AutoMatrixLogic(ScriptedLoadableModuleLogic):
          Call the process with the parameters
         """ 
         
-        parameters = {}
-        
-        parameters ["path_patient_intput"] = self.path_patient_intput
-        parameters ["path_matrix_intput"] = self.path_matrix_intput
-        parameters ["path_patient_output"] = self.path_patient_output
-        parameters ["suffix"] = self.suffix
-        parameters ["logPath"] = self.logPath
-        
-        flybyProcess = slicer.modules.matrix_cli
-        self.cliNode = slicer.cli.run(flybyProcess,None, parameters)  
-        return flybyProcess
+        pass
 
    
 
