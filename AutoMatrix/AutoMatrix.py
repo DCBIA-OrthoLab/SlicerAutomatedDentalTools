@@ -156,10 +156,6 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.initializeParameterNode()
 
         # VARIABLES
-        self.log_path = os.path.join(slicer.util.tempDirectory(), 'process.log')
-        self.time_log = 0 # for progress bar
-        self.cliNode = None
-        self.installCliNode = None  
         self.progress=0
 
         self.ui.progressBar.setVisible(False)
