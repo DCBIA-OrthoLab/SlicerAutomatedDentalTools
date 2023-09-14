@@ -340,8 +340,6 @@ Use the module "Volume Rendering" to create your ROI and then save it as a .json
 
 ![Tuto1](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/assets/91120559/cf5ddce6-1582-44f0-a03c-ea74e4516bf5)
 ![Tuto2](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/assets/91120559/dcb33691-959e-4e79-b357-d6e4bca48ea5)
-    
-![ASOSADT](https://user-images.githubusercontent.com/72148963/227339216-61f04a0b-a8ab-410e-8265-d822309e1888.png)
 
 ## AutoMatrix Module
 
