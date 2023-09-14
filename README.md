@@ -296,9 +296,50 @@ You can either download them using the link or  by using the `Test Files` button
 ### Some Results
 ![ARegResult](https://github.com/HUTIN1/SlicerAutomatedDentalTools/assets/72148963/44a7be88-4cee-4943-b9c5-3bd647faa6ba)
 
+
 ### Models Selection
 
 For the **Fully-Automated** Mode, models are required as input, use the `Select` Button to automatically download, extract and select the selected models.
+
+## AutoCrop3D
+
+<img src="AutoCrop3D/Crop_Volumes_UI/Resources/Icons/AutoCrop3D.png" alt="Extension Logo" width="60"/>
+
+AutoCrop3D stands for "Scans automatically cropped" according to a Region Of Interest (ROI). 
+
+## Useful Information
+
+This module has the same utility as "Crop Volume", which offers more interactive feedbacks to the user, but "AutoCrop3D" allows you to easily trim the ROI of all the cases in your study.
+Then you can load your files into Slicer to view them. [More Information about Crop Volume](https://slicer.readthedocs.io/en/latest/user_guide/modules/cropvolume.html)
+
+It solves the issue of files that may be too heavy for "Crop Volume Sequence" [More Information about Crop volume Sequence](https://slicer.readthedocs.io/en/latest/user_guide/modules/cropvolumesequence.html).
+
+
+## How does the module work?
+
+### Input:
+
+|Input | Input Type  | Input Extension Type | Files to Test
+| ----------- | ----------- | ----------- | ----------- |
+|**File or Folder**| **CBCT** | .nii, .nii.gz, .gipl.gz, .nrrd, .nrrd.gz  |[Segmentation.zip](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/files/12401589/Segmentation.zip) |
+|**Region of Interest***| **Volume** | .json |[ROI.mrk.zip](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/files/12401594/Crop_Volume_ROI_R_Centered.mrk.zip) |
+
+
+You can choose a suffix which will be added to the existing name of your file(s).
+
+If you want to **generate VTK files** from your Segmentations, the Segmentation files must have "Seg" somewhere in the name. 
+For example: `patientName_Seg.nii.gz`
+
+### How to create a Region Of Interest?
+
+Use the module "Volume Rendering" to create your ROI and then save it as a .json file.
+1. Upload a scan file
+2. Choose the option `Display ROI`
+3. Change the ROI as you like
+4. Save it
+
+![Tuto1](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/assets/91120559/cf5ddce6-1582-44f0-a03c-ea74e4516bf5)
+![Tuto2](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/assets/91120559/dcb33691-959e-4e79-b357-d6e4bca48ea5)
     
 ![ASOSADT](https://user-images.githubusercontent.com/72148963/227339216-61f04a0b-a8ab-410e-8265-d822309e1888.png)
 
@@ -352,7 +393,7 @@ There is button "Mirror" that will automatically download the matrix mirror and 
   
 # Acknowledgements
 
-Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin (UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware), Leroux Gaelle (UoM).
+Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin (UoM),Jeanne Claret (UoM),Leroux Gaelle (UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
 
 Supported by NIDCR R01 024450, AA0F Grabber Family Teaching and Research Award and by Research Enhancement Award Activity 141 from the University of the Pacific, Arthur A. Dugoni School of Dentistry.
 
