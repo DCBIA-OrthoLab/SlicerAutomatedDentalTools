@@ -2,6 +2,7 @@
 
 
 Slicer automated dental tools is an extension for 3D Slicer to perform important automatic Dental and Cranio Facial analysis tasks via a GUI interface with no coding knowledge needed.
+This extension currently works only on the Stable release of the 3D Slicer. 
 
 
 <p align="center">
