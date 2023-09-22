@@ -7,8 +7,7 @@ Authors :
 - Maxime Gillot (UoM)
 - Baptiste Baquero (UoM)
 """
-
-
+#IMPORT DE BASE
 import time
 import os
 import glob
@@ -94,6 +93,10 @@ from pytorch3d.renderer import (
     HardPhongShader, PointLights,look_at_rotation,TexturesVertex,blending
 
 )
+
+
+
+
 
 dic_cam = { 'O':{
                 'L' : ([0,0,1],
@@ -228,7 +231,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 LABEL_L = ["18","19","20","21","22","23","24","25","26","27","28","29","30","31"]
-print(LABEL_L)
+
 LABEL_U = ["2","3","4","5","6","7","8","9","10","11","12","13","14","15"]
 
 MODELS_DICT = {
@@ -729,7 +732,7 @@ def main(args):
 
     
     
-    print(LANDMARKS)
+    # print(LANDMARKS)
     
     # print(dic_label['O'])
     
