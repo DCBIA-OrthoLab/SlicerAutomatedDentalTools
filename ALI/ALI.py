@@ -579,7 +579,7 @@ def carre(x):
 """
     func_name = "carre"
     conn.root.add_function(func_name, func_code)
-    
+
     # for func in [self.carre]:
     #     func_name = func.__name__
     #     print(f"func_name : {func_name}")
@@ -1029,14 +1029,12 @@ def carre(x):
       path_conda = os.path.join(default_install_path,"bin","conda")
       command_to_execute = [path_conda, "info", "--envs"]
 
-      result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+      result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=slicer.util.startupEnvironment())
       if result.returncode == 0:
           output = result.stdout.decode("utf-8")
           env_lines = output.strip().split("\n")
-
           for line in env_lines:
               env_name = line.split()[0].strip()
-              print("name : ",name,"     env_name : ",env_name)
               if env_name == name:
                   print('Env conda exist')
                   return True  # L'environnement Conda existe déjà
