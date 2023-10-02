@@ -16,7 +16,8 @@ from functools import partial
 import SimpleITK as sitk
 from pathlib import Path
 
-import Methode.General_tools as gt
+# import Methode.General_tools as gt
+from Methode.General_tools import search, GetPatients
 
 
 #
@@ -441,7 +442,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Function that will apply the matrix to all the files
         '''
 
-        patients,nb_files = gt.GetPatients(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
+        patients,nb_files = GetPatients(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
 
         if nb_files!=0:
             for key,values in patients.items():
@@ -583,7 +584,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 warning_text = warning_text + "Enter file patient" + "\n"
         else :
             if self.ui.ComboBoxPatient.currentIndex==1 : #folder option
-                self.dico_patient=gt.search(self.ui.LineEditPatient.text,'.vtk','.vtp','.stl','.off','.obj','.nii.gz')
+                self.dico_patient=search(self.ui.LineEditPatient.text,'.vtk','.vtp','.stl','.off','.obj','.nii.gz')
                 if len(self.dico_patient['.vtk'])==0 and len(self.dico_patient['.vtp']) and len(self.dico_patient['.stl']) and len(self.dico_patient['.off']) and len(self.dico_patient['.obj']) and len(self.dico_patient['.nii.gz']) :
                     warning_text = warning_text + "Folder empty or wrong type of file patient" + "\n"
                     warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz" + "\n"
@@ -606,7 +607,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 warning_text = warning_text + "Enter file matrix" + "\n"
         else :
             if self.ui.ComboBoxMatrix.currentIndex==1 : # folder option
-                dico_matrix=gt.search(self.ui.LineEditMatrix.text,'.npy','.h5','.tfm','.mat','.txt')
+                dico_matrix=search(self.ui.LineEditMatrix.text,'.npy','.h5','.tfm','.mat','.txt')
                 if len(dico_matrix['.npy'])==0 and len(dico_matrix['.h5'])==0 and len(dico_matrix['.tfm'])==0 and len(dico_matrix['.mat'])==0 and len(dico_matrix['.txt'])==0 :
                     warning_text = warning_text + "Folder empty or wrong type of files matrix " + "\n"
                     warning_text = warning_text + "File authorized : .npy / .h5 / .tfm / . mat / .txt" + "\n"
