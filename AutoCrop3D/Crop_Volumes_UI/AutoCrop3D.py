@@ -610,7 +610,7 @@ class AutoCrop3DLogic(ScriptedLoadableModuleLogic):
         parameters ["suffix"] = self.suffix
         parameters ["logPath"] = self.logPath
         
-        flybyProcess = slicer.modules.crop_volumes_cli
+        flybyProcess = slicer.modules.autocrop3d_cli
         self.cliNode = slicer.cli.run(flybyProcess,None, parameters)  
         
         return flybyProcess
