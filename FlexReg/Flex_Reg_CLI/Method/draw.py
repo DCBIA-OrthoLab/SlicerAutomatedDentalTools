@@ -20,6 +20,13 @@ def drawPatch(outlinePoints: list,polydata,mid):
 
     P = P.view(Pshape[0]*Pshape[1],3)
 
+    # if polydata.GetPointData().HasArray("Butterfly"):
+    #     butterfly_array = polydata.GetPointData().GetArray("Butterfly")
+    #     V_label=torch.tensor(vtk_to_numpy(butterfly_array)).to(torch.float32).cuda()
+    # else :
+    #     V_label = torch.zeros((V.shape[0])).cuda()
+         
+
     V = torch.tensor(vtk_to_numpy(polydata.GetPoints().GetData())).to(torch.float32).cuda()
     F = torch.tensor(vtk_to_numpy(polydata.GetPolys().GetData()).reshape(-1, 4)[:,1:]).to(torch.int64).cuda()
 
@@ -38,3 +45,14 @@ def drawPatch(outlinePoints: list,polydata,mid):
 
     polydata.GetPointData().AddArray(V_labels_prediction)
     
+
+
+def isButterflyPatchAvailable(model_node)->bool:
+        """
+        Check if the Butterfly patch is available for the provided model node.
+        """
+        polyData = model_node.GetPolyData()
+        if polyData:
+            scalars = polyData.GetPointData().GetScalars("Butterfly")
+            return scalars is not None
+        return False
