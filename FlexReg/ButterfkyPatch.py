@@ -252,24 +252,15 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def openFinder(self,nom : str,_) -> None : 
         """
-         Open finder to let the user choose is files or folder
+         Open finder to let the user choose is folder
         """ 
 
-        self.ui.lineEditOutput.setText("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/output")
-        self.ui.lineEditSuffix.setText("_REG")
-        
-        # A GARDER
-        # if nom=="Matrix":
-        #     surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-        #     self.ui.LineEditMatrix.setText(surface_folder)
+        # self.ui.lineEditOutput.setText("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/output")
+        # self.ui.lineEditSuffix.setText("_REG")
 
-        # elif nom=="Patient":
-        #     surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-        #     self.ui.LineEditPatient.setText(surface_folder)
-
-        # elif nom=="Output":
-        #     surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-        #     self.ui.lineEditOutput.setText(surface_folder)
+        if nom=="Output":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditOutput.setText(surface_folder)
 
 
 
@@ -955,16 +946,16 @@ class WidgetParameter:
 
 
     def selectFile(self):
-        # path_file = QFileDialog.getOpenFileName(self.parent,
-        #                                         'Open a file',
-        #                                         '/home',
-        #                                         'VTK File (*.vtk) ;; STL File (*.stl)')
-        # self.lineedit.insert(path_file)
+        path_file = QFileDialog.getOpenFileName(self.parent,
+                                                'Open a file',
+                                                '/home',
+                                                'VTK File (*.vtk) ;; STL File (*.stl)')
+        self.lineedit.insert(path_file)
         # if int(self.title)
-        if self.title==1:
-            self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T1.vtk')
-        else : 
-            self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T2.vtk')
+        # if self.title==1:
+        #     self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T1.vtk')
+        # else : 
+        #     self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T2.vtk')
 
     def checkLineEdit(self)->bool:
         '''
