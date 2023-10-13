@@ -256,6 +256,8 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
          Open finder to let the user choose is folder
         """ 
+        # Path ordi lucia lab
+        # self.ui.lineEditOutput.setText("/home/luciacev/Documents/Gaelle/Data/FlexReg/output")
 
         self.ui.lineEditOutput.setText("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/output")
         self.ui.lineEditSuffix.setText("_REG")
@@ -1069,6 +1071,12 @@ class WidgetParameter:
             self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T1.vtk')
         else : 
             self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T2.vtk')
+
+        # Path for ordi lucia lab
+        # if self.title==1:
+        #     self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/FlexReg/P16_T1.vtk')
+        # else : 
+        #     self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/FlexReg/P16_T2.vtk')
 
     def checkLineEdit(self)->bool:
         '''
