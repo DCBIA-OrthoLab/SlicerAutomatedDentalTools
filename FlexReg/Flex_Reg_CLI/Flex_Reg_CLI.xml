@@ -149,6 +149,13 @@
       <description>icp : suffix to add to the register file</description>
     </string>
 
+    <string>
+      <name>index_patch</name>
+      <label>index_patch</label>
+      <index>19</index>
+      <description>icp : suffix to add to the register file</description>
+    </string>
+
 
 
 

@@ -4,7 +4,7 @@ import numpy as np
 
 from Method.propagation import Dilation
 
-def drawPatch(outlinePoints: list,polydata,mid):
+def drawPatch(outlinePoints: list,polydata,mid,index:int):
     step = 0.2
     radius = 0.5 # celui de Nathan
     radius = 1.1
@@ -41,18 +41,7 @@ def drawPatch(outlinePoints: list,polydata,mid):
     V_label = Dilation(arg_midpoint_min,F,V_label,polydata)
 
     V_labels_prediction = numpy_to_vtk(V_label.cpu().numpy())
-    V_labels_prediction.SetName('Butterfly')
+    V_labels_prediction.SetName(f'Butterfly{index}')
 
     polydata.GetPointData().AddArray(V_labels_prediction)
     
-
-
-def isButterflyPatchAvailable(model_node)->bool:
-        """
-        Check if the Butterfly patch is available for the provided model node.
-        """
-        polyData = model_node.GetPolyData()
-        if polyData:
-            scalars = polyData.GetPointData().GetScalars("Butterfly")
-            return scalars is not None
-        return False
