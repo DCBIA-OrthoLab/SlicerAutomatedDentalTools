@@ -1,6 +1,6 @@
 import os
 from functools import partial
-from vtk.util.numpy_support import vtk_to_numpy
+from vtk.util.numpy_support import vtk_to_numpy,numpy_to_vtk
 import vtk
 import time
 
@@ -9,6 +9,7 @@ import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
+import torch
 
 from qt import (QGridLayout,
                 QHBoxLayout,
@@ -23,7 +24,8 @@ from qt import (QGridLayout,
                 QSpinBox,
                 QWidget,
                 QTimer,
-                QDialog)
+                QDialog,
+                QSizePolicy)
 
 
 
@@ -255,12 +257,12 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
          Open finder to let the user choose is folder
         """ 
 
-        # self.ui.lineEditOutput.setText("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/output")
-        # self.ui.lineEditSuffix.setText("_REG")
+        self.ui.lineEditOutput.setText("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/output")
+        self.ui.lineEditSuffix.setText("_REG")
 
-        if nom=="Output":
-            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-            self.ui.lineEditOutput.setText(surface_folder)
+        # if nom=="Output":
+        #     surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+        #     self.ui.lineEditOutput.setText(surface_folder)
 
 
 
@@ -403,7 +405,8 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
                  type=None,
                  path_reg="",
                  path_output="",
-                 suffix=""):
+                 suffix="",
+                 index_patch=0):
         """
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
@@ -432,6 +435,8 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
         self.path_reg=path_reg
         self.path_output=path_output
         self.suffix=suffix
+        
+        self.index_patch=index_patch
 
     def setDefaultParameters(self, parameterNode):
         """
@@ -475,6 +480,8 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
         parameters ["path_reg"] = self.path_reg
         parameters["path_output"] = self.path_output
         parameters["suffix"] = self.suffix
+
+        parameters["index_patch"] = self.index_patch
 
 
 
@@ -701,7 +708,7 @@ class Reg:
         viewNode = viewNodes.GetItemAsObject(2) if viewNodes.GetNumberOfItems() >= 2 else None
 
         # Set colors of the model
-        colors = [[255/256,51/256,153/256], [102/256,102/256,255/256]]
+        colors = [[255/256,51/256,200/256], [102/256,102/256,255/256]]
         displayNodeT1.SetColor(colors[0])
         displayNodeT2.SetColor(colors[1])
         
@@ -804,6 +811,7 @@ class WidgetParameter:
         self.button_view.pressed.connect(self.viewScan)
         self.layoutView.addWidget(self.button_view)
         layout.addWidget(widgetView)
+        
 
         self.combobox_choice_method = QComboBox()
         self.combobox_choice_method.addItems(['Parameter','Landmark'])
@@ -887,13 +895,65 @@ class WidgetParameter:
         self.button_draw.pressed.connect(self.draw)
         self.layout_outline.addWidget(self.button_draw,4,0,1,2)
 
-        self.layout_button_display = QGridLayout()
-        layout.addLayout(self.layout_button_display)
+        
 
+        
+
+        self.layout_file2 = QHBoxLayout()
+        layout.addLayout(self.layout_file2)
+
+        self.combobox_patch = QComboBox()
+        self.combobox_patch.addItems(['1'])
+        self.label_patch = QLabel("Patch : ")
+        self.label_patch.setVisible(False)
+        self.combobox_patch.setVisible(False)
+
+        self.layout_file2.addWidget(self.label_patch)
+        self.layout_file2.addWidget(self.combobox_patch)
+
+        self.layout_file3 = QHBoxLayout()
+        layout.addLayout(self.layout_file3)
+
+        self.add_patch = QCheckBox()
+        self.add_patch.stateChanged.connect(self.onCheckboxStateChanged)
+        self.add_patch.setVisible(False)
+
+        self.label_addpatch = QLabel("Create new patch")
+        self.label_addpatch.setVisible(False)
+        
+        self.delete_patch = QPushButton(f'Delete patch')
+        self.delete_patch.pressed.connect(self.deletPatch)
+        self.delete_patch.setVisible(False)
+
+        
+        self.layout_file3.addWidget(self.label_addpatch)
+        self.layout_file3.addWidget(self.add_patch)
+        self.layout_file3.addWidget(self.delete_patch)
+        
+
+        # Définissez un facteur d'étirement pour le QComboBox.
+        self.layout_file2.setStretchFactor(self.combobox_patch, 1)
+
+        self.layout_label_display = QGridLayout()
+        layout.addLayout(self.layout_label_display)
         self.label_time = QLabel(f'time')
-        self.layout_button_display.addWidget(self.label_time)
+        self.layout_label_display.addWidget(self.label_time)
         self.label_time.setVisible(False)
 
+        self.label_sep = QLabel('_'*100)
+        self.layout_label_display.addWidget(self.label_sep)
+        self.label_sep.setVisible(True)
+
+        
+
+        
+    def onCheckboxStateChanged(self):
+        if self.add_patch.isChecked():
+            self.combobox_patch.setDisabled(True)
+            self.delete_patch.setDisabled(True)
+        else:
+            self.combobox_patch.setDisabled(False)
+            self.delete_patch.setDisabled(False)
 
     def getMainWidget(self):
         return self.main_widget
@@ -925,6 +985,54 @@ class WidgetParameter:
     def setCamera(self,b:bool):
         self.camera=b
 
+    def deletPatch(self):
+
+        index = int(self.combobox_patch.currentText)
+        self._processed3 = False
+        self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
+                            int(self.lineedit_teeth_left_top.text),
+                        int(self.lineedit_teeth_right_top.text),
+                        int(self.lineedit_teeth_left_bot.text),
+                        int(self.lineedit_teeth_right_bot.text),
+                        float(self.lineedit_ratio_left_top.text),
+                        float(self.lineedit_ratio_right_top.text),
+                        float(self.lineedit_ratio_left_bot.text),
+                        float(self.lineedit_ratio_right_bot.text),
+                        float(self.lineedit_adjust_left_top.text),
+                        float(self.lineedit_adjust_right_top.text),
+                        float(self.lineedit_adjust_left_bot.text),
+                        float(self.lineedit_adjust_right_bot.text),
+                        "None",
+                        "None",
+                        "delete",
+                        "None",
+                        "None",
+                        "None",
+                        index)
+        self.logic.process()
+        self.start_time = time.time()
+        self.timer.timeout.connect(self.onProcessUpdateDelete)
+        self.timer.start(500)
+        
+
+
+    def onProcessUpdateDelete(self):
+        if hasattr(self, "_processed3") and self._processed3:
+            return
+        
+        # elapsed_time = time.time() - self.start_time
+        # self.label_time.setVisible(True)
+        # self.label_time.setText(f"time : {round(float(elapsed_time),2)}s")
+
+        if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+            self._processed3 = True
+            self.timer.stop()
+            self.viewScan()
+            indexC = self.combobox_patch.findText(str(int(self.addItemsCombobox())-1))
+            self.combobox_patch.removeItem(indexC)
+            self.displaySegmentation(self.surf)
+            
+
 
 
     def displayParamater(self,layout,number,parameter):
@@ -946,16 +1054,21 @@ class WidgetParameter:
 
 
     def selectFile(self):
-        path_file = QFileDialog.getOpenFileName(self.parent,
-                                                'Open a file',
-                                                '/home',
-                                                'VTK File (*.vtk) ;; STL File (*.stl)')
-        self.lineedit.insert(path_file)
+        # path_file = QFileDialog.getOpenFileName(self.parent,
+        #                                         'Open a file',
+        #                                         '/home',
+        #                                         'VTK File (*.vtk) ;; STL File (*.stl)')
+        # self.lineedit.insert(path_file)
+
+        print(self.combobox_patch.currentText)
+
+ 
+        # Ce
         # if int(self.title)
-        # if self.title==1:
-        #     self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T1.vtk')
-        # else : 
-        #     self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T2.vtk')
+        if self.title==1:
+            self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T1.vtk')
+        else : 
+            self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T2.vtk')
 
     def checkLineEdit(self)->bool:
         '''
@@ -1036,6 +1149,10 @@ class WidgetParameter:
                     model.SetAndObserveTransformNodeID(transform_node.GetID())
                     model.HardenTransform()
 
+                self.displaySegmentation(self.surf)
+                if not self.combobox_patch.isVisible():
+                    self.displayComboBox(self.surf)
+
             else:
                 slicer.util.infoDisplay("Enter a path to a vtk file")
 
@@ -1058,7 +1175,30 @@ class WidgetParameter:
             self.surf = None
             self.viewScan()
 
+        
+    def displayComboBox(self,model_node):
+        index = 1
+        polydata = model_node.GetPolyData()
+        while True:
+            array_name = f"Butterfly{index}"
             
+            if self.isButterflyPatchAvailable(polydata,array_name):
+                if index==1:
+                    self.label_patch.setVisible(True)
+                    self.combobox_patch.setVisible(True)
+                    self.delete_patch.setVisible(True)
+                    self.label_addpatch.setVisible(True)
+                    self.add_patch.setVisible(True)
+                
+                else : 
+                    self.combobox_patch.addItem(str(index))
+
+                
+                index += 1
+            else:
+                break
+
+        
 
 
     def checkSurfExist(self)->bool:
@@ -1070,6 +1210,11 @@ class WidgetParameter:
         '''
         if self.checkSurfExist() :
             self._processed2 = False
+            if self.add_patch.isChecked():
+                index=int(self.addItemsCombobox())
+            else:
+                index=int(self.combobox_patch.currentText)
+
             self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
                             int(self.lineedit_teeth_left_top.text),
                         int(self.lineedit_teeth_right_top.text),
@@ -1088,7 +1233,8 @@ class WidgetParameter:
                         "butterfly",
                         "None",
                         "None",
-                        "None")
+                        "None",
+                        index)
             self.logic.process()
             self.start_time = time.time()
             self.timer.timeout.connect(self.onProcessUpdateButterfly)
@@ -1113,6 +1259,10 @@ class WidgetParameter:
             self.timer.stop()
             self.viewScan()
             self.displaySegmentation(self.surf)
+            if self.add_patch.isChecked():
+                self.combobox_patch.addItem(self.addItemsCombobox())
+            if not self.combobox_patch.isVisible():
+                self.displayComboBox(self.surf)
             
 
     def loadLandamrk(self)->None:
@@ -1270,6 +1420,11 @@ class WidgetParameter:
             list_curve_str = ','.join(map(str, list_curve))   
             vector_middle="["+vector_middle+"]"
 
+            if self.add_patch.isChecked():
+                index=int(self.addItemsCombobox())
+            else:
+                index=int(self.combobox_patch.currentText)
+
             # CLI 
             self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
                             int(self.lineedit_teeth_left_top.text),
@@ -1289,7 +1444,8 @@ class WidgetParameter:
                         "curve",
                         "None",
                         "None",
-                        "None")
+                        "None",
+                        index)
             self.logic.process()
 
             self.start_time = time.time()
@@ -1325,9 +1481,33 @@ class WidgetParameter:
             self.displaySegmentation(self.surf)
             self._processed = True  # set the flag to prevent reprocessing
             self.timer.stop()
+            if self.add_patch.isChecked():
+                self.combobox_patch.addItem(self.addItemsCombobox())
+            if not self.combobox_patch.isVisible():
+                self.displayComboBox(self.surf)
         
             
 
+    def addItemsCombobox(self):
+        # Initialiser une variable pour stocker le plus grand nombre
+        max_num = -float('inf')
+
+        # Parcourir tous les éléments de la QComboBox
+        for index in range(self.combobox_patch.count):
+            try:
+                # Convertir l'élément en un nombre
+                num = int(self.combobox_patch.itemText(index))
+                
+                # Mettre à jour max_num si le numéro actuel est plus grand
+                if num > max_num:
+                    max_num = num
+            except ValueError:
+                # Ignorer si l'élément n'est pas convertible en int
+                pass
+
+        # Maintenant, max_num contient le plus grand numéro. 
+        # Vous pouvez ajouter le numéro suivant à la QComboBox
+        return str(max_num + 1)
 
 
 
@@ -1346,9 +1526,64 @@ class WidgetParameter:
         '''
         Display the patch
         '''
+
+        self.createButterfly(model_node.GetPolyData())
+
         displayNode = model_node.GetModelDisplayNode()
         displayNode.SetScalarVisibility(False)
         disabledModify = displayNode.StartModify()
         displayNode.SetActiveScalarName("Butterfly")
         displayNode.SetScalarVisibility(True)
         displayNode.EndModify(disabledModify)
+
+
+    def isButterflyPatchAvailable(self, model_node,name)->bool:
+        """
+        Check if the Butterfly patch is available for the provided model node.
+        """
+        polyData = model_node#.GetPolyData()
+        if polyData:
+            scalars = polyData.GetPointData().GetScalars(name)
+            return scalars is not None
+        return False
+    
+    def  createButterfly(self,polydata):
+        index = 1
+        final_array = None
+
+        while True:
+            array_name = f"Butterfly{index}"
+            
+            if self.isButterflyPatchAvailable(polydata,array_name):
+                current_array = polydata.GetPointData().GetArray(array_name)
+                current_tensor = torch.tensor(vtk_to_numpy(current_array)).to(torch.float32).cuda()
+                
+                if final_array is None:
+                    final_array = current_tensor
+                else:
+                    # Utiliser une opération OR pour combiner les patches
+                    final_array = torch.logical_or(final_array, current_tensor).to(torch.float32)
+                
+                index += 1
+            else:
+                break
+
+        # if final_array is None:
+        #     num_points = polydata.GetNumberOfPoints()
+        #     V_label = torch.zeros(num_points).to(torch.float32).cuda()
+        # else:
+        #     V_label = final_array
+            
+        # V_labels_prediction = numpy_to_vtk(V_label.cpu().numpy())
+        # V_labels_prediction.SetName('Butterfly')
+        # polydata.GetPointData().AddArray(V_labels_prediction)
+
+        if final_array is None and self.combobox_patch.isVisible():
+            self.label_patch.setVisible(False)
+            self.combobox_patch.setVisible(False)
+            self.delete_patch.setVisible(False)
+            self.label_addpatch.setVisible(False)
+            self.add_patch.setVisible(False)
+        
+            self.combobox_patch.addItem(str(1))
+

@@ -8,9 +8,13 @@ from Method.ICP import vtkICP,ICP
 from Method.vtkSegTeeth import vtkMeshTeeth
 import os 
 import numpy as np
+import torch
+from vtk.util.numpy_support import vtk_to_numpy,numpy_to_vtk
 
 
 def main(args):
+    print("*"*200)
+    print("index_patch : ",args.index_patch)
     # Read the file (coordinate using : LPS)
     reader = vtk.vtkPolyDataReader()
     reader.SetFileName(args.lineedit)
@@ -42,7 +46,8 @@ def main(args):
                         args.lineedit_adjust_left_top,
                         args.lineedit_adjust_right_top,
                         args.lineedit_adjust_left_bot,
-                        args.lineedit_adjust_right_bot)
+                        args.lineedit_adjust_right_bot,
+                        args.index_patch)
     
     elif args.type=="curve":
         # Reading the data
@@ -66,7 +71,32 @@ def main(args):
 
         curve =[arr.astype(np.float32) for arr in arrays]
 
-        drawPatch(curve,modelNode,middle)
+        drawPatch(curve,modelNode,middle,args.index_patch)
+
+    elif args.type=="delete":
+        index = args.index_patch + 1
+        while True:
+            array_name = f"Butterfly{index}"
+            
+            # Vérifiez si l'array "ButterflyX" existe dans le polydata
+            if modelNode.GetPointData().HasArray(array_name):
+                
+                # Récupérez l'array
+                current_array = modelNode.GetPointData().GetArray(array_name)
+                
+                # Renommez l'array pour décrémenter son index de 1
+                new_array_name = f"Butterfly{index-1}"
+                current_array.SetName(new_array_name)
+                
+                # Remplacez l'ancien array par le nouvel array renommé
+                modelNode.GetPointData().AddArray(current_array)
+                
+                index += 1
+            else:
+                break
+    
+        # Supprimez l'array "Butterfly2"
+        modelNode.GetPointData().RemoveArray(f"Butterfly{index-1}")
 
     elif args.type=="icp":
         # Reading the T1 model to register
@@ -93,6 +123,7 @@ def main(args):
         output_icp = icp.run(modelNode, modelNodeT1)
 
         matrix_array=output_icp["matrix"]
+        print("matrix output icp : ",matrix_array)
 
         vtk_matrix = vtk.vtkMatrix4x4()
         for i in range(4):
@@ -114,6 +145,37 @@ def main(args):
 
     # Save the changement in modelNode
     modelNode.Modified()
+
+    index = 1
+    final_array = None
+
+    while True:
+        array_name = f"Butterfly{index}"
+        
+        if modelNode.GetPointData().HasArray(array_name):
+            current_array = modelNode.GetPointData().GetArray(array_name)
+            current_tensor = torch.tensor(vtk_to_numpy(current_array)).to(torch.float32).cuda()
+            
+            if final_array is None:
+                final_array = current_tensor
+            else:
+                # Utiliser une opération OR pour combiner les patches
+                final_array = torch.logical_or(final_array, current_tensor).to(torch.float32)
+            
+            index += 1
+        else:
+            break
+
+    if final_array is None:
+        num_points = modelNode.GetNumberOfPoints()
+        V_label = torch.zeros(num_points).to(torch.float32).cuda()
+    else:
+        V_label = final_array
+        
+    V_labels_prediction = numpy_to_vtk(V_label.cpu().numpy())
+    V_labels_prediction.SetName('Butterfly')
+    modelNode.GetPointData().AddArray(V_labels_prediction)
+
 
     # Put back the data in the LPS coordinate
     inverseTransform = vtk.vtkTransform()
@@ -181,6 +243,8 @@ if __name__ == "__main__":
     parser.add_argument('path_reg',type=str)
     parser.add_argument('path_output',type=str)
     parser.add_argument('suffix',type=str)
+
+    parser.add_argument('index_patch',type=int)
     
     
 

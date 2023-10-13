@@ -52,7 +52,8 @@ def butterflyPatch(surf,
         adjust_anterior_right,
         adjust_anterior_left,
         adjust_posterior_right,
-        adjust_posterior_left
+        adjust_posterior_left,
+        index
          ):
     
   
@@ -188,7 +189,7 @@ def butterflyPatch(surf,
 
 
     V_labels_prediction = numpy_to_vtk(V_label.cpu().numpy())
-    V_labels_prediction.SetName('Butterfly')
+    V_labels_prediction.SetName(f'Butterfly{index}')
 
 
 
