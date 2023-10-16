@@ -25,7 +25,8 @@ from qt import (QGridLayout,
                 QWidget,
                 QTimer,
                 QDialog,
-                QSizePolicy)
+                QSizePolicy,
+                QSpacerItem)
 
 
 
@@ -920,7 +921,7 @@ class WidgetParameter:
         self.add_patch.stateChanged.connect(self.onCheckboxStateChanged)
         self.add_patch.setVisible(False)
 
-        self.label_addpatch = QLabel("Create new patch")
+        self.label_addpatch = QLabel("Create new patch : ")
         self.label_addpatch.setVisible(False)
         
         self.delete_patch = QPushButton(f'Delete patch')
@@ -928,12 +929,15 @@ class WidgetParameter:
         self.delete_patch.setVisible(False)
 
         
+        
         self.layout_file3.addWidget(self.label_addpatch)
         self.layout_file3.addWidget(self.add_patch)
+        spacer = QSpacerItem(1, 1, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.layout_file3.addSpacerItem(spacer)
         self.layout_file3.addWidget(self.delete_patch)
         
 
-        # Définissez un facteur d'étirement pour le QComboBox.
+        
         self.layout_file2.setStretchFactor(self.combobox_patch, 1)
 
         self.layout_label_display = QGridLayout()
@@ -950,6 +954,9 @@ class WidgetParameter:
 
         
     def onCheckboxStateChanged(self):
+        ''''
+        Change state when checkbox is True
+        '''
         if self.add_patch.isChecked():
             self.combobox_patch.setDisabled(True)
             self.delete_patch.setDisabled(True)
@@ -988,6 +995,9 @@ class WidgetParameter:
         self.camera=b
 
     def deletPatch(self):
+        '''
+        Call the cli to delete a patch. Launch onProcessUpdateDelete
+        '''
 
         index = int(self.combobox_patch.currentText)
         self._processed3 = False
@@ -1019,12 +1029,15 @@ class WidgetParameter:
 
 
     def onProcessUpdateDelete(self):
+        '''
+        Update time since the beginning of the cli. When it's the end of the cli, display the patch and update combo box
+        '''
         if hasattr(self, "_processed3") and self._processed3:
             return
         
-        # elapsed_time = time.time() - self.start_time
-        # self.label_time.setVisible(True)
-        # self.label_time.setText(f"time : {round(float(elapsed_time),2)}s")
+        elapsed_time = time.time() - self.start_time
+        self.label_time.setVisible(True)
+        self.label_time.setText(f"time : {round(float(elapsed_time),2)}s")
 
         if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
             self._processed3 = True
@@ -1056,21 +1069,19 @@ class WidgetParameter:
 
 
     def selectFile(self):
-        # path_file = QFileDialog.getOpenFileName(self.parent,
-        #                                         'Open a file',
-        #                                         '/home',
-        #                                         'VTK File (*.vtk) ;; STL File (*.stl)')
-        # self.lineedit.insert(path_file)
+        path_file = QFileDialog.getOpenFileName(self.parent,
+                                                'Open a file',
+                                                '/home',
+                                                'VTK File (*.vtk) ;; STL File (*.stl)')
+        self.lineedit.insert(path_file)
 
-        print(self.combobox_patch.currentText)
 
  
-        # Ce
-        # if int(self.title)
-        if self.title==1:
-            self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T1.vtk')
-        else : 
-            self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T2.vtk')
+        
+        # if self.title==1:
+        #     self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T1.vtk')
+        # else : 
+        #     self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T2.vtk')
 
         # Path for ordi lucia lab
         # if self.title==1:
@@ -1185,8 +1196,14 @@ class WidgetParameter:
 
         
     def displayComboBox(self,model_node):
+        '''
+        Display combobox
+        Add number of element to match number of patch in the model
+        '''
         index = 1
         polydata = model_node.GetPolyData()
+        self.combobox_patch.clear()
+        self.combobox_patch.addItem("1")
         while True:
             array_name = f"Butterfly{index}"
             
@@ -1268,7 +1285,12 @@ class WidgetParameter:
             self.viewScan()
             self.displaySegmentation(self.surf)
             if self.add_patch.isChecked():
-                self.combobox_patch.addItem(self.addItemsCombobox())
+                number_to_add = self.addItemsCombobox()
+                self.combobox_patch.addItem(number_to_add)
+                self.add_patch.setChecked(False)
+                index = self.combobox_patch.findText(number_to_add)  # Remplacez "VotreValeur" par la valeur que vous souhaitez sélectionner
+                if index >= 0:  # -1 signifie que la valeur n'a pas été trouvée
+                    self.combobox_patch.setCurrentIndex(index)
             if not self.combobox_patch.isVisible():
                 self.displayComboBox(self.surf)
             
@@ -1490,31 +1512,32 @@ class WidgetParameter:
             self._processed = True  # set the flag to prevent reprocessing
             self.timer.stop()
             if self.add_patch.isChecked():
-                self.combobox_patch.addItem(self.addItemsCombobox())
+                number_to_add = self.addItemsCombobox()
+                self.combobox_patch.addItem(number_to_add)
+                self.add_patch.setChecked(False)
+                index = self.combobox_patch.findText(number_to_add)  # Remplacez "VotreValeur" par la valeur que vous souhaitez sélectionner
+                if index >= 0:  # -1 signifie que la valeur n'a pas été trouvée
+                    self.combobox_patch.setCurrentIndex(index)
             if not self.combobox_patch.isVisible():
                 self.displayComboBox(self.surf)
         
             
 
     def addItemsCombobox(self):
-        # Initialiser une variable pour stocker le plus grand nombre
+        '''
+        Return the number of the last element of the combo box + 1
+        '''
         max_num = -float('inf')
 
-        # Parcourir tous les éléments de la QComboBox
         for index in range(self.combobox_patch.count):
             try:
-                # Convertir l'élément en un nombre
                 num = int(self.combobox_patch.itemText(index))
                 
-                # Mettre à jour max_num si le numéro actuel est plus grand
                 if num > max_num:
                     max_num = num
             except ValueError:
-                # Ignorer si l'élément n'est pas convertible en int
                 pass
 
-        # Maintenant, max_num contient le plus grand numéro. 
-        # Vous pouvez ajouter le numéro suivant à la QComboBox
         return str(max_num + 1)
 
 
@@ -1556,6 +1579,9 @@ class WidgetParameter:
         return False
     
     def  createButterfly(self,polydata):
+        '''
+        Check if a Butterfly1 exist, if no disable the display of the combobox
+        '''
         index = 1
         final_array = None
 
@@ -1576,15 +1602,6 @@ class WidgetParameter:
             else:
                 break
 
-        # if final_array is None:
-        #     num_points = polydata.GetNumberOfPoints()
-        #     V_label = torch.zeros(num_points).to(torch.float32).cuda()
-        # else:
-        #     V_label = final_array
-            
-        # V_labels_prediction = numpy_to_vtk(V_label.cpu().numpy())
-        # V_labels_prediction.SetName('Butterfly')
-        # polydata.GetPointData().AddArray(V_labels_prediction)
 
         if final_array is None and self.combobox_patch.isVisible():
             self.label_patch.setVisible(False)

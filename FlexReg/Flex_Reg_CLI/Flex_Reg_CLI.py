@@ -74,28 +74,28 @@ def main(args):
         drawPatch(curve,modelNode,middle,args.index_patch)
 
     elif args.type=="delete":
+        # To delete the array it will rename all the array with a number > index and delete the last one
         index = args.index_patch + 1
         while True:
             array_name = f"Butterfly{index}"
             
-            # Vérifiez si l'array "ButterflyX" existe dans le polydata
+            # Check if array existing
             if modelNode.GetPointData().HasArray(array_name):
                 
-                # Récupérez l'array
                 current_array = modelNode.GetPointData().GetArray(array_name)
                 
-                # Renommez l'array pour décrémenter son index de 1
+                # Rename it
                 new_array_name = f"Butterfly{index-1}"
                 current_array.SetName(new_array_name)
                 
-                # Remplacez l'ancien array par le nouvel array renommé
+                # Update old array by the new one
                 modelNode.GetPointData().AddArray(current_array)
                 
                 index += 1
             else:
                 break
     
-        # Supprimez l'array "Butterfly2"
+        # Delete last array
         modelNode.GetPointData().RemoveArray(f"Butterfly{index-1}")
 
     elif args.type=="icp":
@@ -149,6 +149,7 @@ def main(args):
     index = 1
     final_array = None
 
+    # Create the patch Butterfly
     while True:
         array_name = f"Butterfly{index}"
         
@@ -159,7 +160,6 @@ def main(args):
             if final_array is None:
                 final_array = current_tensor
             else:
-                # Utiliser une opération OR pour combiner les patches
                 final_array = torch.logical_or(final_array, current_tensor).to(torch.float32)
             
             index += 1
