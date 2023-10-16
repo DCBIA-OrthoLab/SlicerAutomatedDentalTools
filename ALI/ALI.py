@@ -6,6 +6,7 @@ import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 import webbrowser
+import textwrap
 
 import platform
 import subprocess
@@ -507,6 +508,12 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.output_folder = save_folder
       self.ui.SaveFolderLineEdit.setText(save_folder)
 
+
+  def carre(self,x):
+    result = x * x
+    print("le carre de ",x," est : ",result)
+    return result
+
   def onPredictButton(self):
     # COMMAND CALL FUNCTIONS MINICONDA
     miniconda,default_install_path = self.checkMiniconda()
@@ -571,13 +578,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Send function
     print("trying to send the function")
 
-    func_code =  """
-def carre(x):
-  result = x * x
-  print("le carre de ",x," est : ",result)
-  return result
-"""
     func_name = "carre"
+    func_code = inspect.getsource(self.carre)
+    func_code = textwrap.dedent(func_code)
     conn.root.add_function(func_name, func_code)
 
     # for func in [self.carre]:
@@ -587,8 +590,8 @@ def carre(x):
     #     conn.root.add_function(func_name, func_code)
 
     print("on lui demande le resultat")
-    resultat_carre = conn.root.carre(5)
-    print(f"Le résultat du carré de 5 est {resultat_carre}")
+    resultat_carre = conn.root.carre("self",5)
+    print(f"Le résultat du carré de 5 est {resultat_carre} ouiiiii")
 
     # Stop process
     server_process.terminate()
@@ -738,6 +741,9 @@ def carre(x):
 
 
     self.RunningUI(True)
+
+  
+  
 
 
   def UpdateALICBCT(self,progress):
