@@ -1,3 +1,4 @@
+
 import os
 import logging
 import glob
@@ -22,6 +23,7 @@ except :
 import inspect
 
 # import csv
+import sys
 
 
 #region ========== FUNCTIONS ==========
@@ -510,94 +512,97 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def carre(self,x):
-    result = x * x
+    # result = x * x
+    obj = Math(x)
+    result = obj.carre()
     print("le carre de ",x," est : ",result)
     return result
 
   def onPredictButton(self):
     # COMMAND CALL FUNCTIONS MINICONDA
-    miniconda,default_install_path = self.checkMiniconda()
-    path_conda = os.path.join(default_install_path,"bin","conda")
-    path_activate = os.path.join(default_install_path, "bin", "activate")
-    success_install = miniconda
+#     miniconda,default_install_path = self.checkMiniconda()
+#     path_conda = os.path.join(default_install_path,"bin","conda")
+#     path_activate = os.path.join(default_install_path, "bin", "activate")
+#     success_install = miniconda
 
-    if not miniconda : 
-            print("appelle InstallConda")
-            success_install = self.InstallConda(default_install_path)
+#     if not miniconda : 
+#             print("appelle InstallConda")
+#             success_install = self.InstallConda(default_install_path)
 
-    if success_install:
-        print("miniconda installed")
+#     if success_install:
+#         print("miniconda installed")
 
-        name = "aliIOSConda"
-        if not self.checkEnvConda(name,default_install_path):
-            self.createCondaEnv(name,default_install_path,path_conda,path_activate)
+#         name = "aliIOSConda"
+#         print(f"Python executable used by Slicer: {sys.executable}")
+#         if not self.checkEnvConda(name,default_install_path):
+#             self.createCondaEnv(name,default_install_path,path_conda,path_activate)
 
-        command_to_execute = [path_conda, "info", "--envs"]
-        print(f"commande de verif : {command_to_execute}")
+#         command_to_execute = [path_conda, "info", "--envs"]
+#         print(f"commande de verif : {command_to_execute}")
 
-        result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=slicer.util.startupEnvironment())
-        if result.returncode == 0:
-            output = result.stdout.decode("utf-8")
-            print("Environnements Conda disponibles :\n", output)
+#         result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=slicer.util.startupEnvironment())
+#         if result.returncode == 0:
+#             output = result.stdout.decode("utf-8")
+#             print("Environnements Conda disponibles :\n", output)
 
-        # Lister les packages installés dans l'environnement
-        print("List les packages du nouvel environment")
-        list_packages_command = f"source {path_activate} {name} && conda list"
-        result = subprocess.run(list_packages_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, executable="/bin/bash", env=slicer.util.startupEnvironment())
-        if result.returncode == 0:
-            print("List of installed packages:")
-            print(result.stdout)
-        else:
-            print(f"Failed to list installed packages: {result.stderr}")
+#         # Lister les packages installés dans l'environnement
+#         print("List les packages du nouvel environment")
+#         list_packages_command = f"source {path_activate} {name} && conda list"
+#         result = subprocess.run(list_packages_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, executable="/bin/bash", env=slicer.util.startupEnvironment())
+#         if result.returncode == 0:
+#             print("List of installed packages:")
+#             print(result.stdout)
+#         else:
+#             print(f"Failed to list installed packages: {result.stderr}")
 
-    activate_env = os.path.join(default_install_path, "bin", "activate")
-    python_executable = os.path.join(default_install_path, "envs", name, "bin", "python3")  # Modifiez selon votre système d'exploitation et votre installation
+#     activate_env = os.path.join(default_install_path, "bin", "activate")
+#     python_executable = os.path.join(default_install_path, "envs", name, "bin", "python3")  # Modifiez selon votre système d'exploitation et votre installation
 
-    print(f"Le répertoire de travail actuel est {os.path.dirname(os.path.abspath(__file__))}")
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    command = f"source {activate_env} {name} && {python_executable} server.py"
+#     print(f"Le répertoire de travail actuel est {os.path.dirname(os.path.abspath(__file__))}")
+#     os.chdir(os.path.dirname(os.path.abspath(__file__)))
+#     command = f"source {activate_env} {name} && {python_executable} server.py"
 
-    # Start server
-    server_process = subprocess.Popen(command, shell=True, executable="/bin/bash",env=slicer.util.startupEnvironment())
+#     # Start server
+#     server_process = subprocess.Popen(command, shell=True, executable="/bin/bash",env=slicer.util.startupEnvironment())
     
-    # To be sure the server start
-    print("on attend le lancement de server")
-    time.sleep(5)
+#     # To be sure the server start
+#     print("on attend le lancement de server")
+#     time.sleep(5)
     
-    print("on essaye de se connecter")
-    conn = rpyc.connect("localhost", 18812)
+#     print("on essaye de se connecter")
+#     conn = rpyc.connect("localhost", 18812)
 
-    print("on est connecte")
+#     print("on est connecte")
 
-      # Send import
-#     import_statements = """import numpy as np
-# import torch
-# import vtk"""
-#     conn.root.add_function("imports", import_statements)
+#       # Send import
+# #     import_statements = """import numpy as np
+# # import torch
+# # import vtk"""
+# #     conn.root.add_function("imports", import_statements)
 
-    # Send function
-    print("trying to send the function")
+#     # Send function
+#     print("trying to send the function")
 
-    func_name = "carre"
-    func_code = inspect.getsource(self.carre)
-    func_code = textwrap.dedent(func_code)
-    conn.root.add_function(func_name, func_code)
+#     func_name = "carre"
+#     func_code = inspect.getsource(self.carre)
+#     func_code = textwrap.dedent(func_code)
+#     conn.root.add_function(func_name, func_code)
 
-    # for func in [self.carre]:
-    #     func_name = func.__name__
-    #     print(f"func_name : {func_name}")
-    #     func_code = inspect.getsource(func)
-    #     conn.root.add_function(func_name, func_code)
+#     # for func in [self.carre]:
+#     #     func_name = func.__name__
+#     #     print(f"func_name : {func_name}")
+#     #     func_code = inspect.getsource(func)
+#     #     conn.root.add_function(func_name, func_code)
 
-    print("on lui demande le resultat")
-    resultat_carre = conn.root.carre("self",5)
-    print(f"Le résultat du carré de 5 est {resultat_carre} ouiiiii")
+#     print("on lui demande le resultat")
+#     resultat_carre = conn.root.carre("self",5)
+#     print(f"Le résultat du carré de 5 est {resultat_carre} oui non oui non")
 
-    # Stop process
-    server_process.terminate()
-    server_process.wait()
+#     # Stop process
+#     server_process.terminate()
+#     server_process.wait()
 
-    print("on a ferme le server")
+#     print("on a ferme le server")
 
     
     
@@ -1107,9 +1112,23 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           
           
   def createCondaEnv(self,name:str,default_install_path:str,path_conda:str,path_activate:str) :
+      print(f"Python executable used by Slicer: {sys.executable}")
       command_to_execute = [path_conda, "create", "--name", name, "python=3.9", "-y"]  
       print(f"command_to_execute : {command_to_execute}")
       result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=slicer.util.startupEnvironment())
+
+      # python_path = "/home/luciacev/miniconda3/bin/python3"
+      # command_to_execute = ["/home/luciacev/tmpconda.sh", "create", "--name", name, "python=3.9", "-y"]  
+      # print(f"command_to_execute : {command_to_execute}")
+      # result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+
+      if result.returncode != 0:
+        print(f"Error creating the environment. Return code: {result.returncode}")
+        print("result.stdout : ","*"*150)
+        print(result.stdout)
+        print("result.stderr : ","*"*150)
+        print(result.stderr)
 
       install_commands = [
       f"source {path_activate} {name} && pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113",

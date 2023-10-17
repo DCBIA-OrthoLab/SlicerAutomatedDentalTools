@@ -1,6 +1,13 @@
 import rpyc
 import math
 
+class Math :
+    def __init__(self,x):
+        self.x=x
+
+    def carre(self):
+        return self.x*self.x
+
 
 class MyService(rpyc.Service):
     def on_connect(self, conn):
