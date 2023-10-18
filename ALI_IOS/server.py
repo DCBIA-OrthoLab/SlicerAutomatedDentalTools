@@ -1,16 +1,6 @@
-#!/home/luciacev/Slicer-5.4.0-linux-amd64/bin/PythonSlicer
+import rpyc
+import math
 
-#/usr/bin/env pythonSlicer
-# /usr/bin/env python-real
-
-"""
-AUTOMATIC LANDMARK IDENTIFICATION IN INTRAORAL SCANS (ALI_CBCT)
-
-Authors :
-- Maxime Gillot (UoM)
-- Baptiste Baquero (UoM)
-"""
-#IMPORT DE BASE
 import time
 import os
 import glob
@@ -19,99 +9,34 @@ import json
 import vtk
 import numpy as np
 
-import Func_Miniconda as fm
-import subprocess
+
+
 import platform
-import rpyc
-import inspect
-import textwrap
 
-import slicer
+import torch
+from monai.networks.nets import UNETR
 
+import torch.nn as nn
+from pytorch3d.structures.meshes import Meshes
+from pytorch3d.renderer import Materials
+from typing import Optional
+from pytorch3d.renderer.blending import (hard_rgb_blend,BlendParams)
+from pytorch3d.renderer.mesh.rasterizer import (Fragments)
+from pytorch3d.renderer.utils import TensorProperties
+from pytorch3d.renderer.lighting import PointLights
+# from pytorch3d.common.types import Device
 
-# try:
-#     import argparse
-# except ImportError:
-#     pip_install('argparse')
-#     import argparse
+from vtk.util.numpy_support import vtk_to_numpy
+from monai.networks.nets import UNet
+from monai.data import decollate_batch
+from monai.transforms import (AsDiscrete,ToTensor)
+from scipy import linalg
+from pytorch3d.renderer import (
+    FoVPerspectiveCameras,
+    RasterizationSettings, MeshRenderer, MeshRasterizer,
+    HardPhongShader, PointLights,look_at_rotation,TexturesVertex,blending
 
-
-# print(sys.argv)
-
-
-from slicer.util import pip_install
-
-# from slicer.util import pip_uninstall
-# # pip_uninstall('torch torchvision torchaudio') 
-
-# pip_uninstall('monai')
-system = platform.system()
-if system=="Linux":
-    try:
-        import torch
-    except ImportError:
-        pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
-        import torch
-
-    try :
-        from monai.networks.nets import UNETR
-    except ImportError:
-        pip_install('monai==0.7.0')
-        from monai.networks.nets import UNETR
-
-    from platform import system # to know which OS is used
-
-    if system() == 'Darwin':  # MACOS
-        try:
-            import pytorch3d
-        except ImportError:
-            pip_install('pytorch3d')
-            import pytorch3d
-
-    else: # Linux or Windows
-        try:
-            import pytorch3d
-            if pytorch3d.__version__ != '0.6.2':
-                raise ImportError
-            print("c'est bon ","!"*50)
-        except ImportError:
-            try:
-            #   import torch
-                pyt_version_str=torch.__version__.split("+")[0].replace(".", "")
-                version_str="".join([f"py3{sys.version_info.minor}_cu",torch.version.cuda.replace(".",""),f"_pyt{pyt_version_str}"])
-                pip_install('--upgrade pip')
-                pip_install('fvcore==0.1.5.post20220305')
-                pip_install('--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
-            except: # install correct torch version
-                pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113') 
-                pip_install('--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
-
-
-    import torch.nn as nn
-    from pytorch3d.structures.meshes import Meshes
-    from pytorch3d.renderer import Materials
-    from typing import Optional
-    from pytorch3d.renderer.blending import (hard_rgb_blend,BlendParams)
-    from pytorch3d.renderer.mesh.rasterizer import (Fragments)
-    from pytorch3d.renderer.utils import TensorProperties
-    from pytorch3d.renderer.lighting import PointLights
-    # from pytorch3d.common.types import Device
-
-    from vtk.util.numpy_support import vtk_to_numpy
-    from monai.networks.nets import UNet
-    from monai.data import decollate_batch
-    from monai.transforms import (AsDiscrete,ToTensor)
-    from scipy import linalg
-    from pytorch3d.renderer import (
-        FoVPerspectiveCameras,
-        RasterizationSettings, MeshRenderer, MeshRasterizer,
-        HardPhongShader, PointLights,look_at_rotation,TexturesVertex,blending
-
-    )
-
-
-
-
+)
 
 dic_cam = { 'O':{
                 'L' : ([0,0,1],
@@ -260,6 +185,9 @@ MODELS_DICT = {
                     'CB':1
                 }
             }
+
+
+
 
 def GenPhongRenderer(image_size,blur_radius,faces_per_pixel,device):
     
@@ -432,6 +360,7 @@ def GetSurfProp(surf_unit, surf_mean, surf_scale):
         
     return verts.unsqueeze(0), faces.unsqueeze(0), color_normals.unsqueeze(0), region_id.unsqueeze(0)
 
+
 def GetColorArray(surf, array_name):
     colored_points = vtk.vtkUnsignedCharArray()
     colored_points.SetName('colors')
@@ -445,6 +374,7 @@ def GetColorArray(surf, array_name):
         colored_points.InsertNextTuple3(rgb[0], rgb[1], rgb[2])
     return colored_points
 
+
 def RemoveExtraFaces(F,num_faces,RI,label):
     last_num_faces =[]
     for face in num_faces:
@@ -454,45 +384,10 @@ def RemoveExtraFaces(F,num_faces,RI,label):
                 last_num_faces.append(face)
     return last_num_faces
 
+
 def Upscale(landmark_pos,mean_arr,scale_factor):
     new_pos_center = (landmark_pos.cpu()/scale_factor) + mean_arr
     return new_pos_center
-
-# def GenControlePoint(dic_points,landmarks_selected):
-#     lm_lst = []
-#     false = False
-#     true = True
-#     id = 0
-#     dic_lower = {}
-#     dic_upper = {}
-#     for patient_id,dic_U_L in dic_points.items():
-#         for jaw,dic_landmarks in dic_U_L.items():
-#             for landmark in dic_landmarks.keys():
-#                 if landmark in landmarks_selected:
-#                     id+=1
-#                     controle_point = {
-#                         "id": str(id),
-#                         "label": landmark,
-#                         "description": "",
-#                         "associatedNodeID": "",
-#                         "position": [float(dic_landmarks[landmark]["x"]), float(dic_landmarks[landmark]["y"]), float(dic_landmarks[landmark]["z"])],
-#                         "orientation": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
-#                         "selected": true,
-#                         "locked": true,
-#                         "visibility": true,
-#                         "positionStatus": "preview"
-#                     }
-#                     # lm_lst.append(controle_point)
-#                     if patient_id not in dic_lower.keys():
-#                         dic_lower[patient_id] = {}
-#                     if jaw not in dic_lower[patient_id].keys():
-#                         dic_lower[patient_id][jaw] = {}
-#                         if jaw == 'Lower':
-#                             dic_lower[patient_id][jaw] = controle_point 
-#                         else:
-#                             dic_upper[patient_id][jaw] = controle_point
-
-#     return dic_lower,dic_upper
 
 
 def GenControlePoint(groupe_data,landmarks_selected):
@@ -518,7 +413,6 @@ def GenControlePoint(groupe_data,landmarks_selected):
             lm_lst.append(controle_point)
 
     return lm_lst
-
 
 
 def WriteJson(lm_lst,out_path):
@@ -568,6 +462,7 @@ def WriteJson(lm_lst,out_path):
 
     f.close
 
+
 def TradLabel(lst_teeth):
     dico_trad ={'LL7':18,'LL6':19,'LL5':20,'LL4':21,'LL3':22,'LL2':23,'LL1':24,'LR1':25,'LR2':26,'LR3':27,'LR4':28,'LR5':29,'LR6':30,'LR7':31,
                 'UL7':15,'UL6':14,'UL5':13,'UL4':12,'UL3':11,'UL2':10,'UL1':9,'UR1':8,'UR2':7,'UR3':6,'UR4':5,'UR5':4,'UR6':3,'UR7':2
@@ -581,9 +476,6 @@ def TradLabel(lst_teeth):
                 dic_teeth['Upper'].append(dico_trad[tooth])
         
     return dic_teeth
-
-
-
 
 class Agent:
     def __init__(
@@ -734,123 +626,36 @@ class MaskRenderer(nn.Module):
         colors = texels   
         images = hard_rgb_blend(colors, fragments, blend_params)
         return images
-    
-
-def checkMiniconda():
-    print("je suis dans checkminiconda")
-    user_home = os.path.expanduser("~")
-    default_install_path = os.path.join(user_home, "miniconda3")
-    return(os.path.exists(default_install_path),default_install_path)
 
 
 
-def InstallConda(default_install_path):
-      system = platform.system()
-      machine = platform.machine()
+class MyService(rpyc.Service):
+    def on_connect(self, conn):
+        pass
 
-      miniconda_base_url = "https://repo.anaconda.com/miniconda/"
-
-      # Construct the filename based on the operating system and architecture
-      if system == "Windows":
-          if machine.endswith("64"):
-              filename = "Miniconda3-latest-Windows-x86_64.exe"
-          else:
-              filename = "Miniconda3-latest-Windows-x86.exe"
-      elif system == "Linux":
-          if machine == "x86_64":
-              filename = "Miniconda3-latest-Linux-x86_64.sh"
-          else:
-              filename = "Miniconda3-latest-Linux-x86.sh"
-      else:
-          raise NotImplementedError(f"Unsupported system: {system} {machine}")
-
-      print(f"Selected Miniconda installer file: {filename}")
-
-      miniconda_url = miniconda_base_url + filename
-    #   miniconda_url = "https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-Linux-x86_64.sh"
-    #   https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-      print(f"Full download URL: {miniconda_url}")
-
-      print(f"Default Miniconda installation path: {default_install_path}")
-
-      path_sh = os.path.join(default_install_path,"miniconda.sh")
-      path_conda = os.path.join(default_install_path,"bin","conda")
-
-      print(f"path_sh : {path_sh}")
-      print(f"path_conda : {path_conda}")
-
-      if not os.path.exists(default_install_path):
-          os.makedirs(default_install_path)
+    def on_disconnect(self, conn):
+        pass
 
 
+    def exposed_add_function(self, func_name, func_code):
+        exec(func_code, globals())
+        if not func_name == "imports":  # Ne pas ajouter "imports" comme une fonction
+            setattr(self, f'exposed_{func_name}', eval(func_name))
 
-      subprocess.run(f"mkdir -p {default_install_path}",capture_output=True, shell=True)
-      subprocess.run(f"wget --continue --tries=3 {miniconda_url} -O {path_sh}",capture_output=True, shell=True)
-      subprocess.run(f"chmod +x {path_sh}",capture_output=True, shell=True)
-
-      try:
-          print("Le fichier est valide.")
-          subprocess.run(f"bash {path_sh} -b -u -p {default_install_path}",capture_output=True, shell=True)
-          subprocess.run(f"rm -rf {path_sh}",shell=True)
-          subprocess.run(f"{path_conda} init bash",shell=True)
-          # subprocess.run(f"{path_conda} init zsh",shell=True)
-          return True
-      except:
-          print("Le fichier est invalide.")
-          return (False)
-      
-
-
-def main(args):
-
-    
-    system = platform.system()
-    if system=="Windows":
-    #MINICONDA ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        print("%"*300)
-        miniconda,default_install_path = checkMiniconda()
-
-        if not miniconda : 
-                print("appelle InstallConda")
-                InstallConda(default_install_path)
-
-        current_file_path = os.path.abspath(__file__)
-
-        # Répertoire contenant le script en cours d'exécution
-        current_directory = os.path.dirname(current_file_path)
-
-        # Chemin absolu du fichier souhaité qui est à côté du script en cours d'exécution
-        path_func_miniconda = os.path.join(current_directory, 'Func_Miniconda.py')
-
-        python_path = os.path.join(default_install_path,"bin","python")
-        command_to_execute = [python_path,path_func_miniconda,"setup",default_install_path,sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6]]  
-        print(f"command_to_execute : {command_to_execute}")
-
-        env = dict(os.environ)
-        if 'PYTHONPATH' in env:
-            del env['PYTHONPATH']
-        if 'PYTHONHOME' in env:
-            del env['PYTHONHOME']
-
-
-
-        result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,env=env)
-
-
-        if result.returncode != 0:
-            print(f"Error creating the environment. Return code: {result.returncode}")
-            print("result.stdout : ","*"*150)
-            print(result.stdout)
-            print("result.stderr : ","*"*150)
-            print(result.stderr)
-        else:
-            print(result.stdout)
-            print("Environment created successfully.")
-
-        print("%"*300)
+    def exposed_exec_code(self, code):
+        try:
+            exec(code)
+            return True
+        except Exception as e:
+            return str(e)
         
-    #END MINICONDA ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    else:
+
+
+        
+
+    def exposed_running(self,args):
+    # result = x * x
+        print(args)
         landmarks_selected = []
         for tooth in args['teeth']:
             for lm_type in args['lm_type']:
@@ -1139,98 +944,7 @@ def main(args):
             time.sleep(0.5)
 
 
-            # dic_points[patient_id] = group_data
-
-            # print(group_data)
-            # print(dic_points)
-            # dic_lower,dic_upper = GenControlePoint(group_data,landmarks_selected)
-            # print(dic_lower)
-            # print(dic_upper)
-
-            # out_path = args["output_dir"]
-
-            # if args["save_in_folder"]:
-            #     outputdir = out_path + "/" + patient_id + "_landmarks"
-            #     # print("Output dir :",outputdir)
-            #     if not os.path.exists(outputdir):
-            #         os.makedirs(outputdir)
-            
-            # else:
-            #     outputdir = out_path
-
-
-            # print(outputdir)
-
-            # path_num_patient = os.path.join(args['output_dir'],patient_id)
-            # if not os.path.exists(path_num_patient):
-            #     os.makedirs(path_num_patient)
-            
-            # if args["jaw"] == "L":
-            #     path_jaw = os.path.join(path_num_patient,'Lower')
-            #     landmark_path = os.path.join(os.path.dirname(path_vtk),f"{num_patient}_L_Pred.json")
-                
-            # else:
-            #     path_jaw = os.path.join(outputdir,'Upper')
-            #     landmark_path = os.path.join(os.path.dirname(path_vtk),f"{num_patient}_U.json")
-        
-
-            # if not os.path.exists(path_jaw):
-            #         os.makedirs(path_jaw)
-    
-
-            # copy_file = os.path.join(path_jaw,os.path.basename(path_vtk))
-            # shutil.copy(path_vtk,copy_file)
-            # copy_json_file =  os.path.join(out_path_jaw,os.path.basename(landmark_path))
-            # final_outpath_json = shutil.copy(landmark_path,copy_json_file)
-            
-            # print('out_path :',outputdir)
-            # print('out_path_jaw :',out_path_jaw)
-            # print('landmark_path :',landmark_path)
-            
-            # final_out_path = shutil.copytree(path_vtk,out_path_L)
-
-            # if args["jaw"] == "L":
-            #     WriteJson(lm_lst,os.path.join(path_num_patient,f"{patient_id}_L_Pred.json"))
-            # else:
-            # WriteJson(lm_lst,os.path.join(path_num_patient,f"{patient_id}_U_Pred.json"))
-
-
-
 if __name__ == "__main__":
-
-
-    print("Starting")
-    print(sys.argv)
-
-
-    args = {
-        "input": sys.argv[1],
-        "dir_models": sys.argv[2],
-        "lm_type": sys.argv[3].split(" "),
-        "teeth": sys.argv[4].split(" "),
-        "save_in_folder": sys.argv[5] == "true",
-        "output_dir": sys.argv[6],
-
-        "image_size": 224,
-        "blur_radius": 0,
-        "faces_per_pixel": 1,
-        # "sphere_radius": 0.3,
-    }
-
-    
-    # args = {
-    #         "input": '/home/luciacev-admin/Desktop/data_cervical/T1_14_L_segmented.vtk',
-    #         "dir_models": '/home/luciacev-admin/Desktop/Data_allios_cli/Models',
-    #         "teeth": ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7'],
-    #         "lm_type": ["C"],
-    #         # "save_in_folder": sys.argv[4] == "true",
-    #         "output_dir": '/home/luciacev-admin/Desktop/data_cervical/test',
-            
-    #         "image_size": 224,
-    #         "blur_radius": 0,
-    #         "faces_per_pixel": 1,
-    #         "sphere_radius": 0.3,
-
-    #     }
-
-    main(args)
+    from rpyc.utils.server import ThreadedServer
+    t = ThreadedServer(MyService, port=18812)
+    t.start()
