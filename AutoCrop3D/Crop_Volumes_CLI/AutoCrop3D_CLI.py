@@ -8,8 +8,6 @@ import numpy as np
 import os,json
 
 
-
-
 def main(args)-> None:
     """
     Crop a Region of Interest on files with the extension .nii.gz .nrrd.gz .gipl.gz
@@ -49,14 +47,29 @@ def main(args)-> None:
 
             Lower = ROI_Center - ROI_Size / 2
             Upper = ROI_Center + ROI_Size / 2
-
+            
             Lower = np.array(img.TransformPhysicalPointToContinuousIndex(Lower)).astype(int)
             Upper = np.array(img.TransformPhysicalPointToContinuousIndex(Upper)).astype(int)
+
+            # Bounds checking
+            img_size = img.GetSize()
+            Lower = [max(0, l) for l in Lower]
+            Upper = [min(img_size[i], u) for i, u in enumerate(Upper)]
+    
+
+            # Ensure non-zero size for all dimensions
+            for i in range(3):
+                if Lower[i] == Upper[i]:
+                    if Upper[i] < img_size[i] - 1:
+                        Upper[i] += 1
+                    elif Lower[i] > 0:
+                        Lower[i] -= 1
 
             # Crop the image
             crop_image = img[Lower[0]:Upper[0],
                             Lower[1]:Upper[1],
                             Lower[2]:Upper[2]]
+      
             
             # Create the output path
             # relative_path = all folder to get to the file we want in the input
@@ -71,12 +84,14 @@ def main(args)-> None:
 
             os.makedirs(os.path.dirname(ScanOutPath), exist_ok=True)
             
-            try:
+            # try:
                 
-                sitk.WriteImage(crop_image,ScanOutPath)
+            sitk.WriteImage(crop_image,ScanOutPath)
                 
-            except:
-                print("Error for patient: ",patient)
+            # except:
+            #     import sys
+            #     print("Error for patient: ",patient)
+            #     print('The error says: ',sys.exc_info()[0])
 
             with open(args.logPath,'r+') as log_f :
                     log_f.write(str(index))
