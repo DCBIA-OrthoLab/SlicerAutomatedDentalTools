@@ -1,5 +1,14 @@
 import rpyc
 import math
+from scipy import linalg
+import time
+import sys
+import threading
+import pytorch3d
+
+
+import rpyc
+import threading
 
 import time
 import os
@@ -15,6 +24,7 @@ import platform
 
 import torch
 from monai.networks.nets import UNETR
+
 
 import torch.nn as nn
 from pytorch3d.structures.meshes import Meshes
@@ -37,6 +47,7 @@ from pytorch3d.renderer import (
     HardPhongShader, PointLights,look_at_rotation,TexturesVertex,blending
 
 )
+
 
 dic_cam = { 'O':{
                 'L' : ([0,0,1],
@@ -489,7 +500,7 @@ class Agent:
         super(Agent, self).__init__()
         self.renderer = renderer
         self.renderer2=renderer2
-        self.camera_points = torch.tensor(camera_position).type(torch.float32).to(DEVICE)
+        self.camera_points = torch.tensor(np.array(camera_position)).type(torch.float32).to(DEVICE)
         self.scale = 0
         self.radius = radius
         self.verbose = verbose
@@ -630,32 +641,27 @@ class MaskRenderer(nn.Module):
 
 
 class MyService(rpyc.Service):
+    _server=None
+    
+    def set_server(self, server):
+        self._server = server
+    
+        
     def on_connect(self, conn):
         pass
 
     def on_disconnect(self, conn):
         pass
-
-
-    def exposed_add_function(self, func_name, func_code):
-        exec(func_code, globals())
-        if not func_name == "imports":  # Ne pas ajouter "imports" comme une fonction
-            setattr(self, f'exposed_{func_name}', eval(func_name))
-
-    def exposed_exec_code(self, code):
-        try:
-            exec(code)
-            return True
-        except Exception as e:
-            return str(e)
-        
+    
+    def exposed_is_ready(self):
+        return True 
 
 
         
 
     def exposed_running(self,args):
     # result = x * x
-        print(args)
+        print("args dans server : ",args)
         landmarks_selected = []
         for tooth in args['teeth']:
             for lm_type in args['lm_type']:
@@ -943,8 +949,25 @@ class MyService(rpyc.Service):
             sys.stdout.flush()
             time.sleep(0.5)
 
+    def exposed_stop(self):
+        # Informer le client de la déconnexion imminente
+        threading.Thread(target=self.shutdown_server).start()
+        return "DISCONNECTING"
+
+    def shutdown_server(self):
+        # Attendez quelques secondes pour donner au client le temps de se préparer
+        time.sleep(2)
+        self._server.close()
+        
 
 if __name__ == "__main__":
     from rpyc.utils.server import ThreadedServer
-    t = ThreadedServer(MyService, port=18812)
+    my_service_instance = MyService()  # Créez une instance de votre service
+    t = ThreadedServer(my_service_instance, port=18817)
+    
+    my_service_instance.set_server(t)  # Passez la référence du serveur à votre instance
+    
+    t.logger.quiet = False
+    t.logger.debug("Serveur RPyC en cours d'exécution sur le port 18812")
     t.start()
+
