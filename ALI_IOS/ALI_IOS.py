@@ -22,9 +22,10 @@ import numpy as np
 import Func_Miniconda as fm
 import subprocess
 import platform
-import rpyc
 import inspect
 import textwrap
+import urllib.request
+import shutil
 
 import slicer
 
@@ -46,7 +47,7 @@ from slicer.util import pip_install
 
 # pip_uninstall('monai')
 system = platform.system()
-if system=="Linux":
+if system!="Windows":
     try:
         import torch
     except ImportError:
@@ -73,7 +74,6 @@ if system=="Linux":
             import pytorch3d
             if pytorch3d.__version__ != '0.6.2':
                 raise ImportError
-            print("c'est bon ","!"*50)
         except ImportError:
             try:
             #   import torch
@@ -108,12 +108,28 @@ if system=="Linux":
         HardPhongShader, PointLights,look_at_rotation,TexturesVertex,blending
 
     )
+    
+else :
+    import platform
+    import subprocess
+    import os
+    import urllib.request
+    import shutil
+    import time
+    import sys
+    
+    try :
+        import rpyc
+    except ImportError:
+        pip_install('rpyc')
+        import rpyc
+
+from scipy import linalg
 
 
+if system!="Windows":
 
-
-
-dic_cam = { 'O':{
+    dic_cam = { 'O':{
                 'L' : ([0,0,1],
                     np.array([0.5,0.,1.0])/linalg.norm([0.5,0.5,1.0]),
                     np.array([-0.5,0.,1.0])/linalg.norm([-0.5,-0.5,1.0]),
@@ -151,589 +167,589 @@ dic_cam = { 'O':{
 
     }   
 
-LOWER_DENTAL = ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7']
+    LOWER_DENTAL = ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7']
 
-UPPER_DENTAL = ['UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7']
+    UPPER_DENTAL = ['UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7']
 
-TYPE_LM = ['O','MB','DB','CL','CB']
-
-
-Lower = []
-Upper = []
-
-for tooth in LOWER_DENTAL:
-    for lmtype in TYPE_LM:
-        Lower.append(tooth+lmtype)   
-
-for tooth in UPPER_DENTAL:
-    for lmtype in TYPE_LM:
-        Upper.append(tooth+lmtype)
-
-LANDMARKS = {"L":Lower,"U":Upper}
+    TYPE_LM = ['O','MB','DB','CL','CB']
 
 
-dic_label = {
-    'O' : {
-            "15" : LANDMARKS["U"][0:3],
-            "14" : LANDMARKS["U"][5:8],
-            "13" : LANDMARKS["U"][10:13],
-            "12" : LANDMARKS["U"][15:18],
-            "11" : LANDMARKS["U"][20:23],
-            "10" : LANDMARKS["U"][25:28],
-            "9" : LANDMARKS["U"][30:33],
-            "8" : LANDMARKS["U"][35:38],
-            "7" : LANDMARKS["U"][40:43],
-            "6" : LANDMARKS["U"][45:48],
-            "5" : LANDMARKS["U"][50:53],
-            "4" : LANDMARKS["U"][55:58],
-            "3" : LANDMARKS["U"][60:63],
-            "2" : LANDMARKS["U"][65:68],
+    Lower = []
+    Upper = []
 
-            "18" : LANDMARKS["L"][0:3],
-            "19" : LANDMARKS["L"][5:8],
-            "20" : LANDMARKS["L"][10:13],
-            "21" : LANDMARKS["L"][15:18],
-            "22" : LANDMARKS["L"][20:23],
-            "23" : LANDMARKS["L"][25:28],
-            "24" : LANDMARKS["L"][30:33],
-            "25" : LANDMARKS["L"][35:38],
-            "26" : LANDMARKS["L"][40:43],
-            "27" : LANDMARKS["L"][45:48],
-            "28" : LANDMARKS["L"][50:53],
-            "29" : LANDMARKS["L"][55:58],
-            "30" : LANDMARKS["L"][60:63],
-            "31" : LANDMARKS["L"][65:68]
+    for tooth in LOWER_DENTAL:
+        for lmtype in TYPE_LM:
+            Lower.append(tooth+lmtype)   
+
+    for tooth in UPPER_DENTAL:
+        for lmtype in TYPE_LM:
+            Upper.append(tooth+lmtype)
+
+    LANDMARKS = {"L":Lower,"U":Upper}
+
+
+    dic_label = {
+        'O' : {
+                "15" : LANDMARKS["U"][0:3],
+                "14" : LANDMARKS["U"][5:8],
+                "13" : LANDMARKS["U"][10:13],
+                "12" : LANDMARKS["U"][15:18],
+                "11" : LANDMARKS["U"][20:23],
+                "10" : LANDMARKS["U"][25:28],
+                "9" : LANDMARKS["U"][30:33],
+                "8" : LANDMARKS["U"][35:38],
+                "7" : LANDMARKS["U"][40:43],
+                "6" : LANDMARKS["U"][45:48],
+                "5" : LANDMARKS["U"][50:53],
+                "4" : LANDMARKS["U"][55:58],
+                "3" : LANDMARKS["U"][60:63],
+                "2" : LANDMARKS["U"][65:68],
+
+                "18" : LANDMARKS["L"][0:3],
+                "19" : LANDMARKS["L"][5:8],
+                "20" : LANDMARKS["L"][10:13],
+                "21" : LANDMARKS["L"][15:18],
+                "22" : LANDMARKS["L"][20:23],
+                "23" : LANDMARKS["L"][25:28],
+                "24" : LANDMARKS["L"][30:33],
+                "25" : LANDMARKS["L"][35:38],
+                "26" : LANDMARKS["L"][40:43],
+                "27" : LANDMARKS["L"][45:48],
+                "28" : LANDMARKS["L"][50:53],
+                "29" : LANDMARKS["L"][55:58],
+                "30" : LANDMARKS["L"][60:63],
+                "31" : LANDMARKS["L"][65:68]
+                
+            },
+
+        'C' : {
             
-        },
+            "15" : LANDMARKS["U"][3:5],
+            "14" : LANDMARKS["U"][8:10],
+            "13" : LANDMARKS["U"][13:15],
+            "12" : LANDMARKS["U"][18:20],
+            "11" : LANDMARKS["U"][23:25],
+            "10" : LANDMARKS["U"][28:30],
+            "9" : LANDMARKS["U"][33:35],
+            "8" : LANDMARKS["U"][38:40],
+            "7" : LANDMARKS["U"][43:45],
+            "6" : LANDMARKS["U"][48:50],
+            "5" : LANDMARKS["U"][53:55],
+            "4" : LANDMARKS["U"][58:60],
+            "3" : LANDMARKS["U"][63:65],
+            "2" : LANDMARKS["U"][68:70],
 
-    'C' : {
-        
-        "15" : LANDMARKS["U"][3:5],
-        "14" : LANDMARKS["U"][8:10],
-        "13" : LANDMARKS["U"][13:15],
-        "12" : LANDMARKS["U"][18:20],
-        "11" : LANDMARKS["U"][23:25],
-        "10" : LANDMARKS["U"][28:30],
-        "9" : LANDMARKS["U"][33:35],
-        "8" : LANDMARKS["U"][38:40],
-        "7" : LANDMARKS["U"][43:45],
-        "6" : LANDMARKS["U"][48:50],
-        "5" : LANDMARKS["U"][53:55],
-        "4" : LANDMARKS["U"][58:60],
-        "3" : LANDMARKS["U"][63:65],
-        "2" : LANDMARKS["U"][68:70],
-
-        "18" : LANDMARKS["L"][3:5],
-        "19" : LANDMARKS["L"][8:10],
-        "20" : LANDMARKS["L"][13:15],
-        "21" : LANDMARKS["L"][18:20],
-        "22" : LANDMARKS["L"][23:25],
-        "23" : LANDMARKS["L"][28:30],
-        "24" : LANDMARKS["L"][33:35],
-        "25" : LANDMARKS["L"][38:40],
-        "26" : LANDMARKS["L"][43:45],
-        "27" : LANDMARKS["L"][48:50],
-        "28" : LANDMARKS["L"][53:55],
-        "29" : LANDMARKS["L"][58:60],
-        "30" : LANDMARKS["L"][63:65],
-        "31" : LANDMARKS["L"][68:70]
-        }
-        
-    }
-
-
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
-# DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-
-LABEL_L = ["18","19","20","21","22","23","24","25","26","27","28","29","30","31"]
-
-LABEL_U = ["2","3","4","5","6","7","8","9","10","11","12","13","14","15"]
-
-MODELS_DICT = {
-                'O':{
-                    'O':0,
-                    'MB':1,
-                    'DB':2
-                },
-                'C':{
-                    'CL':0,
-                    'CB':1
-                }
+            "18" : LANDMARKS["L"][3:5],
+            "19" : LANDMARKS["L"][8:10],
+            "20" : LANDMARKS["L"][13:15],
+            "21" : LANDMARKS["L"][18:20],
+            "22" : LANDMARKS["L"][23:25],
+            "23" : LANDMARKS["L"][28:30],
+            "24" : LANDMARKS["L"][33:35],
+            "25" : LANDMARKS["L"][38:40],
+            "26" : LANDMARKS["L"][43:45],
+            "27" : LANDMARKS["L"][48:50],
+            "28" : LANDMARKS["L"][53:55],
+            "29" : LANDMARKS["L"][58:60],
+            "30" : LANDMARKS["L"][63:65],
+            "31" : LANDMARKS["L"][68:70]
             }
+            
+        }
 
-def GenPhongRenderer(image_size,blur_radius,faces_per_pixel,device):
-    
-    cameras = FoVPerspectiveCameras(znear=0.01,zfar = 10, fov= 90, device=device) # Initialize a perspective camera.
 
-    raster_settings = RasterizationSettings(        
-        image_size=image_size, 
-        blur_radius=blur_radius, 
-        faces_per_pixel=faces_per_pixel, 
-    )
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
+    # DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
-    lights = PointLights(device=device) # light in front of the object. 
+    LABEL_L = ["18","19","20","21","22","23","24","25","26","27","28","29","30","31"]
 
-    rasterizer = MeshRasterizer(
-            cameras=cameras, 
-            raster_settings=raster_settings
+    LABEL_U = ["2","3","4","5","6","7","8","9","10","11","12","13","14","15"]
+
+    MODELS_DICT = {
+                    'O':{
+                        'O':0,
+                        'MB':1,
+                        'DB':2
+                    },
+                    'C':{
+                        'CL':0,
+                        'CB':1
+                    }
+                }
+
+    def GenPhongRenderer(image_size,blur_radius,faces_per_pixel,device):
+        
+        cameras = FoVPerspectiveCameras(znear=0.01,zfar = 10, fov= 90, device=device) # Initialize a perspective camera.
+
+        raster_settings = RasterizationSettings(        
+            image_size=image_size, 
+            blur_radius=blur_radius, 
+            faces_per_pixel=faces_per_pixel, 
         )
-    
-    b = blending.BlendParams(background_color=(0,0,0))
-    phong_renderer = MeshRenderer(
-        rasterizer=rasterizer,
-        shader=HardPhongShader(device=device, cameras=cameras, lights=lights,blend_params=b)
-    )
-    mask_renderer = MeshRenderer(
-        rasterizer=rasterizer,
-        shader=MaskRenderer(device=device, cameras=cameras, lights=lights,blend_params=b)
-    )
-    return phong_renderer,mask_renderer
 
-def ReadSurf(fileName):
+        lights = PointLights(device=device) # light in front of the object. 
 
-    fname, extension = os.path.splitext(fileName)
-    extension = extension.lower()
-    if extension == ".vtk":
-        reader = vtk.vtkPolyDataReader()
-        reader.SetFileName(fileName)
-        reader.Update()
-        surf = reader.GetOutput()
-    elif extension == ".vtp":
-        reader = vtk.vtkXMLPolyDataReader()
-        reader.SetFileName(fileName)
-        reader.Update()
-        surf = reader.GetOutput()    
-    elif extension == ".stl":
-        reader = vtk.vtkSTLReader()
-        reader.SetFileName(fileName)
-        reader.Update()
-        surf = reader.GetOutput()
-    elif extension == ".off":
-        reader = OFFReader()
-        reader.SetFileName(fileName)
-        reader.Update()
-        surf = reader.GetOutput()
-    elif extension == ".obj":
-        if os.path.exists(fname + ".mtl"):
-            obj_import = vtk.vtkOBJImporter()
-            obj_import.SetFileName(fileName)
-            obj_import.SetFileNameMTL(fname + ".mtl")
-            textures_path = os.path.normpath(os.path.dirname(fname) + "/../images")
-            if os.path.exists(textures_path):
-                obj_import.SetTexturePath(textures_path)
-            obj_import.Read()
+        rasterizer = MeshRasterizer(
+                cameras=cameras, 
+                raster_settings=raster_settings
+            )
+        
+        b = blending.BlendParams(background_color=(0,0,0))
+        phong_renderer = MeshRenderer(
+            rasterizer=rasterizer,
+            shader=HardPhongShader(device=device, cameras=cameras, lights=lights,blend_params=b)
+        )
+        mask_renderer = MeshRenderer(
+            rasterizer=rasterizer,
+            shader=MaskRenderer(device=device, cameras=cameras, lights=lights,blend_params=b)
+        )
+        return phong_renderer,mask_renderer
 
-            actors = obj_import.GetRenderer().GetActors()
-            actors.InitTraversal()
-            append = vtk.vtkAppendPolyData()
+    def ReadSurf(fileName):
 
-            for i in range(actors.GetNumberOfItems()):
-                surfActor = actors.GetNextActor()
-                append.AddInputData(surfActor.GetMapper().GetInputAsDataSet())
-            
-            append.Update()
-            surf = append.GetOutput()
-            
-        else:
-            reader = vtk.vtkOBJReader()
+        fname, extension = os.path.splitext(fileName)
+        extension = extension.lower()
+        if extension == ".vtk":
+            reader = vtk.vtkPolyDataReader()
             reader.SetFileName(fileName)
             reader.Update()
             surf = reader.GetOutput()
+        elif extension == ".vtp":
+            reader = vtk.vtkXMLPolyDataReader()
+            reader.SetFileName(fileName)
+            reader.Update()
+            surf = reader.GetOutput()    
+        elif extension == ".stl":
+            reader = vtk.vtkSTLReader()
+            reader.SetFileName(fileName)
+            reader.Update()
+            surf = reader.GetOutput()
+        elif extension == ".off":
+            reader = OFFReader()
+            reader.SetFileName(fileName)
+            reader.Update()
+            surf = reader.GetOutput()
+        elif extension == ".obj":
+            if os.path.exists(fname + ".mtl"):
+                obj_import = vtk.vtkOBJImporter()
+                obj_import.SetFileName(fileName)
+                obj_import.SetFileNameMTL(fname + ".mtl")
+                textures_path = os.path.normpath(os.path.dirname(fname) + "/../images")
+                if os.path.exists(textures_path):
+                    obj_import.SetTexturePath(textures_path)
+                obj_import.Read()
 
-    return surf
+                actors = obj_import.GetRenderer().GetActors()
+                actors.InitTraversal()
+                append = vtk.vtkAppendPolyData()
 
-def ScaleSurf(surf, mean_arr = None, scale_factor = None):
-    surf_copy = vtk.vtkPolyData()
-    surf_copy.DeepCopy(surf)
-    surf = surf_copy
+                for i in range(actors.GetNumberOfItems()):
+                    surfActor = actors.GetNextActor()
+                    append.AddInputData(surfActor.GetMapper().GetInputAsDataSet())
+                
+                append.Update()
+                surf = append.GetOutput()
+                
+            else:
+                reader = vtk.vtkOBJReader()
+                reader.SetFileName(fileName)
+                reader.Update()
+                surf = reader.GetOutput()
 
-    shapedatapoints = surf.GetPoints()
+        return surf
 
-    #calculate bounding box
-    mean_v = [0.0] * 3
-    bounds_max_v = [0.0] * 3
+    def ScaleSurf(surf, mean_arr = None, scale_factor = None):
+        surf_copy = vtk.vtkPolyData()
+        surf_copy.DeepCopy(surf)
+        surf = surf_copy
 
-    bounds = shapedatapoints.GetBounds()
+        shapedatapoints = surf.GetPoints()
 
-    mean_v[0] = (bounds[0] + bounds[1])/2.0
-    mean_v[1] = (bounds[2] + bounds[3])/2.0
-    mean_v[2] = (bounds[4] + bounds[5])/2.0
-    bounds_max_v[0] = max(bounds[0], bounds[1])
-    bounds_max_v[1] = max(bounds[2], bounds[3])
-    bounds_max_v[2] = max(bounds[4], bounds[5])
+        #calculate bounding box
+        mean_v = [0.0] * 3
+        bounds_max_v = [0.0] * 3
 
-    shape_points = []
-    for i in range(shapedatapoints.GetNumberOfPoints()):
-        p = shapedatapoints.GetPoint(i)
-        shape_points.append(p)
-    shape_points = np.array(shape_points)
-    
-    #centering points of the shape
-    if mean_arr is None:
-        mean_arr = np.array(mean_v)
-    # print("Mean:", mean_arr)
-    shape_points = shape_points - mean_arr
+        bounds = shapedatapoints.GetBounds()
 
-    #Computing scale factor if it is not provided
-    if(scale_factor is None):
-        bounds_max_arr = np.array(bounds_max_v)
-        scale_factor = 1/np.linalg.norm(bounds_max_arr - mean_arr)
+        mean_v[0] = (bounds[0] + bounds[1])/2.0
+        mean_v[1] = (bounds[2] + bounds[3])/2.0
+        mean_v[2] = (bounds[4] + bounds[5])/2.0
+        bounds_max_v[0] = max(bounds[0], bounds[1])
+        bounds_max_v[1] = max(bounds[2], bounds[3])
+        bounds_max_v[2] = max(bounds[4], bounds[5])
 
-    #scale points of the shape by scale factor
-    # print("Scale:", scale_factor)
-    shape_points_scaled = np.multiply(shape_points, scale_factor)
+        shape_points = []
+        for i in range(shapedatapoints.GetNumberOfPoints()):
+            p = shapedatapoints.GetPoint(i)
+            shape_points.append(p)
+        shape_points = np.array(shape_points)
+        
+        #centering points of the shape
+        if mean_arr is None:
+            mean_arr = np.array(mean_v)
+        # print("Mean:", mean_arr)
+        shape_points = shape_points - mean_arr
 
-    #assigning scaled points back to shape
-    for i in range(shapedatapoints.GetNumberOfPoints()):
-       shapedatapoints.SetPoint(i, shape_points_scaled[i])    
+        #Computing scale factor if it is not provided
+        if(scale_factor is None):
+            bounds_max_arr = np.array(bounds_max_v)
+            scale_factor = 1/np.linalg.norm(bounds_max_arr - mean_arr)
 
-    surf.SetPoints(shapedatapoints)
+        #scale points of the shape by scale factor
+        # print("Scale:", scale_factor)
+        shape_points_scaled = np.multiply(shape_points, scale_factor)
 
-    return surf, mean_arr, scale_factor
+        #assigning scaled points back to shape
+        for i in range(shapedatapoints.GetNumberOfPoints()):
+            shapedatapoints.SetPoint(i, shape_points_scaled[i])    
 
-def ComputeNormals(surf):
-    normals = vtk.vtkPolyDataNormals()
-    normals.SetInputData(surf);
-    normals.ComputeCellNormalsOff();
-    normals.ComputePointNormalsOn();
-    normals.SplittingOff();
-    normals.Update()
-    
-    return normals.GetOutput()
+        surf.SetPoints(shapedatapoints)
 
-def GetSurfProp(surf_unit, surf_mean, surf_scale):     
-    surf = ComputeNormals(surf_unit)
-    color_normals = ToTensor(dtype=torch.float32, device=DEVICE)(vtk_to_numpy(GetColorArray(surf, "Normals"))/255.0)
-    verts = ToTensor(dtype=torch.float32, device=DEVICE)(vtk_to_numpy(surf.GetPoints().GetData()))
-    faces = ToTensor(dtype=torch.int64, device=DEVICE)(vtk_to_numpy(surf.GetPolys().GetData()).reshape(-1, 4)[:,1:])
+        return surf, mean_arr, scale_factor
 
-    try :
-        region_id = torch.tensor((vtk_to_numpy(surf.GetPointData().GetScalars("PredictedID"))),dtype=torch.int64)
-    except AttributeError :
+    def ComputeNormals(surf):
+        normals = vtk.vtkPolyDataNormals()
+        normals.SetInputData(surf);
+        normals.ComputeCellNormalsOff();
+        normals.ComputePointNormalsOn();
+        normals.SplittingOff();
+        normals.Update()
+        
+        return normals.GetOutput()
+
+    def GetSurfProp(surf_unit, surf_mean, surf_scale):     
+        surf = ComputeNormals(surf_unit)
+        color_normals = ToTensor(dtype=torch.float32, device=DEVICE)(vtk_to_numpy(GetColorArray(surf, "Normals"))/255.0)
+        verts = ToTensor(dtype=torch.float32, device=DEVICE)(vtk_to_numpy(surf.GetPoints().GetData()))
+        faces = ToTensor(dtype=torch.int64, device=DEVICE)(vtk_to_numpy(surf.GetPolys().GetData()).reshape(-1, 4)[:,1:])
+
         try :
-            region_id = torch.tensor((vtk_to_numpy(surf.GetPointData().GetScalars("predictedId"))),dtype=torch.int64)
-        except AttributeError:
-            region_id = torch.tensor((vtk_to_numpy(surf.GetPointData().GetScalars("Universal_ID"))),dtype=torch.int64)
+            region_id = torch.tensor((vtk_to_numpy(surf.GetPointData().GetScalars("PredictedID"))),dtype=torch.int64)
+        except AttributeError :
+            try :
+                region_id = torch.tensor((vtk_to_numpy(surf.GetPointData().GetScalars("predictedId"))),dtype=torch.int64)
+            except AttributeError:
+                region_id = torch.tensor((vtk_to_numpy(surf.GetPointData().GetScalars("Universal_ID"))),dtype=torch.int64)
 
-    region_id = torch.clamp(region_id, min=0)
+        region_id = torch.clamp(region_id, min=0)
 
-    #print("type(surf.GetPointData()) :",type(surf.GetPointData()))
-    #print("type(...GetScalars) :",type(surf.GetPointData().GetScalars("PredictedID")))
-    
-    '''
-    With a file that works
-    type(...GetScalars) : <class 'vtkmodules.vtkCommonCore.vtkTypeInt64Array'>
-    
-    with a file that isn't working
-    type(...GetScalars) : <class 'NoneType'>
-
-    AttributeError: 'NoneType' object has no attribute 'GetDataType'
-    '''
+        #print("type(surf.GetPointData()) :",type(surf.GetPointData()))
+        #print("type(...GetScalars) :",type(surf.GetPointData().GetScalars("PredictedID")))
         
-    return verts.unsqueeze(0), faces.unsqueeze(0), color_normals.unsqueeze(0), region_id.unsqueeze(0)
+        '''
+        With a file that works
+        type(...GetScalars) : <class 'vtkmodules.vtkCommonCore.vtkTypeInt64Array'>
+        
+        with a file that isn't working
+        type(...GetScalars) : <class 'NoneType'>
 
-def GetColorArray(surf, array_name):
-    colored_points = vtk.vtkUnsignedCharArray()
-    colored_points.SetName('colors')
-    colored_points.SetNumberOfComponents(3)
+        AttributeError: 'NoneType' object has no attribute 'GetDataType'
+        '''
+            
+        return verts.unsqueeze(0), faces.unsqueeze(0), color_normals.unsqueeze(0), region_id.unsqueeze(0)
 
-    normals = surf.GetPointData().GetArray(array_name)
+    def GetColorArray(surf, array_name):
+        colored_points = vtk.vtkUnsignedCharArray()
+        colored_points.SetName('colors')
+        colored_points.SetNumberOfComponents(3)
 
-    for pid in range(surf.GetNumberOfPoints()):
-        normal = np.array(normals.GetTuple(pid))
-        rgb = (normal*0.5 + 0.5)*255.0
-        colored_points.InsertNextTuple3(rgb[0], rgb[1], rgb[2])
-    return colored_points
+        normals = surf.GetPointData().GetArray(array_name)
 
-def RemoveExtraFaces(F,num_faces,RI,label):
-    last_num_faces =[]
-    for face in num_faces:
-        vertex_color = F.squeeze(0)[int(face.item())]
-        for vert in vertex_color:
-            if RI.squeeze(0)[vert] == label:
-                last_num_faces.append(face)
-    return last_num_faces
+        for pid in range(surf.GetNumberOfPoints()):
+            normal = np.array(normals.GetTuple(pid))
+            rgb = (normal*0.5 + 0.5)*255.0
+            colored_points.InsertNextTuple3(rgb[0], rgb[1], rgb[2])
+        return colored_points
 
-def Upscale(landmark_pos,mean_arr,scale_factor):
-    new_pos_center = (landmark_pos.cpu()/scale_factor) + mean_arr
-    return new_pos_center
+    def RemoveExtraFaces(F,num_faces,RI,label):
+        last_num_faces =[]
+        for face in num_faces:
+            vertex_color = F.squeeze(0)[int(face.item())]
+            for vert in vertex_color:
+                if RI.squeeze(0)[vert] == label:
+                    last_num_faces.append(face)
+        return last_num_faces
 
-# def GenControlePoint(dic_points,landmarks_selected):
-#     lm_lst = []
-#     false = False
-#     true = True
-#     id = 0
-#     dic_lower = {}
-#     dic_upper = {}
-#     for patient_id,dic_U_L in dic_points.items():
-#         for jaw,dic_landmarks in dic_U_L.items():
-#             for landmark in dic_landmarks.keys():
-#                 if landmark in landmarks_selected:
-#                     id+=1
-#                     controle_point = {
-#                         "id": str(id),
-#                         "label": landmark,
-#                         "description": "",
-#                         "associatedNodeID": "",
-#                         "position": [float(dic_landmarks[landmark]["x"]), float(dic_landmarks[landmark]["y"]), float(dic_landmarks[landmark]["z"])],
-#                         "orientation": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
-#                         "selected": true,
-#                         "locked": true,
-#                         "visibility": true,
-#                         "positionStatus": "preview"
-#                     }
-#                     # lm_lst.append(controle_point)
-#                     if patient_id not in dic_lower.keys():
-#                         dic_lower[patient_id] = {}
-#                     if jaw not in dic_lower[patient_id].keys():
-#                         dic_lower[patient_id][jaw] = {}
-#                         if jaw == 'Lower':
-#                             dic_lower[patient_id][jaw] = controle_point 
-#                         else:
-#                             dic_upper[patient_id][jaw] = controle_point
+    def Upscale(landmark_pos,mean_arr,scale_factor):
+        new_pos_center = (landmark_pos.cpu()/scale_factor) + mean_arr
+        return new_pos_center
 
-#     return dic_lower,dic_upper
+    # def GenControlePoint(dic_points,landmarks_selected):
+    #     lm_lst = []
+    #     false = False
+    #     true = True
+    #     id = 0
+    #     dic_lower = {}
+    #     dic_upper = {}
+    #     for patient_id,dic_U_L in dic_points.items():
+    #         for jaw,dic_landmarks in dic_U_L.items():
+    #             for landmark in dic_landmarks.keys():
+    #                 if landmark in landmarks_selected:
+    #                     id+=1
+    #                     controle_point = {
+    #                         "id": str(id),
+    #                         "label": landmark,
+    #                         "description": "",
+    #                         "associatedNodeID": "",
+    #                         "position": [float(dic_landmarks[landmark]["x"]), float(dic_landmarks[landmark]["y"]), float(dic_landmarks[landmark]["z"])],
+    #                         "orientation": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+    #                         "selected": true,
+    #                         "locked": true,
+    #                         "visibility": true,
+    #                         "positionStatus": "preview"
+    #                     }
+    #                     # lm_lst.append(controle_point)
+    #                     if patient_id not in dic_lower.keys():
+    #                         dic_lower[patient_id] = {}
+    #                     if jaw not in dic_lower[patient_id].keys():
+    #                         dic_lower[patient_id][jaw] = {}
+    #                         if jaw == 'Lower':
+    #                             dic_lower[patient_id][jaw] = controle_point 
+    #                         else:
+    #                             dic_upper[patient_id][jaw] = controle_point
 
-
-def GenControlePoint(groupe_data,landmarks_selected):
-    lm_lst = []
-    false = False
-    true = True
-    id = 0
-    for landmark,data in groupe_data.items():
-        if landmark in landmarks_selected:            
-            id+=1
-            controle_point = {
-                "id": str(id),
-                "label": landmark,
-                "description": "",
-                "associatedNodeID": "",
-                "position": [data["x"], data["y"], data["z"]],
-                "orientation": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
-                "selected": true,
-                "locked": true,
-                "visibility": true,
-                "positionStatus": "defined"
-            }
-            lm_lst.append(controle_point)
-
-    return lm_lst
+    #     return dic_lower,dic_upper
 
 
-
-def WriteJson(lm_lst,out_path):
-    false = False
-    true = True
-    file = {
-    "@schema": "https://raw.githubusercontent.com/slicer/slicer/master/Modules/Loadable/Markups/Resources/Schema/markups-schema-v1.0.0.json#",
-    "markups": [
-        {
-            "type": "Fiducial",
-            "coordinateSystem": "LPS",
-            "locked": false,
-            "labelFormat": "%N-%d",
-            "controlPoints": lm_lst,
-            "measurements": [],
-            "display": {
-                "visibility": false,
-                "opacity": 1.0,
-                "color": [0.4, 1.0, 0.0],
-                "color": [0.5, 0.5, 0.5],
-                "selectedColor": [0.26666666666666669, 0.6745098039215687, 0.39215686274509806],
-                "propertiesLabelVisibility": false,
-                "pointLabelsVisibility": true,
-                "textScale": 2.0,
-                "glyphType": "Sphere3D",
-                "glyphScale": 2.0,
-                "glyphSize": 5.0,
-                "useGlyphScale": true,
-                "sliceProjection": false,
-                "sliceProjectionUseFiducialColor": true,
-                "sliceProjectionOutlinedBehindSlicePlane": false,
-                "sliceProjectionColor": [1.0, 1.0, 1.0],
-                "sliceProjectionOpacity": 0.6,
-                "lineThickness": 0.2,
-                "lineColorFadingStart": 1.0,
-                "lineColorFadingEnd": 10.0,
-                "lineColorFadingSaturation": 1.0,
-                "lineColorFadingHueOffset": 0.0,
-                "handlesInteractive": false,
-                "snapMode": "toVisibleSurface"
-            }
-        }
-    ]
-    }
-    with open(out_path, 'w', encoding='utf-8') as f:
-        json.dump(file, f, ensure_ascii=False, indent=4)
-
-    f.close
-
-def TradLabel(lst_teeth):
-    dico_trad ={'LL7':18,'LL6':19,'LL5':20,'LL4':21,'LL3':22,'LL2':23,'LL1':24,'LR1':25,'LR2':26,'LR3':27,'LR4':28,'LR5':29,'LR6':30,'LR7':31,
-                'UL7':15,'UL6':14,'UL5':13,'UL4':12,'UL3':11,'UL2':10,'UL1':9,'UR1':8,'UR2':7,'UR3':6,'UR4':5,'UR5':4,'UR6':3,'UR7':2
+    def GenControlePoint(groupe_data,landmarks_selected):
+        lm_lst = []
+        false = False
+        true = True
+        id = 0
+        for landmark,data in groupe_data.items():
+            if landmark in landmarks_selected:            
+                id+=1
+                controle_point = {
+                    "id": str(id),
+                    "label": landmark,
+                    "description": "",
+                    "associatedNodeID": "",
+                    "position": [data["x"], data["y"], data["z"]],
+                    "orientation": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+                    "selected": true,
+                    "locked": true,
+                    "visibility": true,
+                    "positionStatus": "defined"
                 }
-    dic_teeth = {'Lower':[],'Upper':[]}
-    for tooth in lst_teeth:
-        if tooth in dico_trad.keys():
-            if tooth[0] == 'L':
-                dic_teeth['Lower'].append(dico_trad[tooth])
-            else:
-                dic_teeth['Upper'].append(dico_trad[tooth])
-        
-    return dic_teeth
+                lm_lst.append(controle_point)
+
+        return lm_lst
+
+
+
+    def WriteJson(lm_lst,out_path):
+        false = False
+        true = True
+        file = {
+        "@schema": "https://raw.githubusercontent.com/slicer/slicer/master/Modules/Loadable/Markups/Resources/Schema/markups-schema-v1.0.0.json#",
+        "markups": [
+            {
+                "type": "Fiducial",
+                "coordinateSystem": "LPS",
+                "locked": false,
+                "labelFormat": "%N-%d",
+                "controlPoints": lm_lst,
+                "measurements": [],
+                "display": {
+                    "visibility": false,
+                    "opacity": 1.0,
+                    "color": [0.4, 1.0, 0.0],
+                    "color": [0.5, 0.5, 0.5],
+                    "selectedColor": [0.26666666666666669, 0.6745098039215687, 0.39215686274509806],
+                    "propertiesLabelVisibility": false,
+                    "pointLabelsVisibility": true,
+                    "textScale": 2.0,
+                    "glyphType": "Sphere3D",
+                    "glyphScale": 2.0,
+                    "glyphSize": 5.0,
+                    "useGlyphScale": true,
+                    "sliceProjection": false,
+                    "sliceProjectionUseFiducialColor": true,
+                    "sliceProjectionOutlinedBehindSlicePlane": false,
+                    "sliceProjectionColor": [1.0, 1.0, 1.0],
+                    "sliceProjectionOpacity": 0.6,
+                    "lineThickness": 0.2,
+                    "lineColorFadingStart": 1.0,
+                    "lineColorFadingEnd": 10.0,
+                    "lineColorFadingSaturation": 1.0,
+                    "lineColorFadingHueOffset": 0.0,
+                    "handlesInteractive": false,
+                    "snapMode": "toVisibleSurface"
+                }
+            }
+        ]
+        }
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(file, f, ensure_ascii=False, indent=4)
+
+        f.close
+
+    def TradLabel(lst_teeth):
+        dico_trad ={'LL7':18,'LL6':19,'LL5':20,'LL4':21,'LL3':22,'LL2':23,'LL1':24,'LR1':25,'LR2':26,'LR3':27,'LR4':28,'LR5':29,'LR6':30,'LR7':31,
+                    'UL7':15,'UL6':14,'UL5':13,'UL4':12,'UL3':11,'UL2':10,'UL1':9,'UR1':8,'UR2':7,'UR3':6,'UR4':5,'UR5':4,'UR6':3,'UR7':2
+                    }
+        dic_teeth = {'Lower':[],'Upper':[]}
+        for tooth in lst_teeth:
+            if tooth in dico_trad.keys():
+                if tooth[0] == 'L':
+                    dic_teeth['Lower'].append(dico_trad[tooth])
+                else:
+                    dic_teeth['Upper'].append(dico_trad[tooth])
+            
+        return dic_teeth
 
 
 
 
-class Agent:
-    def __init__(
-        self,
-        renderer, 
-        renderer2,
-        camera_position,
-        radius = 1,
-        verbose = True,
-        ):
-        super(Agent, self).__init__()
-        self.renderer = renderer
-        self.renderer2=renderer2
-        self.camera_points = torch.tensor(camera_position).type(torch.float32).to(DEVICE)
-        self.scale = 0
-        self.radius = radius
-        self.verbose = verbose
+    class Agent:
+        def __init__(
+            self,
+            renderer, 
+            renderer2,
+            camera_position,
+            radius = 1,
+            verbose = True,
+            ):
+            super(Agent, self).__init__()
+            self.renderer = renderer
+            self.renderer2=renderer2
+            self.camera_points = torch.tensor(camera_position).type(torch.float32).to(DEVICE)
+            self.scale = 0
+            self.radius = radius
+            self.verbose = verbose
 
 
-    def position_agent(self, text, vert, label):
-   
-        final_pos = torch.empty((0)).to(DEVICE)
-        
-        for mesh in range(len(text)):
-            if int(label) in text[mesh]:
-                index_pos_land = (text[mesh]==int(label)).nonzero(as_tuple=True)[0]
-                lst_pos = []
-                for index in index_pos_land:
-                    lst_pos.append(vert[mesh][index])
-                position_agent = sum(lst_pos)/len(lst_pos)
-                final_pos = torch.cat((final_pos,position_agent.unsqueeze(0).to(DEVICE)),dim=0)
-            else:
-                final_pos = torch.cat((final_pos,torch.zeros((1,3)).to(DEVICE)),dim=0)
-        # print(final_pos.shape)
-        self.positions = final_pos
-        # print(self.positions)
-        return self.positions
-
+        def position_agent(self, text, vert, label):
     
-    def GetView(self,meshes,rend=False):
-        spc = self.positions
-        img_lst = torch.empty((0)).to(DEVICE)
-        seuil = 0.5
+            final_pos = torch.empty((0)).to(DEVICE)
+            
+            for mesh in range(len(text)):
+                if int(label) in text[mesh]:
+                    index_pos_land = (text[mesh]==int(label)).nonzero(as_tuple=True)[0]
+                    lst_pos = []
+                    for index in index_pos_land:
+                        lst_pos.append(vert[mesh][index])
+                    position_agent = sum(lst_pos)/len(lst_pos)
+                    final_pos = torch.cat((final_pos,position_agent.unsqueeze(0).to(DEVICE)),dim=0)
+                else:
+                    final_pos = torch.cat((final_pos,torch.zeros((1,3)).to(DEVICE)),dim=0)
+            # print(final_pos.shape)
+            self.positions = final_pos
+            # print(self.positions)
+            return self.positions
 
-        for sp in self.camera_points:
-            sp_i = sp*self.radius
-            # sp = sp.unsqueeze(0).repeat(self.batch_size,1)
-            current_cam_pos = spc + sp_i
-            R = look_at_rotation(current_cam_pos, at=spc, device=DEVICE)  # (1, 3, 3)
-            # print( 'R shape :',R.shape)
-            # print(R)
-            T = -torch.bmm(R.transpose(1, 2), current_cam_pos[:, :, None])[:, :, 0]  # (1, 3)
+        
+        def GetView(self,meshes,rend=False):
+            spc = self.positions
+            img_lst = torch.empty((0)).to(DEVICE)
+            seuil = 0.5
 
-            if rend:
-                renderer = self.renderer2
-                images = renderer(meshes_world=meshes.clone(), R=R, T=T.to(DEVICE))
-                y = images[:,:,:,:-1]
+            for sp in self.camera_points:
+                sp_i = sp*self.radius
+                # sp = sp.unsqueeze(0).repeat(self.batch_size,1)
+                current_cam_pos = spc + sp_i
+                R = look_at_rotation(current_cam_pos, at=spc, device=DEVICE)  # (1, 3, 3)
+                # print( 'R shape :',R.shape)
+                # print(R)
+                T = -torch.bmm(R.transpose(1, 2), current_cam_pos[:, :, None])[:, :, 0]  # (1, 3)
 
-                # yd = torch.where(y[:,:,:,:]<=seuil,0.,0.)
-                yr = torch.where(y[:,:,:,0]>seuil,1.,0.).unsqueeze(-1)
-                yg = torch.where(y[:,:,:,1]>seuil,2.,0.).unsqueeze(-1)
-                yb = torch.where(y[:,:,:,2]>seuil,3.,0.).unsqueeze(-1)
+                if rend:
+                    renderer = self.renderer2
+                    images = renderer(meshes_world=meshes.clone(), R=R, T=T.to(DEVICE))
+                    y = images[:,:,:,:-1]
 
-                y = ( yr + yg + yb).to(torch.float32)
+                    # yd = torch.where(y[:,:,:,:]<=seuil,0.,0.)
+                    yr = torch.where(y[:,:,:,0]>seuil,1.,0.).unsqueeze(-1)
+                    yg = torch.where(y[:,:,:,1]>seuil,2.,0.).unsqueeze(-1)
+                    yb = torch.where(y[:,:,:,2]>seuil,3.,0.).unsqueeze(-1)
 
-                y = y.permute(0,3,1,2)
-              
-            else:
+                    y = ( yr + yg + yb).to(torch.float32)
+
+                    y = y.permute(0,3,1,2)
+                
+                else:
+                    renderer = self.renderer
+                    images = self.renderer(meshes_world=meshes.clone(), R=R, T=T.to(DEVICE))
+                    images = images.permute(0,3,1,2)
+                    images = images[:,:-1,:,:]
+
+                    pix_to_face, zbuf, bary_coords, dists = self.renderer.rasterizer(meshes.clone())
+                    zbuf = zbuf.permute(0, 3, 1, 2)
+                    y = torch.cat([images, zbuf], dim=1)
+
+                img_lst = torch.cat((img_lst,y.unsqueeze(0)),dim=0)
+            img_batch =  img_lst.permute(1,0,2,3,4)
+            
+            return img_batch
+        
+        def get_view_rasterize(self,meshes):
+            spc = self.positions
+            img_lst = torch.empty((0)).to(DEVICE)
+            tens_pix_to_face = torch.empty((0)).to(DEVICE)
+
+            for sp in self.camera_points:
+                sp_i = sp*self.radius
+                current_cam_pos = spc + sp_i
+                R = look_at_rotation(current_cam_pos, at=spc, device=DEVICE)  # (1, 3, 3)
+                T = -torch.bmm(R.transpose(1, 2), current_cam_pos[:, :, None])[:, :, 0]  # (1, 3)
+                
                 renderer = self.renderer
-                images = self.renderer(meshes_world=meshes.clone(), R=R, T=T.to(DEVICE))
+                images = renderer(meshes_world=meshes.clone(), R=R, T=T.to(DEVICE))
                 images = images.permute(0,3,1,2)
-                images = images[:,:-1,:,:]
-
-                pix_to_face, zbuf, bary_coords, dists = self.renderer.rasterizer(meshes.clone())
+                images = images[:,:-1,:,:]            
+                #pix_to_face, zbuf, bary_coords, dists = renderer.rasterizer(meshes.clone())
+                temp = renderer.rasterizer(meshes.clone())
+                pix_to_face, zbuf = temp.pix_to_face, temp.zbuf
+                
+                '''< Class : pytorch3d.renderer.mesh.rasterizer.Fragments >'''
+                '''TypeError: cannot unpack non-iterable Fragments object'''
                 zbuf = zbuf.permute(0, 3, 1, 2)
                 y = torch.cat([images, zbuf], dim=1)
 
-            img_lst = torch.cat((img_lst,y.unsqueeze(0)),dim=0)
-        img_batch =  img_lst.permute(1,0,2,3,4)
+                img_lst = torch.cat((img_lst,y.unsqueeze(0)),dim=0)
+                tens_pix_to_face = torch.cat((tens_pix_to_face,pix_to_face.unsqueeze(0)),dim=0)
+            img_batch =  img_lst.permute(1,0,2,3,4)
         
-        return img_batch
-    
-    def get_view_rasterize(self,meshes):
-        spc = self.positions
-        img_lst = torch.empty((0)).to(DEVICE)
-        tens_pix_to_face = torch.empty((0)).to(DEVICE)
+            return img_batch , tens_pix_to_face  
 
-        for sp in self.camera_points:
-            sp_i = sp*self.radius
-            current_cam_pos = spc + sp_i
-            R = look_at_rotation(current_cam_pos, at=spc, device=DEVICE)  # (1, 3, 3)
-            T = -torch.bmm(R.transpose(1, 2), current_cam_pos[:, :, None])[:, :, 0]  # (1, 3)
-              
-            renderer = self.renderer
-            images = renderer(meshes_world=meshes.clone(), R=R, T=T.to(DEVICE))
-            images = images.permute(0,3,1,2)
-            images = images[:,:-1,:,:]            
-            #pix_to_face, zbuf, bary_coords, dists = renderer.rasterizer(meshes.clone())
-            temp = renderer.rasterizer(meshes.clone())
-            pix_to_face, zbuf = temp.pix_to_face, temp.zbuf
-            
-            '''< Class : pytorch3d.renderer.mesh.rasterizer.Fragments >'''
-            '''TypeError: cannot unpack non-iterable Fragments object'''
-            zbuf = zbuf.permute(0, 3, 1, 2)
-            y = torch.cat([images, zbuf], dim=1)
+    class MaskRenderer(nn.Module):
 
-            img_lst = torch.cat((img_lst,y.unsqueeze(0)),dim=0)
-            tens_pix_to_face = torch.cat((tens_pix_to_face,pix_to_face.unsqueeze(0)),dim=0)
-        img_batch =  img_lst.permute(1,0,2,3,4)
-    
-        return img_batch , tens_pix_to_face  
+        def __init__(
+            self,
+            device = "cpu",
+            cameras: Optional[TensorProperties] = None,
+            lights: Optional[TensorProperties] = None,
+            materials: Optional[Materials] = None,
+            blend_params: Optional[BlendParams] = None,
+        ) -> None:
+            super().__init__()
+            self.lights = lights if lights is not None else PointLights(device=device)
+            self.materials = (
+                materials if materials is not None else Materials(device=device)
+            )
+            self.cameras = cameras
+            self.blend_params = blend_params if blend_params is not None else BlendParams()
 
-class MaskRenderer(nn.Module):
+        def to(self, device):
+            # Manually move to device modules which are not subclasses of nn.Module
+            cameras = self.cameras
+            if cameras is not None:
+                self.cameras = cameras.to(device)
+            self.materials = self.materials.to(device)
+            self.lights = self.lights.to(device)
+            return self
 
-    def __init__(
-        self,
-        device = "cpu",
-        cameras: Optional[TensorProperties] = None,
-        lights: Optional[TensorProperties] = None,
-        materials: Optional[Materials] = None,
-        blend_params: Optional[BlendParams] = None,
-    ) -> None:
-        super().__init__()
-        self.lights = lights if lights is not None else PointLights(device=device)
-        self.materials = (
-            materials if materials is not None else Materials(device=device)
-        )
-        self.cameras = cameras
-        self.blend_params = blend_params if blend_params is not None else BlendParams()
-
-    def to(self, device):
-        # Manually move to device modules which are not subclasses of nn.Module
-        cameras = self.cameras
-        if cameras is not None:
-            self.cameras = cameras.to(device)
-        self.materials = self.materials.to(device)
-        self.lights = self.lights.to(device)
-        return self
-
-    def forward(self, fragments: Fragments, meshes: Meshes, **kwargs) -> torch.Tensor:
-        cameras = kwargs.get("cameras", self.cameras)
-        if cameras is None:
-            msg = "Cameras must be specified either at initialization \
-                or in the forward pass of HardFlatShader"
-            raise ValueError(msg)
-        texels = meshes.sample_textures(fragments)
-        blend_params = kwargs.get("blend_params", self.blend_params)
-        colors = texels   
-        images = hard_rgb_blend(colors, fragments, blend_params)
-        return images
+        def forward(self, fragments: Fragments, meshes: Meshes, **kwargs) -> torch.Tensor:
+            cameras = kwargs.get("cameras", self.cameras)
+            if cameras is None:
+                msg = "Cameras must be specified either at initialization \
+                    or in the forward pass of HardFlatShader"
+                raise ValueError(msg)
+            texels = meshes.sample_textures(fragments)
+            blend_params = kwargs.get("blend_params", self.blend_params)
+            colors = texels   
+            images = hard_rgb_blend(colors, fragments, blend_params)
+            return images
     
 
 def checkMiniconda():
@@ -745,60 +761,88 @@ def checkMiniconda():
 
 
 def InstallConda(default_install_path):
-      system = platform.system()
-      machine = platform.machine()
+    system = platform.system()
+    machine = platform.machine()
 
-      miniconda_base_url = "https://repo.anaconda.com/miniconda/"
+    miniconda_base_url = "https://repo.anaconda.com/miniconda/"
 
-      # Construct the filename based on the operating system and architecture
-      if system == "Windows":
-          if machine.endswith("64"):
-              filename = "Miniconda3-latest-Windows-x86_64.exe"
-          else:
-              filename = "Miniconda3-latest-Windows-x86.exe"
-      elif system == "Linux":
-          if machine == "x86_64":
-              filename = "Miniconda3-latest-Linux-x86_64.sh"
-          else:
-              filename = "Miniconda3-latest-Linux-x86.sh"
-      else:
-          raise NotImplementedError(f"Unsupported system: {system} {machine}")
+    # Construct the filename based on the operating system and architecture
+    if system == "Windows":
+        if machine.endswith("64"):
+            filename = "Miniconda3-latest-Windows-x86_64.exe"
+        else:
+            filename = "Miniconda3-latest-Windows-x86.exe"
+    elif system == "Linux":
+        if machine == "x86_64":
+            filename = "Miniconda3-latest-Linux-x86_64.sh"
+        else:
+            filename = "Miniconda3-latest-Linux-x86.sh"
+    else:
+        raise NotImplementedError(f"Unsupported system: {system} {machine}")
 
-      print(f"Selected Miniconda installer file: {filename}")
+    print(f"Selected Miniconda installer file: {filename}")
 
-      miniconda_url = miniconda_base_url + filename
-    #   miniconda_url = "https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-Linux-x86_64.sh"
-    #   https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-      print(f"Full download URL: {miniconda_url}")
+    miniconda_url = miniconda_base_url + filename
+#   miniconda_url = "https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-Linux-x86_64.sh"
+#   https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+    print(f"Full download URL: {miniconda_url}")
 
-      print(f"Default Miniconda installation path: {default_install_path}")
+    print(f"Default Miniconda installation path: {default_install_path}")
 
-      path_sh = os.path.join(default_install_path,"miniconda.sh")
-      path_conda = os.path.join(default_install_path,"bin","conda")
+    path_exe = os.path.join(os.path.expanduser("~"), "tempo")
+       
+    os.makedirs(path_exe, exist_ok=True)
+    # Define paths for the installer and conda executable
+    path_installer = os.path.join(path_exe, filename)
+    path_conda = os.path.join(default_install_path, "Scripts", "conda.exe")
+    
+    
 
-      print(f"path_sh : {path_sh}")
-      print(f"path_conda : {path_conda}")
+    print(f"path_installer : {path_installer}")
+    print(f"path_conda : {path_conda}")
 
-      if not os.path.exists(default_install_path):
-          os.makedirs(default_install_path)
+    if not os.path.exists(default_install_path):
+        os.makedirs(default_install_path)
+
+        try:
+            # Download the Anaconda installer
+            urllib.request.urlretrieve(miniconda_url, path_installer)
+            print("Installer downloaded successfully.")
+            print("Installing Miniconda...")
+            
+            # Run the Anaconda installer with silent mode
+            print("path_installer : ",path_installer)
+            print("default_install_path : ",default_install_path)
+            # subprocess.run('start /wait "C:\\Users\\luciacev.UMROOT\\miniconda3\\Miniconda3-latest-Windows-x86_64.exe" /InstallationType=JustMe /S /D=C:\\Users\\luciacev.UMROOT\\miniconda3', shell=True)
+            # Commande PowerShell
+            # Chemin vers l'installateur Miniconda pour Windows
+            # path_installer = "C:\\Users\\luciacev.UMROOT\\oui\\Miniconda3-latest-Windows-x86_64.exe"
+            path_miniconda = os.path.join(default_install_path,"miniconda")
+
+            # Commande pour une installation silencieuse avec Miniconda
+            install_command = f'"{path_installer}" /InstallationType=JustMe /AddToPath=1 /RegisterPython=0 /S /D={default_install_path}'
+
+            # Exécutez la commande d'installation
+            subprocess.run(install_command, shell=True)
 
 
-
-      subprocess.run(f"mkdir -p {default_install_path}",capture_output=True, shell=True)
-      subprocess.run(f"wget --continue --tries=3 {miniconda_url} -O {path_sh}",capture_output=True, shell=True)
-      subprocess.run(f"chmod +x {path_sh}",capture_output=True, shell=True)
-
-      try:
-          print("Le fichier est valide.")
-          subprocess.run(f"bash {path_sh} -b -u -p {default_install_path}",capture_output=True, shell=True)
-          subprocess.run(f"rm -rf {path_sh}",shell=True)
-          subprocess.run(f"{path_conda} init bash",shell=True)
-          # subprocess.run(f"{path_conda} init zsh",shell=True)
-          return True
-      except:
-          print("Le fichier est invalide.")
-          return (False)
-      
+            # os.remove(path_installer)  # Remove the installer file after installation
+            print("bonjour")
+            subprocess.run(f"{path_conda} init cmd.exe", shell=True)
+            print("Miniconda installed successfully.")
+            
+            try:
+                shutil.rmtree(path_exe)
+                print(f"Dossier {path_exe} et son contenu ont été supprimés avec succès.")
+            except Exception as e:
+                print(f"Une erreur s'est produite lors de la suppression du dossier : {str(e)}")
+                return True
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            return False
+    else:
+        print("Unsupported system. This code is intended for Windows.")
+        return False
 
 
 def main(args):
@@ -822,19 +866,24 @@ def main(args):
         # Chemin absolu du fichier souhaité qui est à côté du script en cours d'exécution
         path_func_miniconda = os.path.join(current_directory, 'Func_Miniconda.py')
 
-        python_path = os.path.join(default_install_path,"bin","python")
+        python_path = os.path.join(default_install_path,"python")
         command_to_execute = [python_path,path_func_miniconda,"setup",default_install_path,sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6]]  
-        print(f"command_to_execute : {command_to_execute}")
+        print(f"command_to_execute in slicer : {command_to_execute}")
 
         env = dict(os.environ)
         if 'PYTHONPATH' in env:
             del env['PYTHONPATH']
         if 'PYTHONHOME' in env:
             del env['PYTHONHOME']
+        # path_func_miniconda = os.path.join(current_directory, 'test_wsl.py')
+        # command_to_execute = [python_path,path_func_miniconda]
+        
+        print("command to execute slicer : ",command_to_execute)
 
 
 
         result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,env=env)
+        # result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
 
         if result.returncode != 0:
