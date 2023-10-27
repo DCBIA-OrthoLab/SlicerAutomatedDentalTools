@@ -1,11 +1,11 @@
 import os
-import subprocess
 import platform
-import sys
+import subprocess
 import time
-import importlib.util
 
-def checkMinicondaWsl():
+
+
+def check_miniconda():
     """Check if Miniconda is installed on WSL."""
     result = subprocess.run(["wsl", "test", "-d", "~/miniconda3"], capture_output=True)
     default_install_path = "~/miniconda3"
@@ -41,6 +41,37 @@ def install_conda(default_install_path):
 
     return True
 
+# is_installed, default_install_path = check_miniconda()
+# if not is_installed:
+#     install_conda(default_install_path)
+# else:
+#     print("Miniconda is already installed.")
+      
+      
+# x,default_install_path=check_miniconda()   
+# InstallConda(default_install_path)   
+
+      
+def is_miniconda_installed_on_wsl():
+    try:
+        # Exécute la commande "which conda" dans WSL
+        activate_command = ["wsl","--","bash", "which", "conda"]
+        result = subprocess.run(activate_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
+        # return result
+        # Si un chemin est renvoyé, Miniconda est installé
+        print("oui")
+        print(result.stderr)
+        print(result.returncode)
+        if result:
+            print(result.stdout)
+            return True
+    except subprocess.CalledProcessError:
+        print("non")
+        # La commande "which conda" renvoie une erreur si "conda" n'est pas trouvé
+        pass
+
+    return False
+
 
 def install_miniconda_on_wsl():
     try:
@@ -69,9 +100,21 @@ def install_miniconda_on_wsl():
         
     except subprocess.CalledProcessError as e:
         print(f"Une erreur s'est produite lors de l'installation de Miniconda sur WSL: {e}")
-        
-        
-def checkEnvCondaWsl(name:str):
+
+# install_miniconda_on_wsl()
+    
+# exist,default_install_path = check_miniconda()
+# if not exist:
+#     install_miniconda_on_wsl()
+
+# result = subprocess.run(["wsl","--","~/miniconda3/bin/python3","~/miniconda3/bin/conda","--version"],capture_output=True)
+# subprocess.run(['wsl', '--', 'bash', '-i', '-c', '~/miniconda3/bin/conda --version'])
+
+
+# print(result.stdout)
+
+
+def checkEnvConda(name:str,default_install_path:str):
       path_conda = "~/miniconda3/bin/conda"
       path_python = "~/miniconda3/bin/python3"
       command_to_execute = ["wsl","--","~/miniconda3/bin/python3","~/miniconda3/bin/conda","info","--envs"]
@@ -91,6 +134,10 @@ def checkEnvCondaWsl(name:str):
       print("Env conda doesn't exist")
       return False  # L'environnement Conda n'existe pas
   
+# name = "aliIOSCondaCLI"
+# env = checkEnvConda(name,default_install_path)
+
+
 def createCondaEnv(name:str) :
       path_conda = "~/miniconda3/bin/conda"
       path_python = "~/miniconda3/bin/python3"
@@ -146,63 +193,18 @@ def createCondaEnv(name:str) :
           print("Environment created successfully:", result.stdout)
       else:
           print("Failed to create environment:", result.stderr)
-
-
-
-def windows_to_linux_path(windows_path):
-    # Supprime le caractère de retour chariot
-    windows_path = windows_path.strip()
-
-    # Remplace les backslashes par des slashes
-    path = windows_path.replace('\\', '/')
-
-    # Remplace le lecteur par '/mnt/lettre_du_lecteur'
-    if ':' in path:
-        drive, path_without_drive = path.split(':', 1)
-        path = "/mnt/" + drive.lower() + path_without_drive
-
-    return path
-
-
-
-def setup(default_install_path,args):
+          
+# env = checkEnvConda(name,default_install_path)
+# print("env1 : ",env)       
+          
+# if not env : 
+#     createCondaEnv(name)
     
-    miniconda,default_install_path = checkMinicondaWsl()
-    if not miniconda:
-        install_miniconda_on_wsl()
-        
-    
-    name = "aliIOSCondaCli"
-    if not checkEnvCondaWsl(name):
-        createCondaEnv(name)
-
-    
-    current_file_path = os.path.abspath(__file__)
-
-    # Répertoire contenant le script en cours d'exécution
-    current_directory = os.path.dirname(current_file_path)
-    python_path = "~/miniconda3/bin/python"
-    lien_path = os.path.join(current_directory,"link.py")
-    lien_path = windows_to_linux_path(lien_path)
-    command = f"wsl -- bash -c \"{python_path} {lien_path} {sys.argv[3]} {sys.argv[4]} {sys.argv[5]} {sys.argv[6]} {sys.argv[7]} {sys.argv[8]} {name}\""
-    print("command : ",command)
-    result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
-
-    if result.returncode != 0:
-            print(f"Error creating the environment. Return code: {result.returncode}")
-            print("result.stdout : ","*"*150)
-            print(result.stdout)
-            print("result.stderr : ","*"*150)
-            print(result.stderr)
-    else:
-        print(result.stdout)
-        print("Environment created successfully.")
-
-    # call(default_install_path,args,name)
-
+# env = checkEnvConda(name,default_install_path)
+# print("env2 : ",env)
 
 def call(default_install_path,args,name):
-
+    
     activate_env = os.path.join(default_install_path, "bin", "activate")
     python_executable = os.path.join(default_install_path, "envs",name,"python")  # Modifiez selon votre système d'exploitation et votre installation
 
@@ -236,24 +238,37 @@ def call(default_install_path,args,name):
         conn.close()
 
     print("on a ferme le server")
+    
+    
 
 
 
-if __name__ == "__main__":
-    if len(sys.argv) > 3 and sys.argv[1] == "setup":
 
-        args = {
-        "input": sys.argv[3],
-        "dir_models": sys.argv[4],
-        "lm_type": sys.argv[5].split(" "),
-        "teeth": sys.argv[6].split(" "),
-        "save_in_folder": sys.argv[7] == "true",
-        "output_dir": sys.argv[8],
+def windows_to_linux_path(windows_path):
+    # Supprime le caractère de retour chariot
+    windows_path = windows_path.strip()
 
-        "image_size": 224,
-        "blur_radius": 0,
-        "faces_per_pixel": 1,
-        # "sphere_radius": 0.3,
-    }
-        
-        setup(sys.argv[2], args)
+    # Remplace les backslashes par des slashes
+    path = windows_path.replace('\\', '/')
+
+    # Remplace le lecteur par '/mnt/lettre_du_lecteur'
+    if ':' in path:
+        drive, path_without_drive = path.split(':', 1)
+        path = "/mnt/" + drive.lower() + path_without_drive
+
+    return path
+
+
+# current_file_path = os.path.abspath(__file__)
+
+#     # Répertoire contenant le script en cours d'exécution
+# current_directory = os.path.dirname(current_file_path)
+# python_path = "~/miniconda3/bin/python"
+# lien_path = os.path.join(current_directory,"test.py")
+# lien_path = windows_to_linux_path(lien_path)
+# command = f"wsl -- bash -c \"{python_path} {lien_path}\""
+# print("command : ",command)
+# result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
+
+# print("oui")
+# print(result.stdout)
