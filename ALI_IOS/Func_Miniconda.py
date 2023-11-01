@@ -243,15 +243,22 @@ def setup(default_install_path,args):
     print("test"*30)
     print(sys.argv[5])
     print(sys.argv[6])
+    print(sys.argv[0])
     print("test"*30)
-    command = f"wsl -- bash -c \"{python_path} {lien_path} {sys.argv[3]} {sys.argv[4]} {sys.argv[5]} {sys.argv[6]} {sys.argv[7]} {sys.argv[8]} {name}\""
-    # command_to_execute = ["wsl", "--", "bash", "-c"]
-    # command_inside_wsl = [python_path, lien_path, "setup", default_install_path] + sys.argv[1:7]
-    # command_string_inside_wsl = " ".join(['"' + arg + '"' for arg in command_inside_wsl])
-    # command_to_execute.append(command_string_inside_wsl)
-    # command = command_to_execute
+    home_directory = subprocess.check_output(['wsl', 'echo', '$HOME']).decode().strip()
 
+    # Remplacer le ~ dans python_path avec le répertoire personnel
+    python_path = python_path.replace('~', home_directory)
+
+    command = f"wsl -- bash -c \"{python_path} {lien_path} {sys.argv[3]} {sys.argv[4]} {sys.argv[5]} {sys.argv[6]} {sys.argv[7]} {sys.argv[8]} {name}\""
+    command_to_execute = ["wsl", "--", "bash", "-c"]
+    command_inside_wsl = [python_path, lien_path] + sys.argv[3:9] +[name]
+    command_string_inside_wsl = " ".join(['"' + arg + '"' for arg in command_inside_wsl])
+    command_to_execute.append(command_string_inside_wsl)
+    command = command_to_execute
+    print("ll"*100)
     print("command : ",command)
+    print("ll"*100)
     result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
 
     if result.returncode != 0:
@@ -285,6 +292,8 @@ if __name__ == "__main__":
         "faces_per_pixel": 1,
         # "sphere_radius": 0.3,
     }
+        print("args  ouioui: ")
+        print(args)
         print("f"*150)
         print(sys.argv)
         setup(sys.argv[2], args)

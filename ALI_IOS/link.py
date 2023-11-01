@@ -36,9 +36,11 @@ def call(name,args):
     # command = f"/bin/bash -c 'source {path_activate} {name} && {python_path_env} {path_server}'"
     print("name  : ",name)
     print("-"*200)
-    command = f"/bin/bash -c 'source {path_activate} {name} && {python_path_env} {path_server} {sys.argv[1]} {sys.argv[2]} {sys.argv[3]} {sys.argv[4]} {sys.argv[5]} {sys.argv[6]}'"
-
+    command = f"/bin/bash -c 'source {path_activate} {name} && {python_path_env} {path_server} \"{sys.argv[1]}\" \"{sys.argv[2]}\" \"{sys.argv[3]}\" \"{sys.argv[4]}\" \"{sys.argv[5]}\" \"{sys.argv[6]}\"'"
+    
+    print("w"*150)
     print("command : ",command)
+    print("w"*150)
     
      
     
@@ -121,9 +123,12 @@ if __name__ == "__main__":
         "faces_per_pixel": 1,
         # "sphere_radius": 0.3,
     }
-        name = sys.argv[7]
+        
+        print("args : ",args)
         print("z"*150)
         print(sys.argv)
+        name = sys.argv[7]
+        
     else:
         args = []
         name = "aliIOSCondaCli"
