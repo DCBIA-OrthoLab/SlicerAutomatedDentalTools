@@ -182,45 +182,10 @@ def run_command_with_input_and_delays(command, input_data, delay):
 
     return process
 
-# def is_ubuntu_installed():
-#     result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
-#     output = result.stdout.encode('utf-16-le').decode('utf-8')
-#     clean_output = output.replace('\x00', '')  # Enlève tous les octets null
-
-#     # print("clean_output :", clean_output)
-
-#     return 'Ubuntu' in clean_output
 
 
 
 def setup(default_install_path,args):
-    
-    # if not is_ubuntu_installed():
-    #     cmd = ['wsl', '--install']
-    #     input_data = ['user1', 'qwerty123456', 'qwerty123456']
-    #     delay = 2  # Délai de 2 secondes entre les entrées
-
-    #     process = run_command_with_input_and_delays(cmd, input_data, delay)
-
-    #     max_attempts = 30  # Par exemple, vérifier pendant 5 minutes
-    #     attempts = 0
-
-    #     while attempts < max_attempts:
-    #         if is_ubuntu_installed():
-    #             print("Ubuntu a été correctement installé!")
-    #             process.kill()  # Ubuntu est installé, nous pouvons tuer le processus
-    #             subprocess.run("wsl -- bash -c \"sudo apt update && sudo apt install libxrender1\"", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
-    #             subprocess.run("wsl -- bash -c \"sudo apt install libgl1-mesa-glx\"", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
-    #             break
-    #         else:
-    #             time.sleep(10)  # Attendre 10 secondes avant de vérifier à nouveau
-    #             attempts += 1
-    #             print("attemps : ",attempts)
-
-    #     if attempts == max_attempts:
-    #         print("Erreur: Ubuntu n'a pas été détecté après plusieurs tentatives.")
-    
-    
             
     
     miniconda,default_install_path = checkMinicondaWsl()
@@ -240,11 +205,7 @@ def setup(default_install_path,args):
     python_path = "~/miniconda3/bin/python"
     lien_path = os.path.join(current_directory,"link.py")
     lien_path = windows_to_linux_path(lien_path)
-    print("test"*30)
-    print(sys.argv[5])
-    print(sys.argv[6])
-    print(sys.argv[0])
-    print("test"*30)
+   
     home_directory = subprocess.check_output(['wsl', 'echo', '$HOME']).decode().strip()
 
     # Remplacer le ~ dans python_path avec le répertoire personnel
@@ -256,9 +217,7 @@ def setup(default_install_path,args):
     command_string_inside_wsl = " ".join(['"' + arg + '"' for arg in command_inside_wsl])
     command_to_execute.append(command_string_inside_wsl)
     command = command_to_execute
-    print("ll"*100)
-    print("command : ",command)
-    print("ll"*100)
+    
     result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
 
     if result.returncode != 0:
@@ -292,8 +251,5 @@ if __name__ == "__main__":
         "faces_per_pixel": 1,
         # "sphere_radius": 0.3,
     }
-        print("args  ouioui: ")
-        print(args)
-        print("f"*150)
-        print(sys.argv)
+        
         setup(sys.argv[2], args)

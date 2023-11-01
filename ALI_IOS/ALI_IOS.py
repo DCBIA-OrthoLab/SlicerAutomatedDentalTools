@@ -1249,7 +1249,6 @@ if __name__ == "__main__":
 
 
     print("Starting")
-    print("q"*150)
     print(sys.argv)
 
 
