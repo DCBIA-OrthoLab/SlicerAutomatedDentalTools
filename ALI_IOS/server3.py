@@ -950,7 +950,9 @@ def windows_to_linux_path(windows_path):
         
 
 if __name__ == "__main__":
-    print("bonjour"*20)
+    print("bonjour"*10)
+    print(sys.argv)
+    print("bonjour"*10)
     if len(sys.argv) > 3 :
     
         args = {
@@ -966,5 +968,8 @@ if __name__ == "__main__":
         "faces_per_pixel": 1,
         # "sphere_radius": 0.3,
     }
+        print("y"*150)
+        print(args)
+        print("y"*150)
         running(args)
 
