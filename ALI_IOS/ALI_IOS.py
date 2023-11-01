@@ -1249,6 +1249,7 @@ if __name__ == "__main__":
 
 
     print("Starting")
+    print("q"*150)
     print(sys.argv)
 
 
@@ -1265,6 +1266,7 @@ if __name__ == "__main__":
         "faces_per_pixel": 1,
         # "sphere_radius": 0.3,
     }
+
 
     
     # args = {
