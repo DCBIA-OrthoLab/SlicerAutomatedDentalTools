@@ -699,14 +699,54 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     print(param)
 
+    ready = True
+    system = platform.system()
+    if system=="Windows":
+      
+      wsl = self.is_ubuntu_installed()
+      if wsl :
+        lib = self.check_lib_wsl()
+        if not lib :
+            messageBox = qt.QMessageBox()
+            text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please follow the tutorial to install them."
+            ready = False
+            messageBox.information(None, "Information", text)
+      else : 
+        messageBox = qt.QMessageBox()
+        text = "Code can't be launch. \nWSL is not installed, please follow the tutorial to install it with all necessary libraries"
+        ready = False
+        messageBox.information(None, "Information", text)
+    
+    if ready :
+      self.logic = ALILogic()
+      self.logic.process(param, self.CBCT_as_input)
+
+      self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
+      self.onProcessStarted()
+
+  def is_ubuntu_installed(self):
+    result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
+    output = result.stdout.encode('utf-16-le').decode('utf-8')
+    clean_output = output.replace('\x00', '')  # Enlève tous les octets null
+
+    # print("clean_output :", clean_output)
+
+    return 'Ubuntu' in clean_output
 
 
 
-    self.logic = ALILogic()
-    self.logic.process(param, self.CBCT_as_input)
 
-    self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
-    self.onProcessStarted()
+  def check_lib_wsl(self):
+    result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
+    output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
+    clean_output1 = output1.replace('\x00', '') 
+    
+    result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
+    output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
+    clean_output2 = output2.replace('\x00', '')
+
+    return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
+
 
   def onProcessStarted(self):
     self.startTime = time.time()
