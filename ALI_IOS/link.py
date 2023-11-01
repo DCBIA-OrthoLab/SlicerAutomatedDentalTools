@@ -29,46 +29,61 @@ def call(name,args):
     # Chemin absolu du fichier souhaité qui est à côté du script en cours d'exécution
     
     # command = f"wsl -- bash -c \"source {path_activate} {name} && {python_path_env} {path_server}"
-    path_server = os.path.join(current_directory, 'server.py')
+    path_server = os.path.join(current_directory, 'server3.py')
     print("path_server : ",path_server)
     
     path_activate = f"{home_dir}/miniconda3/bin/activate"
-    command = f"source {path_activate} {name} && {python_path_env} {path_server}"
-    command = f"/bin/bash -c 'source {path_activate} {name} && {python_path_env} {path_server}'"
+    # command = f"/bin/bash -c 'source {path_activate} {name} && {python_path_env} {path_server}'"
+    print("name  : ",name)
+    print("-"*200)
+    command = f"/bin/bash -c 'source {path_activate} {name} && {python_path_env} {path_server} {sys.argv[1]} {sys.argv[2]} {sys.argv[3]} {sys.argv[4]} {sys.argv[5]} {sys.argv[6]}'"
 
     print("command : ",command)
+    
+     
+    
+    result = subprocess.run(command,shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
+    if result.returncode != 0:
+            print(f"Error processing the code in server3t. Return code: {result.returncode}")
+            print("result.stdout : ","1"*150)
+            print(result.stdout)
+            print("result.stderr : ","1"*150)
+            print(result.stderr)
+    else:
+        print(result.stdout)
+        print("Process run succesfully")
 
-    # Start server
-    server_process = subprocess.Popen(command, shell=True)
+    # # Start server
+    # server_process = subprocess.Popen(command, shell=True)
     
-    # To be sure the server start
-    time.sleep(5)
-    print("on essaye de se connecter")
+    # # To be sure the server start
+    # time.sleep(5)
+    # print("on essaye de se connecter")
     
-    conn = rpyc.connect("localhost", 18817, config={"sync_request_timeout": 600})
-    # wait_for_server_ready(conn)
-    time.sleep(2)
+    # conn = rpyc.connect("localhost", 18817, config={"sync_request_timeout": 600})
+    # # wait_for_server_ready(conn)
+    # time.sleep(2)
 
 
-    # print("on lui demande le resultat")
-    # x=7
-    # result=conn.root.running(x)
-    # print(f"{x} au carre = {result}")
-    print("args : ",args)
-    conn.root.running(args)
-    print(time.sleep(5))
+    # # print("on lui demande le resultat")
+    # # x=7
+    # # result=conn.root.running(x)
+    # # print(f"{x} au carre = {result}")
+    # print("args : ",args)
+    # conn.root.running(args)
+    # print(time.sleep(5))
     
     
-    # Stop process
+    # # Stop process
     
-    # server_process.terminate()
-    # server_process.wait()
+    # # server_process.terminate()
+    # # server_process.wait()
     
-    result = conn.root.stop()
-    if result == "DISCONNECTING":
-        conn.close()
+    # result = conn.root.stop()
+    # if result == "DISCONNECTING":
+    #     conn.close()
 
-    print("on a ferme le server")
+    # print("on a ferme le server")
 
 
 
@@ -107,6 +122,8 @@ if __name__ == "__main__":
         # "sphere_radius": 0.3,
     }
         name = sys.argv[7]
+        print("z"*150)
+        print(sys.argv)
     else:
         args = []
         name = "aliIOSCondaCli"

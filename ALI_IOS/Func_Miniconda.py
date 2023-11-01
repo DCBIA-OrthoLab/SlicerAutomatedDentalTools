@@ -51,7 +51,7 @@ def install_miniconda_on_wsl():
         subprocess.check_call(["wsl", "--","chmod", "+x", "Miniconda3-latest-Linux-x86_64.sh"])
 
         # Exécute l'installateur
-        subprocess.check_call(["wsl","--","bash", "Miniconda3-latest-Linux-x86_64.sh", "-b"])
+        subprocess.check_call(["wsl","--","bash", "Miniconda3-latest-Linux-x86_64.sh", "-b","-p", "~/miniconda3"])
 
         # Supprime l'installateur après l'installation
         subprocess.check_call(["wsl","--", "rm", "Miniconda3-latest-Linux-x86_64.sh"])
@@ -163,9 +163,65 @@ def windows_to_linux_path(windows_path):
 
     return path
 
+def is_ubuntu_installed():
+    result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
+    output = result.stdout.encode('utf-16-le').decode('utf-8')
+    clean_output = output.replace('\x00', '')  # Enlève tous les octets null
+
+    print("clean_output :", clean_output)
+
+    return 'Ubuntu' in clean_output
+
+def run_command_with_input_and_delays(command, input_data, delay):
+    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    for line in input_data:
+        process.stdin.write(line + '\n')
+        process.stdin.flush()  # Assurez-vous que les données sont bien envoyées
+        time.sleep(delay)  # Attendez pendant le délai spécifié
+
+    return process
+
+# def is_ubuntu_installed():
+#     result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
+#     output = result.stdout.encode('utf-16-le').decode('utf-8')
+#     clean_output = output.replace('\x00', '')  # Enlève tous les octets null
+
+#     # print("clean_output :", clean_output)
+
+#     return 'Ubuntu' in clean_output
+
 
 
 def setup(default_install_path,args):
+    
+    # if not is_ubuntu_installed():
+    #     cmd = ['wsl', '--install']
+    #     input_data = ['user1', 'qwerty123456', 'qwerty123456']
+    #     delay = 2  # Délai de 2 secondes entre les entrées
+
+    #     process = run_command_with_input_and_delays(cmd, input_data, delay)
+
+    #     max_attempts = 30  # Par exemple, vérifier pendant 5 minutes
+    #     attempts = 0
+
+    #     while attempts < max_attempts:
+    #         if is_ubuntu_installed():
+    #             print("Ubuntu a été correctement installé!")
+    #             process.kill()  # Ubuntu est installé, nous pouvons tuer le processus
+    #             subprocess.run("wsl -- bash -c \"sudo apt update && sudo apt install libxrender1\"", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
+    #             subprocess.run("wsl -- bash -c \"sudo apt install libgl1-mesa-glx\"", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
+    #             break
+    #         else:
+    #             time.sleep(10)  # Attendre 10 secondes avant de vérifier à nouveau
+    #             attempts += 1
+    #             print("attemps : ",attempts)
+
+    #     if attempts == max_attempts:
+    #         print("Erreur: Ubuntu n'a pas été détecté après plusieurs tentatives.")
+    
+    
+            
     
     miniconda,default_install_path = checkMinicondaWsl()
     if not miniconda:
@@ -184,7 +240,17 @@ def setup(default_install_path,args):
     python_path = "~/miniconda3/bin/python"
     lien_path = os.path.join(current_directory,"link.py")
     lien_path = windows_to_linux_path(lien_path)
+    print("test"*30)
+    print(sys.argv[5])
+    print(sys.argv[6])
+    print("test"*30)
     command = f"wsl -- bash -c \"{python_path} {lien_path} {sys.argv[3]} {sys.argv[4]} {sys.argv[5]} {sys.argv[6]} {sys.argv[7]} {sys.argv[8]} {name}\""
+    # command_to_execute = ["wsl", "--", "bash", "-c"]
+    # command_inside_wsl = [python_path, lien_path, "setup", default_install_path] + sys.argv[1:7]
+    # command_string_inside_wsl = " ".join(['"' + arg + '"' for arg in command_inside_wsl])
+    # command_to_execute.append(command_string_inside_wsl)
+    # command = command_to_execute
+
     print("command : ",command)
     result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
 
@@ -198,44 +264,8 @@ def setup(default_install_path,args):
         print(result.stdout)
         print("Environment created successfully.")
 
-    # call(default_install_path,args,name)
+   
 
-
-def call(default_install_path,args,name):
-
-    activate_env = os.path.join(default_install_path, "bin", "activate")
-    python_executable = os.path.join(default_install_path, "envs",name,"python")  # Modifiez selon votre système d'exploitation et votre installation
-
-
-    current_file_path = os.path.abspath(__file__)
-
-    # Répertoire contenant le script en cours d'exécution
-    current_directory = os.path.dirname(current_file_path)
-
-    path_activate = os.path.join(default_install_path, "Scripts", "activate")
-    activate_command = f"conda {path_activate} {name}"
-    subprocess.run(activate_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
-    # Chemin absolu du fichier souhaité qui est à côté du script en cours d'exécution
-    path_server = os.path.join(current_directory, 'server.py')
-    command = f"{python_executable} {path_server}"
-
-    # Start server
-    server_process = subprocess.Popen(command, shell=True)
-    
-    # To be sure the server start
-    time.sleep(2)
-    
-    conn = rpyc.connect("localhost", 18817)
-    # wait_for_server_ready(conn)
-    time.sleep(2)
-    conn.root.running(args)
-
-    # Stop process
-    result = conn.root.stop()
-    if result == "DISCONNECTING":
-        conn.close()
-
-    print("on a ferme le server")
 
 
 
@@ -255,5 +285,6 @@ if __name__ == "__main__":
         "faces_per_pixel": 1,
         # "sphere_radius": 0.3,
     }
-        
+        print("f"*150)
+        print(sys.argv)
         setup(sys.argv[2], args)
