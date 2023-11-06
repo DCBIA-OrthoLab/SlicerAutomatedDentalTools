@@ -60,16 +60,6 @@ def main():
             if not is_ubuntu_installed(): # check is ubuntu is install on wsl
                 #define version of wsl at 2
                 subprocess.run("wsl --set-default-version 2", shell=True)
-                
-                exe_dir = os.path.dirname(sys.executable)
-                
-                bash_script = "install_libs.sh"
-
-                full_bash_script_path = os.path.join(exe_dir, bash_script)
-
-                # Path to the .sh with the command to install librairie on wsl
-                wsl_path = "/mnt/" + full_bash_script_path[0].lower() + full_bash_script_path[2:].replace("\\", "/")
-
 
                 # Write a message for the user before installing
                 input("During the installation you will create an username with a password, please note that whilst entering the Password, nothing will appear on screen. This is called blind typing. You won't see what you are typing, this is completely normal.\nWhen the line will start by your username please enter 'exit' to continue the installation\nPress enter to start the installation")
@@ -78,6 +68,15 @@ def main():
                 # Wait for Ubuntu to be installed on WSL
                 while not is_ubuntu_installed():
                     time.sleep(10)
+                    
+            exe_dir = os.path.dirname(sys.executable)
+                
+            bash_script = "install_libs.sh"
+
+            full_bash_script_path = os.path.join(exe_dir, bash_script)
+
+            # Path to the .sh with the command to install librairie on wsl
+            wsl_path = "/mnt/" + full_bash_script_path[0].lower() + full_bash_script_path[2:].replace("\\", "/")
                 
             # Once WSL is initialized, execute the bash script (to install the librairies)
             subprocess.run(["wsl", "bash", wsl_path])
