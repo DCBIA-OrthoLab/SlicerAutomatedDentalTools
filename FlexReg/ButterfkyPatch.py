@@ -1064,9 +1064,9 @@ class WidgetParameter:
     def displayParamater(self,layout,number,parameter):
         label_teeth= QLabel(f'Teeth {number}')
         lineedit_teeth= QLineEdit(str(parameter[0]))
-        label_ratio= QLabel('Ratio')
+        label_ratio= QLabel('Ratio (R-L)')
         lineedit_ratio= QLineEdit(str(parameter[1]))
-        label_adjust = QLabel('Adjust')
+        label_adjust = QLabel('Adjust (A-P)')
         lineedit_adjust = QLineEdit(str(parameter[2]))
 
         layout.addWidget(label_teeth,0,0)
