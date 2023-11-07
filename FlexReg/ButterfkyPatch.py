@@ -1248,10 +1248,7 @@ class WidgetParameter:
             if self.add_patch.isChecked():
                 index=int(self.addItemsCombobox())
             else:
-                print("combobox : ",self.combobox_patch.currentText)
                 index=int(self.combobox_patch.currentText)
-
-            print(index)
 
             self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
                             int(self.lineedit_teeth_left_top.text),
