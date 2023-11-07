@@ -958,10 +958,8 @@ class WidgetParameter:
         # Lorsque le stackedWidget change de page, cette méthode est appelée.
         # Vérifiez si la nouvelle page est la page 0 (index 0) et appelez hideLandmark si c'est le cas.
         if index == 0:
-            print("r","ooo"*100)
             self.hideLandmark()
         else :
-            print("h","aaa"*100)
             self.viewLandmark()
 
     def onCheckboxStateChanged(self):
@@ -1055,7 +1053,8 @@ class WidgetParameter:
             self.timer.stop()
             self.viewScan()
             indexC = self.combobox_patch.findText(str(int(self.addItemsCombobox())-1))
-            self.combobox_patch.removeItem(indexC)
+            if indexC!=0:
+                self.combobox_patch.removeItem(indexC)
             self.displaySegmentation(self.surf)
             
 
@@ -1249,7 +1248,10 @@ class WidgetParameter:
             if self.add_patch.isChecked():
                 index=int(self.addItemsCombobox())
             else:
+                print("combobox : ",self.combobox_patch.currentText)
                 index=int(self.combobox_patch.currentText)
+
+            print(index)
 
             self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
                             int(self.lineedit_teeth_left_top.text),
