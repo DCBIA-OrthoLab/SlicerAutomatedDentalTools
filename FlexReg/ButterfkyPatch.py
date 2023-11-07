@@ -825,6 +825,8 @@ class WidgetParameter:
 
         self.stackedWidget = QStackedWidget()
         layout.addWidget(self.stackedWidget)
+        self.stackedWidget.currentChanged.connect(self.handleStackedWidgetChange)
+
 
         #widget paramater
         widget_full_paramater = QWidget()
@@ -952,7 +954,16 @@ class WidgetParameter:
 
         
 
-        
+    def handleStackedWidgetChange(self, index):
+        # Lorsque le stackedWidget change de page, cette méthode est appelée.
+        # Vérifiez si la nouvelle page est la page 0 (index 0) et appelez hideLandmark si c'est le cas.
+        if index == 0:
+            print("r","ooo"*100)
+            self.hideLandmark()
+        else :
+            print("h","aaa"*100)
+            self.viewLandmark()
+
     def onCheckboxStateChanged(self):
         ''''
         Change state when checkbox is True
@@ -1323,13 +1334,48 @@ class WidgetParameter:
         viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
         viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
 
-        displayNode = self.curve.GetDisplayNode()
-        if displayNode is not None:
-            displayNode.SetVisibility2D(False)
-            displayNode.SetVisibility3D(True)
+        if self.curve!=None:
+            displayNode = self.curve.GetDisplayNode()
+            if displayNode is not None:
+                displayNode.SetVisibility2D(False)
+                displayNode.SetVisibility3D(True)
 
-            view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
-            displayNode.SetViewNodeIDs(view_ids_to_display)
+                view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
+                displayNode.SetViewNodeIDs(view_ids_to_display)
+
+        if self.middle_point!=None:
+            displayNode = self.middle_point.GetDisplayNode()
+            if displayNode is not None:
+                displayNode.SetVisibility2D(False)
+                displayNode.SetVisibility3D(True)
+                view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
+                displayNode.SetViewNodeIDs(view_ids_to_display)
+
+    def hideLandmark(self) -> None:
+        '''
+        Hide the landmarks
+        '''
+        viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+        viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
+
+        if self.curve!=None :
+            displayNode = self.curve.GetDisplayNode()
+            if displayNode is not None:
+                displayNode.SetVisibility2D(True)  # Rétablir la visibilité 2D
+                displayNode.SetVisibility3D(False)  # Masquer la visibilité 3D
+
+                view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
+                displayNode.SetViewNodeIDs(view_ids_to_display)
+
+        if self.middle_point!=None :
+            displayNode = self.middle_point.GetDisplayNode()
+            if displayNode is not None:
+                displayNode.SetVisibility2D(True)  # Rétablir la visibilité 2D
+                displayNode.SetVisibility3D(False)  # Masquer la visibilité 3D
+
+                view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
+                displayNode.SetViewNodeIDs(view_ids_to_display)
+
 
 
     def curvePoint(self)->None:
