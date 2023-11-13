@@ -827,7 +827,6 @@ def InstallConda(default_install_path):
 
 
             # os.remove(path_installer)  # Remove the installer file after installation
-            print("bonjour")
             subprocess.run(f"{path_conda} init cmd.exe", shell=True)
             print("Miniconda installed successfully.")
             

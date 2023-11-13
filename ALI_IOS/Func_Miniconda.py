@@ -202,7 +202,8 @@ def setup(default_install_path,args):
 
     # Répertoire contenant le script en cours d'exécution
     current_directory = os.path.dirname(current_file_path)
-    python_path = "~/miniconda3/bin/python"
+    # python_path = "~/miniconda3/bin/python"
+    python_path = os.path.join(default_install_path,"python")
     lien_path = os.path.join(current_directory,"link.py")
     lien_path = windows_to_linux_path(lien_path)
    
