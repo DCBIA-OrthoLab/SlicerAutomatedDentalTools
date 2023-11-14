@@ -458,7 +458,6 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         model = slicer.util.loadModel(scan)
                     else :
                         model = slicer.util.loadVolume(scan)
-                        
                     for matrix in values['matrix']:
                         try:
                             fname, extension_mat = os.path.splitext(os.path.basename(matrix))
@@ -469,11 +468,9 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
                             else :
                                 tform = slicer.util.loadTransform(matrix)
-
-                            model.SetAndObserveTransformNodeID(tform.GetID())
-                            model.HardenTransform()
+                            
                             if Path(self.ui.LineEditPatient.text).is_dir():
-                                outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
+                                    outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
                             else : 
                                 outpath = scan.replace(os.path.dirname(self.ui.LineEditPatient.text),self.ui.LineEditOutput.text)
 
@@ -489,7 +486,14 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             if not os.path.exists(os.path.dirname(outpath)):
                                 os.makedirs(os.path.dirname(outpath))
 
-                            slicer.util.saveNode(model,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
+                            if extension_scan!=".nii.gz":
+                                model.SetAndObserveTransformNodeID(tform.GetID())
+                                model.HardenTransform()
+
+                                slicer.util.saveNode(model,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
+
+                            else:
+                                self.applyBrainsResample(model,tform,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
 
                         except:
                             print("An issue occured")
@@ -498,7 +502,45 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     slicer.mrmlScene.RemoveNode(model)
                     
 
+
+    def applyBrainsResample(self, inputVolumeNode, transformationNode, outputFilePath):
+        '''
+        Uses the BRAINS Resample module to apply a transformation to an input volume node
+        and saves the result in a specified file.
+        '''
+        # Obtenez le module BRAINSResample
+        brainsResampleModule = slicer.modules.brainsresample
+        outputVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+
+
+
+        # Définissez les paramètres pour le module BRAINSResample
+        parameters = {
+            'inputVolume': inputVolumeNode.GetID(),
+            'warpTransform': transformationNode.GetID(),
+            'outputVolume' : outputVolumeNode.GetID(),
+            'interpolationMode': 'Linear'  # Ou tout autre mode d'interpolation souhaité
+        }
+
+        # Exécutez le module BRAINSResample avec les paramètres spécifiés
+        cliNode = slicer.cli.runSync(brainsResampleModule, None, parameters)
+        if cliNode.GetStatusString() != 'Completed':
+            print("Error when running the Resample Image module (BRAINS):", cliNode.GetStatusString())
+
+        self.saveOutputVolume(outputVolumeNode, outputFilePath)
+
+
+    def saveOutputVolume(self, outputVolumeNode, outputFilePath):
+        """
+        Saves the output volume in the specified file with the .nii.gz extension.
         
+        :param outputVolumeNode: The output volume node in Slicer MRML scene.
+        :param outputFilePath: The full path where the file is to be saved.
+        """
+        if not os.path.exists(os.path.dirname(outputFilePath)):
+            os.makedirs(os.path.dirname(outputFilePath))
+            
+        slicer.util.saveNode(outputVolumeNode, outputFilePath)
 
 
 
