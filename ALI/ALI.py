@@ -718,6 +718,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         messageBox.information(None, "Information", text)
     
     if ready :
+
       self.logic = ALILogic()
       self.logic.process(param, self.CBCT_as_input)
 
