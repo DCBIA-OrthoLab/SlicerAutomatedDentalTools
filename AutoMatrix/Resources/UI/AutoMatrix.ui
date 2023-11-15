@@ -12,8 +12,6 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-   </item>
-   <item>
     <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
      <property name="text" stdset="0">
       <string>Inputs</string>
