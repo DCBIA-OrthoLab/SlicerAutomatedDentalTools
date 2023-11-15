@@ -20,6 +20,9 @@ from pathlib import Path
 from Methode.General_tools import search, GetPatients
 
 
+import time
+
+
 #
 # AutoMatrix
 #test
@@ -168,6 +171,8 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ComboBoxMatrix.setCurrentIndex(1)
 
         self.ui.ButtonAutoFill.setVisible(False)
+
+        self.timer_should_continue = True
 
     def Mirror(self):
         if self.ui.CheckBoxMirror.isChecked():
@@ -431,10 +436,10 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.label_info.setVisible(True)
 
             self.onProcessStarted()
+            
             self.ProcessVolume()
             self.UpdateProgressBar(True)
 
-                                
 
         
     def ProcessVolume(self)-> None:
@@ -508,28 +513,27 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Uses the BRAINS Resample module to apply a transformation to an input volume node
         and saves the result in a specified file.
         '''
-        # Obtenez le module BRAINSResample
         brainsResampleModule = slicer.modules.brainsresample
         outputVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
 
 
 
-        # Définissez les paramètres pour le module BRAINSResample
         parameters = {
             'inputVolume': inputVolumeNode.GetID(),
             'warpTransform': transformationNode.GetID(),
             'outputVolume' : outputVolumeNode.GetID(),
-            'interpolationMode': 'Linear'  # Ou tout autre mode d'interpolation souhaité
+            'interpolationMode': 'Linear'  
         }
 
-        # Exécutez le module BRAINSResample avec les paramètres spécifiés
+
         cliNode = slicer.cli.runSync(brainsResampleModule, None, parameters)
+
         if cliNode.GetStatusString() != 'Completed':
             print("Error when running the Resample Image module (BRAINS):", cliNode.GetStatusString())
 
         self.saveOutputVolume(outputVolumeNode, outputFilePath)
 
-
+    
     def saveOutputVolume(self, outputVolumeNode, outputFilePath):
         """
         Saves the output volume in the specified file with the .nii.gz extension.
@@ -541,6 +545,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             os.makedirs(os.path.dirname(outputFilePath))
             
         slicer.util.saveNode(outputVolumeNode, outputFilePath)
+        slicer.mrmlScene.RemoveNode(outputVolumeNode)
 
 
 
