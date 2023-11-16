@@ -829,7 +829,14 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
   def OnEndProcess(self):
 
-      
+      script_path = os.path.dirname(os.path.abspath(__file__))
+      file_path = os.path.join(script_path,"tempo.txt")
+      if os.path.exists(file_path):
+        os.remove(file_path)
+        print("File delete")
+      else:
+        print("The file doesn't exist")
+        
       print('PROCESS DONE.')
       # script_path = os.path.dirname(os.path.abspath(__file__))
       # file_path = os.path.join(script_path,"tempo.txt")
