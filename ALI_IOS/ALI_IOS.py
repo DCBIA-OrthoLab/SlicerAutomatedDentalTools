@@ -813,10 +813,6 @@ def InstallConda(default_install_path):
             # Run the Anaconda installer with silent mode
             print("path_installer : ",path_installer)
             print("default_install_path : ",default_install_path)
-            # subprocess.run('start /wait "C:\\Users\\luciacev.UMROOT\\miniconda3\\Miniconda3-latest-Windows-x86_64.exe" /InstallationType=JustMe /S /D=C:\\Users\\luciacev.UMROOT\\miniconda3', shell=True)
-            # Commande PowerShell
-            # Chemin vers l'installateur Miniconda pour Windows
-            # path_installer = "C:\\Users\\luciacev.UMROOT\\oui\\Miniconda3-latest-Windows-x86_64.exe"
             path_miniconda = os.path.join(default_install_path,"miniconda")
 
             # Commande pour une installation silencieuse avec Miniconda
@@ -825,8 +821,6 @@ def InstallConda(default_install_path):
             # Exécutez la commande d'installation
             subprocess.run(install_command, shell=True)
 
-
-            # os.remove(path_installer)  # Remove the installer file after installation
             subprocess.run(f"{path_conda} init cmd.exe", shell=True)
             print("Miniconda installed successfully.")
             
@@ -843,6 +837,15 @@ def InstallConda(default_install_path):
         print("Unsupported system. This code is intended for Windows.")
         return False
 
+def write_txt(message):
+    script_path = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_path,"tempo.txt")
+    path_parts = os.path.split(file_path)
+    new_dir = path_parts[0].replace('ALI_IOS', 'ALI')
+    new_path = os.path.join(new_dir, path_parts[1])
+    
+    with open(new_path, 'a') as file:
+        file.write(message + '\n')  # Écrire le message suivi d'une nouvelle ligne
 
 def main(args):
 
@@ -851,10 +854,13 @@ def main(args):
     if system=="Windows":
     #MINICONDA ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         print("%"*300)
+        write_txt("checking installation of miniconda3")
         miniconda,default_install_path = checkMiniconda()
+        
 
         if not miniconda : 
                 print("appelle InstallConda")
+                write_txt("Installation of miniconda3, this task can take a few minutes")
                 InstallConda(default_install_path)
 
         current_file_path = os.path.abspath(__file__)

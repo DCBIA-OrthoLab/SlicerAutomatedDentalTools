@@ -511,103 +511,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.ui.SaveFolderLineEdit.setText(save_folder)
 
 
-  def carre(self,x):
-    # result = x * x
-    obj = Math(x)
-    result = obj.carre()
-    print("le carre de ",x," est : ",result)
-    return result
 
   def onPredictButton(self):
-    # COMMAND CALL FUNCTIONS MINICONDA
-#     miniconda,default_install_path = self.checkMiniconda()
-#     path_conda = os.path.join(default_install_path,"bin","conda")
-#     path_activate = os.path.join(default_install_path, "bin", "activate")
-#     success_install = miniconda
-
-#     if not miniconda : 
-#             print("appelle InstallConda")
-#             success_install = self.InstallConda(default_install_path)
-
-#     if success_install:
-#         print("miniconda installed")
-
-#         name = "aliIOSConda"
-#         print(f"Python executable used by Slicer: {sys.executable}")
-#         if not self.checkEnvConda(name,default_install_path):
-#             self.createCondaEnv(name,default_install_path,path_conda,path_activate)
-
-#         command_to_execute = [path_conda, "info", "--envs"]
-#         print(f"commande de verif : {command_to_execute}")
-
-#         result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=slicer.util.startupEnvironment())
-#         if result.returncode == 0:
-#             output = result.stdout.decode("utf-8")
-#             print("Environnements Conda disponibles :\n", output)
-
-#         # Lister les packages installés dans l'environnement
-#         print("List les packages du nouvel environment")
-#         list_packages_command = f"source {path_activate} {name} && conda list"
-#         result = subprocess.run(list_packages_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, executable="/bin/bash", env=slicer.util.startupEnvironment())
-#         if result.returncode == 0:
-#             print("List of installed packages:")
-#             print(result.stdout)
-#         else:
-#             print(f"Failed to list installed packages: {result.stderr}")
-
-#     activate_env = os.path.join(default_install_path, "bin", "activate")
-#     python_executable = os.path.join(default_install_path, "envs", name, "bin", "python3")  # Modifiez selon votre système d'exploitation et votre installation
-
-#     print(f"Le répertoire de travail actuel est {os.path.dirname(os.path.abspath(__file__))}")
-#     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-#     command = f"source {activate_env} {name} && {python_executable} server.py"
-
-#     # Start server
-#     server_process = subprocess.Popen(command, shell=True, executable="/bin/bash",env=slicer.util.startupEnvironment())
-    
-#     # To be sure the server start
-#     print("on attend le lancement de server")
-#     time.sleep(5)
-    
-#     print("on essaye de se connecter")
-#     conn = rpyc.connect("localhost", 18812)
-
-#     print("on est connecte")
-
-#       # Send import
-# #     import_statements = """import numpy as np
-# # import torch
-# # import vtk"""
-# #     conn.root.add_function("imports", import_statements)
-
-#     # Send function
-#     print("trying to send the function")
-
-#     func_name = "carre"
-#     func_code = inspect.getsource(self.carre)
-#     func_code = textwrap.dedent(func_code)
-#     conn.root.add_function(func_name, func_code)
-
-#     # for func in [self.carre]:
-#     #     func_name = func.__name__
-#     #     print(f"func_name : {func_name}")
-#     #     func_code = inspect.getsource(func)
-#     #     conn.root.add_function(func_name, func_code)
-
-#     print("on lui demande le resultat")
-#     resultat_carre = conn.root.carre("self",5)
-#     print(f"Le résultat du carré de 5 est {resultat_carre} oui non oui non")
-
-#     # Stop process
-#     server_process.terminate()
-#     server_process.wait()
-
-#     print("on a ferme le server")
-
-    
-    
-
-        #END MINICONDA
 
     ready = True
 
@@ -718,23 +623,24 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         messageBox.information(None, "Information", text)
     
     if ready :
-
+      script_path = os.path.dirname(os.path.abspath(__file__))
+      file_path = os.path.join(script_path,"tempo.txt")
+      with open(file_path, 'a') as file:
+        file.write("Beginning of the process" + '\n')  # Écrire le message suivi d'une nouvelle ligne
+        
       self.logic = ALILogic()
       self.logic.process(param, self.CBCT_as_input)
 
       self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
       self.onProcessStarted()
+      
 
   def is_ubuntu_installed(self):
     result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
     output = result.stdout.encode('utf-16-le').decode('utf-8')
     clean_output = output.replace('\x00', '')  # Enlève tous les octets null
 
-    # print("clean_output :", clean_output)
-
     return 'Ubuntu' in clean_output
-
-
 
 
   def check_lib_wsl(self):
@@ -752,41 +658,47 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onProcessStarted(self):
     self.startTime = time.time()
 
-    self.ui.PredScanProgressBar.setMaximum(self.scan_count)
-    self.ui.PredScanProgressBar.setValue(0)
-    self.ui.PredSegProgressBar.setValue(0)
+    system = platform.system()
+    if system=="Windows":
+      self.ui.PredScanLabel.setText(f"Beginning of the process")
+      self.RunningUIWindows(True)
+          
+    else : 
+      self.ui.PredScanProgressBar.setMaximum(self.scan_count)
+      self.ui.PredScanProgressBar.setValue(0)
+      self.ui.PredSegProgressBar.setValue(0)
 
-    if self.CBCT_as_input:
-      self.ui.PredScanLabel.setText(f"Scan ready: 0 / {self.scan_count}")
+      if self.CBCT_as_input:
+        self.ui.PredScanLabel.setText(f"Scan ready: 0 / {self.scan_count}")
 
-      self.total_seg_progress = self.scan_count * self.landmark_cout
+        self.total_seg_progress = self.scan_count * self.landmark_cout
 
-      self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
-      self.ui.PredSegLabel.setText(f"Landmarks found : 0 / {self.total_seg_progress}") 
+        self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
+        self.ui.PredSegLabel.setText(f"Landmarks found : 0 / {self.total_seg_progress}") 
 
-    else:
-      self.ui.PredScanLabel.setText(f"Scan : 0 / {self.scan_count}")
+      else:
+        self.ui.PredScanLabel.setText(f"Scan : 0 / {self.scan_count}")
 
-      model_used = []
-      for lm in self.lm_tab.GetSelected():
-        for model in SURFACE_LANDMARKS.keys():
-          if lm in SURFACE_LANDMARKS[model]:
-            if model not in model_used:
-              model_used.append(model)
-
-
-      self.total_seg_progress = len(self.tooth_lm.GetSelected()) * len(model_used)
-
-      self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
-      self.ui.PredSegLabel.setText(f"Identified : 0 / {self.total_seg_progress}") 
-
-    self.prediction_step = 0
-    self.progress = 0
+        model_used = []
+        for lm in self.lm_tab.GetSelected():
+          for model in SURFACE_LANDMARKS.keys():
+            if lm in SURFACE_LANDMARKS[model]:
+              if model not in model_used:
+                model_used.append(model)
 
 
+        self.total_seg_progress = len(self.tooth_lm.GetSelected()) * len(model_used)
+
+        self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
+        self.ui.PredSegLabel.setText(f"Identified : 0 / {self.total_seg_progress}") 
+
+      self.prediction_step = 0
+      self.progress = 0
 
 
-    self.RunningUI(True)
+
+
+      self.RunningUI(True)
 
   
   
@@ -859,6 +771,13 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.UpdateALIIOS(progress)
 
 
+  def read_txt(self):
+    script_path = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_path,"tempo.txt")
+    print("file_path : ",file_path)
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+        return lines[-1] if lines else None
 
   def onProcessUpdate(self,caller,event):
 
@@ -867,12 +786,19 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     progress = caller.GetProgress()
 
     # print(progress)
-    if progress == 0:
-      self.updateProgessBar = False
+    system = platform.system()
+    if system=="Windows":
+          line = self.read_txt()
+          print("line : ",line)
+          self.ui.PredScanLabel.setText(f"{line}") 
+          
+    else:
+      if progress == 0:
+        self.updateProgessBar = False
 
-    if progress != 0 and self.updateProgessBar == False:
-      self.updateProgessBar = True
-      self.UpdateProgressBar(progress)
+      if progress != 0 and self.updateProgessBar == False:
+        self.updateProgessBar = True
+        self.UpdateProgressBar(progress)
 
     if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
       # process complete
@@ -905,6 +831,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
       
       print('PROCESS DONE.')
+      # script_path = os.path.dirname(os.path.abspath(__file__))
+      # file_path = os.path.join(script_path,"tempo.txt")
+      # os.remove(file_path)
       self.RunningUI(False)
       print(self.logic.cliNode.GetOutputText())
 
@@ -952,6 +881,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.PredSegLabel.setVisible(run)
     self.ui.PredSegProgressBar.setVisible(run)
     self.ui.TimerLabel.setVisible(run)
+    
+  def RunningUIWindows(self,run=False):
+    self.ui.TimerLabel.setVisible(run)
+    self.ui.PredScanLabel.setVisible(run)
+        
 
   def cleanup(self):
     """

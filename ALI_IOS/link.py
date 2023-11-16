@@ -24,9 +24,6 @@ def call(name,args):
    
     command = f"/bin/bash -c 'source {path_activate} {name} && {python_path_env} {path_server} \"{sys.argv[1]}\" \"{sys.argv[2]}\" \"{sys.argv[3]}\" \"{sys.argv[4]}\" \"{sys.argv[5]}\" \"{sys.argv[6]}\"'"
     
-  
-    
-     
     
     result = subprocess.run(command,shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
     if result.returncode != 0:
