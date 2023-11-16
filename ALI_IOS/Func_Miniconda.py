@@ -11,36 +11,6 @@ def checkMinicondaWsl():
     default_install_path = "~/miniconda3"
     return result.returncode == 0, default_install_path
 
-def install_conda(default_install_path):
-    """Install Miniconda on WSL."""
-    system = platform.system()
-    machine = platform.machine()
-    miniconda_base_url = "https://repo.anaconda.com/miniconda/"
-
-    if system == "Windows":
-        filename = "Miniconda3-latest-Linux-x86_64.sh"
-    else:
-        raise NotImplementedError(f"Unsupported system: {system} {machine}")
-
-    miniconda_url = miniconda_base_url + filename
-    path_sh = os.path.join(default_install_path, "miniconda.sh")
-    path_conda = os.path.join(default_install_path, "bin", "conda")
-
-    subprocess.run(["wsl", "wget", "--continue", "--tries=3", miniconda_url, "-O", path_sh], capture_output=True)
-    subprocess.run(["wsl", "chmod", "+x", path_sh], capture_output=True)
-
-    try:
-        print("Installing Miniconda...")
-        subprocess.run(["wsl", "bash", path_sh, "-b", "-u", "-p", default_install_path], capture_output=True)
-        subprocess.run(["wsl", "rm", "-rf", path_sh])
-        subprocess.run(["wsl", path_conda, "init", "bash"])
-        print("Miniconda installed successfully!")
-    except:
-        print("An error occurred during Miniconda installation.")
-        return False
-
-    return True
-
 
 def install_miniconda_on_wsl():
     try:
@@ -72,80 +42,86 @@ def install_miniconda_on_wsl():
         
         
 def checkEnvCondaWsl(name:str):
-      path_conda = "~/miniconda3/bin/conda"
-      path_python = "~/miniconda3/bin/python3"
-      command_to_execute = ["wsl","--","~/miniconda3/bin/python3","~/miniconda3/bin/conda","info","--envs"]
-      
+    '''
+    Check if env conda exist on wsl
+    '''
+    path_conda = "~/miniconda3/bin/conda"
+    path_python = "~/miniconda3/bin/python3"
+    command_to_execute = ["wsl","--","~/miniconda3/bin/python3","~/miniconda3/bin/conda","info","--envs"]
+    
 
-      result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
-      if result.returncode == 0:
-            output = result.stdout
-            print("output : ",output)
-            env_lines = output.strip().split("\n")
-            for line in env_lines:
-                env_name = os.path.basename(line)
-                if env_name == name:
-                    print('Env conda exist')
-                    return True  # L'environnement Conda existe déjà
-          
-      print("Env conda doesn't exist")
-      return False  # L'environnement Conda n'existe pas
+    result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
+    if result.returncode == 0:
+        output = result.stdout
+        print("output : ",output)
+        env_lines = output.strip().split("\n")
+        for line in env_lines:
+            env_name = os.path.basename(line)
+            if env_name == name:
+                print('Env conda exist')
+                return True  # L'environnement Conda existe déjà
+        
+    print("Env conda doesn't exist")
+    return False  # L'environnement Conda n'existe pas
   
 def createCondaEnv(name:str) :
-      path_conda = "~/miniconda3/bin/conda"
-      path_python = "~/miniconda3/bin/python3"
-      
-      default_path = "~/miniconda3"
+    '''
+    Create the new env to run the code on wsl
+    '''
+    path_conda = "~/miniconda3/bin/conda"
+    path_python = "~/miniconda3/bin/python3"
     
-    #   command_to_execute = [python_path, "-m", "conda", "create", "--name", name, "python=3.9", "-y"]
-      command_to_execute = ["wsl","--","~/miniconda3/bin/conda", "create", "-y","-n", name, "python=3.9","pip","numpy-base"]
-      
-      print(f"command_to_execute : {command_to_execute}")
-      result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    default_path = "~/miniconda3"
+
+#   command_to_execute = [python_path, "-m", "conda", "create", "--name", name, "python=3.9", "-y"]
+    command_to_execute = ["wsl","--","~/miniconda3/bin/conda", "create", "-y","-n", name, "python=3.9","pip","numpy-base"]
+    
+    print(f"command_to_execute : {command_to_execute}")
+    result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
 
-      if result.returncode != 0:
+    if result.returncode != 0:
         print(f"Error creating the environment. Return code: {result.returncode}")
         print("result.stdout : ","*"*150)
         print(result.stdout)
         print("result.stderr : ","*"*150)
         print(result.stderr)
-      else:
+    else:
         print("Environment created successfully.")
-        
-      
-      result = subprocess.run(f"{path_conda} list pip", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
-      print(result.stdout)
+    
+    
+    result = subprocess.run(f"{path_conda} list pip", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
+    print(result.stdout)
 
-      path_pip=f"~/miniconda3/envs/{name}/bin/pip"
-      path_activate = f"~/miniconda3/bin/activate"
-      install_commands = [
-      f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113\"",
-      f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install monai==0.7.0\"",
-      f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install --no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113\"",
-      f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install fvcore\"",
-      f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html\"",
-      f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install rpyc\"",
-      f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install vtk\"",
-      f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install scipy\""
-      ]
+    path_pip=f"~/miniconda3/envs/{name}/bin/pip"
+    path_activate = f"~/miniconda3/bin/activate"
+    install_commands = [
+    f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113\"",
+    f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install monai==0.7.0\"",
+    f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install --no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113\"",
+    f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install fvcore\"",
+    f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html\"",
+    f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install rpyc\"",
+    f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install vtk\"",
+    f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install scipy\""
+    ]
 
 
-    #   Exécution des commandes d'installation
-      for command in install_commands:
-          print("command : ",command)
-          result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
-          if result.returncode == 0:
-              print(f"Successfully executed: {command}")
-            #   print(result.stdout)
-          else:
-              print(f"Failed to execute: {command}")
-            #   print(result.stderr)
+#   Exécution des commandes d'installation
+    for command in install_commands:
+        print("command : ",command)
+        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
+        if result.returncode == 0:
+            print(f"Successfully executed: {command}")
+        #   print(result.stdout)
+        else:
+            print(f"Failed to execute: {command}")
+        #   print(result.stderr)
 
-      if result.returncode == 0:
-          print("Environment created successfully:", result.stdout)
-      else:
-          print("Failed to create environment:", result.stderr)
+    if result.returncode == 0:
+        print("Environment created successfully:", result.stdout)
+    else:
+        print("Failed to create environment:", result.stderr)
 
 
 
@@ -183,18 +159,28 @@ def run_command_with_input_and_delays(command, input_data, delay):
     return process
 
 
-
+def write_txt(message):
+    script_path = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_path,"tempo.txt")
+    path_parts = os.path.split(file_path)
+    new_dir = path_parts[0].replace('ALI_IOS', 'ALI')
+    new_path = os.path.join(new_dir, path_parts[1])
+    
+    with open(new_path, 'a') as file:
+        file.write(message + '\n')  # Écrire le message suivi d'une nouvelle ligne
 
 def setup(default_install_path,args):
             
     
     miniconda,default_install_path = checkMinicondaWsl()
     if not miniconda:
+        write_txt("Installing miniconda3 on wsl, this task can take a few minutes")
         install_miniconda_on_wsl()
         
     
     name = "aliIOSCondaCli"
     if not checkEnvCondaWsl(name):
+        write_txt("Creating the new environement, this task can take a few minutes")
         createCondaEnv(name)
 
     
@@ -213,7 +199,9 @@ def setup(default_install_path,args):
     # Remplacer le ~ dans python_path avec le répertoire personnel
     python_path = python_path.replace('~', home_directory)
 
-    command = f"wsl -- bash -c \"{python_path} {lien_path} {sys.argv[3]} {sys.argv[4]} {sys.argv[5]} {sys.argv[6]} {sys.argv[7]} {sys.argv[8]} {name}\""
+    write_txt("Process the files, creation of landmarks")
+    # command = f"wsl -- bash -c \"{python_path} {lien_path} {sys.argv[3]} {sys.argv[4]} {sys.argv[5]} {sys.argv[6]} {sys.argv[7]} {sys.argv[8]} {name}\""
+    
     command_to_execute = ["wsl", "--", "bash", "-c"]
     command_inside_wsl = [python_path, lien_path] + sys.argv[3:9] +[name]
     command_string_inside_wsl = " ".join(['"' + arg + '"' for arg in command_inside_wsl])
