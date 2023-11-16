@@ -51,19 +51,23 @@ def main(args)-> None:
             Lower = np.array(img.TransformPhysicalPointToContinuousIndex(Lower)).astype(int)
             Upper = np.array(img.TransformPhysicalPointToContinuousIndex(Upper)).astype(int)
 
+            for i in range(3):
+                if Lower[i] > Upper[i]:
+                    Lower[i], Upper[i] = Upper[i], Lower[i]
             # Bounds checking
             img_size = img.GetSize()
             Lower = [max(0, l) for l in Lower]
             Upper = [min(img_size[i], u) for i, u in enumerate(Upper)]
-    
 
-            # Ensure non-zero size for all dimensions
-            for i in range(3):
-                if Lower[i] == Upper[i]:
-                    if Upper[i] < img_size[i] - 1:
-                        Upper[i] += 1
-                    elif Lower[i] > 0:
-                        Lower[i] -= 1
+
+            # # Ensure non-zero size for all dimensions and that lower < upper
+           
+            # for i in range(3):
+            #     if Lower[i] == Upper[i]:
+            #         if Upper[i] < img_size[i] - 1:
+            #             Upper[i] += 1
+            #         elif Lower[i] > 0:
+            #             Lower[i] -= 1
 
             # Crop the image
             crop_image = img[Lower[0]:Upper[0],
@@ -84,14 +88,18 @@ def main(args)-> None:
 
             os.makedirs(os.path.dirname(ScanOutPath), exist_ok=True)
             
-            # try:
+            try:
                 
-            sitk.WriteImage(crop_image,ScanOutPath)
+                sitk.WriteImage(crop_image,ScanOutPath)
                 
-            # except:
-            #     import sys
-            #     print("Error for patient: ",patient)
-            #     print('The error says: ',sys.exc_info()[0])
+            except:
+                import sys
+                print("Error for patient: ",patient)
+                print('The error says: ',sys.exc_info()[0])
+                print('Lower: ',Lower)
+                print('Upper: ',Upper)
+                print('Lower[2]:',Lower[2])
+                print('Upper[2]:',Upper[2])
 
             with open(args.logPath,'r+') as log_f :
                     log_f.write(str(index))
