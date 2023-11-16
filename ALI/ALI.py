@@ -28,7 +28,7 @@ TEST_SCAN = {
 
 MODELS_LINK = {
   "CBCT": [
-    'https://github.com/Maxlo24/ALI_CBCT/releases/tag/v0.1-models',
+    'https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/tag/v0.1-v2.0_models',
   ],
   "IOS" : [
     'https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.3',
