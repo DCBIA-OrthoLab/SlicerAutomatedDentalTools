@@ -774,7 +774,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def read_txt(self):
     script_path = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(script_path,"tempo.txt")
-    print("file_path : ",file_path)
     with open(file_path, 'r') as file:
         lines = file.readlines()
         return lines[-1] if lines else None
@@ -789,7 +788,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     system = platform.system()
     if system=="Windows":
           line = self.read_txt()
-          print("line : ",line)
           self.ui.PredScanLabel.setText(f"{line}") 
           
     else:
