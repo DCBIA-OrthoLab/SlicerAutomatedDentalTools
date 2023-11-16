@@ -17,7 +17,7 @@ def call(name,args):
     current_directory = os.path.dirname(current_file_path)
 
     # command = f"wsl -- bash -c \"source {path_activate} {name} && {python_path_env} {path_server}"
-    path_server = os.path.join(current_directory, 'server3.py')
+    path_server = os.path.join(current_directory, 'server.py')
     
     path_activate = f"{home_dir}/miniconda3/bin/activate"
     # command = f"/bin/bash -c 'source {path_activate} {name} && {python_path_env} {path_server}'"

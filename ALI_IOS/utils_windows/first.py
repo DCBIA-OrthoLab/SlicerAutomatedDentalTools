@@ -163,7 +163,7 @@ def write_txt(message):
     script_path = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(script_path,"tempo.txt")
     path_parts = os.path.split(file_path)
-    new_dir = path_parts[0].replace('ALI_IOS', 'ALI')
+    new_dir = path_parts[0].replace(os.path.join('ALI_IOS','utils_windows'), 'ALI')
     new_path = os.path.join(new_dir, path_parts[1])
     
     with open(new_path, 'a') as file:
@@ -191,7 +191,7 @@ def setup(default_install_path,args):
     python_path = "~/miniconda3/bin/python"
     # python_path = os.path.join(default_install_path,"bin","python")
     # python_path = windows_to_linux_path(python_path)
-    lien_path = os.path.join(current_directory,"link.py")
+    lien_path = os.path.join(current_directory,"in_wsl.py")
     lien_path = windows_to_linux_path(lien_path)
    
     home_directory = subprocess.check_output(['wsl', 'echo', '$HOME']).decode().strip()
@@ -199,7 +199,7 @@ def setup(default_install_path,args):
     # Remplacer le ~ dans python_path avec le répertoire personnel
     python_path = python_path.replace('~', home_directory)
 
-    write_txt("Process the files, creation of landmarks")
+    write_txt("Process the file(s), creation of landmark(s)")
     # command = f"wsl -- bash -c \"{python_path} {lien_path} {sys.argv[3]} {sys.argv[4]} {sys.argv[5]} {sys.argv[6]} {sys.argv[7]} {sys.argv[8]} {name}\""
     
     command_to_execute = ["wsl", "--", "bash", "-c"]

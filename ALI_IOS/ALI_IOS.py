@@ -19,7 +19,6 @@ import json
 import vtk
 import numpy as np
 
-import Func_Miniconda as fm
 import subprocess
 import platform
 import inspect
@@ -869,7 +868,7 @@ def main(args):
         current_directory = os.path.dirname(current_file_path)
 
         # Chemin absolu du fichier souhaité qui est à côté du script en cours d'exécution
-        path_func_miniconda = os.path.join(current_directory, 'Func_Miniconda.py')
+        path_func_miniconda = os.path.join(current_directory,'utils_windows', 'first.py')
 
         python_path = os.path.join(default_install_path,"python")
         command_to_execute = [python_path,path_func_miniconda,"setup",default_install_path,sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6]]  
