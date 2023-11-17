@@ -613,12 +613,12 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         lib = self.check_lib_wsl()
         if not lib :
             messageBox = qt.QMessageBox()
-            text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please follow the tutorial to install them."
+            text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
             ready = False
             messageBox.information(None, "Information", text)
       else : 
         messageBox = qt.QMessageBox()
-        text = "Code can't be launch. \nWSL is not installed, please follow the tutorial to install it with all necessary libraries"
+        text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
         ready = False
         messageBox.information(None, "Information", text)
     
@@ -635,7 +635,10 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.onProcessStarted()
       
 
-  def is_ubuntu_installed(self):
+  def is_ubuntu_installed(self)->bool:
+    '''
+    Check if wsl is install with Ubuntu
+    '''
     result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
     output = result.stdout.encode('utf-16-le').decode('utf-8')
     clean_output = output.replace('\x00', '')  # Enlève tous les octets null
@@ -643,7 +646,10 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     return 'Ubuntu' in clean_output
 
 
-  def check_lib_wsl(self):
+  def check_lib_wsl(self)->bool:
+    '''
+    Check if wsl contains the require librairies
+    '''
     result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
     output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
     clean_output1 = output1.replace('\x00', '') 
@@ -772,6 +778,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def read_txt(self):
+    '''
+    Read a file and return the last line
+    '''
     script_path = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(script_path,"tempo.txt")
     with open(file_path, 'r') as file:
@@ -1008,133 +1017,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self._parameterNode.SetNodeReferenceID("OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID)
 
     self._parameterNode.EndModify(wasModified)
-
-  def checkMiniconda(self):
-    print("je suis dans checkminiconda")
-    user_home = os.path.expanduser("~")
-    default_install_path = os.path.join(user_home, "miniconda3")
-    return(os.path.exists(default_install_path),default_install_path)
-
-
-  def checkEnvConda(self,name:str,default_install_path:str):
-      path_conda = os.path.join(default_install_path,"bin","conda")
-      command_to_execute = [path_conda, "info", "--envs"]
-
-      result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=slicer.util.startupEnvironment())
-      if result.returncode == 0:
-          output = result.stdout.decode("utf-8")
-          env_lines = output.strip().split("\n")
-          for line in env_lines:
-              env_name = line.split()[0].strip()
-              if env_name == name:
-                  print('Env conda exist')
-                  return True  # L'environnement Conda existe déjà
-          
-      print("Env conda doesn't exist")
-      return False  # L'environnement Conda n'existe pas
-
-
-
-
-  def InstallConda(self,default_install_path):
-      system = platform.system()
-      machine = platform.machine()
-
-      miniconda_base_url = "https://repo.anaconda.com/miniconda/"
-
-      # Construct the filename based on the operating system and architecture
-      if system == "Windows":
-          if machine.endswith("64"):
-              filename = "Miniconda3-latest-Windows-x86_64.exe"
-          else:
-              filename = "Miniconda3-latest-Windows-x86.exe"
-      elif system == "Linux":
-          if machine == "x86_64":
-              filename = "Miniconda3-latest-Linux-x86_64.sh"
-          else:
-              filename = "Miniconda3-latest-Linux-x86.sh"
-      else:
-          raise NotImplementedError(f"Unsupported system: {system} {machine}")
-
-      print(f"Selected Miniconda installer file: {filename}")
-
-      miniconda_url = miniconda_base_url + filename
-      #https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-      print(f"Full download URL: {miniconda_url}")
-
-      print(f"Default Miniconda installation path: {default_install_path}")
-
-      path_sh = os.path.join(default_install_path,"miniconda.sh")
-      path_conda = os.path.join(default_install_path,"bin","conda")
-
-      print(f"path_sh : {path_sh}")
-      print(f"path_conda : {path_conda}")
-
-      if not os.path.exists(default_install_path):
-          os.makedirs(default_install_path)
-
-
-
-      subprocess.run(f"mkdir -p {default_install_path}",capture_output=True, shell=True)
-      subprocess.run(f"wget --continue --tries=3 {miniconda_url} -O {path_sh}",capture_output=True, shell=True)
-      subprocess.run(f"chmod +x {path_sh}",capture_output=True, shell=True)
-
-      try:
-          print("Le fichier est valide.")
-          subprocess.run(f"bash {path_sh} -b -u -p {default_install_path}",capture_output=True, shell=True)
-          subprocess.run(f"rm -rf {path_sh}",shell=True)
-          subprocess.run(f"{path_conda} init bash",shell=True)
-          # subprocess.run(f"{path_conda} init zsh",shell=True)
-          return True
-      except:
-          print("Le fichier est invalide.")
-          return (False)
-          
-          
-  def createCondaEnv(self,name:str,default_install_path:str,path_conda:str,path_activate:str) :
-      print(f"Python executable used by Slicer: {sys.executable}")
-      command_to_execute = [path_conda, "create", "--name", name, "python=3.9", "-y"]  
-      print(f"command_to_execute : {command_to_execute}")
-      result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=slicer.util.startupEnvironment())
-
-      # python_path = "/home/luciacev/miniconda3/bin/python3"
-      # command_to_execute = ["/home/luciacev/tmpconda.sh", "create", "--name", name, "python=3.9", "-y"]  
-      # print(f"command_to_execute : {command_to_execute}")
-      # result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-
-      if result.returncode != 0:
-        print(f"Error creating the environment. Return code: {result.returncode}")
-        print("result.stdout : ","*"*150)
-        print(result.stdout)
-        print("result.stderr : ","*"*150)
-        print(result.stderr)
-
-      install_commands = [
-      f"source {path_activate} {name} && pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113",
-      f"source {path_activate} {name} && pip install monai==0.7.0",
-      f"source {path_activate} {name} && pip install --no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113",
-      f"source {path_activate} {name} && pip install fvcore",
-      f"source {path_activate} {name} && pip install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html",   
-      f"source {path_activate} {name} && pip install rpyc",
-      ]
-
-
-      # Exécution des commandes d'installation
-      for command in install_commands:
-          print("command : ",command)
-          result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace',  executable="/bin/bash", env=slicer.util.startupEnvironment())
-          if result.returncode == 0:
-              print(f"Successfully executed: {command}")
-              print(result.stdout)
-          else:
-              print(f"Failed to execute: {command}")
-              print(result.stderr)
-
-      if result.returncode == 0:
-          print("Environment created successfully:", result.stdout)
-      else:
-          print("Failed to create environment:", result.stderr)
 
 
   def onApplyButton(self):

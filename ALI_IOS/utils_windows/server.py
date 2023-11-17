@@ -646,7 +646,7 @@ class MaskRenderer(nn.Module):
 
 def running(args):
 # result = x * x
-    print("args dans server : ",args)
+    print("args in server : ",args)
     landmarks_selected = []
     for tooth in args['teeth']:
         for lm_type in args['lm_type']:
