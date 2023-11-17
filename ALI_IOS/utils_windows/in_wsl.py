@@ -5,6 +5,9 @@ import subprocess
 import rpyc
 
 def call(name,args):
+    '''
+    Call the server that will run the code of ALI_IOS on the new environnement
+    '''
     home_dir = os.path.expanduser("~")
     default_install_path = "~/miniconda3"
     path_activate = "~/miniconda3/bin/activate"
@@ -13,14 +16,11 @@ def call(name,args):
 
     current_file_path = os.path.abspath(__file__)
 
-    # Répertoire contenant le script en cours d'exécution
     current_directory = os.path.dirname(current_file_path)
 
-    # command = f"wsl -- bash -c \"source {path_activate} {name} && {python_path_env} {path_server}"
     path_server = os.path.join(current_directory, 'server.py')
     
     path_activate = f"{home_dir}/miniconda3/bin/activate"
-    # command = f"/bin/bash -c 'source {path_activate} {name} && {python_path_env} {path_server}'"
    
     command = f"/bin/bash -c 'source {path_activate} {name} && {python_path_env} {path_server} \"{sys.argv[1]}\" \"{sys.argv[2]}\" \"{sys.argv[3]}\" \"{sys.argv[4]}\" \"{sys.argv[5]}\" \"{sys.argv[6]}\"'"
     
@@ -40,13 +40,13 @@ def call(name,args):
 
 
 def windows_to_linux_path(windows_path):
-    # Supprime le caractère de retour chariot
+    '''
+    Convert a windows path to a path that wsl can read
+    '''
     windows_path = windows_path.strip()
 
-    # Remplace les backslashes par des slashes
     path = windows_path.replace('\\', '/')
 
-    # Remplace le lecteur par '/mnt/lettre_du_lecteur'
     if ':' in path:
         drive, path_without_drive = path.split(':', 1)
         path = "/mnt/" + drive.lower() + path_without_drive

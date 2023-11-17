@@ -752,6 +752,12 @@ if system!="Windows":
     
 
 def checkMiniconda():
+    '''
+    Check if miniconda3 is install 
+    Return :
+    default install path of miniconda3 
+    bool if install
+    '''
     print("je suis dans checkminiconda")
     user_home = os.path.expanduser("~")
     default_install_path = os.path.join(user_home, "miniconda3")
@@ -760,6 +766,10 @@ def checkMiniconda():
 
 
 def InstallConda(default_install_path):
+    ''''
+    Install miniconda3 on Windows
+    Input : default install path of miniconda3 on the computer
+    '''
     system = platform.system()
     machine = platform.machine()
 
@@ -782,8 +792,6 @@ def InstallConda(default_install_path):
     print(f"Selected Miniconda installer file: {filename}")
 
     miniconda_url = miniconda_base_url + filename
-#   miniconda_url = "https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-Linux-x86_64.sh"
-#   https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
     print(f"Full download URL: {miniconda_url}")
 
     print(f"Default Miniconda installation path: {default_install_path}")
@@ -836,7 +844,10 @@ def InstallConda(default_install_path):
         print("Unsupported system. This code is intended for Windows.")
         return False
 
-def write_txt(message):
+def write_txt(message)->None:
+    '''
+    Write in a temporary file
+    '''
     script_path = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(script_path,"tempo.txt")
     path_parts = os.path.split(file_path)
@@ -851,7 +862,7 @@ def main(args):
     
     system = platform.system()
     if system=="Windows":
-    #MINICONDA ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    #WINDOWS ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         print("%"*300)
         write_txt("checking installation of miniconda3")
         miniconda,default_install_path = checkMiniconda()
@@ -863,14 +874,11 @@ def main(args):
                 InstallConda(default_install_path)
 
         current_file_path = os.path.abspath(__file__)
-
-        # Répertoire contenant le script en cours d'exécution
         current_directory = os.path.dirname(current_file_path)
+        path_func_miniconda = os.path.join(current_directory,'utils_windows', 'first.py') #Next files to call
 
-        # Chemin absolu du fichier souhaité qui est à côté du script en cours d'exécution
-        path_func_miniconda = os.path.join(current_directory,'utils_windows', 'first.py')
-
-        python_path = os.path.join(default_install_path,"python")
+        python_path = os.path.join(default_install_path,"python") #python path in miniconda3
+        #command to call first.py with python in miniconda3 on windows and give it the argument
         command_to_execute = [python_path,path_func_miniconda,"setup",default_install_path,sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6]]  
         print(f"command_to_execute in slicer : {command_to_execute}")
 
@@ -879,15 +887,13 @@ def main(args):
             del env['PYTHONPATH']
         if 'PYTHONHOME' in env:
             del env['PYTHONHOME']
-        # path_func_miniconda = os.path.join(current_directory, 'test_wsl.py')
-        # command_to_execute = [python_path,path_func_miniconda]
+ 
         
         print("command to execute slicer : ",command_to_execute)
 
 
 
         result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,env=env)
-        # result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
 
         if result.returncode != 0:
@@ -902,7 +908,7 @@ def main(args):
 
         print("%"*300)
         
-    #END MINICONDA ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    #END WINDOWS ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     else:
         landmarks_selected = []
         for tooth in args['teeth']:
