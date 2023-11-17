@@ -13,20 +13,22 @@ def checkMinicondaWsl():
 
 
 def install_miniconda_on_wsl():
+    '''
+    Install miniconda3 on wsl
+    '''
     try:
-        # Télécharge l'installateur Miniconda pour Linux
+        # Download executable of miniconda3 for linux
         subprocess.check_call(["wsl", "--","wget", "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"])
 
-        # Rend l'installateur exécutable
+        # Makes the installer executable
         subprocess.check_call(["wsl", "--","chmod", "+x", "Miniconda3-latest-Linux-x86_64.sh"])
 
-        # Exécute l'installateur
+        # Execution of the installer
         subprocess.check_call(["wsl","--","bash", "Miniconda3-latest-Linux-x86_64.sh", "-b","-p", "~/miniconda3"])
 
-        # Supprime l'installateur après l'installation
+        # Delete installer
         subprocess.check_call(["wsl","--", "rm", "Miniconda3-latest-Linux-x86_64.sh"])
         
-        # subprocess.check_call(["wsl","--", "bash", "-c","\"echo 'export PATH=\"$HOME/miniconda3/bin:$PATH\"' >> ~/.bashrc\""])
         subprocess.check_call(["wsl", "--", "bash", "-c", "echo 'export PATH=\"$HOME/miniconda3/bin:$PATH\"' >> ~/.bashrc"])
 
         
@@ -35,10 +37,10 @@ def install_miniconda_on_wsl():
         command = f"wsl -- bash -c \"~/miniconda3/bin/pip install rpyc\""
         subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
 
-        print("Miniconda a été installé avec succès sur WSL.")
+        print("Miniconda has been successfully installed on WSL.")
         
     except subprocess.CalledProcessError as e:
-        print(f"Une erreur s'est produite lors de l'installation de Miniconda sur WSL: {e}")
+        print(f"An error occurred when installing Miniconda on WSL: {e}")
         
         
 def checkEnvCondaWsl(name:str):
@@ -66,7 +68,8 @@ def checkEnvCondaWsl(name:str):
   
 def createCondaEnv(name:str) :
     '''
-    Create the new env to run the code on wsl
+    Create the new env to run ali_ios on wsl
+    It will install all the require librairie
     '''
     path_conda = "~/miniconda3/bin/conda"
     path_python = "~/miniconda3/bin/python3"
@@ -107,7 +110,6 @@ def createCondaEnv(name:str) :
     ]
 
 
-#   Exécution des commandes d'installation
     for command in install_commands:
         print("command : ",command)
         result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
@@ -126,40 +128,25 @@ def createCondaEnv(name:str) :
 
 
 def windows_to_linux_path(windows_path):
-    # Supprime le caractère de retour chariot
+    '''
+    Convert a windows path to a path that wsl can read
+    '''
     windows_path = windows_path.strip()
 
-    # Remplace les backslashes par des slashes
     path = windows_path.replace('\\', '/')
 
-    # Remplace le lecteur par '/mnt/lettre_du_lecteur'
     if ':' in path:
         drive, path_without_drive = path.split(':', 1)
         path = "/mnt/" + drive.lower() + path_without_drive
 
     return path
 
-def is_ubuntu_installed():
-    result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
-    output = result.stdout.encode('utf-16-le').decode('utf-8')
-    clean_output = output.replace('\x00', '')  # Enlève tous les octets null
-
-    print("clean_output :", clean_output)
-
-    return 'Ubuntu' in clean_output
-
-def run_command_with_input_and_delays(command, input_data, delay):
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-    for line in input_data:
-        process.stdin.write(line + '\n')
-        process.stdin.flush()  # Assurez-vous que les données sont bien envoyées
-        time.sleep(delay)  # Attendez pendant le délai spécifié
-
-    return process
 
 
 def write_txt(message):
+    '''
+    Write in a temporary file
+    '''
     script_path = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(script_path,"tempo.txt")
     path_parts = os.path.split(file_path)
@@ -188,15 +175,12 @@ def setup(default_install_path,args):
 
     # Répertoire contenant le script en cours d'exécution
     current_directory = os.path.dirname(current_file_path)
-    python_path = "~/miniconda3/bin/python"
-    # python_path = os.path.join(default_install_path,"bin","python")
-    # python_path = windows_to_linux_path(python_path)
+    python_path = "~/miniconda3/bin/python" #in wsl
     lien_path = os.path.join(current_directory,"in_wsl.py")
     lien_path = windows_to_linux_path(lien_path)
    
     home_directory = subprocess.check_output(['wsl', 'echo', '$HOME']).decode().strip()
 
-    # Remplacer le ~ dans python_path avec le répertoire personnel
     python_path = python_path.replace('~', home_directory)
 
     write_txt("Process the file(s), creation of landmark(s)")
@@ -206,7 +190,7 @@ def setup(default_install_path,args):
     command_inside_wsl = [python_path, lien_path] + sys.argv[3:9] +[name]
     command_string_inside_wsl = " ".join(['"' + arg + '"' for arg in command_inside_wsl])
     command_to_execute.append(command_string_inside_wsl)
-    command = command_to_execute
+    command = command_to_execute #command to call in_wsl.py with python in miniconda3 on wsl and give it the argument
     
     result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
 
@@ -219,9 +203,6 @@ def setup(default_install_path,args):
     else:
         print(result.stdout)
         print("Environment created successfully.")
-
-   
-
 
 
 
