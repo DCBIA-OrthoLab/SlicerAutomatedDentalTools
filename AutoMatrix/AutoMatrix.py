@@ -21,6 +21,9 @@ from Methode.General_tools import search, GetPatients
 
 
 import time
+import threading
+import multiprocessing
+import io
 
 
 #
@@ -508,6 +511,39 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     
 
 
+    
+
+    def runResample(self,outputQueue,parameters):
+        '''
+        Fonction pour exécuter la tâche de reformatage dans un processus séparé.
+        '''
+        # Ici, vous devrez recréer ou accéder aux objets Slicer nécessaires
+        # pour exécuter votre tâche de reformatage. 
+        # Assurez-vous que tout ce dont vous avez besoin est transmis ou accessible 
+        # dans ce contexte de processus séparé.
+        brainsResampleModule = slicer.modules.brainsresample
+
+        # Exemple d'exécution de votre tâche (à adapter selon votre cas) :
+        cliNode = slicer.cli.runSync(brainsResampleModule, None, parameters)
+        status = cliNode.GetStatusString()
+        outputQueue.put(status)
+
+    
+    def runResampleInParallel(self,parameters):
+        '''
+        Cette fonction sera exécutée dans un processus parallèle.
+        Elle doit être indépendante de l'état global du programme principal.
+        '''
+        brainsResampleModule = slicer.modules.brainsresample
+        cliNode = slicer.cli.runSync(brainsResampleModule, None, parameters)
+        return cliNode.GetStatusString()
+
+
+    def ui_intreaction(self):
+        while True : 
+            time.sleep(0.5)
+            slicer.app.processEvents()
+
     def applyBrainsResample(self, inputVolumeNode, transformationNode, outputFilePath):
         '''
         Uses the BRAINS Resample module to apply a transformation to an input volume node
@@ -525,15 +561,93 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             'interpolationMode': 'Linear'  
         }
 
+        cliNode = slicer.cli.run(brainsResampleModule, None, parameters)
+        while cliNode.IsBusy():
+            slicer.app.processEvents()
 
-        cliNode = slicer.cli.runSync(brainsResampleModule, None, parameters)
+        thread = threading.Thread(target=self.saveOutputVolume, args=(outputVolumeNode, outputFilePath))
+        thread.start()
 
-        if cliNode.GetStatusString() != 'Completed':
-            print("Error when running the Resample Image module (BRAINS):", cliNode.GetStatusString())
+        print("1")
 
-        self.saveOutputVolume(outputVolumeNode, outputFilePath)
+        while thread.is_alive():
+            print("2")
+            slicer.app.processEvents()  # Permet de garder l'interface utilisateur réactive
+
+        print("Sauvegarde du volume terminée.")
+        
+        # self.saveOutputVolume(outputVolumeNode, outputFilePath)
+
+        # TRY to put processEvent in multiprocess but failed
+        # original_stdin = sys.stdin
+        # sys.stdin = DummyFile()
+        # process = multiprocessing.Process(target=self.ui_intreaction)
+        # process.start()
+        # cliNode = slicer.cli.runSync(brainsResampleModule, None, parameters)
+        # process.terminate()
+        # process.join()
+        # sys.stdin = original_stdin
+
+
+        # Error with input ************************************************************************************************
+        # original_stdin = sys.stdin
+        # sys.stdin = DummyFile()
+
+        # print("oui")
+
+        # with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
+        #     results = pool.map(self.runResampleInParallel, parameters)
+
+        # print("non")
+
+        # sys.stdin = original_stdin
+        # print(results)
+
+        # With crash of Slicer but user still working ************************************************************************
+        # outputQueue = multiprocessing.Queue()
+        # a=0
+        # original_stdin = sys.stdin
+        # sys.stdin = DummyFile()
+
+        # # Créer et démarrer le processus
+        # p = multiprocessing.get_context('spawn')
+        # outputQueue = p.Queue()
+        # process = multiprocessing.Process(target=self.runResample, args=(outputQueue,parameters,))
+        # process.start()
+
+        # while process.is_alive():
+        #     print("process.is_alive() : ",process.is_alive())
+        #     print("outputQueue : ",outputQueue.get_nowait())
+        #     # Gérer les événements de l'interface utilisateur ici, si nécessaire.
+        #     # process.join(timeout=1)  # Attendre un peu avant de vérifier à nouveau
+        #     time.sleep(0.5)
+        #     slicer.app.processEvents()
+        #     print(a)
+        #     a+=1
+
+        # process.join()
+
+        # # Récupérer le résultat
+        # print("a"*150)
+        # # status = outputQueue.get()
+        # # print("Status from process:", status)
+        # sys.stdin = original_stdin
+        # print("b"*150)
+
+        # # self.saveOutputVolume(outputVolumeNode, outputFilePath)
+        # print("c"*150)
+
+        #Original ******************************************************************************************************************
+        # cliNode = slicer.cli.runSync(brainsResampleModule, None, parameters)
+
+        # if cliNode.GetStatusString() != 'Completed':
+        #     print("Error when running the Resample Image module (BRAINS):", cliNode.GetStatusString())
+
+        # self.saveOutputVolume(outputVolumeNode, outputFilePath)
 
     
+
+
     def saveOutputVolume(self, outputVolumeNode, outputFilePath):
         """
         Saves the output volume in the specified file with the .nii.gz extension.
@@ -541,11 +655,17 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         :param outputVolumeNode: The output volume node in Slicer MRML scene.
         :param outputFilePath: The full path where the file is to be saved.
         """
+        print("d"*100)
         if not os.path.exists(os.path.dirname(outputFilePath)):
             os.makedirs(os.path.dirname(outputFilePath))
+        
+        print("e"*100)
             
         slicer.util.saveNode(outputVolumeNode, outputFilePath)
+        print("f"*100)
         slicer.mrmlScene.RemoveNode(outputVolumeNode)
+        print("g"*100)
+         
 
 
 
@@ -676,6 +796,9 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 #
 # AutoMatrixLogic
 #
+class DummyFile(io.IOBase):
+        def close(self):
+            pass
 
 class AutoMatrixLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
