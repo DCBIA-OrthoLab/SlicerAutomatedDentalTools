@@ -528,7 +528,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         brainsResampleModule = slicer.modules.brainsresample
         outputVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
 
-
+        #test
 
         parameters = {
             'inputVolume': inputVolumeNode.GetID(),
