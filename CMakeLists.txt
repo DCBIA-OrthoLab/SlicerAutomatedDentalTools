@@ -32,7 +32,6 @@ add_subdirectory(AREG_CBCT)
 add_subdirectory(AREG)
 add_subdirectory(AutoMatrix)
 add_subdirectory(AutoCrop3D)
-add_subdirectory(FlexReg)
 
 ## NEXT_MODULE
 
