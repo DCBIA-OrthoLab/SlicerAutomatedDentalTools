@@ -21,7 +21,6 @@ from Methode.General_tools import search, GetPatients
 
 
 import time
-import threading
 import multiprocessing
 import io
 
@@ -170,6 +169,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setRange(0,100)
         self.ui.progressBar.setTextVisible(True)
         self.ui.label_info.setVisible(False)
+        self.ui.label_time.setVisible(False)
         self.ui.ComboBoxPatient.setCurrentIndex(1)
         self.ui.ComboBoxMatrix.setCurrentIndex(1)
 
@@ -437,9 +437,12 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.progressBar.setTextVisible(True)
             
             self.ui.label_info.setVisible(True)
+            self.ui.label_time.setVisible(True)
+            self.ui.label_time.setText(f"time : 0.0s")
 
             self.onProcessStarted()
-            
+            self.start_time = time.time()
+            self.previous_time = time.time()
             self.ProcessVolume()
             self.UpdateProgressBar(True)
 
@@ -462,12 +465,15 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     except : 
                         print("not a .nii.gz")
 
+                    self.UpdateTime()
                     if extension_scan!=".nii.gz":
                         model = slicer.util.loadModel(scan)
                     else :
                         model = slicer.util.loadVolume(scan)
+                    self.UpdateTime()
                     for matrix in values['matrix']:
                         try:
+                            self.UpdateTime()
                             fname, extension_mat = os.path.splitext(os.path.basename(matrix))
                             if extension_mat==".npy":
                                 array = np.load(matrix)
@@ -495,9 +501,10 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                 os.makedirs(os.path.dirname(outpath))
 
                             if extension_scan!=".nii.gz":
+                                self.UpdateTime()
                                 model.SetAndObserveTransformNodeID(tform.GetID())
                                 model.HardenTransform()
-
+                                self.UpdateTime()
                                 slicer.util.saveNode(model,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
 
                             else:
@@ -507,44 +514,13 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             print("An issue occured")
                             pass
                     self.UpdateProgressBar(False)
+                    self.UpdateTime()
                     slicer.mrmlScene.RemoveNode(model)
+                    self.UpdateTime()
                     
 
 
-    
-
-    def runResample(self,outputQueue,parameters):
-        '''
-        Fonction pour exécuter la tâche de reformatage dans un processus séparé.
-        '''
-        # Ici, vous devrez recréer ou accéder aux objets Slicer nécessaires
-        # pour exécuter votre tâche de reformatage. 
-        # Assurez-vous que tout ce dont vous avez besoin est transmis ou accessible 
-        # dans ce contexte de processus séparé.
-        brainsResampleModule = slicer.modules.brainsresample
-
-        # Exemple d'exécution de votre tâche (à adapter selon votre cas) :
-        cliNode = slicer.cli.runSync(brainsResampleModule, None, parameters)
-        status = cliNode.GetStatusString()
-        outputQueue.put(status)
-
-    
-    def runResampleInParallel(self,parameters):
-        '''
-        Cette fonction sera exécutée dans un processus parallèle.
-        Elle doit être indépendante de l'état global du programme principal.
-        '''
-        brainsResampleModule = slicer.modules.brainsresample
-        cliNode = slicer.cli.runSync(brainsResampleModule, None, parameters)
-        return cliNode.GetStatusString()
-
-
-    def ui_intreaction(self):
-        while True : 
-            time.sleep(0.5)
-            slicer.app.processEvents()
-
-    def applyBrainsResample(self, inputVolumeNode, transformationNode, outputFilePath):
+    def applyBrainsResample(self, inputVolumeNode, transformationNode, outputFilePath)->None:
         '''
         Uses the BRAINS Resample module to apply a transformation to an input volume node
         and saves the result in a specified file.
@@ -560,115 +536,55 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             'outputVolume' : outputVolumeNode.GetID(),
             'interpolationMode': 'Linear'  
         }
-
+        self.UpdateTime()
         cliNode = slicer.cli.run(brainsResampleModule, None, parameters)
         while cliNode.IsBusy():
+            slicer.app.processEvents() # to let the user interface available
+            self.UpdateTime()
+
+
+        original_stdin = sys.stdin
+        sys.stdin = DummyFile()
+
+        process = multiprocessing.Process(target=self.saveOutputVolume, args=(outputVolumeNode,outputFilePath))
+        process.start()
+
+        while process.is_alive():
             slicer.app.processEvents()
+            self.UpdateTime()
 
-        thread = threading.Thread(target=self.saveOutputVolume, args=(outputVolumeNode, outputFilePath))
-        thread.start()
+        sys.stdin = original_stdin
 
-        print("1")
-
-        while thread.is_alive():
-            print("2")
-            slicer.app.processEvents()  # Permet de garder l'interface utilisateur réactive
-
-        print("Sauvegarde du volume terminée.")
+        slicer.mrmlScene.RemoveNode(outputVolumeNode)
+        self.UpdateTime()
         
-        # self.saveOutputVolume(outputVolumeNode, outputFilePath)
-
-        # TRY to put processEvent in multiprocess but failed
-        # original_stdin = sys.stdin
-        # sys.stdin = DummyFile()
-        # process = multiprocessing.Process(target=self.ui_intreaction)
-        # process.start()
-        # cliNode = slicer.cli.runSync(brainsResampleModule, None, parameters)
-        # process.terminate()
-        # process.join()
-        # sys.stdin = original_stdin
 
 
-        # Error with input ************************************************************************************************
-        # original_stdin = sys.stdin
-        # sys.stdin = DummyFile()
-
-        # print("oui")
-
-        # with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
-        #     results = pool.map(self.runResampleInParallel, parameters)
-
-        # print("non")
-
-        # sys.stdin = original_stdin
-        # print(results)
-
-        # With crash of Slicer but user still working ************************************************************************
-        # outputQueue = multiprocessing.Queue()
-        # a=0
-        # original_stdin = sys.stdin
-        # sys.stdin = DummyFile()
-
-        # # Créer et démarrer le processus
-        # p = multiprocessing.get_context('spawn')
-        # outputQueue = p.Queue()
-        # process = multiprocessing.Process(target=self.runResample, args=(outputQueue,parameters,))
-        # process.start()
-
-        # while process.is_alive():
-        #     print("process.is_alive() : ",process.is_alive())
-        #     print("outputQueue : ",outputQueue.get_nowait())
-        #     # Gérer les événements de l'interface utilisateur ici, si nécessaire.
-        #     # process.join(timeout=1)  # Attendre un peu avant de vérifier à nouveau
-        #     time.sleep(0.5)
-        #     slicer.app.processEvents()
-        #     print(a)
-        #     a+=1
-
-        # process.join()
-
-        # # Récupérer le résultat
-        # print("a"*150)
-        # # status = outputQueue.get()
-        # # print("Status from process:", status)
-        # sys.stdin = original_stdin
-        # print("b"*150)
-
-        # # self.saveOutputVolume(outputVolumeNode, outputFilePath)
-        # print("c"*150)
-
-        #Original ******************************************************************************************************************
-        # cliNode = slicer.cli.runSync(brainsResampleModule, None, parameters)
-
-        # if cliNode.GetStatusString() != 'Completed':
-        #     print("Error when running the Resample Image module (BRAINS):", cliNode.GetStatusString())
-
-        # self.saveOutputVolume(outputVolumeNode, outputFilePath)
-
-    
-
-
-    def saveOutputVolume(self, outputVolumeNode, outputFilePath):
+    def saveOutputVolume(self, outputVolumeNode, outputFilePath)->None:
         """
         Saves the output volume in the specified file with the .nii.gz extension.
         
         :param outputVolumeNode: The output volume node in Slicer MRML scene.
         :param outputFilePath: The full path where the file is to be saved.
         """
-        print("d"*100)
         if not os.path.exists(os.path.dirname(outputFilePath)):
             os.makedirs(os.path.dirname(outputFilePath))
-        
-        print("e"*100)
             
         slicer.util.saveNode(outputVolumeNode, outputFilePath)
-        print("f"*100)
-        slicer.mrmlScene.RemoveNode(outputVolumeNode)
-        print("g"*100)
+
          
 
 
-
+    def UpdateTime(self)->None:
+        '''
+        Update the time since the beginning
+        '''
+        current_time = time.time()
+        elapsed_time = current_time - self.start_time 
+        gap = current_time - self.previous_time
+        if gap>0.5:
+            self.ui.label_time.setText(f"time : {round(elapsed_time,2)}s")
+            self.previous_time = current_time
               
 
     def UpdateProgressBar(self,end:bool)->None:
@@ -691,6 +607,8 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             print('PROCESS DONE.')
             self.ui.progressBar.setValue(100)
             self.ui.progressBar.setFormat("100%")
+            self.ui.label_info.setText("Number of processed files : "+str(self.nbFiles)+"/"+str(self.nbFiles))
+            time.sleep(0.5)
 
             # qt.QMessageBox.information(self.parent,"Matrix applied with sucess")
             msg = QMessageBox()
@@ -708,6 +626,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             self.ui.progressBar.setVisible(False)
             self.ui.label_info.setVisible(False)
+            self.ui.label_time.setVisible(False)
             self.ui.LineEditOutput.setText("")
             self.ui.LineEditPatient.setText("")
             self.ui.LineEditMatrix.setText("")
