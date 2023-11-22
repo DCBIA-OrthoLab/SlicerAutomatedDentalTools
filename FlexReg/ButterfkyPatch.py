@@ -269,8 +269,11 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Path ordi lucia lab
         # self.ui.lineEditOutput.setText("/home/luciacev/Documents/Gaelle/Data/FlexReg/output")
 
-        self.ui.lineEditOutput.setText("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/output")
-        self.ui.lineEditSuffix.setText("_REG")
+        surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+        self.ui.lineEditOutput.setText(surface_folder)
+
+        # self.ui.lineEditOutput.setText("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/output")
+        # self.ui.lineEditSuffix.setText("_REG")
 
         # if nom=="Output":
         #     surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
@@ -1090,9 +1093,8 @@ class WidgetParameter:
     def selectFile(self):
         path_file = QFileDialog.getOpenFileName(self.parent,
                                                 'Open a file',
-                                                '/home',
                                                 'VTK File (*.vtk) ;; STL File (*.stl)')
-        self.lineedit.insert(path_file)
+        self.lineedit.setText(path_file)
 
 
  
@@ -1250,7 +1252,7 @@ class WidgetParameter:
     
     def update_message_box(self,msg_box, start_time):
         elapsed_time = time.time() - start_time
-        msg_box.setText(f"Your files wasn't segmented.\nSegmentation in process. This task can take a few minutes.\ntime: {elapsed_time:.1f}s")
+        msg_box.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
 
     def downloadModel(self):
         '''
@@ -1362,7 +1364,7 @@ class WidgetParameter:
                 else :
                     return False
             else : 
-                slicer.util.infoDisplay(f"Your file is not segmented.\nPlease, install the module 'SlicerDentalModelSeg' with the extension manager.\nAfter the installation, you will be able to use FlexReg")
+                slicer.util.infoDisplay(f"Your file is not segmented.\nPlease, install the module 'SlicerDentalModelSeg' with the extension manager.\nAfter installation, restart the process on FlexReg.")
                 return False
 
     def processPatch(self)->None:
