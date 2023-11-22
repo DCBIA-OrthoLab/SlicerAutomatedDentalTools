@@ -6,8 +6,6 @@ import time
 
 from Flex_Reg_CLI.Method.util import vtkMeanTeeth, ToothNoExist, NoSegmentationSurf
 from Flex_Reg_CLI.Method.orientation import orientation
-# from Flex_Reg_CLI import Method
-# from Flex_Reg_CLI.Method.vtkSegTeeth import vtkTeeth
 
 
 import slicer
@@ -1095,20 +1093,6 @@ class WidgetParameter:
                                                 'Open a file',
                                                 'VTK File (*.vtk) ;; STL File (*.stl)')
         self.lineedit.setText(path_file)
-
-
- 
-        
-        # if self.title==1:
-        #     self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T1.vtk')
-        # else : 
-        #     self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T2.vtk')
-
-        # Path for ordi lucia lab
-        # if self.title==1:
-        #     self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/FlexReg/P16_T1.vtk')
-        # else : 
-        #     self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/FlexReg/P16_T2.vtk')
 
     def checkLineEdit(self)->bool:
         '''
