@@ -2,7 +2,7 @@ import torch
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 import numpy as np
 
-from Method.propagation import Dilation
+from .propagation import Dilation
 
 def drawPatch(outlinePoints: list,polydata,mid,index:int):
     step = 0.2
