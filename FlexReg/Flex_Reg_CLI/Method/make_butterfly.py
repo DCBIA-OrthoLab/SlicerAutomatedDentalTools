@@ -2,9 +2,9 @@ import numpy as np
 import torch
 import vtk
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
-from Method.orientation import orientation
-from Method.util import vtkMeanTeeth, ToothNoExist
-from Method.propagation import Dilation
+from .orientation import orientation
+from .util import vtkMeanTeeth, ToothNoExist
+from .propagation import Dilation
 
 
 

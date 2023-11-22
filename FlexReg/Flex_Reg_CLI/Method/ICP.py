@@ -1,8 +1,8 @@
 import os
 import vtk
 import numpy as np
-from Method.utils import ReadSurf, LoadJsonLandmarks, VTKMatrixToNumpy
-from Method.transformation import ApplyTransform
+from .utils import ReadSurf, LoadJsonLandmarks, VTKMatrixToNumpy
+from .transformation import ApplyTransform
 
 
 class ICP:

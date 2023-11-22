@@ -4,12 +4,19 @@ from vtk.util.numpy_support import vtk_to_numpy,numpy_to_vtk
 import vtk
 import time
 
+from Flex_Reg_CLI.Method.util import vtkMeanTeeth, ToothNoExist, NoSegmentationSurf
+from Flex_Reg_CLI.Method.orientation import orientation
+# from Flex_Reg_CLI import Method
+# from Flex_Reg_CLI.Method.vtkSegTeeth import vtkTeeth
+
 
 import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 import torch
+import tempfile
+
 
 from qt import (QGridLayout,
                 QHBoxLayout,
@@ -24,6 +31,8 @@ from qt import (QGridLayout,
                 QSpinBox,
                 QWidget,
                 QTimer,
+                QMessageBox,
+                QStandardPaths,
                 QDialog,
                 QSizePolicy,
                 QSpacerItem)
@@ -1238,42 +1247,160 @@ class WidgetParameter:
 
     def checkSurfExist(self)->bool:
         return not (self.surf==None)
+    
+    def update_message_box(self,msg_box, start_time):
+        elapsed_time = time.time() - start_time
+        msg_box.setText(f"Your files wasn't segmented.\nSegmentation in process. This task can take a few minutes.\ntime: {elapsed_time:.1f}s")
+
+    def downloadModel(self):
+        '''
+        Download the latest model to do the segmentation of the teeth
+        '''
+        url = "https://github.com/DCBIA-OrthoLab/Fly-by-CNN/releases/download/3.0/07-21-22_val-loss0.169.pth"
+        name = "Model_segmentation_teeh.pth"
+
+        documentsLocation = QStandardPaths.DocumentsLocation
+        documentsPath = QStandardPaths.writableLocation(documentsLocation)
+
+        # Path for Slicer downloads
+        slicerDownloadPath = os.path.join(documentsPath, slicer.app.applicationName + "Downloads")
+
+        # Create the directory if it does not exist
+        if not os.path.exists(slicerDownloadPath):
+            os.makedirs(slicerDownloadPath)
+
+        # Full path where the file will be saved
+        modelFilePath = os.path.join(slicerDownloadPath, name)
+
+        # Download the file
+        if not os.path.isfile(modelFilePath):
+            slicer.util.downloadFile(url, modelFilePath)
+
+        # Now you can use the downloaded model file path as needed
+        print("Model file downloaded to:", modelFilePath)
+        return modelFilePath
+    
+    def checkSegmentation(self)->bool:
+        '''
+        This function is doing the first step of makebutterfly to be sure the segmentation and the tooth are existing.
+        If the segmentation is not existing, calling the module crownsegmentation to do it
+        '''
+        reader = vtk.vtkPolyDataReader()
+        reader.SetFileName(str(self.lineedit.text))
+        reader.Update()
+        modelNode = reader.GetOutput()
+
+        # Transform the data to read it in coordinate RAS (like slicer)
+        transform = vtk.vtkTransform()
+        transform.Scale(-1, -1, 1)
+
+        transformFilter = vtk.vtkTransformPolyDataFilter()
+        transformFilter.SetInputData(modelNode)
+        transformFilter.SetTransform(transform)
+        transformFilter.Update()
+
+        modelNode = transformFilter.GetOutput()
+        surf_tmp = vtk.vtkPolyData()
+        surf_tmp.DeepCopy(modelNode)
+
+        try :
+            surf_tmp = orientation(surf_tmp,[[-0.5,-0.5,0],[0,0,0],[0.5,-0.5,0]],
+                                    ['3','5','12','14'])
+            return True
+
+        except ToothNoExist as error :
+            slicer.util.infoDisplay(f' Error : {error}')
+            return False
+        
+        except NoSegmentationSurf as error : 
+            moduleName = "CrownSegmentation"
+            moduleAvailable = moduleName in slicer.app.moduleManager().modulesNames()
+
+            if moduleAvailable : 
+                modelFilePath = self.downloadModel()
+                parameters = {
+                    "input" : str(self.lineedit.text),
+                    "output":os.path.dirname(str(self.lineedit.text)),
+                    "subdivision_level" : 4,
+                    "resolution":320,
+                    "model": modelFilePath,
+                    "predictedId" : "Universal_ID",
+                    "sepOutputs":0,
+                    "chooseFDI":0,
+                    "logPath":os.path.join(slicer.util.tempDirectory(), f'process{str(self.title)}.log')
+                }
+                print("parametres : ", parameters)
+                print(f' Error {error}')
+                start_time = time.time()
+                flybyProcess = slicer.modules.crownsegmentationcli
+                cliNode = slicer.cli.run(flybyProcess,None, parameters)    
+
+                msg_box = QMessageBox()
+                msg_box.setIcon(QMessageBox.Information)
+                msg_box.setText("Segmentation in process...")
+                msg_box.setStandardButtons(QMessageBox.Cancel)
+                msg_box.show()
+
+                timer = QTimer()
+                timer.start(250) 
+                timer.timeout.connect(lambda: self.update_message_box(msg_box, start_time))
+
+                cancel=False
+                while cliNode.IsBusy():
+                    slicer.app.processEvents() 
+                    if msg_box.clickedButton() == QMessageBox.Cancel:
+                        cancel=True
+                        cliNode.Cancel()
+                        msg_box.hide()
+                        break
+
+                timer.stop() 
+                msg_box.hide()
+                if not cancel :
+                    self.viewScan()
+                    return True
+                else :
+                    return False
+            else : 
+                slicer.util.infoDisplay(f"Your file is not segmented.\nPlease, install the module 'SlicerDentalModelSeg' with the extension manager.\nAfter the installation, you will be able to use FlexReg")
+                return False
 
     def processPatch(self)->None:
         '''
         Call the cli for the butterfly patch. Launch onProcessUpdateButterfly
         '''
         if self.checkSurfExist() :
-            self._processed2 = False
-            if self.add_patch.isChecked():
-                index=int(self.addItemsCombobox())
-            else:
-                index=int(self.combobox_patch.currentText)
+            if self.checkSegmentation():
+                self._processed2 = False
+                if self.add_patch.isChecked():
+                    index=int(self.addItemsCombobox())
+                else:
+                    index=int(self.combobox_patch.currentText)
 
-            self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
-                            int(self.lineedit_teeth_left_top.text),
-                        int(self.lineedit_teeth_right_top.text),
-                        int(self.lineedit_teeth_left_bot.text),
-                        int(self.lineedit_teeth_right_bot.text),
-                        float(self.lineedit_ratio_left_top.text),
-                        float(self.lineedit_ratio_right_top.text),
-                        float(self.lineedit_ratio_left_bot.text),
-                        float(self.lineedit_ratio_right_bot.text),
-                        float(self.lineedit_adjust_left_top.text),
-                        float(self.lineedit_adjust_right_top.text),
-                        float(self.lineedit_adjust_left_bot.text),
-                        float(self.lineedit_adjust_right_bot.text),
-                        "None",
-                        "None",
-                        "butterfly",
-                        "None",
-                        "None",
-                        "None",
-                        index)
-            self.logic.process()
-            self.start_time = time.time()
-            self.timer.timeout.connect(self.onProcessUpdateButterfly)
-            self.timer.start(500)
+                self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
+                                int(self.lineedit_teeth_left_top.text),
+                            int(self.lineedit_teeth_right_top.text),
+                            int(self.lineedit_teeth_left_bot.text),
+                            int(self.lineedit_teeth_right_bot.text),
+                            float(self.lineedit_ratio_left_top.text),
+                            float(self.lineedit_ratio_right_top.text),
+                            float(self.lineedit_ratio_left_bot.text),
+                            float(self.lineedit_ratio_right_bot.text),
+                            float(self.lineedit_adjust_left_top.text),
+                            float(self.lineedit_adjust_right_top.text),
+                            float(self.lineedit_adjust_left_bot.text),
+                            float(self.lineedit_adjust_right_bot.text),
+                            "None",
+                            "None",
+                            "butterfly",
+                            "None",
+                            "None",
+                            "None",
+                            index)
+                self.logic.process()
+                self.start_time = time.time()
+                self.timer.timeout.connect(self.onProcessUpdateButterfly)
+                self.timer.start(500)
         else :
             slicer.util.infoDisplay(f"Load a vtk file in window number : {self.title} \nTo do this, enter the path to a vtk file and click on view.")
 
@@ -1298,7 +1425,7 @@ class WidgetParameter:
                 number_to_add = self.addItemsCombobox()
                 self.combobox_patch.addItem(number_to_add)
                 self.add_patch.setChecked(False)
-                index = self.combobox_patch.findText(number_to_add)  # Remplacez "VotreValeur" par la valeur que vous souhaitez sélectionner
+                index = self.combobox_patch.findText(number_to_add)  
                 if index >= 0:  # -1 signifie que la valeur n'a pas été trouvée
                     self.combobox_patch.setCurrentIndex(index)
             if not self.combobox_patch.isVisible():

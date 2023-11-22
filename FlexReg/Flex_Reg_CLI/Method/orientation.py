@@ -1,7 +1,7 @@
 import numpy as np
-from Method.util import vtkMeanTeeth
+from .util import vtkMeanTeeth
 import vtk
-from Method.transformation import RotationMatrix, TransformSurf
+from .transformation import RotationMatrix, TransformSurf
 
 cross = lambda a,b: np.cross(a,b)
 
