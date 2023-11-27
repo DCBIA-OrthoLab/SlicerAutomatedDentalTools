@@ -20,6 +20,13 @@ from pathlib import Path
 from Methode.General_tools import search, GetPatients
 
 
+
+import time
+import multiprocessing
+import io
+
+
+
 #
 # AutoMatrix
 #test
@@ -164,10 +171,13 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setRange(0,100)
         self.ui.progressBar.setTextVisible(True)
         self.ui.label_info.setVisible(False)
+        self.ui.label_time.setVisible(False)
         self.ui.ComboBoxPatient.setCurrentIndex(1)
         self.ui.ComboBoxMatrix.setCurrentIndex(1)
 
         self.ui.ButtonAutoFill.setVisible(False)
+
+        self.timer_should_continue = True
 
     def Mirror(self):
         if self.ui.CheckBoxMirror.isChecked():
@@ -429,12 +439,15 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.progressBar.setTextVisible(True)
             
             self.ui.label_info.setVisible(True)
+            self.ui.label_time.setVisible(True)
+            self.ui.label_time.setText(f"time : 0.0s")
 
             self.onProcessStarted()
+            self.start_time = time.time()
+            self.previous_time = time.time()
             self.ProcessVolume()
             self.UpdateProgressBar(True)
 
-                                
 
         
     def ProcessVolume(self)-> None:
@@ -454,13 +467,15 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     except : 
                         print("not a .nii.gz")
 
+                    self.UpdateTime()
                     if extension_scan!=".nii.gz":
                         model = slicer.util.loadModel(scan)
                     else :
                         model = slicer.util.loadVolume(scan)
-                        
+                    self.UpdateTime()
                     for matrix in values['matrix']:
                         try:
+                            self.UpdateTime()
                             fname, extension_mat = os.path.splitext(os.path.basename(matrix))
                             if extension_mat==".npy":
                                 array = np.load(matrix)
@@ -469,11 +484,9 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
                             else :
                                 tform = slicer.util.loadTransform(matrix)
-
-                            model.SetAndObserveTransformNodeID(tform.GetID())
-                            model.HardenTransform()
+                            
                             if Path(self.ui.LineEditPatient.text).is_dir():
-                                outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
+                                    outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
                             else : 
                                 outpath = scan.replace(os.path.dirname(self.ui.LineEditPatient.text),self.ui.LineEditOutput.text)
 
@@ -489,19 +502,91 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             if not os.path.exists(os.path.dirname(outpath)):
                                 os.makedirs(os.path.dirname(outpath))
 
-                            slicer.util.saveNode(model,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
+                            if extension_scan!=".nii.gz":
+                                self.UpdateTime()
+                                model.SetAndObserveTransformNodeID(tform.GetID())
+                                model.HardenTransform()
+                                self.UpdateTime()
+                                slicer.util.saveNode(model,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
+
+                            else:
+                                self.applyBrainsResample(model,tform,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
 
                         except:
                             print("An issue occured")
                             pass
                     self.UpdateProgressBar(False)
+                    self.UpdateTime()
                     slicer.mrmlScene.RemoveNode(model)
+                    self.UpdateTime()
                     
 
+
+    def applyBrainsResample(self, inputVolumeNode, transformationNode, outputFilePath)->None:
+        '''
+        Uses the BRAINS Resample module to apply a transformation to an input volume node
+        and saves the result in a specified file.
+        '''
+        brainsResampleModule = slicer.modules.brainsresample
+        outputVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+
+
+
+        parameters = {
+            'inputVolume': inputVolumeNode.GetID(),
+            'warpTransform': transformationNode.GetID(),
+            'outputVolume' : outputVolumeNode.GetID(),
+            'interpolationMode': 'Linear'  
+        }
+        self.UpdateTime()
+        cliNode = slicer.cli.run(brainsResampleModule, None, parameters)
+        while cliNode.IsBusy():
+            slicer.app.processEvents() # to let the user interface available
+            self.UpdateTime()
+
+
+        original_stdin = sys.stdin
+        sys.stdin = DummyFile()
+
+        process = multiprocessing.Process(target=self.saveOutputVolume, args=(outputVolumeNode,outputFilePath))
+        process.start()
+
+        while process.is_alive():
+            slicer.app.processEvents()
+            self.UpdateTime()
+
+        sys.stdin = original_stdin
+
+        slicer.mrmlScene.RemoveNode(outputVolumeNode)
+        self.UpdateTime()
         
 
 
+    def saveOutputVolume(self, outputVolumeNode, outputFilePath)->None:
+        """
+        Saves the output volume in the specified file with the .nii.gz extension.
+        
+        :param outputVolumeNode: The output volume node in Slicer MRML scene.
+        :param outputFilePath: The full path where the file is to be saved.
+        """
+        if not os.path.exists(os.path.dirname(outputFilePath)):
+            os.makedirs(os.path.dirname(outputFilePath))
+            
+        slicer.util.saveNode(outputVolumeNode, outputFilePath)
 
+         
+
+
+    def UpdateTime(self)->None:
+        '''
+        Update the time since the beginning
+        '''
+        current_time = time.time()
+        elapsed_time = current_time - self.start_time 
+        gap = current_time - self.previous_time
+        if gap>0.5:
+            self.ui.label_time.setText(f"time : {round(elapsed_time,2)}s")
+            self.previous_time = current_time
               
 
     def UpdateProgressBar(self,end:bool)->None:
@@ -524,6 +609,8 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             print('PROCESS DONE.')
             self.ui.progressBar.setValue(100)
             self.ui.progressBar.setFormat("100%")
+            self.ui.label_info.setText("Number of processed files : "+str(self.nbFiles)+"/"+str(self.nbFiles))
+            time.sleep(0.5)
 
             # qt.QMessageBox.information(self.parent,"Matrix applied with sucess")
             msg = QMessageBox()
@@ -541,6 +628,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             self.ui.progressBar.setVisible(False)
             self.ui.label_info.setVisible(False)
+            self.ui.label_time.setVisible(False)
             self.ui.LineEditOutput.setText("")
             self.ui.LineEditPatient.setText("")
             self.ui.LineEditMatrix.setText("")
@@ -629,6 +717,9 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 #
 # AutoMatrixLogic
 #
+class DummyFile(io.IOBase):
+        def close(self):
+            pass
 
 class AutoMatrixLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
