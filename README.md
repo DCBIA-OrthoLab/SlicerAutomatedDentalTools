@@ -2,6 +2,7 @@
 
 
 Slicer automated dental tools is an extension for 3D Slicer to perform important automatic Dental and Cranio Facial analysis tasks via a GUI interface with no coding knowledge needed.
+This extension currently works only on the Stable release of the 3D Slicer. 
 
 
 <p align="center">
@@ -123,7 +124,7 @@ The implementation is based on the `ALI-CBCT` algortihm originally developed by 
 
 ### Prerequisites
 
-* Download the [trained models for ALI-CBCT](https://github.com/Maxlo24/ALI_CBCT/releases/tag/v0.1-models) using the `Download latest models` button in the module `Input section`.
+* Download the [trained models for ALI-CBCT](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/tag/v0.1-v2.0_models) using the `Download latest models` button in the module `Input section`.
 
 ### Module structure
 
@@ -296,6 +297,11 @@ You can either download them using the link or  by using the `Test Files` button
 ### Some Results
 ![ARegResult](https://github.com/HUTIN1/SlicerAutomatedDentalTools/assets/72148963/44a7be88-4cee-4943-b9c5-3bd647faa6ba)
 
+
+### Models Selection
+
+For the **Fully-Automated** Mode, models are required as input, use the `Select` Button to automatically download, extract and select the selected models.
+
 ## AutoCrop3D
 
 <img src="AutoCrop3D/Crop_Volumes_UI/Resources/Icons/AutoCrop3D.png" alt="Extension Logo" width="60"/>
@@ -335,10 +341,58 @@ Use the module "Volume Rendering" to create your ROI and then save it as a .json
 
 ![Tuto1](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/assets/91120559/cf5ddce6-1582-44f0-a03c-ea74e4516bf5)
 ![Tuto2](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/assets/91120559/dcb33691-959e-4e79-b357-d6e4bca48ea5)
-    
+
+## AutoMatrix Module
+
+<img src="AutoMatrix/Resources/Icons/AutoMatrix.png" alt="Extension Logo" width="70"/>
+
+The AutoMatrix module provides a user interface to apply a matrix to a folder for different types of scans or segmentations:
+- **CBCT**
+- **IOS**
+## How the module works?
+
+### How to name the new files and where they are stored
+The module will create the same path you had in the input folder in the output folder.
+The new files will be named by the name of the original file + the suffix you entered + the name of the matrix files that were applied.
+
+Example :  
+Input file : patient1_T1_MA.nii.gz  
+Input matrix : patient1_matrix1.tfm  
+Input suffix : _apply  
+Output file : patient1_T1_MA_apply_matrix1.nii.gz
+
+
+### 4 Modes available 
+Sometimes a LinkName is required. See the information below.
+| Mode | Download Link to Test Files | Information | 
+| ----------- | ----------- | ----------- |
+| File patient and file matrix| [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease1.zip) |  LinkName is not required. The matrix is applied to the input file. This new file is save in the output folder.
+| File patient and folder matrix | [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease2.zip) | LinkName required. For each matrix applied, a new file is created.
+| Folder patient and file matrix | [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease3.zip) | LinkName is not required.  The matrix will be applied to all files in the input folder. 
+| Folder patient and folder matrix| [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease4.zip) | LinkName required. For each matrix applied, a new file is created. You can have more than one file with the same patient name.
+
+#### When a LinkName is required :
+The name of the matrix files and the name of the seg/scan files must begin with the same patient name. After the patient name, you must put and underscore before any other information.  
+Example :   
+Name file patient : patient1_T1_MA.nii.gz  
+Name matrix files : patient1_left_MA.tfm  
+
+#### Mirror : 
+There is button "Mirror" that will automatically download the matrix mirror and put in input.  
+  
+### Input file:
+
+| Input Type  | Input Extension Type | Input Matrix Extension |
+| ----------- | ----------- | ----------- |
+| **CBCT** | .nii.gz | .tfm .npy .h5 .mat .txt | 
+| **IOS** | .vtk .stl .vtp .off .obj | .tfm .npy .h5 .mat .txt|
+
+
+
+  
 # Acknowledgements
 
-Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin (UoM),Jeanne Claret (UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
+Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin (UoM),Jeanne Claret (UoM),Leroux Gaelle (UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
 
 Supported by NIDCR R01 024450, AA0F Grabber Family Teaching and Research Award and by Research Enhancement Award Activity 141 from the University of the Pacific, Arthur A. Dugoni School of Dentistry.
 
