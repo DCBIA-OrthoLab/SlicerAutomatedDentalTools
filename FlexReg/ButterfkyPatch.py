@@ -1089,9 +1089,11 @@ class WidgetParameter:
 
 
     def selectFile(self):
-        path_file = QFileDialog.getOpenFileName(self.parent,
-                                                'Open a file',
-                                                'VTK File (*.vtk) ;; STL File (*.stl)')
+        path_file = QFileDialog.getOpenFileName(self.parent,'Open a file','', 'VTK Files (*.vtk)')
+
+        # path_file = QFileDialog.getOpenFileName(self.parent,
+        #                                         'Open a file',
+        #                                         'VTK File (*.vtk)',)
         self.lineedit.setText(path_file)
 
     def checkLineEdit(self)->bool:
