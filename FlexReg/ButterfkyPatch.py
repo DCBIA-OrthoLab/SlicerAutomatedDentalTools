@@ -1,18 +1,33 @@
 import os
+from slicer.util import pip_install
+
+try : 
+    import vtk
+except ImportError : 
+    pip_install('vtk')
+    import vtk
+    
+import slicer
+from slicer.ScriptedLoadableModule import *
+from slicer.util import VTKObservationMixin
+
+try : 
+    import torch
+except ImportError :
+    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
+    pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
+    import torch
+    
 from functools import partial
 from vtk.util.numpy_support import vtk_to_numpy,numpy_to_vtk
-import vtk
+
 import time
 
 from Flex_Reg_CLI.Method.util import vtkMeanTeeth, ToothNoExist, NoSegmentationSurf
 from Flex_Reg_CLI.Method.orientation import orientation
 
 
-import slicer
-from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin
 
-import torch
 import tempfile
 
 
@@ -34,8 +49,6 @@ from qt import (QGridLayout,
                 QDialog,
                 QSizePolicy,
                 QSpacerItem)
-
-
 
 
 #
