@@ -606,7 +606,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     ready = True
     system = platform.system()
-    if system=="Windows":
+    if system=="Windows" :
       
       wsl = self.is_ubuntu_installed()
       if wsl :
@@ -665,7 +665,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.startTime = time.time()
 
     system = platform.system()
-    if system=="Windows":
+    if system=="Windows" and not self.CBCT_as_input:
       self.ui.PredScanLabel.setText(f"Beginning of the process")
       self.RunningUIWindows(True)
           
@@ -795,7 +795,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # print(progress)
     system = platform.system()
-    if system=="Windows":
+    if system=="Windows" and not self.CBCT_as_input:
           line = self.read_txt()
           self.ui.PredScanLabel.setText(f"{line}") 
           
