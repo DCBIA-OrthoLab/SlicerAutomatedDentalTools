@@ -169,6 +169,11 @@ def main(args):
             name_lower = os.path.basename(dataset.getLowerPath(idx, "T2"))
             WriteSurf(surf_lower, args.output, name_lower, args.suffix)
 
+            surf_lower = dataset.getLowerSurf(idx, "T1")
+            if surf_lower!=None : 
+                name_lower = os.path.basename(dataset.getLowerPath(idx, "T1"))
+                WriteSurf(surf_lower, args.output, name_lower, args.suffix)
+
         # pbar.update(1)
 
         with open(args.log_path, "r+") as log_f:
