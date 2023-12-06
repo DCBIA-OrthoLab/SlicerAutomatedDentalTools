@@ -508,6 +508,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             self.UpdateTime()
 
                             slicer.util.saveNode(model,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
+                            print("Haaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 
                             # original_stdin = sys.stdin
                             # sys.stdin = DummyFile()
