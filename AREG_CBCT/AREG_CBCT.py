@@ -50,6 +50,7 @@ def main(args):
     patients = GetDictPatients(t1_folder, t2_folder, segmentationType=reg_type)
     print("{} Registration".format(translate(reg_type)))
     for patient, data in patients.items():
+        print("DATA: ", data)
         print("Working on patient: ", patient)
         outpath = os.path.join(output_dir, translate(reg_type), patient + "_OutReg")
         ScanOutPath, TransOutPath = os.path.join(
