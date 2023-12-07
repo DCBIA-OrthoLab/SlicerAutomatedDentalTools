@@ -147,6 +147,8 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SearchPathButtonOut.connect("clicked(bool)", partial(self.SearchPath,"Output"))
         #self.ui.TestFiles.connect("clicked(bool)",self.Autofill)
         #self.ui.chooseType.connect("clicked(bool)", self.SearchPath)
+
+        
        
 
         # These connections ensure that we update parameter node when scene is closed
@@ -304,10 +306,12 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #     print("Error input")
 
 
+            box_Size =str(self.ui.checkBoxSize.isChecked())
             self.logic = AutoCrop3DLogic(self.ui.editPathF.text,
                                             self.ui.editPathVolume.text,
                                             self.ui.editPathOutput.text, 
                                             self.ui.editSuffix.text,
+                                            box_Size,
                                             self.log_path)
 
 
@@ -412,6 +416,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.editPathF.setText("")
                 self.ui.editPathVolume.setText("")
                 self.ui.editPathOutput.setText("")
+                self.ui.checkBoxSize.setChecked(False)
                 self.ui.chooseType.setCurrentIndex(0)
 
 
@@ -574,7 +579,7 @@ class AutoCrop3DLogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
-    def __init__(self,scan_files_path=None,path_ROI_file=None,output_path=None,suffix=None,logPath=None):
+    def __init__(self,scan_files_path=None,path_ROI_file=None,output_path=None,suffix=None,box_Size=None,logPath=None):
         """
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
@@ -583,6 +588,7 @@ class AutoCrop3DLogic(ScriptedLoadableModuleLogic):
         self.path_ROI_file = path_ROI_file
         self.output_path = output_path
         self.suffix = suffix
+        self.box_Size = box_Size
         self.logPath = logPath
 
         self.cliNode = None
@@ -608,7 +614,9 @@ class AutoCrop3DLogic(ScriptedLoadableModuleLogic):
         parameters ["path_ROI_file"] = self.path_ROI_file
         parameters ["output_path"] = self.output_path
         parameters ["suffix"] = self.suffix
+        parameters["box_Size"] = self.box_Size
         parameters ["logPath"] = self.logPath
+
         
         flybyProcess = slicer.modules.autocrop3d_cli
         self.cliNode = slicer.cli.run(flybyProcess,None, parameters)  
