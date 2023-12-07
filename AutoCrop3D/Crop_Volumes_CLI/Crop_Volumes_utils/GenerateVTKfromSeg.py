@@ -75,7 +75,7 @@ def convertNiftiToVTK(input_path, output_path ) -> None:
 
 def padding(input_image) :
     """
-    Function to padd the model and to close it
+    Function to padd the model and to close it (to avoid holes in the model)
     Input: Image
     Output: File Name of the padded Image
     """
