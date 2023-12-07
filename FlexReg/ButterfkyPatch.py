@@ -19,6 +19,8 @@ except ImportError :
     pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
     import torch
 
+import subprocess
+
 
 
 # try:
@@ -1340,57 +1342,77 @@ class WidgetParameter:
             return False
         
         except NoSegmentationSurf as error : 
-            moduleName = "CrownSegmentation"
-            moduleAvailable = moduleName in slicer.app.moduleManager().modulesNames()
+            slicer.util.infoDisplay(f"C'est partie") 
+            python_executable = sys.executable
+            command_to_execute = [python_executable,"/home/luciacev/Desktop/SlicerAutomatedDentalTools/FlexReg/seg.py",os.path.basename(str(self.lineedit.text)),str(self.lineedit.text),"true",os.path.dirname(str(self.lineedit.text)),"shapeAxi"]
+            result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,errors='ignore')
 
-            if moduleAvailable : 
-                modelFilePath = self.downloadModel()
-                parameters = {
-                    "input" : str(self.lineedit.text),
-                    "output":os.path.dirname(str(self.lineedit.text)),
-                    "subdivision_level" : 4,
-                    "resolution":320,
-                    "model": modelFilePath,
-                    "predictedId" : "Universal_ID",
-                    "sepOutputs":0,
-                    "chooseFDI":0,
-                    "logPath":os.path.join(slicer.util.tempDirectory(), f'process{str(self.title)}.log')
-                }
-                print("parametres : ", parameters)
-                print(f' Error {error}')
-                start_time = time.time()
-                flybyProcess = slicer.modules.crownsegmentationcli
-                cliNode = slicer.cli.run(flybyProcess,None, parameters)    
 
-                msg_box = QMessageBox()
-                msg_box.setIcon(QMessageBox.Information)
-                msg_box.setText("Segmentation in process...")
-                msg_box.setStandardButtons(QMessageBox.Cancel)
-                msg_box.show()
-
-                timer = QTimer()
-                timer.start(250) 
-                timer.timeout.connect(lambda: self.update_message_box(msg_box, start_time))
-
-                cancel=False
-                while cliNode.IsBusy():
-                    slicer.app.processEvents() 
-                    if msg_box.clickedButton() == QMessageBox.Cancel:
-                        cancel=True
-                        cliNode.Cancel()
-                        msg_box.hide()
-                        break
-
-                timer.stop() 
-                msg_box.hide()
-                if not cancel :
-                    self.viewScan()
-                    return True
-                else :
-                    return False
-            else : 
-                slicer.util.infoDisplay(f"Your file is not segmented.\nPlease, install the module 'SlicerDentalModelSeg' with the extension manager.\nAfter installation, restart the process on FlexReg.")
+            if result.returncode != 0:
+                print(f"Error creating the environment. Return code: {result.returncode}")
+                print("result.stdout : ","*"*150)
+                print(result.stdout)
+                print("result.stderr : ","*"*150)
+                print(result.stderr)
                 return False
+            else:
+                print(result.stdout)
+                print("Environment created successfully.")
+                return False
+
+            # moduleName = "CrownSegmentation"
+            # moduleAvailable = moduleName in slicer.app.moduleManager().modulesNames()
+
+            # if moduleAvailable : 
+            #     modelFilePath = self.downloadModel()
+            #     parameters = {
+            #         "input" : str(self.lineedit.text),
+            #         "output":os.path.dirname(str(self.lineedit.text)),
+            #         "subdivision_level" : 4,
+            #         "resolution":320,
+            #         "model": modelFilePath,
+            #         "predictedId" : "Universal_ID",
+            #         "sepOutputs":0,
+            #         "chooseFDI":0,
+            #         "logPath":os.path.join(slicer.util.tempDirectory(), f'process{str(self.title)}.log')
+            #     }
+            #     print("parametres : ", parameters)
+            #     print(f' Error {error}')
+            #     start_time = time.time()
+            #     flybyProcess = slicer.modules.crownsegmentationcli
+            #     cliNode = slicer.cli.run(flybyProcess,None, parameters)    
+
+            #     msg_box = QMessageBox()
+            #     msg_box.setIcon(QMessageBox.Information)
+            #     msg_box.setText("Segmentation in process...")
+            #     msg_box.setStandardButtons(QMessageBox.Cancel)
+            #     msg_box.show()
+
+            #     timer = QTimer()
+            #     timer.start(250) 
+            #     timer.timeout.connect(lambda: self.update_message_box(msg_box, start_time))
+
+            #     cancel=False
+            #     while cliNode.IsBusy():
+            #         slicer.app.processEvents() 
+            #         if msg_box.clickedButton() == QMessageBox.Cancel:
+            #             cancel=True
+            #             cliNode.Cancel()
+            #             msg_box.hide()
+            #             break
+
+            #     timer.stop() 
+            #     msg_box.hide()
+            #     if not cancel :
+            #         self.viewScan()
+            #         return True
+            #     else :
+            #         return False
+                
+               
+            # else : 
+            #     slicer.util.infoDisplay(f"Your file is not segmented.\nPlease, install the module 'SlicerDentalModelSeg' with the extension manager.\nAfter installation, restart the process on FlexReg.")
+            #     return False
 
     def processPatch(self)->None:
         '''
