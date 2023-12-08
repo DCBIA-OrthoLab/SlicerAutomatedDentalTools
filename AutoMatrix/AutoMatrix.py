@@ -20,9 +20,11 @@ from pathlib import Path
 from Methode.General_tools import search, GetPatients
 
 
+
 import time
 import multiprocessing
 import io
+
 
 
 #
@@ -500,18 +502,28 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             if not os.path.exists(os.path.dirname(outpath)):
                                 os.makedirs(os.path.dirname(outpath))
 
-                            if extension_scan!=".nii.gz":
-                                self.UpdateTime()
-                                model.SetAndObserveTransformNodeID(tform.GetID())
-                                model.HardenTransform()
-                                self.UpdateTime()
-                                slicer.util.saveNode(model,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
+                            self.UpdateTime()
+                            model.SetAndObserveTransformNodeID(tform.GetID())
+                            model.HardenTransform()
+                            self.UpdateTime()
 
-                            else:
-                                self.applyBrainsResample(model,tform,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
+                            original_stdin = sys.stdin
+                            sys.stdin = DummyFile()
 
-                        except:
-                            print("An issue occured")
+                            process = multiprocessing.Process(target=self.saveOutput, args=(model,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan))
+                            process.start()
+
+                            while process.is_alive():
+                                slicer.app.processEvents()
+                                self.UpdateTime()
+
+                            sys.stdin = original_stdin
+                            self.UpdateTime()
+
+
+
+                        except Exception as e:
+                            print("An issue occured : ",e)
                             pass
                     self.UpdateProgressBar(False)
                     self.UpdateTime()
@@ -519,47 +531,10 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     self.UpdateTime()
                     
 
-
-    def applyBrainsResample(self, inputVolumeNode, transformationNode, outputFilePath)->None:
-        '''
-        Uses the BRAINS Resample module to apply a transformation to an input volume node
-        and saves the result in a specified file.
-        '''
-        brainsResampleModule = slicer.modules.brainsresample
-        outputVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-
-
-        parameters = {
-            'inputVolume': inputVolumeNode.GetID(),
-            'warpTransform': transformationNode.GetID(),
-            'outputVolume' : outputVolumeNode.GetID(),
-            'interpolationMode': 'Linear'  
-        }
-        self.UpdateTime()
-        cliNode = slicer.cli.run(brainsResampleModule, None, parameters)
-        while cliNode.IsBusy():
-            slicer.app.processEvents() # to let the user interface available
-            self.UpdateTime()
-
-
-        original_stdin = sys.stdin
-        sys.stdin = DummyFile()
-
-        process = multiprocessing.Process(target=self.saveOutputVolume, args=(outputVolumeNode,outputFilePath))
-        process.start()
-
-        while process.is_alive():
-            slicer.app.processEvents()
-            self.UpdateTime()
-
-        sys.stdin = original_stdin
-
-        slicer.mrmlScene.RemoveNode(outputVolumeNode)
-        self.UpdateTime()
         
 
 
-    def saveOutputVolume(self, outputVolumeNode, outputFilePath)->None:
+    def saveOutput(self, outputVolumeNode, outputFilePath)->None:
         """
         Saves the output volume in the specified file with the .nii.gz extension.
         
@@ -569,7 +544,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not os.path.exists(os.path.dirname(outputFilePath)):
             os.makedirs(os.path.dirname(outputFilePath))
             
-        slicer.util.saveNode(outputVolumeNode, outputFilePath)
+        slicer.util.exportNode(outputVolumeNode, outputFilePath,world=True)
 
          
 
@@ -628,7 +603,8 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.label_time.setVisible(False)
             self.ui.LineEditOutput.setText("")
             self.ui.LineEditPatient.setText("")
-            self.ui.LineEditMatrix.setText("")
+            if not self.ui.CheckBoxMirror.isChecked():
+                self.ui.LineEditMatrix.setText("")
             self.ui.ComboBoxMatrix.setCurrentIndex(1)
             self.ui.ComboBoxPatient.setCurrentIndex(1)
 

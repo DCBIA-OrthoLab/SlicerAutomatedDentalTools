@@ -1,3 +1,4 @@
+
 import os
 import logging
 import glob
@@ -6,8 +7,23 @@ import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 import webbrowser
+import textwrap
+
+import platform
+import subprocess
+import slicer
+from slicer.util import pip_install, pip_uninstall
+
+try :
+    import rpyc
+except :
+    pip_install('rpyc -q')
+    import rpyc
+
+import inspect
 
 # import csv
+import sys
 
 
 #region ========== FUNCTIONS ==========
@@ -28,7 +44,7 @@ TEST_SCAN = {
 
 MODELS_LINK = {
   "CBCT": [
-    'https://github.com/Maxlo24/ALI_CBCT/releases/tag/v0.1-models',
+    'https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/tag/v0.1-v2.0_models',
   ],
   "IOS" : [
     'https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.3',
@@ -494,6 +510,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.output_folder = save_folder
       self.ui.SaveFolderLineEdit.setText(save_folder)
 
+
+
   def onPredictButton(self):
 
     ready = True
@@ -586,53 +604,110 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     print(param)
 
+    ready = True
+    system = platform.system()
+    if system=="Windows" :
+      
+      wsl = self.is_ubuntu_installed()
+      if wsl :
+        lib = self.check_lib_wsl()
+        if not lib :
+            messageBox = qt.QMessageBox()
+            text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
+            ready = False
+            messageBox.information(None, "Information", text)
+      else : 
+        messageBox = qt.QMessageBox()
+        text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
+        ready = False
+        messageBox.information(None, "Information", text)
+    
+    if ready :
+      script_path = os.path.dirname(os.path.abspath(__file__))
+      file_path = os.path.join(script_path,"tempo.txt")
+      with open(file_path, 'a') as file:
+        file.write("Beginning of the process" + '\n')  # Écrire le message suivi d'une nouvelle ligne
+        
+      self.logic = ALILogic()
+      self.logic.process(param, self.CBCT_as_input)
+
+      self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
+      self.onProcessStarted()
+      
+
+  def is_ubuntu_installed(self)->bool:
+    '''
+    Check if wsl is install with Ubuntu
+    '''
+    result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
+    output = result.stdout.encode('utf-16-le').decode('utf-8')
+    clean_output = output.replace('\x00', '')  # Enlève tous les octets null
+
+    return 'Ubuntu' in clean_output
 
 
+  def check_lib_wsl(self)->bool:
+    '''
+    Check if wsl contains the require librairies
+    '''
+    result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
+    output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
+    clean_output1 = output1.replace('\x00', '') 
+    
+    result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
+    output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
+    clean_output2 = output2.replace('\x00', '')
 
-    self.logic = ALILogic()
-    self.logic.process(param, self.CBCT_as_input)
+    return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
 
-    self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
-    self.onProcessStarted()
 
   def onProcessStarted(self):
     self.startTime = time.time()
 
-    self.ui.PredScanProgressBar.setMaximum(self.scan_count)
-    self.ui.PredScanProgressBar.setValue(0)
-    self.ui.PredSegProgressBar.setValue(0)
+    system = platform.system()
+    if system=="Windows" and not self.CBCT_as_input:
+      self.ui.PredScanLabel.setText(f"Beginning of the process")
+      self.RunningUIWindows(True)
+          
+    else : 
+      self.ui.PredScanProgressBar.setMaximum(self.scan_count)
+      self.ui.PredScanProgressBar.setValue(0)
+      self.ui.PredSegProgressBar.setValue(0)
 
-    if self.CBCT_as_input:
-      self.ui.PredScanLabel.setText(f"Scan ready: 0 / {self.scan_count}")
+      if self.CBCT_as_input:
+        self.ui.PredScanLabel.setText(f"Scan ready: 0 / {self.scan_count}")
 
-      self.total_seg_progress = self.scan_count * self.landmark_cout
+        self.total_seg_progress = self.scan_count * self.landmark_cout
 
-      self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
-      self.ui.PredSegLabel.setText(f"Landmarks found : 0 / {self.total_seg_progress}") 
+        self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
+        self.ui.PredSegLabel.setText(f"Landmarks found : 0 / {self.total_seg_progress}") 
 
-    else:
-      self.ui.PredScanLabel.setText(f"Scan : 0 / {self.scan_count}")
+      else:
+        self.ui.PredScanLabel.setText(f"Scan : 0 / {self.scan_count}")
 
-      model_used = []
-      for lm in self.lm_tab.GetSelected():
-        for model in SURFACE_LANDMARKS.keys():
-          if lm in SURFACE_LANDMARKS[model]:
-            if model not in model_used:
-              model_used.append(model)
-
-
-      self.total_seg_progress = len(self.tooth_lm.GetSelected()) * len(model_used)
-
-      self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
-      self.ui.PredSegLabel.setText(f"Identified : 0 / {self.total_seg_progress}") 
-
-    self.prediction_step = 0
-    self.progress = 0
+        model_used = []
+        for lm in self.lm_tab.GetSelected():
+          for model in SURFACE_LANDMARKS.keys():
+            if lm in SURFACE_LANDMARKS[model]:
+              if model not in model_used:
+                model_used.append(model)
 
 
+        self.total_seg_progress = len(self.tooth_lm.GetSelected()) * len(model_used)
+
+        self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
+        self.ui.PredSegLabel.setText(f"Identified : 0 / {self.total_seg_progress}") 
+
+      self.prediction_step = 0
+      self.progress = 0
 
 
-    self.RunningUI(True)
+
+
+      self.RunningUI(True)
+
+  
+  
 
 
   def UpdateALICBCT(self,progress):
@@ -702,6 +777,15 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.UpdateALIIOS(progress)
 
 
+  def read_txt(self):
+    '''
+    Read a file and return the last line
+    '''
+    script_path = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_path,"tempo.txt")
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+        return lines[-1] if lines else None
 
   def onProcessUpdate(self,caller,event):
 
@@ -710,12 +794,18 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     progress = caller.GetProgress()
 
     # print(progress)
-    if progress == 0:
-      self.updateProgessBar = False
+    system = platform.system()
+    if system=="Windows" and not self.CBCT_as_input:
+          line = self.read_txt()
+          self.ui.PredScanLabel.setText(f"{line}") 
+          
+    else:
+      if progress == 0:
+        self.updateProgessBar = False
 
-    if progress != 0 and self.updateProgessBar == False:
-      self.updateProgessBar = True
-      self.UpdateProgressBar(progress)
+      if progress != 0 and self.updateProgessBar == False:
+        self.updateProgessBar = True
+        self.UpdateProgressBar(progress)
 
     if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
       # process complete
@@ -746,8 +836,18 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
   def OnEndProcess(self):
 
-      
+      script_path = os.path.dirname(os.path.abspath(__file__))
+      file_path = os.path.join(script_path,"tempo.txt")
+      if os.path.exists(file_path):
+        os.remove(file_path)
+        print("File delete")
+      else:
+        print("The file doesn't exist")
+        
       print('PROCESS DONE.')
+      # script_path = os.path.dirname(os.path.abspath(__file__))
+      # file_path = os.path.join(script_path,"tempo.txt")
+      # os.remove(file_path)
       self.RunningUI(False)
       print(self.logic.cliNode.GetOutputText())
 
@@ -795,6 +895,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.PredSegLabel.setVisible(run)
     self.ui.PredSegProgressBar.setVisible(run)
     self.ui.TimerLabel.setVisible(run)
+    
+  def RunningUIWindows(self,run=False):
+    self.ui.TimerLabel.setVisible(run)
+    self.ui.PredScanLabel.setVisible(run)
+        
 
   def cleanup(self):
     """
@@ -919,7 +1024,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     Run processing when user clicks "Apply" button.
     """
     try:
-
       # Compute output
       self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(),
         self.ui.imageThresholdSliderWidget.value, self.ui.invertOutputCheckBox.checked)
