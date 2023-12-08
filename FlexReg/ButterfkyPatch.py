@@ -21,7 +21,8 @@ except ImportError :
 
 import subprocess
 
-
+import io
+import multiprocessing
 
 # try:
 #     import pytorch3d
@@ -57,7 +58,7 @@ from Flex_Reg_CLI.Method.orientation import orientation
 
 
 import tempfile
-
+import threading
 
 from qt import (QGridLayout,
                 QHBoxLayout,
@@ -73,6 +74,7 @@ from qt import (QGridLayout,
                 QWidget,
                 QTimer,
                 QMessageBox,
+                QApplication,
                 QStandardPaths,
                 QDialog,
                 QSizePolicy,
@@ -1342,77 +1344,71 @@ class WidgetParameter:
             return False
         
         except NoSegmentationSurf as error : 
-            slicer.util.infoDisplay(f"C'est partie") 
-            python_executable = sys.executable
-            command_to_execute = [python_executable,"/home/luciacev/Desktop/SlicerAutomatedDentalTools/FlexReg/Dentalmodelseg/first.py",os.path.basename(str(self.lineedit.text)),str(self.lineedit.text),"true",os.path.dirname(str(self.lineedit.text)),"shapeAxi"]
-            result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,errors='ignore')
+            
+            original_stdin = sys.stdin
+            sys.stdin = DummyFile()
+
+            msg_box = QMessageBox()
+            msg_box.setIcon(QMessageBox.Information)
+            start_time = time.time()
+            previous_time = start_time
+            msg_box.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: 0.0s")
+            msg_box.setStandardButtons(QMessageBox.NoButton)
+            msg_box.show()
+
+            queue = multiprocessing.Queue()
+            process = multiprocessing.Process(target=self.shapeaxi, args=(queue,))
+            process.start()
+
+            while process.is_alive():
+                slicer.app.processEvents()
+                current_time = time.time()
+                gap=current_time-previous_time
+                if gap>0.3:
+                    previous_time = current_time
+                    elapsed_time = current_time - start_time
+                    msg_box.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+
+                if not queue.empty():
+                    message = queue.get()
+                    break  
+
+            sys.stdin = original_stdin
+
+            if message=="True":
+                self.viewScan()
+                msg_box.hide()
+                return True
+            return False
+            
+
+    def shapeaxi(self,queue):
+
+        python_executable = sys.executable
+        current_file_path = os.path.abspath(__file__)
+        current_directory = os.path.dirname(current_file_path)
+        path_next_file = os.path.join(current_directory,'Dentalmodelseg','first.py') #Next files to call
+        command_to_execute = [python_executable,path_next_file,os.path.basename(str(self.lineedit.text)),str(self.lineedit.text),"true",os.path.dirname(str(self.lineedit.text)),"shapeAxi"]
+
+        result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,errors='ignore')
+        if result.returncode != 0:
+            print(f"Error creating the environment. Return code: {result.returncode}")
+            print("result.stdout : ","*"*150)
+            print(result.stdout)
+            print("result.stderr : ","*"*150)
+            print(result.stderr)
+            queue.put("False")
+            # return False
+        else:
+            print(result.stdout)
+            print("Environment created successfully.")
+            queue.put("True")
+            # self.viewScan()
+            # return True
 
 
-            if result.returncode != 0:
-                print(f"Error creating the environment. Return code: {result.returncode}")
-                print("result.stdout : ","*"*150)
-                print(result.stdout)
-                print("result.stderr : ","*"*150)
-                print(result.stderr)
-                return False
-            else:
-                print(result.stdout)
-                print("Environment created successfully.")
-                return False
 
-            # moduleName = "CrownSegmentation"
-            # moduleAvailable = moduleName in slicer.app.moduleManager().modulesNames()
 
-            # if moduleAvailable : 
-            #     modelFilePath = self.downloadModel()
-            #     parameters = {
-            #         "input" : str(self.lineedit.text),
-            #         "output":os.path.dirname(str(self.lineedit.text)),
-            #         "subdivision_level" : 4,
-            #         "resolution":320,
-            #         "model": modelFilePath,
-            #         "predictedId" : "Universal_ID",
-            #         "sepOutputs":0,
-            #         "chooseFDI":0,
-            #         "logPath":os.path.join(slicer.util.tempDirectory(), f'process{str(self.title)}.log')
-            #     }
-            #     print("parametres : ", parameters)
-            #     print(f' Error {error}')
-            #     start_time = time.time()
-            #     flybyProcess = slicer.modules.crownsegmentationcli
-            #     cliNode = slicer.cli.run(flybyProcess,None, parameters)    
-
-            #     msg_box = QMessageBox()
-            #     msg_box.setIcon(QMessageBox.Information)
-            #     msg_box.setText("Segmentation in process...")
-            #     msg_box.setStandardButtons(QMessageBox.Cancel)
-            #     msg_box.show()
-
-            #     timer = QTimer()
-            #     timer.start(250) 
-            #     timer.timeout.connect(lambda: self.update_message_box(msg_box, start_time))
-
-            #     cancel=False
-            #     while cliNode.IsBusy():
-            #         slicer.app.processEvents() 
-            #         if msg_box.clickedButton() == QMessageBox.Cancel:
-            #             cancel=True
-            #             cliNode.Cancel()
-            #             msg_box.hide()
-            #             break
-
-            #     timer.stop() 
-            #     msg_box.hide()
-            #     if not cancel :
-            #         self.viewScan()
-            #         return True
-            #     else :
-            #         return False
-                
-               
-            # else : 
-            #     slicer.util.infoDisplay(f"Your file is not segmented.\nPlease, install the module 'SlicerDentalModelSeg' with the extension manager.\nAfter installation, restart the process on FlexReg.")
-            #     return False
 
     def processPatch(self)->None:
         '''
@@ -1833,3 +1829,6 @@ class WidgetParameter:
         
             self.combobox_patch.addItem(str(1))
 
+class DummyFile(io.IOBase):
+        def close(self):
+            pass
