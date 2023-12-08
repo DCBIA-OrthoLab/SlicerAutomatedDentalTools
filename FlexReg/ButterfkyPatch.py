@@ -1344,7 +1344,7 @@ class WidgetParameter:
         except NoSegmentationSurf as error : 
             slicer.util.infoDisplay(f"C'est partie") 
             python_executable = sys.executable
-            command_to_execute = [python_executable,"/home/luciacev/Desktop/SlicerAutomatedDentalTools/FlexReg/seg.py",os.path.basename(str(self.lineedit.text)),str(self.lineedit.text),"true",os.path.dirname(str(self.lineedit.text)),"shapeAxi"]
+            command_to_execute = [python_executable,"/home/luciacev/Desktop/SlicerAutomatedDentalTools/FlexReg/Dentalmodelseg/first.py",os.path.basename(str(self.lineedit.text)),str(self.lineedit.text),"true",os.path.dirname(str(self.lineedit.text)),"shapeAxi"]
             result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,errors='ignore')
 
 
