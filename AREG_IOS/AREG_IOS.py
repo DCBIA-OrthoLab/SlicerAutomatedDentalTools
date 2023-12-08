@@ -140,6 +140,9 @@ def main(args):
         surf_T1 = Patched(dataset[idx, "T1"], surf_T1)
         # pbar.update(1)
 
+        name = os.path.basename(dataset.getUpperPath(idx, "T1"))
+        WriteSurf(surf_T1, args.output, name, args.suffix)
+
         with open(args.log_path, "r+") as log_f:
             log_f.write(str(1))
 
@@ -158,12 +161,18 @@ def main(args):
 
         name = os.path.basename(dataset.getUpperPath(idx, "T2"))
         WriteSurf(output_icp["source_Or"], args.output, name, args.suffix)
+        
 
         if lower:
             surf_lower = dataset.getLowerSurf(idx, "T2")
             surf_lower = TransformSurf(surf_lower, output_icp["matrix"])
             name_lower = os.path.basename(dataset.getLowerPath(idx, "T2"))
             WriteSurf(surf_lower, args.output, name_lower, args.suffix)
+
+            surf_lower = dataset.getLowerSurf(idx, "T1")
+            if surf_lower!=None : 
+                name_lower = os.path.basename(dataset.getLowerPath(idx, "T1"))
+                WriteSurf(surf_lower, args.output, name_lower, args.suffix)
 
         # pbar.update(1)
 

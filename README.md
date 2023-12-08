@@ -2,6 +2,7 @@
 
 
 Slicer automated dental tools is an extension for 3D Slicer to perform important automatic Dental and Cranio Facial analysis tasks via a GUI interface with no coding knowledge needed.
+This extension currently works only on the Stable release of the 3D Slicer. 
 
 
 <p align="center">
@@ -123,7 +124,7 @@ The implementation is based on the `ALI-CBCT` algortihm originally developed by 
 
 ### Prerequisites
 
-* Download the [trained models for ALI-CBCT](https://github.com/Maxlo24/ALI_CBCT/releases/tag/v0.1-models) using the `Download latest models` button in the module `Input section`.
+* Download the [trained models for ALI-CBCT](https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/tag/v0.1-v2.0_models) using the `Download latest models` button in the module `Input section`.
 
 ### Module structure
 
