@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Segmentation.Advanced</category>
+  <index>0</index>
+  <title>Flex_Reg_CLI</title>
+  <description><![CDATA[CLI module that can be built into an extension]]></description>
+  <version>0.1.0.</version>
+  <documentation-url>https://github.com/GaelleLeroux/DCBIA_FlexReg</documentation-url>
+  <license/>
+  <contributor>Gaelle Leroux (University of Michigan)</contributor>
+  <acknowledgements><![CDATA[...]]></acknowledgements>
+
+  <parameters>
+
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>lineedit</name>
+      <label>lineedit</label>
+      <index>0</index>
+      <description>Path to the scan that will be process</description>
+    </string>
+
+    <string>
+      <name>lineedit_teeth_left_top</name>
+      <label>lineedit_teeth_left_top</label>
+      <index>1</index>
+      <description>butterfly : number of the teeth left top</description>
+    </string>
+
+     <string>
+      <name>lineedit_teeth_right_top</name>
+      <label>lineedit_teeth_right_top</label>
+      <index>2</index>
+      <description>butterfly : number of the teeth right top</description>
+    </string>
+
+      <string>
+      <name>lineedit_teeth_left_bot</name>
+      <label>lineedit_teeth_left_bot</label>
+      <index>3</index>
+      <description>butterfly : number of the teeth left bottom</description>
+    </string>
+
+     <string>
+      <name>lineedit_teeth_right_bot</name>
+      <label>lineedit_teeth_right_bot</label>
+      <index>4</index>
+      <description>butterfly : number of the teeth right bottom</description>
+    </string>
+
+    <string>
+      <name>lineedit_ratio_left_top</name>
+      <label>lineedit_ratio_left_top</label>
+      <index>5</index>
+      <description>butterfly : number of the ratio for the left top</description>
+    </string>
+
+    <string>
+      <name>lineedit_ratio_right_top</name>
+      <label>lineedit_ratio_right_top</label>
+      <index>6</index>
+      <description>butterfly : number of the ratio for the right top</description>
+    </string>
+
+    <string>
+      <name>lineedit_ratio_left_bot</name>
+      <label>lineedit_ratio_left_bot</label>
+      <index>7</index>
+      <description>butterfly : number of the ratio for the left bottom</description>
+    </string>
+
+    <string>
+      <name>lineedit_ratio_right_bot</name>
+      <label>lineedit_ratio_right_bot</label>
+      <index>8</index>
+      <description>butterfly : number of the ratio for the right bottom</description>
+    </string>
+
+    <string>
+      <name>lineedit_adjust_left_top</name>
+      <label>lineedit_adjust_left_top</label>
+      <index>9</index>
+      <description>butterfly : adjust number for the left top</description>
+    </string>
+
+    <string>
+      <name>lineedit_adjust_right_top</name>
+      <label>lineedit_adjust_right_top</label>
+      <index>10</index>
+      <description>butterfly : adjust number for the right top</description>
+    </string>
+
+    <string>
+      <name>lineedit_adjust_left_bot</name>
+      <label>lineedit_adjust_left_bot</label>
+      <index>11</index>
+      <description>butterfly : adjust number for the left bottom</description>
+    </string>
+
+    <string>
+      <name>lineedit_adjust_right_bot</name>
+      <label>lineedit_adjust_right_bot</label>
+      <index>12</index>
+      <description>butterfly : adjust number for the right bottom</description>
+    </string>
+
+    <string>
+      <name>curve</name>
+      <label>curve</label>
+      <index>13</index>
+      <description>curve : list of the position of each point of the curve</description>
+    </string>
+
+    <string>
+      <name>middle_point</name>
+      <label>middle_point</label>
+      <index>14</index>
+      <description>curve : list of the position of the middle point</description>
+    </string>
+
+    <string>
+      <name>type</name>
+      <label>type</label>
+      <index>15</index>
+      <description>curve butterfly or icp to apply the right part of the code</description>
+    </string>
+
+    <string>
+      <name>path_reg</name>
+      <label>path_reg</label>
+      <index>16</index>
+      <description>icp : path of the second file for the registration</description>
+    </string>
+
+    <string>
+      <name>path_output</name>
+      <label>path_output</label>
+      <index>17</index>
+      <description>icp : path of the output folder</description>
+    </string>
+
+    <string>
+      <name>suffix</name>
+      <label>suffix</label>
+      <index>18</index>
+      <description>icp : suffix to add to the register file</description>
+    </string>
+
+    <string>
+      <name>index_patch</name>
+      <label>index_patch</label>
+      <index>19</index>
+      <description>icp : suffix to add to the register file</description>
+    </string>
+
+
+
+
+  </parameters>
+</executable>
