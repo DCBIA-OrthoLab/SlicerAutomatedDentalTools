@@ -24,13 +24,12 @@ def checkEnvConda(name:str,default_install_path:str)->bool:
 
         for line in env_lines:
             env_name = line.split()[0].strip()
-            print("name : ",name,"     env_name : ",env_name)
             if env_name == name:
                 print('Env conda exist')
-                return True  # L'environnement Conda existe déjà
+                return True 
 
     print("Env conda doesn't exist")
-    return False  # L'environnement Conda n'existe pas
+    return False  
 
 
 def createCondaEnv(name:str,default_install_path:str,path_conda:str,path_activate:str)->None :
@@ -47,7 +46,6 @@ def createCondaEnv(name:str,default_install_path:str,path_conda:str,path_activat
     ]
 
 
-    # Exécution des commandes d'installation
     for command in install_commands:
         print("command : ",command)
         result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace',  executable="/bin/bash")
@@ -121,7 +119,6 @@ def run(args):
     env_exist = checkEnvConda(args['name_env'],default_install_path)
 
     if not env_exist :
-        print("666"*150)
         path_conda = os.path.join(default_install_path,"bin","conda")
         createCondaEnv(args['name_env'],default_install_path,path_conda,path_activate)
 
