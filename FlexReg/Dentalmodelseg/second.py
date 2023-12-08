@@ -1,10 +1,19 @@
+'''
+This file is running on the python of miniconda3. It's checking the environnement and create it if not. 
+It's running the dentalmodelseg in the environnement created.
+'''
+
 import subprocess
 import platform
 import os
 import sys
 
 
-def checkEnvConda(name:str,default_install_path:str):
+def checkEnvConda(name:str,default_install_path:str)->bool:
+    '''
+    check if the environnement 'name' exist in miniconda3. return bool
+    '''
+
     path_conda = os.path.join(default_install_path,"bin","conda")
     command_to_execute = [path_conda, "info", "--envs"]
 
@@ -24,7 +33,11 @@ def checkEnvConda(name:str,default_install_path:str):
     return False  # L'environnement Conda n'existe pas
 
 
-def createCondaEnv(name:str,default_install_path:str,path_conda:str,path_activate:str) :
+def createCondaEnv(name:str,default_install_path:str,path_conda:str,path_activate:str)->None :
+    ''''
+    create the environnement 'name' -> install shapeaxi and the good version of pytorch3d on it
+    '''
+
     command_to_execute = [path_conda, "create", "--name", name, "python=3.9", "-y"]  
     print(f"command_to_execute : {command_to_execute}")
     result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -75,7 +88,10 @@ print(version_str)
             print(f"Failed to execute second command : {command}")
             print(result.stderr)
 
-def checkUpgrade(name:str,path_activate:str):
+def checkUpgrade(name:str,path_activate:str)->None:
+    '''
+    do the upgrade for shapeaxi on the environnement 'name'
+    '''
 
     install_commands = [
     f"source {path_activate} {name} && pip install --upgrade shapeaxi"
@@ -93,8 +109,10 @@ def checkUpgrade(name:str,path_activate:str):
     
 
 def run(args):
-    print("ON EST DANS SEG2")
-    print(args)
+    '''
+    main function, checking if the environnement is created and running shapeaxi on the environnement
+    '''
+    
 
     user_home = os.path.expanduser("~")
     default_install_path = os.path.join(user_home, "miniconda3")
