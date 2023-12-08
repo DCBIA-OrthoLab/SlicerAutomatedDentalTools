@@ -7,7 +7,7 @@ import subprocess
 import platform
 import os
 import sys
-import urllib
+import urllib.request
 import shutil
 
 
@@ -117,6 +117,7 @@ def run(args):
     miniconda,default_install_path = checkMiniconda()
     
     if not miniconda :
+        print("ON INSTALL MINICONDA SUR WINDOWS")
         InstallConda(default_install_path)
 
     if system=="Windows" :
