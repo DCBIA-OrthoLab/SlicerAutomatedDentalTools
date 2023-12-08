@@ -59,6 +59,7 @@ from Flex_Reg_CLI.Method.orientation import orientation
 
 import tempfile
 import threading
+import queue
 
 from qt import (QGridLayout,
                 QHBoxLayout,
@@ -1344,9 +1345,9 @@ class WidgetParameter:
             return False
         
         except NoSegmentationSurf as error : 
-            
-            original_stdin = sys.stdin
-            sys.stdin = DummyFile()
+            print("OUI"*150)
+            # original_stdin = sys.stdin
+            # sys.stdin = DummyFile()
 
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Information)
@@ -1356,9 +1357,15 @@ class WidgetParameter:
             msg_box.setStandardButtons(QMessageBox.NoButton)
             msg_box.show()
 
-            queue = multiprocessing.Queue()
-            process = multiprocessing.Process(target=self.shapeaxi, args=(queue,))
+            # queue = multiprocessing.Queue()
+            # process = multiprocessing.Process(target=self.shapeaxi, args=())
+            # process.start()
+            # process.join()
+            
+            q = queue.Queue()
+            process = threading.Thread(target=self.shapeaxi, args=(q,))
             process.start()
+
 
             while process.is_alive():
                 slicer.app.processEvents()
@@ -1369,20 +1376,21 @@ class WidgetParameter:
                     elapsed_time = current_time - start_time
                     msg_box.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
 
-                if not queue.empty():
-                    message = queue.get()
+                if not q.empty():
+                    message = q.get()
                     break  
 
-            sys.stdin = original_stdin
-
+            if not q.empty():
+                message = q.get()
+                
             if message=="True":
                 self.viewScan()
-                msg_box.hide()
+                # msg_box.hide()
                 return True
             return False
             
 
-    def shapeaxi(self,queue):
+    def shapeaxi(self,q):
 
         python_executable = sys.executable
         current_file_path = os.path.abspath(__file__)
@@ -1397,12 +1405,12 @@ class WidgetParameter:
             print(result.stdout)
             print("result.stderr : ","*"*150)
             print(result.stderr)
-            queue.put("False")
+            q.put("False")
             # return False
         else:
             print(result.stdout)
             print("Environment created successfully.")
-            queue.put("True")
+            q.put("True")
             # self.viewScan()
             # return True
 

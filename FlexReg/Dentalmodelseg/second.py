@@ -90,7 +90,7 @@ def checkEnvConda(name:str,default_install_path:str)->bool:
 
 def createCondaEnvWsl(name:str) :
     '''
-    Create the new env to run ali_ios on wsl
+    Create the new env to run shapeaxi (dentalmodelseg) on wsl
     It will install all the require librairie
     '''
     path_conda = "~/miniconda3/bin/conda"
@@ -121,7 +121,7 @@ def createCondaEnvWsl(name:str) :
     path_pip=f"~/miniconda3/envs/{name}/bin/pip"
     path_activate = f"~/miniconda3/bin/activate"
     install_commands = [
-    f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install shapeaxi"
+    f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install shapeaxi\""
     ]
 
 
@@ -140,26 +140,23 @@ def createCondaEnvWsl(name:str) :
     else:
         print("Failed to create environment:", result.stderr)
        
-    python_script = """
-import sys
-import torch
-pyt_version_str = torch.__version__.split('+')[0].replace('.', '')
-version_str = ''.join([
-    f'py3{sys.version_info.minor}_cu',
-    torch.version.cuda.replace('.', ''),
-    f'_pyt{pyt_version_str}'
-])
-print(version_str)
-"""
 
-    # python_executable = os.path.join(default_install_path,"envs",name,"bin","python")
-    command = f"wsl -- bash -c \"~/miniconda3/envs/{name}/python -c {python_script}"
+    command = f"wsl -- bash -c \"~/miniconda3/envs/{name}/bin/python -c "
+    command = command + " 'import sys; import torch; pyt_version_str = torch.__version__.split(\\\"+\\\")[0].replace(\\\".\\\", \\\"\\\"); version_str = \\\"\\\".join([f\\\"py3{sys.version_info.minor}_cu\\\", torch.version.cuda.replace(\\\".\\\", \\\"\\\"), f\\\"_pyt{pyt_version_str}\\\"]); print(version_str)'\""
+
     result = subprocess.run(command, capture_output=True, text=True,errors='ignore')
-
-    if result.returncode != 0:
-        print(f"Error: {result.stderr}")
+    
+    command = f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{result.stdout}/download.html\""
+    command = command.replace('\n','')
+    print("command : ",command)
+    result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
+    if result.returncode == 0:
+        print(f"Successfully execute second command : {command}")
+        print(result.stdout)
     else:
-        print(f"Output:\n{result.stdout}")
+        print(f"Failed to execute second command : {command}")
+        print(result.stderr)
+
     
     
 
@@ -236,21 +233,77 @@ def checkUpgrade(name:str,path_activate:str)->None:
         else:
             print(f"Failed to execute first command : {command}")
             print(result.stderr)
+            
+def checkUpgradeWsl(name:str)->None:
+    '''
+    do the upgrade for shapeaxi on the environnement 'name'
+    '''
+    path_pip=f"~/miniconda3/envs/{name}/bin/pip"
+    path_activate = f"~/miniconda3/bin/activate"
+    install_commands = [
+    f"wsl -- bash -c \"source {path_activate} {name} && {path_pip} install shapeaxi\""
+    ]
+
+    for command in install_commands:
+        print("command : ",command)
+        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
+        if result.returncode == 0:
+            print(f"Successfully first command executed : {command}")
+            print(result.stdout)
+        else:
+            print(f"Failed to execute first command : {command}")
+            print(result.stderr)
     
+def windows_to_linux_path(windows_path):
+    '''
+    Convert a windows path to a path that wsl can read
+    '''
+    windows_path = windows_path.strip()
+
+    path = windows_path.replace('\\', '/')
+
+    if ':' in path:
+        drive, path_without_drive = path.split(':', 1)
+        path = "/mnt/" + drive.lower() + path_without_drive
+
+    return path
 
 def run(args):
     '''
     main function, checking if the environnement is created and running shapeaxi on the environnement
     '''
     system = platform.system()
+    print("ON EST DANS SECOND.PY")
     if system=="Windows":
         minicondawsl, default_install_path = checkMinicondaWsl()
         if not minicondawsl :
             install_miniconda_on_wsl()
+            print("ON INSTALL MINICONDA SUR WSL")
             
         env_exist_wsl = checkEnvCondaWsl(args['name_env'])
         if not env_exist_wsl :
             createCondaEnvWsl(args['name_env'])
+            
+        checkUpgradeWsl(args['name_env'])
+        
+        name = args['name_env']
+        file = args['file']
+        out = windows_to_linux_path(args['file'])
+        mount_point = windows_to_linux_path(args['mount_point'])
+        overwrite = args['overwrite']
+        path_activate = f"~/miniconda3/bin/activate"
+        command = f"wsl -- bash -c \"source {path_activate} {name} && dentalmodelseg --vtk {file} --out {out} --mount_point {mount_point} --overwrite {overwrite}\""
+        print("DERNIERE LIGNE DROITEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE")
+        print("command : ",command)
+        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='ignore')
+        if result.returncode == 0:
+            print(f"Successfully first command executed : {command}")
+            print(result.stdout)
+        else:
+            print(f"Failed to execute first command : {command}")
+            print(result.stderr)
+        
+        
             
     else : 
         user_home = os.path.expanduser("~")
