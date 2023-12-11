@@ -273,7 +273,6 @@ def run(args):
     main function, checking if the environnement is created and running shapeaxi on the environnement
     '''
     system = platform.system()
-    print("ON EST DANS SECOND.PY")
     if system=="Windows":
         minicondawsl, default_install_path = checkMinicondaWsl()
         if not minicondawsl :
