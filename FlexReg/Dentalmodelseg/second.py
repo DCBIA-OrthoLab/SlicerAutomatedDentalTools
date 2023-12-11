@@ -293,7 +293,6 @@ def run(args):
         overwrite = args['overwrite']
         path_activate = f"~/miniconda3/bin/activate"
         command = f"wsl -- bash -c \"source {path_activate} {name} && dentalmodelseg --vtk {file} --out {out} --mount_point {mount_point} --overwrite {overwrite}\""
-        print("DERNIERE LIGNE DROITEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE")
         print("command : ",command)
         result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='ignore')
         if result.returncode == 0:
