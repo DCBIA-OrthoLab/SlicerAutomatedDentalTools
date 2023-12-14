@@ -4,7 +4,6 @@ set(FOLDER_LIBRARY Methode)
 
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  ${FOLDER_LIBRARY}/__init__.py
   ${FOLDER_LIBRARY}/General_tools.py
 )
 
