@@ -19,10 +19,17 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 from functools import partial
 
-from Methode.IOS import Auto_IOS, Semi_IOS
-from Methode.CBCT import Semi_CBCT, Auto_CBCT
-from Methode.Methode import Methode
-from Methode.Progress import Display
+# from Methode import (
+#     IOS,
+#     CBCT,
+#     Methode,
+#     Progress,
+# )
+
+from ASO_Method.IOS import Auto_IOS, Semi_IOS
+from ASO_Method.CBCT import Semi_CBCT, Auto_CBCT
+from ASO_Method.Method import Methode
+from ASO_Method.Progress import Display
 
 
 class ASO(ScriptedLoadableModule):
