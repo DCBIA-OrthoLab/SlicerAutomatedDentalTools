@@ -1,5 +1,5 @@
-from Methode.Methode import Methode
-from Methode.Progress import DisplayASOCBCT, DisplayALICBCT
+from ASO_Method.Method import Methode
+from ASO_Method.Progress import DisplayASOCBCT, DisplayALICBCT
 import webbrowser
 import os
 import slicer
