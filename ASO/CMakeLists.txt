@@ -4,11 +4,11 @@ set(MODULE_NAME ASO)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  Methode/Methode.py
-  Methode/IOS.py
-  Methode/CBCT.py
-  Methode/Progress.py
-  Methode/IOS_utils/Reader.py
+  ASP_Method/Method.py
+  ASP_Method/IOS.py
+  ASP_Method/CBCT.py
+  ASP_Method/Progress.py
+  ASP_Method/IOS_utils/Reader.py
   )
 
 set(MODULE_PYTHON_RESOURCES
