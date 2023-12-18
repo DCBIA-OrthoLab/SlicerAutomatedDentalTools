@@ -4,13 +4,12 @@ set(MODULE_NAME ASO)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  ASO_Method/IOS_utils/Reader.py
-  ASO_Method/Method.py
-  ASO_Method/Progress.py 
-  ASO_Method/CBCT.py
-  ASO_Method/IOS.py
+  Methode/Methode.py
+  Methode/IOS.py
+  Methode/CBCT.py
+  Methode/Progress.py
+  Methode/IOS_utils/Reader.py
   )
- 
 
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png

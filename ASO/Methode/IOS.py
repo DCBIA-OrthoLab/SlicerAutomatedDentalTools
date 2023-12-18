@@ -1,6 +1,6 @@
-from ASO_Method.Method import Methode
-from ASO_Method.Progress import DisplayALIIOS, DisplayASOIOS, DisplayCrownSeg
-from ASO_Method.IOS_utils.Reader import ReadSurf, WriteSurf
+from Methode.Methode import Methode
+from Methode.Progress import DisplayALIIOS, DisplayASOIOS, DisplayCrownSeg
+from Methode.IOS_utils.Reader import ReadSurf, WriteSurf
 import slicer
 import webbrowser
 import glob
