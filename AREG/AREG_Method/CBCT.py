@@ -1,5 +1,5 @@
-from AREG_Methode.Methode import Methode
-from AREG_Methode.Progress import (
+from AREG_Method.Method import Method
+from AREG_Method.Progress import (
     DisplayAREGCBCT,
     DisplayAMASSS,
     DisplayALICBCT,
@@ -17,7 +17,7 @@ import qt
 import platform
 
 
-class Semi_CBCT(Methode):
+class Semi_CBCT(Method):
     def __init__(self, widget):
         super().__init__(widget)
         documentsLocation = qt.QStandardPaths.DocumentsLocation
