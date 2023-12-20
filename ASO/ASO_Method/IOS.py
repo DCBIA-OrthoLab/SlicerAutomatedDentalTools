@@ -1,4 +1,4 @@
-from ASO_Method.Method import Methode
+from ASO_Method.Method import Method
 from ASO_Method.Progress import DisplayALIIOS, DisplayASOIOS, DisplayCrownSeg
 from ASO_Method.IOS_utils.Reader import ReadSurf, WriteSurf
 import slicer
@@ -10,7 +10,7 @@ import shutil
 from itertools import chain
 
 
-class Auto_IOS(Methode):
+class Auto_IOS(Method):
     def __init__(self, widget):
         super().__init__(widget)
 

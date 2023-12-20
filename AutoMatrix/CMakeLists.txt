@@ -1,6 +1,6 @@
 #-----------------------------------------------------------------------------
 set(MODULE_NAME AutoMatrix)
-set(FOLDER_LIBRARY Methode)
+set(FOLDER_LIBRARY Method)
 
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
