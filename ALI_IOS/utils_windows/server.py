@@ -74,7 +74,7 @@ dic_cam = { 'O':{
                     np.array([1,-1,0.5])/linalg.norm([1,-1,0.5]),np.array([-1,-1,0.5])/linalg.norm([-1,-1,0.5]),
                     np.array([1,1,0.5])/linalg.norm([1,1,0.5]),np.array([-1,1,0.5])/linalg.norm([-1,1,0.5])
                     ),
-                
+
                 'U' : (np.array([1,0,0])/linalg.norm([1,0,0]),np.array([-1,0,0])/linalg.norm([-1,0,0]),
                     np.array([1,-1,0])/linalg.norm([1,-1,0]),np.array([-1,-1,0])/linalg.norm([-1,-1,0]),
                     np.array([1,1,0])/linalg.norm([1,1,0]),np.array([-1,1,0])/linalg.norm([-1,1,0]),
@@ -85,7 +85,7 @@ dic_cam = { 'O':{
                 )
             }
 
-    }   
+    }
 
 LOWER_DENTAL = ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7']
 
@@ -99,7 +99,7 @@ Upper = []
 
 for tooth in LOWER_DENTAL:
     for lmtype in TYPE_LM:
-        Lower.append(tooth+lmtype)   
+        Lower.append(tooth+lmtype)
 
 for tooth in UPPER_DENTAL:
     for lmtype in TYPE_LM:
@@ -139,11 +139,11 @@ dic_label = {
             "29" : LANDMARKS["L"][55:58],
             "30" : LANDMARKS["L"][60:63],
             "31" : LANDMARKS["L"][65:68]
-            
+
         },
 
     'C' : {
-        
+
         "15" : LANDMARKS["U"][3:5],
         "14" : LANDMARKS["U"][8:10],
         "13" : LANDMARKS["U"][13:15],
@@ -174,11 +174,11 @@ dic_label = {
         "30" : LANDMARKS["L"][63:65],
         "31" : LANDMARKS["L"][68:70]
         }
-        
+
     }
 
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 LABEL_L = ["18","19","20","21","22","23","24","25","26","27","28","29","30","31"]
@@ -201,22 +201,22 @@ MODELS_DICT = {
 
 
 def GenPhongRenderer(image_size,blur_radius,faces_per_pixel,device):
-    
+
     cameras = FoVPerspectiveCameras(znear=0.01,zfar = 10, fov= 90, device=device) # Initialize a perspective camera.
 
-    raster_settings = RasterizationSettings(        
-        image_size=image_size, 
-        blur_radius=blur_radius, 
-        faces_per_pixel=faces_per_pixel, 
+    raster_settings = RasterizationSettings(
+        image_size=image_size,
+        blur_radius=blur_radius,
+        faces_per_pixel=faces_per_pixel,
     )
 
-    lights = PointLights(device=device) # light in front of the object. 
+    lights = PointLights(device=device) # light in front of the object.
 
     rasterizer = MeshRasterizer(
-            cameras=cameras, 
+            cameras=cameras,
             raster_settings=raster_settings
         )
-    
+
     b = blending.BlendParams(background_color=(0,0,0))
     phong_renderer = MeshRenderer(
         rasterizer=rasterizer,
@@ -241,7 +241,7 @@ def ReadSurf(fileName):
         reader = vtk.vtkXMLPolyDataReader()
         reader.SetFileName(fileName)
         reader.Update()
-        surf = reader.GetOutput()    
+        surf = reader.GetOutput()
     elif extension == ".stl":
         reader = vtk.vtkSTLReader()
         reader.SetFileName(fileName)
@@ -269,10 +269,10 @@ def ReadSurf(fileName):
             for i in range(actors.GetNumberOfItems()):
                 surfActor = actors.GetNextActor()
                 append.AddInputData(surfActor.GetMapper().GetInputAsDataSet())
-            
+
             append.Update()
             surf = append.GetOutput()
-            
+
         else:
             reader = vtk.vtkOBJReader()
             reader.SetFileName(fileName)
@@ -306,7 +306,7 @@ def ScaleSurf(surf, mean_arr = None, scale_factor = None):
         p = shapedatapoints.GetPoint(i)
         shape_points.append(p)
     shape_points = np.array(shape_points)
-    
+
     #centering points of the shape
     if mean_arr is None:
         mean_arr = np.array(mean_v)
@@ -324,7 +324,7 @@ def ScaleSurf(surf, mean_arr = None, scale_factor = None):
 
     #assigning scaled points back to shape
     for i in range(shapedatapoints.GetNumberOfPoints()):
-       shapedatapoints.SetPoint(i, shape_points_scaled[i])    
+       shapedatapoints.SetPoint(i, shape_points_scaled[i])
 
     surf.SetPoints(shapedatapoints)
 
@@ -337,10 +337,10 @@ def ComputeNormals(surf):
     normals.ComputePointNormalsOn();
     normals.SplittingOff();
     normals.Update()
-    
+
     return normals.GetOutput()
 
-def GetSurfProp(surf_unit, surf_mean, surf_scale):     
+def GetSurfProp(surf_unit, surf_mean, surf_scale):
     surf = ComputeNormals(surf_unit)
     color_normals = ToTensor(dtype=torch.float32, device=DEVICE)(vtk_to_numpy(GetColorArray(surf, "Normals"))/255.0)
     verts = ToTensor(dtype=torch.float32, device=DEVICE)(vtk_to_numpy(surf.GetPoints().GetData()))
@@ -358,17 +358,17 @@ def GetSurfProp(surf_unit, surf_mean, surf_scale):
 
     #print("type(surf.GetPointData()) :",type(surf.GetPointData()))
     #print("type(...GetScalars) :",type(surf.GetPointData().GetScalars("PredictedID")))
-    
+
     '''
     With a file that works
     type(...GetScalars) : <class 'vtkmodules.vtkCommonCore.vtkTypeInt64Array'>
-    
+
     with a file that isn't working
     type(...GetScalars) : <class 'NoneType'>
 
     AttributeError: 'NoneType' object has no attribute 'GetDataType'
     '''
-        
+
     return verts.unsqueeze(0), faces.unsqueeze(0), color_normals.unsqueeze(0), region_id.unsqueeze(0)
 
 
@@ -407,7 +407,7 @@ def GenControlePoint(groupe_data,landmarks_selected):
     true = True
     id = 0
     for landmark,data in groupe_data.items():
-        if landmark in landmarks_selected:            
+        if landmark in landmarks_selected:
             id+=1
             controle_point = {
                 "id": str(id),
@@ -485,13 +485,13 @@ def TradLabel(lst_teeth):
                 dic_teeth['Lower'].append(dico_trad[tooth])
             else:
                 dic_teeth['Upper'].append(dico_trad[tooth])
-        
+
     return dic_teeth
 
 class Agent:
     def __init__(
         self,
-        renderer, 
+        renderer,
         renderer2,
         camera_position,
         radius = 1,
@@ -507,9 +507,9 @@ class Agent:
 
 
     def position_agent(self, text, vert, label):
-   
+
         final_pos = torch.empty((0)).to(DEVICE)
-        
+
         for mesh in range(len(text)):
             if int(label) in text[mesh]:
                 index_pos_land = (text[mesh]==int(label)).nonzero(as_tuple=True)[0]
@@ -525,7 +525,7 @@ class Agent:
         # print(self.positions)
         return self.positions
 
-    
+
     def GetView(self,meshes,rend=False):
         spc = self.positions
         img_lst = torch.empty((0)).to(DEVICE)
@@ -553,7 +553,7 @@ class Agent:
                 y = ( yr + yg + yb).to(torch.float32)
 
                 y = y.permute(0,3,1,2)
-              
+
             else:
                 renderer = self.renderer
                 images = self.renderer(meshes_world=meshes.clone(), R=R, T=T.to(DEVICE))
@@ -566,9 +566,9 @@ class Agent:
 
             img_lst = torch.cat((img_lst,y.unsqueeze(0)),dim=0)
         img_batch =  img_lst.permute(1,0,2,3,4)
-        
+
         return img_batch
-    
+
     def get_view_rasterize(self,meshes):
         spc = self.positions
         img_lst = torch.empty((0)).to(DEVICE)
@@ -579,15 +579,15 @@ class Agent:
             current_cam_pos = spc + sp_i
             R = look_at_rotation(current_cam_pos, at=spc, device=DEVICE)  # (1, 3, 3)
             T = -torch.bmm(R.transpose(1, 2), current_cam_pos[:, :, None])[:, :, 0]  # (1, 3)
-              
+
             renderer = self.renderer
             images = renderer(meshes_world=meshes.clone(), R=R, T=T.to(DEVICE))
             images = images.permute(0,3,1,2)
-            images = images[:,:-1,:,:]            
+            images = images[:,:-1,:,:]
             #pix_to_face, zbuf, bary_coords, dists = renderer.rasterizer(meshes.clone())
             temp = renderer.rasterizer(meshes.clone())
             pix_to_face, zbuf = temp.pix_to_face, temp.zbuf
-            
+
             '''< Class : pytorch3d.renderer.mesh.rasterizer.Fragments >'''
             '''TypeError: cannot unpack non-iterable Fragments object'''
             zbuf = zbuf.permute(0, 3, 1, 2)
@@ -596,8 +596,8 @@ class Agent:
             img_lst = torch.cat((img_lst,y.unsqueeze(0)),dim=0)
             tens_pix_to_face = torch.cat((tens_pix_to_face,pix_to_face.unsqueeze(0)),dim=0)
         img_batch =  img_lst.permute(1,0,2,3,4)
-    
-        return img_batch , tens_pix_to_face  
+
+        return img_batch , tens_pix_to_face
 
 class MaskRenderer(nn.Module):
 
@@ -634,7 +634,7 @@ class MaskRenderer(nn.Module):
             raise ValueError(msg)
         texels = meshes.sample_textures(fragments)
         blend_params = kwargs.get("blend_params", self.blend_params)
-        colors = texels   
+        colors = texels
         images = hard_rgb_blend(colors, fragments, blend_params)
         return images
 
@@ -642,7 +642,7 @@ class MaskRenderer(nn.Module):
 
 
 
-        
+
 
 def running(args):
 # result = x * x
@@ -655,12 +655,12 @@ def running(args):
 
 
 
-    
-    
+
+
     # print(LANDMARKS)
-    
+
     # print(dic_label['O'])
-    
+
 
     # print(MODELS_DICT['O']['O'])
     dic_teeth = TradLabel(args["teeth"])
@@ -683,11 +683,11 @@ def running(args):
             else:
                 available_models[model_id]['Upper'] = (img_fn)
     print('available_models :',available_models)
-    
+
     # for model_id in MODELS_DICT.keys():
     #     if model_id in args['lm_type']:
     #         if model_id not in models_to_use.keys():
-    #             models_to_use[model_id] = {} 
+    #             models_to_use[model_id] = {}
     #         if 'Lower' in dic_teeth.keys():
     #             models_to_use[model_id]['Lower'] = available_models[model_id]['Lower']
     #         if 'Upper' in dic_teeth.keys():
@@ -700,7 +700,7 @@ def running(args):
                     if model_id not in models_to_use.keys():
                         models_to_use[model_id] = available_models[model_id]
                 # if model_id not in models_to_use.keys():
-                #     models_to_use[model_id] = {} 
+                #     models_to_use[model_id] = {}
                 # if 'Lower' in dic_teeth.keys():
                 #     models_to_use[model_id]['Lower'] = available_models[model_id]['Lower']
                 # if 'Upper' in dic_teeth.keys():
@@ -708,11 +708,11 @@ def running(args):
 
     print('models_to_use :',models_to_use)
 
-    
+
     # lst_label = args['landmarks']
     data = args['input']
     dic_patients = {}
-    if os.path.isfile(data):  
+    if os.path.isfile(data):
         print("Loading scan :", data)
         vtkfile = data
         basename = os.path.basename(data).split('.')[0]
@@ -769,8 +769,8 @@ def running(args):
                 else:
                     model = models_to_use[models_type]['Upper']
                     camera_position = dic_cam[models_type]['U']
-                
-                for label in lst_teeth:         
+
+                for label in lst_teeth:
                     print("Loading model :", model, "for patient :", patient_id, "label :", label)
                     phong_renderer,mask_renderer = GenPhongRenderer(args['image_size'],args['blur_radius'],args['faces_per_pixel'],DEVICE)
 
@@ -781,22 +781,22 @@ def running(args):
                         camera_position = camera_position
                     )
 
-                    SURF = ReadSurf(path_vtk)    
+                    SURF = ReadSurf(path_vtk)
                     surf_unit, mean_arr, scale_factor= ScaleSurf(SURF)
                     (V, F, CN, RI) = GetSurfProp(surf_unit, mean_arr, scale_factor)
-            
+
                     if int(label) in RI.squeeze(0):
                         agent.position_agent(RI,V,label)
                         textures = TexturesVertex(verts_features=CN)
                         meshe = Meshes(
-                                    verts=V,   
-                                    faces=F, 
+                                    verts=V,
+                                    faces=F,
                                     textures=textures
                                     ).to(DEVICE)
 
                         images_model , tens_pix_to_face_model=  agent.get_view_rasterize(meshe) #[batch,num_ima,channels,size,size] torch.Size([1, 2, 4, 224, 224])
                         tens_pix_to_face_model = tens_pix_to_face_model.permute(1,0,4,2,3) #tens_pix_to_face : torch.Size([1, 2, 1, 224, 224])
-                            
+
                         net = UNet(
                             spatial_dims=2,
                             in_channels=4,
@@ -805,7 +805,7 @@ def running(args):
                             strides=(2, 2, 2, 2, 2),
                             num_res_units=4
                         ).to(DEVICE)
-                        
+
                         inputs = torch.empty((0)).to(DEVICE)
                         for i,batch in enumerate(images_model):
                             inputs = torch.cat((inputs,batch.to(DEVICE)),dim=0) #[num_im*batch,channels,size,size]
@@ -817,41 +817,41 @@ def running(args):
                         post_pred = AsDiscrete(argmax=True, to_onehot=True, num_classes=4)
 
 
-                        val_pred_outputs_list = decollate_batch(images_pred)                
+                        val_pred_outputs_list = decollate_batch(images_pred)
                         val_pred_outputs_convert = [
                             post_pred(val_pred_outputs_tensor) for val_pred_outputs_tensor in val_pred_outputs_list
                         ]
                         val_pred = torch.empty((0)).to(DEVICE)
                         for image in images_pred:
                             val_pred = torch.cat((val_pred,post_pred(image).unsqueeze(0).to(DEVICE)),dim=0)
-                                
-                        
+
+
                         pred_data = images_pred.detach().cpu().unsqueeze(0).type(torch.int16) #torch.Size([1, 2, 2, 224, 224])
                         pred_data = torch.argmax(pred_data, dim=2).unsqueeze(2)
-                        
-                        
-            
+
+
+
                         # recover where there is the landmark in the image
                         index_label_land_r = (pred_data==1.).nonzero(as_tuple=False) #torch.Size([6252, 5])
                         index_label_land_g = (pred_data==2.).nonzero(as_tuple=False) #torch.Size([6252, 5])
                         index_label_land_b = (pred_data==3.).nonzero(as_tuple=False) #torch.Size([6252, 5])
 
-                        # recover the face in my mesh 
+                        # recover the face in my mesh
                         num_faces_r = []
                         num_faces_g = []
                         num_faces_b = []
-                    
+
                         for index in index_label_land_r:
-                            num_faces_r.append(tens_pix_to_face_model[index[0],index[1],index[2],index[3],index[4]]) 
+                            num_faces_r.append(tens_pix_to_face_model[index[0],index[1],index[2],index[3],index[4]])
                         for index in index_label_land_g:
                             num_faces_g.append(tens_pix_to_face_model[index[0],index[1],index[2],index[3],index[4]])
                         for index in index_label_land_b:
-                            num_faces_b.append(tens_pix_to_face_model[index[0],index[1],index[2],index[3],index[4]]) 
-                        
-                        
+                            num_faces_b.append(tens_pix_to_face_model[index[0],index[1],index[2],index[3],index[4]])
+
+
                         last_num_faces_r = RemoveExtraFaces(F,num_faces_r,RI,int(label))
                         last_num_faces_g = RemoveExtraFaces(F,num_faces_g,RI,int(label))
-                        last_num_faces_b = RemoveExtraFaces(F,num_faces_b,RI,int(label))       
+                        last_num_faces_b = RemoveExtraFaces(F,num_faces_b,RI,int(label))
 
                         dico_rgb = {}
                         if models_type == "O":
@@ -859,17 +859,17 @@ def running(args):
                             dico_rgb[LABEL[str(label)][MODELS_DICT['O']['O']]] = last_num_faces_r
                             dico_rgb[LABEL[str(label)][MODELS_DICT['O']['MB']]] = last_num_faces_g
                             dico_rgb[LABEL[str(label)][MODELS_DICT['O']['DB']]] = last_num_faces_b
-                        
+
                         else:
                             dico_rgb[LABEL[str(label)][MODELS_DICT['C']['CL']]] = last_num_faces_r
                             dico_rgb[LABEL[str(label)][MODELS_DICT['C']['CB']]] = last_num_faces_g
-                        
-                        
-                        
+
+
+
                         locator = vtk.vtkOctreePointLocator()
                         locator.SetDataSet(surf_unit)
                         locator.BuildLocator()
-                        
+
                         for land_name,list_face_ids in dico_rgb.items():
                             print('land_name :',land_name)
                             list_face_id=[]
@@ -877,7 +877,7 @@ def running(args):
                                 faces_int = int(faces.item())
                                 juan = F[0][faces_int]
                                 list_face_id += [int(juan[0].item()) , int(juan[1].item()) , int(juan[2].item())]
-                            
+
                             vert_coord = 0
                             for vert in list_face_id:
                                 vert_coord += V[0][vert]
@@ -889,12 +889,12 @@ def running(args):
 
                                 upscale_landmark_pos = Upscale(closest_landmark_pos,mean_arr,scale_factor)
                                 final_landmark_pos = upscale_landmark_pos.detach().cpu().numpy()
-                                
+
                                 coord_dic = {"x":final_landmark_pos[0],"y":final_landmark_pos[1],"z":final_landmark_pos[2]}
-                                
+
                                 if jaw not in group_data.keys():
                                     group_data[jaw] = {}
-                                
+
                                 group_data[land_name]=coord_dic
 
                     print(f"""<filter-progress>{1}</filter-progress>""")
@@ -902,7 +902,7 @@ def running(args):
                     time.sleep(0.5)
                     print(f"""<filter-progress>{0}</filter-progress>""")
                     sys.stdout.flush()
-                    
+
                 # print("GROUP_DATA")
                 # print(group_data)
                 if len(group_data.keys()) > 0:
@@ -918,9 +918,9 @@ def running(args):
                         # print("Output dir :",outputdir)
                         if not os.path.exists(outputdir):
                             os.makedirs(outputdir)
-                    
+
                     else:
-                        outputdir = out_path    
+                        outputdir = out_path
 
                     WriteJson(lm_lst,os.path.join(outputdir,f"{patient_id}_{jaw}_{models_type}_Pred.json"))
 
@@ -947,12 +947,12 @@ def windows_to_linux_path(windows_path):
         path = "/mnt/" + drive.lower() + path_without_drive
 
     return path
-        
+
 
 if __name__ == "__main__":
-  
+
     if len(sys.argv) > 3 :
-    
+
         args = {
         "input": windows_to_linux_path(sys.argv[1]),
         "dir_models": windows_to_linux_path(sys.argv[2]),
@@ -966,6 +966,6 @@ if __name__ == "__main__":
         "faces_per_pixel": 1,
         # "sphere_radius": 0.3,
     }
-        
+
         running(args)
 

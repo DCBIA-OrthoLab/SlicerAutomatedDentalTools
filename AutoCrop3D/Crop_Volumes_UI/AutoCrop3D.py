@@ -117,7 +117,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = None
         self._parameterNode = None
         self._updatingGUIFromParameterNode = False
-        
+
         self.startTime = time.time()
 
     def setup(self):
@@ -147,7 +147,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SearchPathButtonOut.connect("clicked(bool)", partial(self.SearchPath,"Output"))
         #self.ui.TestFiles.connect("clicked(bool)",self.Autofill)
         #self.ui.chooseType.connect("clicked(bool)", self.SearchPath)
-       
+
 
         # These connections ensure that we update parameter node when scene is closed
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
@@ -155,7 +155,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
         # (in the selected parameter node).
-        
+
 
         # Buttons
         self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
@@ -167,7 +167,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.log_path = os.path.join(slicer.util.tempDirectory(), 'process.log')
         self.time_log = 0
         self.cliNode = None
-        self.installCliNode = None  
+        self.installCliNode = None
         self.progress=0
 
         self.ui.progressBar.setVisible(False)
@@ -175,9 +175,9 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setTextVisible(True)
         self.ui.label_4.setVisible(False)
         self.ui.label_time.setVisible(False)
-        
 
-       
+
+
 
     def Autofill(self):
         self.ui.editPathF.setText("/home/luciacev/Desktop/Jeanne/DJD_Data/Input")
@@ -269,10 +269,10 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._updatingGUIFromParameterNode = True
 
         # Update node selectors and sliders
-        
+
 
         # Update buttons states and tooltips
-        
+
 
         # All the GUI updates are done
         self._updatingGUIFromParameterNode = False
@@ -288,7 +288,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
 
-        
+
 
         self._parameterNode.EndModify(wasModified)
 
@@ -306,7 +306,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             self.logic = AutoCrop3DLogic(self.ui.editPathF.text,
                                             self.ui.editPathVolume.text,
-                                            self.ui.editPathOutput.text, 
+                                            self.ui.editPathOutput.text,
                                             self.ui.editSuffix.text,
                                             self.log_path)
 
@@ -314,12 +314,12 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.logic.process()
             self.addObserver(self.logic.cliNode,vtk.vtkCommand.ModifiedEvent,self.onProcessUpdate)
             self.onProcessStarted()
-    
+
 
         ## A VOIR l'utilite ##
         #self.addObserver(self.logic.cliNode,vtk.vtkCommand.ModifiedEvent,self.onProcessUpdate)
         #self.onProcessStarted()
-            
+
 
 
         # with slicer.util.tryWithErrorDisplay("Failed to compute results.", waitCursor=True):
@@ -333,12 +333,12 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #         # If additional output volume is selected then result with inverted threshold is written there
         #         self.logic.process(self.ui.inputSelector.currentNode(), self.ui.invertedOutputSelector.currentNode(),
         #                            self.ui.imageThresholdSliderWidget.value, not self.ui.invertOutputCheckBox.checked, showResult=False)
-    
 
-    def onProcessStarted(self):    
+
+    def onProcessStarted(self):
         self.nbFiles = 0
         for key,data in self.list_patient.items() :
-            self.nbFiles += len(self.list_patient[key]) 
+            self.nbFiles += len(self.list_patient[key])
 
         self.ui.progressBar.setValue(0)
         self.progress = 0
@@ -348,19 +348,19 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setEnabled(True)
         self.ui.progressBar.setHidden(False)
         self.ui.progressBar.setTextVisible(True)
-    
+
 
     def onProcessUpdate(self,caller,event):
     # check log file
         if os.path.isfile(self.log_path):
-            
+
             time_progress = os.path.getmtime(self.log_path)
             if time_progress != self.time_log and self.progress < self.nbFiles:
                 # if progress was made
                 self.time_log = time_progress
                 self.progress += 1
                 progressbar_value = round((self.progress-1) /self.nbFiles * 100,2)
-                
+
                 if progressbar_value < 100 :
                     self.ui.progressBar.setValue(progressbar_value)
                     self.ui.progressBar.setFormat(str(progressbar_value)+"%")
@@ -368,8 +368,8 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     self.ui.progressBar.setValue(99)
                     self.ui.progressBar.setFormat("99%")
                 self.ui.label_4.setText("Number of processed files : "+str(self.progress-1)+"/"+str(self.nbFiles))
-                
-                
+
+
 
         if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
             # process complete
@@ -396,13 +396,13 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 #qt.QMessageBox.information(self.parent,"Matrix applied with sucess")
                 msg = qt.QMessageBox()
                 msg.setIcon(qt.QMessageBox.Information)
-            
+
                 # setting message for Message Box
                 msg.setText("Scan(s) cropped with success")
-                
+
                 # setting Message box window title
                 msg.setWindowTitle("End of Process")
-                
+
                 # declaring buttons on Message Box
                 msg.setStandardButtons(qt.QMessageBox.Ok)
                 msg.exec_()
@@ -432,7 +432,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if self.ui.chooseType.currentIndex == 0:
                 path_folder = qt.QFileDialog.getOpenFileName(self.parent,'Open a file')
 
-            else:   
+            else:
                 path_folder = qt.QFileDialog.getExistingDirectory(
                     self.parent, "Select a scan folder for Input"
                 )
@@ -450,7 +450,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             )
             self.ui.editPathOutput.setText(path_folder)
 
-    
+
         #self.ValidApplyButton()
 
 
@@ -467,23 +467,23 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 '.nrrd.gz' : ['path/c.nrrd']
             }
 
-        Input : Path of the folder/file, list of the type (str) of file we need 
+        Input : Path of the folder/file, list of the type (str) of file we need
         Output : dictionnary with the key and the associated path
         """
-        
+
         arguments=[]
-        
+
         for arg in args:
             if type(arg) == list:
                 arguments.extend(arg)
-                
+
             else:
                 arguments.append(arg)
-                
+
         #result = {key: [i for i in glob.iglob(os.path.join(path,'**','*'),recursive=True),if i.endswith(key)] for key in arguments}
-       
+
         result = {}  # Initialize an empty dictionary
-        
+
         for key in arguments:
 
             files_matching_key = [] # empty list 'files_matching_key' to store the file paths that end with the current 'key'
@@ -492,31 +492,31 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if os.path.isdir(true_path):
                 # Use 'glob.iglob' to find all file paths ending with the current 'key' in the 'path' directory
                 # and store the generator object returned by 'glob.iglob' in a variable 'files_generator'
-                
+
                 files_list = glob.iglob(os.path.join(true_path,'**', '*'),recursive=True)
                 for i in files_list:
-            
+
                     if i.endswith(key):
                         # If the file path ends with the current 'key', append it to the 'files_matching_key' list
                         files_matching_key.append(i)
-                    
-                    
+
+
 
             else :  # if a file is choosen
                 if true_path.endswith(key) :
                     files_matching_key.append(path)
-            
+
             # Assign the resulting list to the 'key' in the 'result' dictionary
             result[key] = files_matching_key
-       
+
         return result
-        
+
 
     def CheckInput(self):
         """
-        function to check all input and put a pop "error" window 
+        function to check all input and put a pop "error" window
         Input: /
-        Output: Boolean , Dictionnary with the key and path of the files 
+        Output: Boolean , Dictionnary with the key and path of the files
         """
         warning_text = ""
         if self.ui.editPathF.text=="":
@@ -524,17 +524,17 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 warning_text = warning_text + "Enter a Folder in input" + "\n"
             else:
                 warning_text = warning_text + "Enter a File in input (.nii.gz,.nrrd.gz,.gipl.gz)" + "\n"
-    
+
         if self.ui.editPathVolume.text=="":
-            
+
             warning_text = warning_text + "Choose a ROI file (.json)" + "\n"
-            
+
         else :
             self.list_patient=self.Search(self.ui.editPathF.text,".nii.gz",".nrrd.gz",".gipl.gz") #dictionnary with all path of file (working on folder or file)
-           
+
             isfile = 0
             for key,data in self.list_patient.items() :
-                
+
                 if len(self.list_patient[key])!=0 :
                     isfile = 1 # There are good types of files in the folder
 
@@ -548,10 +548,10 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
         if self.ui.editPathOutput.text=="":
-            
+
             warning_text = warning_text + "Enter the output Folder" + "\n"
-           
-    
+
+
         if warning_text=="":
             result = True
             return result
@@ -603,16 +603,16 @@ class AutoCrop3DLogic(ScriptedLoadableModuleLogic):
         Run the processing algorithm.
         """
         parameters = {}
-        
+
         parameters ["scan_files_path"] = self.scan_files_path
         parameters ["path_ROI_file"] = self.path_ROI_file
         parameters ["output_path"] = self.output_path
         parameters ["suffix"] = self.suffix
         parameters ["logPath"] = self.logPath
-        
+
         flybyProcess = slicer.modules.autocrop3d_cli
-        self.cliNode = slicer.cli.run(flybyProcess,None, parameters)  
-        
+        self.cliNode = slicer.cli.run(flybyProcess,None, parameters)
+
         return flybyProcess
 
     # def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
@@ -652,7 +652,7 @@ class AutoCrop3DLogic(ScriptedLoadableModuleLogic):
 # AutoCrop3DTest
 #
 
-class AutoCrop3DTest(ScriptedLoadableModuleTest):       
+class AutoCrop3DTest(ScriptedLoadableModuleTest):
     """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:

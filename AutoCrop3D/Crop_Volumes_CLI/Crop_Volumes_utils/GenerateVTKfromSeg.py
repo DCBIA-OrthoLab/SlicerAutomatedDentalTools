@@ -22,7 +22,7 @@ def convertNiftiToVTK(input_path, output_path ) -> None:
         output_filename = output_path
 
         # Read nifti file and convert it to numpy array
-        img = sitk.ReadImage(input_filename) 
+        img = sitk.ReadImage(input_filename)
         img_arr = sitk.GetArrayFromImage(img)
 
         # Read all the labels present in the image
@@ -32,14 +32,14 @@ def convertNiftiToVTK(input_path, output_path ) -> None:
                         present_labels.append(label+1)
 
         label = np.max(img_arr)
-       
+
         paddedImage_filename = padding(img)
 
         # Read the original Nifti image
         surf = vtk.vtkNIFTIImageReader()
         surf.SetFileName(paddedImage_filename)
         surf.Update()
-        
+
         # Apply filter to create an isosurface from the input image
         # convert it to a 3D surfac representation
         dmc = vtk.vtkDiscreteMarchingCubes()
@@ -58,11 +58,11 @@ def convertNiftiToVTK(input_path, output_path ) -> None:
         model = SmoothPolyDataFilter.GetOutput()
 
         # Coloring the VTK according to labels
-        color = vtk.vtkUnsignedCharArray() 
-        color.SetName("Colors") 
-        color.SetNumberOfComponents(3) 
+        color = vtk.vtkUnsignedCharArray()
+        color.SetName("Colors")
+        color.SetNumberOfComponents(3)
         color.SetNumberOfTuples( model.GetNumberOfCells() )
-            
+
         for i in range(model.GetNumberOfCells()):
             color_tup=LABEL_COLORS[label]
             color.SetTuple(i, color_tup)
@@ -79,10 +79,10 @@ def padding(input_image) :
     Input: Image
     Output: File Name of the padded Image
     """
-    # Size of the padding 
+    # Size of the padding
     # Add 50 pixels around each dimension X,Y and 10 around Z
-    padding_size = [50, 50, 10] 
-   
+    padding_size = [50, 50, 10]
+
     padded_image = sitk.ConstantPad(input_image, padding_size, [0]*input_image.GetDimension())
     # Save the image
     filename = "image_padded.nii.gz"

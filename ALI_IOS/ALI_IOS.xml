@@ -14,7 +14,7 @@
 
     <label>IO</label>
     <description><![CDATA[Input/output parameters]]></description>
-    
+
     <string>
       <name>input</name>
       <label>input</label>
@@ -65,21 +65,21 @@
       <description>Radius of the sphere with all the cameras </description>
     </float>
      -->
-<!-- 
+<!--
     <int>
       <name>image_size</name>
       <label>image_size</label>
       <index>10</index>
       <description> size of the 2D images </description>
-    </int>    
-    
+    </int>
+
     <int>
       <name>blur_radius</name>
       <label>blur_radius</label>
       <index>11</index>
       <description> Blur parameter </description>
-    </int>    
-    
+    </int>
+
     <int>
       <name>faces_per_pixel</name>
       <label>faces_per_pixel</label>

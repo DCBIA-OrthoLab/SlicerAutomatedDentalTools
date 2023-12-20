@@ -5,7 +5,7 @@ import os,json
 #import multiprocessing as mp
 
 def Crop(ScanList, InputPath, ROI_Path, OutputPath, suffix_namefile ):
-    ''' 
+    '''
     !!! UNUSED  !!! This code is directly in the CLI of the extension
 
     Function to crop Scan with a Region Of Interest
@@ -14,13 +14,13 @@ def Crop(ScanList, InputPath, ROI_Path, OutputPath, suffix_namefile ):
 
     Output: Cropped Scan in the folder OutputPath
     '''
-    
+
     for key,data in ScanList.items():
         for patient_path in data:
             patient = os.path.basename(patient_path).split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0]
 
             ScanOutPath = OutputPath+"/"+patient+suffix_namefile+key
-            
+
             img = sitk.ReadImage(patient_path)
             # size = np.array(img.GetSize())
             # print("size of the image: ",size)
@@ -45,7 +45,7 @@ def Crop(ScanList, InputPath, ROI_Path, OutputPath, suffix_namefile ):
             crop_image = img[Lower[0]:Upper[0],
                             Lower[1]:Upper[1],
                             Lower[2]:Upper[2]]
-            
+
             try:
                 sitk.WriteImage(crop_image,ScanOutPath)
             except:
