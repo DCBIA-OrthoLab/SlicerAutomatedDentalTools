@@ -23,6 +23,7 @@ import subprocess
 
 import io
 import multiprocessing
+from CondaSetUp import  CondaSetUpCall
 
 # try:
 #     import pytorch3d
@@ -1345,28 +1346,121 @@ class WidgetParameter:
             return False
         
         except NoSegmentationSurf as error : 
-            print("OUI"*150)
+            # print("OUI"*150)
             # original_stdin = sys.stdin
             # sys.stdin = DummyFile()
 
+            # msg_box = QMessageBox()
+            # msg_box.setIcon(QMessageBox.Information)
+            # start_time = time.time()
+            # previous_time = start_time
+            # msg_box.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: 0.0s")
+            # msg_box.setStandardButtons(QMessageBox.NoButton)
+            # msg_box.show()
+
+            # # queue = multiprocessing.Queue()
+            # # process = multiprocessing.Process(target=self.shapeaxi, args=())
+            # # process.start()
+            # # process.join()
+            
+            # q = queue.Queue()
+            # process = threading.Thread(target=self.shapeaxi, args=(q,))
+            # process.start()
+
+
+            # while process.is_alive():
+            #     slicer.app.processEvents()
+            #     current_time = time.time()
+            #     gap=current_time-previous_time
+            #     if gap>0.3:
+            #         previous_time = current_time
+            #         elapsed_time = current_time - start_time
+            #         msg_box.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+
+            #     if not q.empty():
+            #         message = q.get()
+            #         break  
+
+            # if not q.empty():
+            #     message = q.get()
+            sucess_segmentation = self.shapeaxi()
+            if sucess_segmentation:
+                self.viewScan()
+                # msg_box.hide()
+                return True
+            return False
+            
+
+    def shapeaxi(self):
+
+        # python_executable = sys.executable
+        # current_file_path = os.path.abspath(__file__)
+        # current_directory = os.path.dirname(current_file_path)
+        # path_next_file = os.path.join(current_directory,'Dentalmodelseg','first.py') #Next files to call
+        # command_to_execute = [python_executable,path_next_file,os.path.basename(str(self.lineedit.text)),str(self.lineedit.text),"true",os.path.dirname(str(self.lineedit.text)),"shapeAxi"]
+
+        # result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,errors='ignore')
+        # if result.returncode != 0:
+        #     print(f"Error creating the environment. Return code: {result.returncode}")
+        #     print("result.stdout : ","*"*150)
+        #     print(result.stdout)
+        #     print("result.stderr : ","*"*150)
+        #     print(result.stderr)
+        #     q.put("False")
+        #     # return False
+        # else:
+        #     print(result.stdout)
+        #     print("Environment created successfully.")
+        #     q.put("True")
+        #     # self.viewScan()
+        #     # return True
+              
+          
+        conda = CondaSetUpCall()
+        path_conda = conda.getCondaPath()
+        if path_conda == "None":
+          slicer.util.infoDisplay("Path to conda is no set up. Open the module SlicerConda to do it",windowTitle="Can't found conda path")
+        else :
+          name_env = "shapeAxi"
+          flag = True
+          if not conda.condaTestEnv(name_env):
+            userResponse = slicer.util.confirmYesNoDisplay("Your file is not segmented.\nThe environnement to run the segmentation doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+            if userResponse :
+              msg_box = QMessageBox()
+              msg_box.setIcon(QMessageBox.Information)
+              start_time = time.time()
+              previous_time = start_time
+              msg_box.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: 0.0s")
+              msg_box.setStandardButtons(QMessageBox.NoButton)
+              msg_box.show()
+
+              process = threading.Thread(target=conda.condaCreateEnv, args=(name_env,"3.9",["shapeaxi"],))
+              process.start()
+
+              while process.is_alive():
+                  slicer.app.processEvents()
+                  current_time = time.time()
+                  gap=current_time-previous_time
+                  if gap>0.3:
+                      previous_time = current_time
+                      elapsed_time = current_time - start_time
+                      msg_box.setText(f"Your file is not segmented.\nCreation of the new environment for the segmentation. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+              else :
+                flag = False
+
+          if flag :
+            command = [f'dentalmodelseg --vtk {self.lineedit.text} --stl {None} --csv {None} --out {None} --overwrite {True} --model {None} --crown_segmentation {False} --array_name {"Universal_ID"} --fdi {0} --suffix {"None"} --vtk_folder {os.path.dirname(self.lineedit.text)}']
+            print("command : ",command)
+            process = threading.Thread(target=conda.condaRunCommand, args=(name_env,command,))
+            process.start()
+            
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Information)
             start_time = time.time()
             previous_time = start_time
-            msg_box.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: 0.0s")
+            msg_box.setText(f"Your file wasn't segmented. Segmentation in process. This task may take a few minutes.\ntime: 0.0s")
             msg_box.setStandardButtons(QMessageBox.NoButton)
             msg_box.show()
-
-            # queue = multiprocessing.Queue()
-            # process = multiprocessing.Process(target=self.shapeaxi, args=())
-            # process.start()
-            # process.join()
-            
-            q = queue.Queue()
-            process = threading.Thread(target=self.shapeaxi, args=(q,))
-            process.start()
-
-
             while process.is_alive():
                 slicer.app.processEvents()
                 current_time = time.time()
@@ -1375,44 +1469,12 @@ class WidgetParameter:
                     previous_time = current_time
                     elapsed_time = current_time - start_time
                     msg_box.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+            return True
+        return False
 
-                if not q.empty():
-                    message = q.get()
-                    break  
-
-            if not q.empty():
-                message = q.get()
-                
-            if message=="True":
-                self.viewScan()
-                # msg_box.hide()
-                return True
-            return False
             
 
-    def shapeaxi(self,q):
-
-        python_executable = sys.executable
-        current_file_path = os.path.abspath(__file__)
-        current_directory = os.path.dirname(current_file_path)
-        path_next_file = os.path.join(current_directory,'Dentalmodelseg','first.py') #Next files to call
-        command_to_execute = [python_executable,path_next_file,os.path.basename(str(self.lineedit.text)),str(self.lineedit.text),"true",os.path.dirname(str(self.lineedit.text)),"shapeAxi"]
-
-        result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,errors='ignore')
-        if result.returncode != 0:
-            print(f"Error creating the environment. Return code: {result.returncode}")
-            print("result.stdout : ","*"*150)
-            print(result.stdout)
-            print("result.stderr : ","*"*150)
-            print(result.stderr)
-            q.put("False")
-            # return False
-        else:
-            print(result.stdout)
-            print("Environment created successfully.")
-            q.put("True")
-            # self.viewScan()
-            # return True
+            
 
 
 
@@ -1424,6 +1486,7 @@ class WidgetParameter:
         '''
         if self.checkSurfExist() :
             if self.checkSegmentation():
+                print("COUCOU")
                 self._processed2 = False
                 if self.add_patch.isChecked():
                     index=int(self.addItemsCombobox())
