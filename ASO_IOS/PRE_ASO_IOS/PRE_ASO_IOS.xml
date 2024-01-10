@@ -14,7 +14,7 @@
 
     <label>IO</label>
     <description><![CDATA[Input/output parameters]]></description>
-    
+
     <string>
       <name>input</name>
       <label>input</label>
@@ -55,7 +55,7 @@
       <label>occlusion</label>
       <index>5</index>
       <description>keep morphology of the mounth</description>
-    </string>  
+    </string>
 
     <string>
       <name>jaw</name>
@@ -82,7 +82,7 @@
       <description>path for the log</description>
     </string>
 
-    
+
 
 
 
