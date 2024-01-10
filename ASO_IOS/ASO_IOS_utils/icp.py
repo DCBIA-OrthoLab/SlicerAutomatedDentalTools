@@ -478,7 +478,7 @@ class SelectKey:
 def DictTovtkPoints(dict_landmarks):
     """
     Convert dictionary of landmarks to vtkPoints
-    
+
     Parameters
     ----------
     dict_landmarks : dict
