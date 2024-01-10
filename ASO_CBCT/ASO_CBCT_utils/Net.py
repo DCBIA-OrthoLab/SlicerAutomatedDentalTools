@@ -9,7 +9,7 @@ except:
 
 try:
     import torch
-except ImportError: 
+except ImportError:
     pip_install('torch')
     import torch
 

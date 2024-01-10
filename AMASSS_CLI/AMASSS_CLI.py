@@ -34,7 +34,7 @@ import platform
 from slicer.util import pip_install, pip_uninstall
 
 # from slicer.util import pip_uninstall
-# # pip_uninstall('torch torchvision torchaudio') 
+# # pip_uninstall('torch torchvision torchaudio')
 
 # pip_uninstall('monai')
 
@@ -96,7 +96,7 @@ import SimpleITK as sitk
 import vtk
 import numpy as np
 try :
-    import itk 
+    import itk
 except ImportError:
     pip_install('itk -q')
     import itk
@@ -207,7 +207,7 @@ MODELS_GROUP = {
         {
             "MAX" : 1
         },
-        "RC":        
+        "RC":
         {
             "RC" : 1
         },
@@ -221,7 +221,7 @@ MODELS_GROUP = {
 def CorrectHisto(filepath,outpath,min_porcent=0.01,max_porcent = 0.95,i_min=-1500, i_max=4000):
 
     print("Correcting scan contrast :", filepath)
-    input_img = sitk.ReadImage(filepath) 
+    input_img = sitk.ReadImage(filepath)
     input_img = sitk.Cast(input_img, sitk.sitkFloat32)
     img = sitk.GetArrayFromImage(input_img)
 
@@ -325,7 +325,7 @@ def SavePrediction(img,ref_filepath, outpath, output_spacing):
 
     # print(data)
 
-    ref_img = sitk.ReadImage(ref_filepath) 
+    ref_img = sitk.ReadImage(ref_filepath)
 
 
 
@@ -342,7 +342,7 @@ def SavePrediction(img,ref_filepath, outpath, output_spacing):
 
 
 def CleanScan(file_path):
-    input_img = sitk.ReadImage(file_path) 
+    input_img = sitk.ReadImage(file_path)
 
 
     closing_radius = 2
@@ -352,7 +352,7 @@ def CleanScan(file_path):
 
     labels_in = sitk.GetArrayFromImage(input_img)
     out, N = cc3d.largest_k(
-        labels_in, k=1, 
+        labels_in, k=1,
         connectivity=26, delta=0,
         return_N=True,
     )
@@ -391,7 +391,7 @@ def CleanArray(seg_arr,radius):
 
     labels_in = sitk.GetArrayFromImage(output)
     out, N = cc3d.largest_k(
-        labels_in, k=1, 
+        labels_in, k=1,
         connectivity=26, delta=0,
         return_N=True,
     )
@@ -401,14 +401,14 @@ def CleanArray(seg_arr,radius):
 
 def SetSpacingFromRef(filepath,refFile,interpolator = "NearestNeighbor",outpath=-1):
     """
-    Set the spacing of the image the same as the reference image 
+    Set the spacing of the image the same as the reference image
 
     Parameters
     ----------
     filepath
-      image file 
+      image file
     refFile
-     path of the reference image 
+     path of the reference image
     interpolator
      Type of interpolation 'NearestNeighbor' or 'Linear'
     outpath
@@ -418,7 +418,7 @@ def SetSpacingFromRef(filepath,refFile,interpolator = "NearestNeighbor",outpath=
     img = itk.imread(filepath)
     ref = itk.imread(refFile)
 
-    img_sp = np.array(img.GetSpacing()) 
+    img_sp = np.array(img.GetSpacing())
     img_size = np.array(itk.size(img))
 
     ref_sp = np.array(ref.GetSpacing())
@@ -517,7 +517,7 @@ def ItkToSitk(itk_img):
 def SavePredToVTK(file_path,temp_folder,smoothing, out_folder, model_size,isSegmentInput=False):
     print("Generating VTK for ", file_path)
 
-    img = sitk.ReadImage(file_path) 
+    img = sitk.ReadImage(file_path)
     img_arr = sitk.GetArrayFromImage(img)
 
 
@@ -563,11 +563,11 @@ def SavePredToVTK(file_path,temp_folder,smoothing, out_folder, model_size,isSegm
 
         model = SmoothPolyDataFilter.GetOutput()
 
-        color = vtk.vtkUnsignedCharArray() 
-        color.SetName("Colors") 
-        color.SetNumberOfComponents(3) 
+        color = vtk.vtkUnsignedCharArray()
+        color.SetName("Colors")
+        color.SetNumberOfComponents(3)
         color.SetNumberOfTuples( model.GetNumberOfCells() )
-            
+
         for i in range(model.GetNumberOfCells()):
             color_tup=LABEL_COLORS[label]
             color.SetTuple(i, color_tup)
@@ -601,7 +601,7 @@ def SavePredToVTK(file_path,temp_folder,smoothing, out_folder, model_size,isSegm
             if len(present_labels)>1:
                 outpath = out_folder + "/"+ os.path.basename(file_path).split("_Seg")[0].split('_MERGED')[0] + "_VTK/" + os.path.basename(file_path).split('.')[0].split('_MERGED')[0].split('_Seg')[0] + f"_{NAMES_FROM_LABELS[model_size][label]}_model.vtk"
             else:
-                outpath = out_folder + "/"+ os.path.basename(file_path).split("-Seg")[0] + "_model.vtk"              
+                outpath = out_folder + "/"+ os.path.basename(file_path).split("-Seg")[0] + "_model.vtk"
         if not os.path.exists(os.path.dirname(outpath)):
             os.makedirs(os.path.dirname(outpath))
         Write(model, outpath)
@@ -671,15 +671,15 @@ def CropSkin(skin_seg_arr, thickness):
     croped_skin = np.where(eroded_arr==1, 0, skin_arr)
 
     out, N = cc3d.largest_k(
-        croped_skin, k=1, 
+        croped_skin, k=1,
         connectivity=26, delta=0,
         return_N=True,
     )
 
 
     return out
-    
-    
+
+
 
 def GenerateMask(skin_seg_arr, radius):
 
@@ -722,9 +722,9 @@ def convertdicom2nifti(input_folder,output_folder=None):
 
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-        
+
     for patient in patients_folders:
-        if not os.path.exists(os.path.join(output_folder,patient+".nii.gz")):    
+        if not os.path.exists(os.path.join(output_folder,patient+".nii.gz")):
             print("Converting patient: {}...".format(patient))
             current_directory = os.path.join(input_folder,patient)
             try:
@@ -779,7 +779,7 @@ def main(args):
         # Choose models to use
         MODELS_DICT = {}
         models_to_use = {}
-        # models_ID = []  
+        # models_ID = []
         if args["high_def"]:
             model_size = "SMALL"
             MODELS_DICT = MODELS_GROUP["SMALL"]
@@ -826,7 +826,7 @@ def main(args):
 
 
         number_of_scans = 0
-        if os.path.isfile(args["input"]):  
+        if os.path.isfile(args["input"]):
             print("Loading scan :", args["input"])
             img_fn = args["input"]
             basename = os.path.basename(img_fn)
@@ -885,14 +885,14 @@ def main(args):
         pred_transform = CreatePredTransform(spacing)
 
         pred_ds = Dataset(
-            data=data_list, 
-            transform=pred_transform, 
+            data=data_list,
+            transform=pred_transform,
         )
         pred_loader = DataLoader(
             dataset=pred_ds,
-            batch_size=1, 
-            shuffle=False, 
-            num_workers=1,#args["nbr_CPU_worker"], 
+            batch_size=1,
+            shuffle=False,
+            num_workers=1,#args["nbr_CPU_worker"],
             pin_memory=True
         )
         # endregion
@@ -948,7 +948,7 @@ def main(args):
                         os.makedirs(outputdir)
                 else:
                     outputdir = os.path.dirname(image)
-                    
+
 
                 prediction_segmentation = {}
 
@@ -961,7 +961,7 @@ def main(args):
                         label_nbr= len(MODELS_DICT[model_id].keys()) + 1,
                         cropSize=cropSize
                     ).to(DEVICE)
-                    
+
                     # net = Create_SwinUNETR(
                     #     input_channel = 1,
                     #     label_nbr= len(MODELS_DICT[model_id].keys()) + 1,
@@ -988,7 +988,7 @@ def main(args):
 
 
                     for struct, label in MODELS_DICT[model_id].items():
-                    
+
                         sep_arr = np.where(seg_arr == label, 1,0)
 
                         if (struct == "SKIN"):
@@ -1059,7 +1059,7 @@ def main(args):
                         save_vtk=save_vtk,
                         model_size=model_size
                     )
-                    
+
 
                 # print(f"""<filter-progress>{1}</filter-progress>""")
                 # sys.stdout.flush()
@@ -1076,14 +1076,14 @@ def main(args):
         # sys.stdout.flush()
         # time.sleep(0.5)
 
-    if isSegmentInput:   
-        
+    if isSegmentInput:
+
         startTime = time.time()
-        
+
         data = []
 
         number_of_scans = 0
-        if os.path.isfile(args["input"]):  
+        if os.path.isfile(args["input"]):
             print("Loading scan :", args["input"])
             data.append(args["input"])
             number_of_scans += 1
@@ -1110,7 +1110,7 @@ def main(args):
         print(f"""<filter-progress>{0}</filter-progress>""")
         sys.stdout.flush()
         time.sleep(0.5)
-        
+
         for seg in data:
             SavePredToVTK(file_path=seg,temp_folder=temp_fold,smoothing=args["vtk_smooth"],out_folder=args["output_dir"],model_size="LARGE",isSegmentInput=isSegmentInput)
             print(f"""<filter-progress>{1}</filter-progress>""")
@@ -1155,7 +1155,7 @@ if __name__ == "__main__":
         "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC","CBMASK","MANDMASK","MAXMASK"],
 
     }
-    
+
     # print(args)
 
 

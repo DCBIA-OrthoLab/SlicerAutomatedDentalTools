@@ -69,7 +69,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Image/19_resize_child.png
   Resources/Image/20_resize_child.png
 
-  
+
 
   )
 
