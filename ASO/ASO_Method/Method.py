@@ -4,7 +4,7 @@ import glob
 import json
 
 
-class Methode(ABC):
+class Method(ABC):
     def __init__(self, widget):
         self.widget = widget
         self.diccheckbox = {}
