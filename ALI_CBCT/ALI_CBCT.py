@@ -14,13 +14,13 @@ Authors :
 
 
 
-#### ##     ## ########   #######  ########  ######## 
- ##  ###   ### ##     ## ##     ## ##     ##    ##    
- ##  #### #### ##     ## ##     ## ##     ##    ##    
- ##  ## ### ## ########  ##     ## ########     ##    
- ##  ##     ## ##        ##     ## ##   ##      ##    
- ##  ##     ## ##        ##     ## ##    ##     ##    
-#### ##     ## ##         #######  ##     ##    ##    
+#### ##     ## ########   #######  ########  ########
+ ##  ###   ### ##     ## ##     ## ##     ##    ##
+ ##  #### #### ##     ## ##     ## ##     ##    ##
+ ##  ## ### ## ########  ##     ## ########     ##
+ ##  ##     ## ##        ##     ## ##   ##      ##
+ ##  ##     ## ##        ##     ## ##    ##     ##
+#### ##     ## ##         #######  ##     ##    ##
 
 
 #region IMPORTS
@@ -116,13 +116,13 @@ from monai.networks.nets.densenet import (
 
 #endregion
 
-##     ##    ###    ########  ####    ###    ########  ##       ########  ######  
-##     ##   ## ##   ##     ##  ##    ## ##   ##     ## ##       ##       ##    ## 
-##     ##  ##   ##  ##     ##  ##   ##   ##  ##     ## ##       ##       ##       
-##     ## ##     ## ########   ##  ##     ## ########  ##       ######    ######  
- ##   ##  ######### ##   ##    ##  ######### ##     ## ##       ##             ## 
-  ## ##   ##     ## ##    ##   ##  ##     ## ##     ## ##       ##       ##    ## 
-   ###    ##     ## ##     ## #### ##     ## ########  ######## ########  ######  
+##     ##    ###    ########  ####    ###    ########  ##       ########  ######
+##     ##   ## ##   ##     ##  ##    ## ##   ##     ## ##       ##       ##    ##
+##     ##  ##   ##  ##     ##  ##   ##   ##  ##     ## ##       ##       ##
+##     ## ##     ## ########   ##  ##     ## ########  ##       ######    ######
+ ##   ##  ######### ##   ##    ##  ######### ##     ## ##       ##             ##
+  ## ##   ##     ## ##    ##   ##  ##     ## ##     ## ##       ##       ##    ##
+   ###    ##     ## ##     ## #### ##     ## ########  ######## ########  ######
 
 
 #region GLOBAL VARIABLES
@@ -201,20 +201,20 @@ def GetTargetOutputFromAction(mov_mat,action):
 #endregion
 
 
-######## ##     ## ##    ##  ######  ######## ####  #######  ##    ##  ######  
-##       ##     ## ###   ## ##    ##    ##     ##  ##     ## ###   ## ##    ## 
-##       ##     ## ####  ## ##          ##     ##  ##     ## ####  ## ##       
-######   ##     ## ## ## ## ##          ##     ##  ##     ## ## ## ##  ######  
-##       ##     ## ##  #### ##          ##     ##  ##     ## ##  ####       ## 
-##       ##     ## ##   ### ##    ##    ##     ##  ##     ## ##   ### ##    ## 
-##        #######  ##    ##  ######     ##    ####  #######  ##    ##  ######  
+######## ##     ## ##    ##  ######  ######## ####  #######  ##    ##  ######
+##       ##     ## ###   ## ##    ##    ##     ##  ##     ## ###   ## ##    ##
+##       ##     ## ####  ## ##          ##     ##  ##     ## ####  ## ##
+######   ##     ## ## ## ## ##          ##     ##  ##     ## ## ## ##  ######
+##       ##     ## ##  #### ##          ##     ##  ##     ## ##  ####       ##
+##       ##     ## ##   ### ##    ##    ##     ##  ##     ## ##   ### ##    ##
+##        #######  ##    ##  ######     ##    ####  #######  ##    ##  ######
 
 #region FUNCTIONS
 
 def CorrectHisto(filepath,outpath,min_porcent=0.01,max_porcent = 0.95,i_min=-1500, i_max=4000):
 
     print("Correcting scan contrast :", filepath)
-    input_img = sitk.ReadImage(filepath) 
+    input_img = sitk.ReadImage(filepath)
     input_img = sitk.Cast(input_img, sitk.sitkFloat32)
     img = sitk.GetArrayFromImage(input_img)
 
@@ -274,12 +274,12 @@ def ResampleImage(input,size,spacing,origin,direction,interpolator,VectorImageTy
 
 def SetSpacing(filepath,output_spacing=[0.5, 0.5, 0.5],outpath=-1):
     """
-    Set the spacing of the image at the wanted scale 
+    Set the spacing of the image at the wanted scale
 
     Parameters
     ----------
     filePath
-     path of the image file 
+     path of the image file
     output_spacing
      whanted spacing of the new image file (default : [0.5, 0.5, 0.5])
     outpath
@@ -475,13 +475,13 @@ def GetBrain(dir_path):
 
 #region CLASSES
 
-######## ##    ## ##     ## #### ########   #######  ##    ## ##     ## ######## ##    ## ######## 
-##       ###   ## ##     ##  ##  ##     ## ##     ## ###   ## ###   ### ##       ###   ##    ##    
-##       ####  ## ##     ##  ##  ##     ## ##     ## ####  ## #### #### ##       ####  ##    ##    
-######   ## ## ## ##     ##  ##  ########  ##     ## ## ## ## ## ### ## ######   ## ## ##    ##    
-##       ##  ####  ##   ##   ##  ##   ##   ##     ## ##  #### ##     ## ##       ##  ####    ##    
-##       ##   ###   ## ##    ##  ##    ##  ##     ## ##   ### ##     ## ##       ##   ###    ##    
-######## ##    ##    ###    #### ##     ##  #######  ##    ## ##     ## ######## ##    ##    ##    
+######## ##    ## ##     ## #### ########   #######  ##    ## ##     ## ######## ##    ## ########
+##       ###   ## ##     ##  ##  ##     ## ##     ## ###   ## ###   ### ##       ###   ##    ##
+##       ####  ## ##     ##  ##  ##     ## ##     ## ####  ## #### #### ##       ####  ##    ##
+######   ## ## ## ##     ##  ##  ########  ##     ## ## ## ## ## ### ## ######   ## ## ##    ##
+##       ##  ####  ##   ##   ##  ##   ##   ##     ## ##  #### ##     ## ##       ##  ####    ##
+##       ##   ###   ## ##    ##  ##    ##  ##     ## ##   ### ##     ## ##       ##   ###    ##
+######## ##    ##    ###    #### ##     ##  #######  ##    ## ##     ## ######## ##    ##    ##
 
 
 class Environement :
@@ -536,7 +536,7 @@ class Environement :
             self.data[scale_id] = data
             self.scale_nbr += 1
 
-            
+
 
     def LoadJsonLandmarks(self,fiducial_path):
         # print(fiducial_path)
@@ -629,7 +629,7 @@ class Environement :
         get_reward = lambda move : agent_dist - self.GetL2DistFromLandmark(scale,position + move,target)
         reward_lst = list(map(get_reward,mvt_matrix))
         return reward_lst
-    
+
     def GetRandomPoses(self,scale,target,radius,pos_nbr):
         if scale == SCALE_KEYS[0]:
             porcentage = 0.2 #porcentage of data around landmark
@@ -647,7 +647,7 @@ class Environement :
         get_rand_coord = lambda x: np.random.randint(1, max_coord, dtype=np.int16)
         rand_coord_lst = list(map(get_rand_coord,range(pos_nbr)))
         return rand_coord_lst
-    
+
     def GetRandomPosesArounfLabel(self,scale,target,radius,pos_nbr):
         min_coord = [0,0,0]
         max_coord = self.data[scale]["size"]
@@ -693,13 +693,13 @@ class Environement :
         return ""
 
 
-   ###     ######   ######## ##    ## ######## 
-  ## ##   ##    ##  ##       ###   ##    ##    
- ##   ##  ##        ##       ####  ##    ##    
-##     ## ##   #### ######   ## ## ##    ##    
-######### ##    ##  ##       ##  ####    ##    
-##     ## ##    ##  ##       ##   ###    ##    
-##     ##  ######   ######## ##    ##    ##    
+   ###     ######   ######## ##    ## ########
+  ## ##   ##    ##  ##       ###   ##    ##
+ ##   ##  ##        ##       ####  ##    ##
+##     ## ##   #### ######   ## ## ##    ##
+######### ##    ##  ##       ##  ####    ##
+##     ## ##    ##  ##       ##   ###    ##
+##     ##  ######   ######## ##    ##    ##
 
 class Agent :
     def __init__(
@@ -715,7 +715,7 @@ class Agent :
         speed_per_scale = [2,1],
         verbose = False
     ) -> None:
-    
+
         self.target = targeted_landmark
         self.scale_keys = scale_keys
         self.environement = environement
@@ -724,7 +724,7 @@ class Agent :
         self.start_position = np.array([0,0,0], dtype=np.int16)
         self.position = np.array([0,0,0], dtype=np.int16)
         self.FOV = np.array(FOV, dtype=np.int16)
-        
+
         self.movement_matrix = movements["mat"]
         self.movement_id = movements["id"]
 
@@ -739,7 +739,7 @@ class Agent :
         self.speed = self.speed_per_scale[0]
 
 
-    def SetEnvironement(self, environement): 
+    def SetEnvironement(self, environement):
         self.environement = environement
         position_mem = []
         position_shortmem = []
@@ -794,7 +794,7 @@ class Agent :
 
     def PredictAction(self):
         return self.brain.Predict(self.scale_state,self.GetState())
-        
+
     def Move(self, movement_idx):
         new_pos = self.position + self.movement_matrix[movement_idx]*self.speed
         if new_pos.all() > 0 and (new_pos < self.environement.GetSize(self.scale_keys[self.scale_state])).all():
@@ -883,7 +883,7 @@ class Agent :
             print(self.target, "landmark not found")
             self.search_atempt = 0
             return -1
-        
+
         final_pos = self.Focus(self.position)
         print("Result :", final_pos)
         self.environement.AddPredictedLandmark(self.target,final_pos)
@@ -898,13 +898,13 @@ class Agent :
         return visited
 
 
-########  ########     ###    #### ##    ## 
-##     ## ##     ##   ## ##    ##  ###   ## 
-##     ## ##     ##  ##   ##   ##  ####  ## 
-########  ########  ##     ##  ##  ## ## ## 
-##     ## ##   ##   #########  ##  ##  #### 
-##     ## ##    ##  ##     ##  ##  ##   ### 
-########  ##     ## ##     ## #### ##    ## 
+########  ########     ###    #### ##    ##
+##     ## ##     ##   ## ##    ##  ###   ##
+##     ## ##     ##  ##   ##   ##  ####  ##
+########  ########  ##     ##  ##  ## ## ##
+##     ## ##   ##   #########  ##  ##  ####
+##     ## ##    ##  ##     ##  ##  ##   ###
+########  ##     ## ##     ## #### ##    ##
 
 
 class Brain:
@@ -969,7 +969,7 @@ class Brain:
                 if not os.path.exists(dir_path):
                     os.makedirs(dir_path)
                 models_dirs.append(dir_path)
-            
+
 
 
         self.loss_fn = nn.CrossEntropyLoss()
@@ -1021,13 +1021,13 @@ class Brain:
             net.load_state_dict(torch.load(model_lst[self.network_scales[n]],map_location=self.device))
 
 
-##    ## ######## ######## ##      ##  #######  ########  ##    ##  ######  
-###   ## ##          ##    ##  ##  ## ##     ## ##     ## ##   ##  ##    ## 
-####  ## ##          ##    ##  ##  ## ##     ## ##     ## ##  ##   ##       
-## ## ## ######      ##    ##  ##  ## ##     ## ########  #####     ######  
-##  #### ##          ##    ##  ##  ## ##     ## ##   ##   ##  ##         ## 
-##   ### ##          ##    ##  ##  ## ##     ## ##    ##  ##   ##  ##    ## 
-##    ## ########    ##     ###  ###   #######  ##     ## ##    ##  ######  
+##    ## ######## ######## ##      ##  #######  ########  ##    ##  ######
+###   ## ##          ##    ##  ##  ## ##     ## ##     ## ##   ##  ##    ##
+####  ## ##          ##    ##  ##  ## ##     ## ##     ## ##  ##   ##
+## ## ## ######      ##    ##  ##  ## ##     ## ########  #####     ######
+##  #### ##          ##    ##  ##  ## ##     ## ##   ##   ##  ##         ##
+##   ### ##          ##    ##  ##  ## ##     ## ##    ##  ##   ##  ##    ##
+##    ## ########    ##     ###  ###   #######  ##     ## ##    ##  ######
 
 
 class DNet(nn.Module):
@@ -1114,9 +1114,9 @@ def convertdicom2nifti(input_folder,output_folder=None):
 
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-        
+
     for patient in patients_folders:
-        if not os.path.exists(os.path.join(output_folder,patient+".nii.gz")):    
+        if not os.path.exists(os.path.join(output_folder,patient+".nii.gz")):
             print("Converting patient: {}...".format(patient))
             current_directory = os.path.join(input_folder,patient)
             try:
@@ -1137,13 +1137,13 @@ def convertdicom2nifti(input_folder,output_folder=None):
 
 
 
-##     ##    ###    #### ##    ## 
-###   ###   ## ##    ##  ###   ## 
-#### ####  ##   ##   ##  ####  ## 
-## ### ## ##     ##  ##  ## ## ## 
-##     ## #########  ##  ##  #### 
-##     ## ##     ##  ##  ##   ### 
-##     ## ##     ## #### ##    ## 
+##     ##    ###    #### ##    ##
+###   ###   ## ##    ##  ###   ##
+#### ####  ##   ##   ##  ####  ##
+## ### ## ##     ##  ##  ## ## ##
+##     ## #########  ##  ##  ####
+##     ## ##     ##  ##  ##   ###
+##     ## ##     ## #### ##    ##
 
 #region Main
 
@@ -1159,10 +1159,10 @@ def main(input):
         convertdicom2nifti(args['input'])
 
     patients = {}
-    if os.path.isfile(args["input"]):  
+    if os.path.isfile(args["input"]):
         basename = os.path.basename(args["input"])
         patients[basename] = {"scan": args["input"], "scans":{}}
-    
+
     else:
         normpath = os.path.normpath("/".join([args["input"], '**', '']))
         for img_fn in sorted(glob.iglob(normpath, recursive=True)):
@@ -1214,12 +1214,12 @@ def main(input):
                     new_name = scan_name[0] + "_scan_sp" + spac
                 else:
                     new_name += "." + element
-            
+
             outpath = os.path.join(temp_fold,new_name)
             if not os.path.exists(outpath):
                 SetSpacing(tempPath,[sp,sp,sp],outpath)
             patients[patient]["scans"][spac] = outpath
-        
+
         print(f"""<filter-progress>{1}</filter-progress>""")
         sys.stdout.flush()
         time.sleep(0.5)
@@ -1341,7 +1341,7 @@ def main(input):
             time.sleep(0.5)
             print(f"""<filter-progress>{0}</filter-progress>""")
             sys.stdout.flush()
-        
+
         outputdir = outPath
         if args["save_in_folder"]:
             outputdir = outPath + "/" + environment.patient_id.split(".")[0] + "_landmarks"
@@ -1349,11 +1349,11 @@ def main(input):
             if not os.path.exists(outputdir):
                 os.makedirs(outputdir)
         environment.SavePredictedLandmarks(SCALE_KEYS[-1],outputdir)
-    
-    print("Total steps:",tot_step)    
+
+    print("Total steps:",tot_step)
     end_time = time.time()
     print('prediction time :' , end_time-start_time)
-        
+
 
     for lm, nbr in fails.items():
         print(f"Fails for {lm} : {nbr}/{len(environement_lst)}")

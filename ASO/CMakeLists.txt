@@ -11,7 +11,7 @@ set(MODULE_PYTHON_SCRIPTS
   ASO_Method/IOS_utils/Reader.py
   ASO_Method/Method.py
   ASO_Method/Progress.py
-  )
+)
 
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
@@ -69,9 +69,8 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Image/19_resize_child.png
   Resources/Image/20_resize_child.png
 
-  
 
-  )
+)
 
 #-----------------------------------------------------------------------------
 slicerMacroBuildScriptedModule(
@@ -79,11 +78,11 @@ slicerMacroBuildScriptedModule(
   SCRIPTS ${MODULE_PYTHON_SCRIPTS}
   RESOURCES ${MODULE_PYTHON_RESOURCES}
   WITH_GENERIC_TESTS
-  )
+)
 
 
 #-----------------------------------------------------------------------------
-if(BUILD_TESTING)
+if (BUILD_TESTING)
 
   # Register the unittest subclass in the main script as a ctest.
   # Note that the test will also be available at runtime.
@@ -91,4 +90,4 @@ if(BUILD_TESTING)
 
   # Additional build-time testing
   add_subdirectory(Testing)
-endif()
+endif ()

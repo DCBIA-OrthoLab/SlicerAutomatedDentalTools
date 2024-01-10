@@ -1,10 +1,10 @@
-# Slicer Automated Dental Tools 
+# Slicer Automated Dental Tools
 
 **Note :exclamation:** ${\textsf{\color{red}This extension is currently available for Slicer 5.6.0 and earlier versions, but not for the newest version.}}$
 
 
 Slicer automated dental tools is an extension for 3D Slicer to perform important automatic Dental and Cranio Facial analysis tasks via a GUI interface with no coding knowledge needed.
-This extension currently works only on the Stable release of the 3D Slicer. 
+This extension currently works only on the Stable release of the 3D Slicer.
 
 
 <p align="center">
@@ -64,7 +64,7 @@ Additionally, the following modules are implemented as python scripted command-l
 | [AReg-IOS](AREG_IOS) | Perform automatic registration of IOS scans |
 
 
-## Requirements 
+## Requirements
 
 * In addition of the [Slicer System requirements](https://slicer.readthedocs.io/en/latest/user_guide/getting_started.html#system-requirements), for best performance, 12GB of memory is recommended.
 * :warning: Trained networks are required to be manually downloaded. See requirements section specific to each module.
@@ -96,7 +96,7 @@ Available sample data for testing: [MG_test_scan.nii.gz](https://github.com/Maxl
 
 **Load models:**
 The user has to indicate the path of the folder containing the [trained models for AMASSS](https://github.com/lucanchling/AMASSS_CBCT/releases/tag/v1.0.2).
- 
+
 **Segmentation selection:**
 The user can choose the structure to segment using the selection table.
 Depending on the type of CBCT to segment, the user can select the "Use small FOV models" checkbox to use on higher definition scans.
@@ -185,7 +185,7 @@ Once the folder containing the trained models is loaded. The user can choose the
 
 
 ## ASO Module
-If you want more information and a descriptive tutorial of this tool, take a look at this github page: **[Automated Standardized Orientation](https://github.com/lucanchling/ASO#readme)** 
+If you want more information and a descriptive tutorial of this tool, take a look at this github page: **[Automated Standardized Orientation](https://github.com/lucanchling/ASO#readme)**
 
 <img src="ASO/Resources/Icons/ASO.png" alt="Extension Logo" width="50"/>
 
@@ -223,16 +223,16 @@ You can either download them using the link or  by using the `Test Files` button
 
 ### Reference:
 
-The user has to choose a folder containing a **Reference Gold File** with an oriented scan with landmarks. 
+The user has to choose a folder containing a **Reference Gold File** with an oriented scan with landmarks.
 You can either use your own files or download ours using the `Download Reference` button in the module `Input section`.
 | Input Type  | Reference Gold Files |
 | ----------- | ----------- |
 | **CBCT** | [CBCT Reference Files](https://github.com/lucanchling/ASO_CBCT/releases/tag/v01_goldmodels)  |
 | **IOS** | [IOS Reference Files](https://github.com/HUTIN1/ASO/releases/tag/v1.0.1) |
 
-### Landmark selection 
+### Landmark selection
 
-The user has to decide which **landmarks** he will use to run ASO. 
+The user has to decide which **landmarks** he will use to run ASO.
 
 | Input Type  | Landmarks Available |
 | ----------- | ----------- |
@@ -245,7 +245,7 @@ The user has to decide which **landmarks** he will use to run ASO.
 ### Models Selection
 
 For the **Fully-Automated** Mode, models are required as input, use the `Select` Button to automatically download, extract and select the selected models.
-    
+
 ![ASOSADT](https://user-images.githubusercontent.com/72148963/227339216-61f04a0b-a8ab-410e-8265-d822309e1888.png)
 
 ## AReg Module
@@ -310,7 +310,7 @@ For the **Fully-Automated** Mode, models are required as input, use the `Select`
 
 <img src="AutoCrop3D/Crop_Volumes_UI/Resources/Icons/AutoCrop3D.png" alt="Extension Logo" width="60"/>
 
-AutoCrop3D stands for "Scans automatically cropped" according to a Region Of Interest (ROI). 
+AutoCrop3D stands for "Scans automatically cropped" according to a Region Of Interest (ROI).
 
 ## Useful Information
 
@@ -332,7 +332,7 @@ It solves the issue of files that may be too heavy for "Crop Volume Sequence" [M
 
 You can choose a suffix which will be added to the existing name of your file(s).
 
-If you want to **generate VTK files** from your Segmentations, the Segmentation files must have "Seg" somewhere in the name. 
+If you want to **generate VTK files** from your Segmentations, the Segmentation files must have "Seg" somewhere in the name.
 For example: `patientName_Seg.nii.gz`
 
 ### How to create a Region Of Interest?
@@ -359,41 +359,41 @@ The AutoMatrix module provides a user interface to apply a matrix to a folder fo
 The module will create the same path you had in the input folder in the output folder.
 The new files will be named by the name of the original file + the suffix you entered + the name of the matrix files that were applied.
 
-Example :  
-Input file : patient1_T1_MA.nii.gz  
-Input matrix : patient1_matrix1.tfm  
-Input suffix : _apply  
+Example :
+Input file : patient1_T1_MA.nii.gz
+Input matrix : patient1_matrix1.tfm
+Input suffix : _apply
 Output file : patient1_T1_MA_apply_matrix1.nii.gz
 
 
-### 4 Modes available 
+### 4 Modes available
 Sometimes a LinkName is required. See the information below.
-| Mode | Download Link to Test Files | Information | 
+| Mode | Download Link to Test Files | Information |
 | ----------- | ----------- | ----------- |
 | File patient and file matrix| [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease1.zip) |  LinkName is not required. The matrix is applied to the input file. This new file is save in the output folder.
 | File patient and folder matrix | [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease2.zip) | LinkName required. For each matrix applied, a new file is created.
-| Folder patient and file matrix | [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease3.zip) | LinkName is not required.  The matrix will be applied to all files in the input folder. 
+| Folder patient and file matrix | [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease3.zip) | LinkName is not required.  The matrix will be applied to all files in the input folder.
 | Folder patient and folder matrix| [Test Files](https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixTag/AutoMatrixRelease4.zip) | LinkName required. For each matrix applied, a new file is created. You can have more than one file with the same patient name.
 
 #### When a LinkName is required :
-The name of the matrix files and the name of the seg/scan files must begin with the same patient name. After the patient name, you must put and underscore before any other information.  
-Example :   
-Name file patient : patient1_T1_MA.nii.gz  
-Name matrix files : patient1_left_MA.tfm  
+The name of the matrix files and the name of the seg/scan files must begin with the same patient name. After the patient name, you must put and underscore before any other information.
+Example :
+Name file patient : patient1_T1_MA.nii.gz
+Name matrix files : patient1_left_MA.tfm
 
-#### Mirror : 
-There is button "Mirror" that will automatically download the matrix mirror and put in input.  
-  
+#### Mirror :
+There is button "Mirror" that will automatically download the matrix mirror and put in input.
+
 ### Input file:
 
 | Input Type  | Input Extension Type | Input Matrix Extension |
 | ----------- | ----------- | ----------- |
-| **CBCT** | .nii.gz | .tfm .npy .h5 .mat .txt | 
+| **CBCT** | .nii.gz | .tfm .npy .h5 .mat .txt |
 | **IOS** | .vtk .stl .vtp .off .obj | .tfm .npy .h5 .mat .txt|
 
 
 
-  
+
 # Acknowledgements
 
 Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin (UoM),Jeanne Claret (UoM),Gaelle Leroux (UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
