@@ -38,7 +38,7 @@ def GetPatients(file_path:str,matrix_path:str):
             Return a dictionnary with the patients names for the key. Their .nii.gz/.vtk/.vtp/.stl./.off files and their matrix.
             exemple :
             input : file_path matrix_path
-            output : 
+            output :
             ('patient1': {'scan':[file_path_1_patient1.nii.gz,file_path_2_patient1.vtk],'matrix':[matrix_path_1_patient1.tfm,matrix_path_2_patient1.h5]})
         """
         patients = {}
@@ -55,7 +55,7 @@ def GetPatients(file_path:str,matrix_path:str):
 
             for i in range(len(files_original['.stl'])):
                 files.append(files_original['.stl'][i])
-            
+
             for i in range(len(files_original['.off'])):
                 files.append(files_original['.off'][i])
 
@@ -77,14 +77,14 @@ def GetPatients(file_path:str,matrix_path:str):
                     patients[file_pat]['scan'] = []
                     patients[file_pat]['matrix'] = []
                 patients[file_pat]['scan'].append(file)
-        
-        else : 
+
+        else :
             fname, extension = os.path.splitext(file_path)
 
-            try : 
+            try :
                 fname, extension2 = os.path.splitext(os.path.basename(fname))
                 extension = extension2+extension
-            except : 
+            except :
                 print("not a .nii.gz")
 
             if extension ==".vtk" or extension ==".vtp" or extension ==".stl" or extension ==".off" or extension ==".obj" or extension==".nii.gz" :
@@ -97,16 +97,16 @@ def GetPatients(file_path:str,matrix_path:str):
                     patients[file_pat] = {}
                     patients[file_pat]['scan'] = []
                     patients[file_pat]['matrix'] = []
-                patients[file_pat]['scan'].append(file_path)    
+                patients[file_pat]['scan'].append(file_path)
 
-        
+
         if Path(matrix_path).is_dir():
             matrixes_original = search(matrix_path,'.npy','.h5','.tfm','.mat','.txt')
             matrixes = []
 
             for i in range(len(matrixes_original['.npy'])):
                 matrixes.append(matrixes_original['.npy'][i])
-            
+
             for i in range(len(matrixes_original['.h5'])):
                 matrixes.append(matrixes_original['.h5'][i])
 
@@ -118,7 +118,7 @@ def GetPatients(file_path:str,matrix_path:str):
 
             for i in range(len(matrixes_original['.txt'])):
                 matrixes.append(matrixes_original['.txt'][i])
-                
+
             for i in range(len(matrixes)):
                 matrix = matrixes[i]
                 matrix_pat = os.path.basename(matrix).split('_Left')[0].split('_left')[0].split('_Right')[0].split('_right')[0].split('_T1')[0].split('_T2')[0].split('_MA')[0]
@@ -129,7 +129,7 @@ def GetPatients(file_path:str,matrix_path:str):
                 if matrix_pat in patients.keys():
                     patients[matrix_pat]['matrix'].append(matrix)
 
-        else : 
+        else :
             for key in patients.keys() :
                 patients[key]['matrix'].append(matrix_path)
 

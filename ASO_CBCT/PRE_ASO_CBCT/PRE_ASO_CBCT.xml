@@ -14,7 +14,7 @@
 
     <label>IO</label>
     <description><![CDATA[Input/output parameters]]></description>
-    
+
     <string>
       <name>input</name>
       <label>input</label>
@@ -41,14 +41,14 @@
       <label>SmallFOV</label>
       <index>4</index>
       <description>Boolean to say whether or not the input file is a Small FOV</description>
-    </string>    
+    </string>
 
     <string>
       <name>temp_folder</name>
       <label>temp_folder</label>
       <index>5</index>
       <description>Temp folder for pre aso resample for lightning models</description>
-    </string>    
+    </string>
 
     <string>
       <name>DCMInput</name>
