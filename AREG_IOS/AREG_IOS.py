@@ -123,9 +123,9 @@ def main(args):
     dataset = DatasetPatch(args.T1, args.T2, "Universal_ID")
     Patched = PredPatch(args.model)
 
-    methode = [vtkICP()]
+    Method = [vtkICP()]
     option = vtkMeshTeeth(list_teeth=[1], property="Butterfly")
-    icp = ICP(methode, option=option)
+    icp = ICP(Method, option=option)
 
     lower = False
     if dataset.isLower():
