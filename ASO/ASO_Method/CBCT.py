@@ -1,5 +1,5 @@
-from Methode.Methode import Methode
-from Methode.Progress import DisplayASOCBCT, DisplayALICBCT
+from ASO_Method.Method import Method
+from ASO_Method.Progress import DisplayASOCBCT, DisplayALICBCT
 import webbrowser
 import os
 import slicer
@@ -8,7 +8,7 @@ import time
 import qt
 
 
-class CBCT(Methode):
+class CBCT(Method):
     def __init__(self, widget):
         super().__init__(widget)
 
