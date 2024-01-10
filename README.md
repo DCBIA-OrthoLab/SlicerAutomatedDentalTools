@@ -1,5 +1,7 @@
 # Slicer Automated Dental Tools 
 
+**Note :exclamation:** ${\textsf{\color{red}This extension is currently available for Slicer 5.6.0 and earlier versions, but not for the newest version.}}$
+
 
 Slicer automated dental tools is an extension for 3D Slicer to perform important automatic Dental and Cranio Facial analysis tasks via a GUI interface with no coding knowledge needed.
 This extension currently works only on the Stable release of the 3D Slicer. 
@@ -34,6 +36,8 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [ALI](#ali-module) | Perform automatic landmark identification on either CBCT or IOS scans. ALI is an acronym for Automatic Landmark Identification. |
 | [ASO](#aso-module) | Perform automatic orientation either on IOS or CBCT files. |
 | [AReg](#areg-module) | Perform automatic registration on IOS or CBCT files. |
+| [AutoCrop3D](#autocrop3d-module) | Automatically crop a folder of CBCT scans with the same region of interest. |
+| [AutoMatrix](#automatrix-module)| Automatically apply one or different matrix to a folder of IOS or CBCT scans. |
 
 These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
 
@@ -302,7 +306,7 @@ You can either download them using the link or  by using the `Test Files` button
 
 For the **Fully-Automated** Mode, models are required as input, use the `Select` Button to automatically download, extract and select the selected models.
 
-## AutoCrop3D
+## AutoCrop3D Module
 
 <img src="AutoCrop3D/Crop_Volumes_UI/Resources/Icons/AutoCrop3D.png" alt="Extension Logo" width="60"/>
 
@@ -392,7 +396,7 @@ There is button "Mirror" that will automatically download the matrix mirror and 
   
 # Acknowledgements
 
-Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin (UoM),Jeanne Claret (UoM),Leroux Gaelle (UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
+Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin (UoM),Jeanne Claret (UoM),Gaelle Leroux (UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
 
 Supported by NIDCR R01 024450, AA0F Grabber Family Teaching and Research Award and by Research Enhancement Award Activity 141 from the University of the Pacific, Arthur A. Dugoni School of Dentistry.
 
