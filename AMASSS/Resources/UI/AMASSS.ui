@@ -47,7 +47,7 @@
             <item>
              <widget class="QLabel" name="label_5">
               <property name="text">
-               <string>Input Type</string>
+               <string>Input Modality</string>
               </property>
              </widget>
             </item>
@@ -68,7 +68,7 @@
             <item>
              <widget class="QLabel" name="label_folder_select">
               <property name="text">
-               <string>Scan's folder</string>
+               <string>Select directory</string>
               </property>
              </widget>
             </item>
