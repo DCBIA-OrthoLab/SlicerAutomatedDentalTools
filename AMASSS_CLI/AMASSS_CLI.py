@@ -952,7 +952,8 @@ def main(args):
 
                 prediction_segmentation = {}
 
-
+                #Get as much memory as possible by cleaning the cache before the 2nd loop
+                torch.cuda.empty_cache()
 
                 for model_id,model_path in models_to_use.items():
 
@@ -972,8 +973,10 @@ def main(args):
                     net.load_state_dict(torch.load(model_path,map_location=DEVICE))
                     net.eval()
 
-
-                    val_outputs = sliding_window_inference(input_img, cropSize, args["nbr_GPU_worker"], net,overlap=args["precision"])
+                    ## Should avoid error "CUDA OUT OF MEMORY"
+                    # thanks to sw_device = DEVICE, device=torch.device('cpu') - see the documentation of sliding_window_inference
+                    val_outputs = sliding_window_inference(input_img, cropSize, args["nbr_GPU_worker"], net,overlap=args["precision"],
+                                                           sw_device= DEVICE, device=torch.device('cpu'))
 
                     pred_data = torch.argmax(val_outputs, dim=1).detach().cpu().type(torch.int16)
 
@@ -1006,7 +1009,8 @@ def main(args):
                         sys.stdout.flush()
                         time.sleep(0.5)
 
-
+                # Clear the cache of GPU memory after the loop 
+                torch.cuda.empty_cache()
                 #endregion
 
                 # print(f"""<filter-progress>{1}</filter-progress>""")
