@@ -755,7 +755,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def UpdateProgressBar(self,progress):
 
     # print("UpdateProgressBar")
-
+    print("#####Progress value : ",progress)
     if progress == 200:
       self.prediction_step += 1
 
@@ -775,8 +775,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     if progress == 100:
+      # self.prediction_step += 1
 
       if self.prediction_step == 1:
+        print("inside of if pred_step=1 and progress=100")
         # self.progressBar.setValue(self.progress)
         self.ui.PredScanProgressBar.setValue(self.progress)
         if not self.isSegmentInput:
@@ -785,6 +787,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : {self.progress} / {self.scan_count}")
 
       if self.prediction_step == 2:
+
+        print("inside of if pred_step=2 and progress=100")
         # self.progressBar.setValue(self.progress)
         self.ui.PredSegProgressBar.setValue(self.progress)
         self.ui.PredSegLabel.setText(f"Segmented structures : {self.progress} / {self.total_seg_progress}")
