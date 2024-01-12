@@ -9,10 +9,16 @@ from slicer.util import VTKObservationMixin
 import webbrowser
 import textwrap
 
+
 import platform
 import subprocess
 import slicer
 from slicer.util import pip_install, pip_uninstall
+
+from CondaSetUp import CondaSetUpCall,CondaSetUpCallWsl
+import time
+import threading
+from multiprocessing import Process, Value
 
 try :
     import rpyc
@@ -163,6 +169,30 @@ def registerSampleData():
     # This node name will be used when the data set is loaded
     nodeNames='ALI2'
   )
+  
+class PopupWindow(qt.QWidget):
+    def __init__(self, start_time):
+        super().__init__()
+        self.initUI(start_time)
+
+    def initUI(self, start_time):
+        self.setWindowTitle('Compte à rebours')
+        self.timer_label = qt.QLabel('Temps écoulé: 0 secondes', self)
+        layout = qt.QVBoxLayout()
+        layout.addWidget(self.timer_label)
+        self.setLayout(layout)
+
+        # Mise à jour du temps toutes les secondes
+        self.timer = qt.QTimer(self)
+        self.timer.timeout.connect(lambda: self.updateTime(start_time))
+        self.timer.start(1000)
+
+        self.show()
+
+    def updateTime(self, start_time):
+        elapsed_time = int(time.time() - start_time)
+        self.timer_label.setText(f'Temps écoulé: {elapsed_time} secondes')
+
 
 #
 # ALIWidget
@@ -208,6 +238,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
     Called when the user opens the module the first time and the widget is initialized.
     """
+    self.conda_wsl = CondaSetUpCallWsl()
     ScriptedLoadableModuleWidget.setup(self)
 
     # Load widget from .ui file (created by Qt Designer).
@@ -607,23 +638,84 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     ready = True
     system = platform.system()
     if system=="Windows" :
-      # wsl = self.is_ubuntu_installed()
-      # if wsl :
-      #   lib = self.check_lib_wsl()
-      #   if not lib :
-      #       messageBox = qt.QMessageBox()
-      #       text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
-      #       ready = False
-      #       messageBox.information(None, "Information", text)
-      # else :
-      #   messageBox = qt.QMessageBox()
-      #   text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
-      #   ready = False
-      #   messageBox.information(None, "Information", text)
-      messageBox = qt.QMessageBox()
-      text = "ALI_IOS is currently not available on windows"
-      ready = False
-      messageBox.information(None, "Information", text)
+      wsl = self.conda_wsl.testWslAvailable()
+      if wsl :
+        lib = self.check_lib_wsl()
+        if not lib :
+            messageBox = qt.QMessageBox()
+            text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
+            ready = False
+            messageBox.information(None, "Information", text)
+      else :
+        messageBox = qt.QMessageBox()
+        text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
+        ready = False
+        messageBox.information(None, "Information", text)
+      
+      if ready :
+        
+        if "Error" in self.conda_wsl.condaRunCommand([self.conda_wsl.getCondaExecutable(),"--version"]):
+              messageBox = qt.QMessageBox()
+              text = "Code can't be launch. \nConda is not setup in WSL. Please go the extension CondaSetUp in SlicerConda to do it."
+              ready = False
+              messageBox.information(None, "Information", text)
+              
+        if not self.conda_wsl.condaTestEnv('ali_ios') :
+              messageBox = qt.QMessageBox()
+              text = "The environnement doesn't exist, creation of the environnement"
+              ready = False
+              messageBox.information(None, "Information", text)
+              
+
+              # Processus pour la tâche de longue durée
+              process = threading.Thread(target=self.creation_env_wsl, args=())
+              process.start()
+              
+              start_time = time.time()
+              previous_time = start_time
+              current_time = start_time
+              msgBox = qt.QMessageBox()
+              msgBox.setWindowTitle("Process en cours")
+              msgBox.setStandardButtons(qt.QMessageBox.NoButton)
+              msgBox.setText(f"Temps écoulé : {current_time-start_time:.2f} secondes")
+              msgBox.show()
+              while process.is_alive():
+                    slicer.app.processEvents()
+                    current_time = time.time()
+                    if current_time - previous_time > 0.3 :
+                          previous_time = current_time
+                          msgBox.setText(f"Temps écoulé : {current_time-start_time:.2f} secondes")
+                          
+              msgBox.close()
+          
+        process = threading.Thread(target=self.process_wsl, args=(param,))
+        process.start()
+        
+        start_time = time.time()
+        previous_time = start_time
+        current_time = start_time
+        msgBox = qt.QMessageBox()
+        msgBox.setWindowTitle("Process en cours")
+        msgBox.setStandardButtons(qt.QMessageBox.NoButton)
+        msgBox.setText(f"Temps écoulé : {current_time-start_time:.2f} secondes")
+        msgBox.show()
+        while process.is_alive():
+              slicer.app.processEvents()
+              current_time = time.time()
+              if current_time - previous_time > 0.3 :
+                    previous_time = current_time
+                    msgBox.setText(f"Temps écoulé : {current_time-start_time:.2f} secondes")
+                    
+        msgBox.close()
+
+              
+        # if self.conda_wsl.condaTestEnv("ali_ios"):
+        #       pass
+      # messageBox = qt.QMessageBox()
+      # text = "ALI_IOS is currently not available on windows"
+      # ready = False
+      # messageBox.information(None, "Information", text)
+    ready = False
 
     if ready :
       script_path = os.path.dirname(os.path.abspath(__file__))
@@ -637,31 +729,67 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
       self.onProcessStarted()
 
+  def windows_to_linux_path(self,windows_path):
+      # Supprime le caractère de retour chariot
+      windows_path = windows_path.strip()
 
-  # def is_ubuntu_installed(self)->bool:
-  #   '''
-  #   Check if wsl is install with Ubuntu
-  #   '''
-  #   result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
-  #   output = result.stdout.encode('utf-16-le').decode('utf-8')
-  #   clean_output = output.replace('\x00', '')  # Enlève tous les octets null
+      # Remplace les backslashes par des slashes
+      path = windows_path.replace('\\', '/')
 
-  #   return 'Ubuntu' in clean_output
+      # Remplace le lecteur par '/mnt/lettre_du_lecteur'
+      if ':' in path:
+          drive, path_without_drive = path.split(':', 1)
+          path = "/mnt/" + drive.lower() + path_without_drive
+
+      return path
+  def process_wsl(self,param):
+      param["input"] = self.windows_to_linux_path(param["input"])
+      param["dir_models"] = self.windows_to_linux_path(param["dir_models"])
+      param["output_dir"] = self.windows_to_linux_path(param["output_dir"])
+      print("param : ",param)
+      args = []
+      for key,value in param.items() :
+            args.append(str(value))
+            
+      print("args : ",args)
+      
+      result = self.conda_wsl.condaRunFilePython("C:\\Users\\luciacev.UMROOT\\Documents\\SlicerAutomatedDentalTools\\ALI_IOS\\ALI_IOS_WSL.py",'ali_ios',args)
+      
+      print("RESULT DE ALI IOS WSL : ",result)
+        
+        
+        
+        
+  def creation_env_wsl(self):
+        librairies = ["torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113",
+              "monai==0.7.0",
+              "--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113",
+              "fvcore",
+              "--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html",
+              "rpyc",
+              "vtk",
+              "scipy"]
+        
+        self.conda_wsl.condaCreateEnv('ali_ios','3.9')
+        
+        for lib in librairies :
+              self.conda_wsl.condaInstallLibEnv('ali_ios',[lib])
+        
 
 
-  # def check_lib_wsl(self)->bool:
-  #   '''
-  #   Check if wsl contains the require librairies
-  #   '''
-  #   result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
-  #   output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
-  #   clean_output1 = output1.replace('\x00', '')
+  def check_lib_wsl(self)->bool:
+    '''
+    Check if wsl contains the require librairies
+    '''
+    result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
+    output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
+    clean_output1 = output1.replace('\x00', '')
 
-  #   result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
-  #   output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
-  #   clean_output2 = output2.replace('\x00', '')
+    result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
+    output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
+    clean_output2 = output2.replace('\x00', '')
 
-  #   return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
+    return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
 
 
   def onProcessStarted(self):
@@ -670,8 +798,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     system = platform.system()
     if system=="Windows" and not self.CBCT_as_input:
       pass
-      # self.ui.PredScanLabel.setText(f"Beginning of the process")
-      # self.RunningUIWindows(True)
+      self.ui.PredScanLabel.setText(f"Beginning of the process")
+      self.RunningUIWindows(True)
 
     else :
       self.ui.PredScanProgressBar.setMaximum(self.scan_count)
@@ -781,15 +909,15 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.UpdateALIIOS(progress)
 
 
-  # def read_txt(self):
-  #   '''
-  #   Read a file and return the last line
-  #   '''
-  #   script_path = os.path.dirname(os.path.abspath(__file__))
-  #   file_path = os.path.join(script_path,"tempo.txt")
-  #   with open(file_path, 'r') as file:
-  #       lines = file.readlines()
-  #       return lines[-1] if lines else None
+  def read_txt(self):
+    '''
+    Read a file and return the last line
+    '''
+    script_path = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_path,"tempo.txt")
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+        return lines[-1] if lines else None
 
   def onProcessUpdate(self,caller,event):
 
@@ -800,9 +928,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # print(progress)
     system = platform.system()
     if system=="Windows" and not self.CBCT_as_input:
-          pass
-          # line = self.read_txt()
-          # self.ui.PredScanLabel.setText(f"{line}")
+          # pass
+          line = self.read_txt()
+          self.ui.PredScanLabel.setText(f"{line}")
 
     else:
       if progress == 0:
@@ -901,9 +1029,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.PredSegProgressBar.setVisible(run)
     self.ui.TimerLabel.setVisible(run)
 
-  # def RunningUIWindows(self,run=False):
-  #   self.ui.TimerLabel.setVisible(run)
-  #   self.ui.PredScanLabel.setVisible(run)
+  def RunningUIWindows(self,run=False):
+    self.ui.TimerLabel.setVisible(run)
+    self.ui.PredScanLabel.setVisible(run)
 
 
   def cleanup(self):
