@@ -757,6 +757,7 @@ def main(args):
 
 
     system = platform.system()
+    print("args : ",args)
     if system=="Windows":
     #WINDOWS ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         print('the system is windows, ali_ios is currently not available on it.')
