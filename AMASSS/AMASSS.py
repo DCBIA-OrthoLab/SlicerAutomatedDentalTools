@@ -273,6 +273,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.SaveFolderLineEdit.setHidden(True)
     self.ui.PredictFolderLabel.setHidden(True)
 
+    # Checkbox to enable usage of CPU memory in case GPU memory is not enough
+    self.ui.host_memory.setChecked(False)
+
     self.ui.label_4.setVisible(False)
     self.ui.horizontalSliderCPU.setVisible(False)
     self.ui.spinBoxCPU.setVisible(False)
@@ -427,6 +430,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.label_3.setVisible(not SegInput)
     self.ui.horizontalSliderGPU.setVisible(not SegInput)
     self.ui.spinBoxGPU.setVisible(not SegInput)
+
+    self.ui.label_CPU_use.setVisible(not SegInput)
+    self.ui.host_memory.setVisible(not SegInput)
+
 
 
     # self.ui..setVisible(not self.isSegmentInput)
@@ -687,7 +694,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     param["prediction_ID"] = self.ui.SaveId.text
 
     param["gpu_usage"] = self.ui.spinBoxGPU.value
-    param["cpu_usage"] = self.ui.spinBoxCPU.value
+    param["host_memory"] = self.ui.host_memory.isChecked()
 
 
     documentsLocation = qt.QStandardPaths.DocumentsLocation
@@ -755,7 +762,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def UpdateProgressBar(self,progress):
 
     # print("UpdateProgressBar")
-    print("#####Progress value : ",progress)
     if progress == 200:
       self.prediction_step += 1
 
@@ -778,7 +784,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       # self.prediction_step += 1
 
       if self.prediction_step == 1:
-        print("inside of if pred_step=1 and progress=100")
         # self.progressBar.setValue(self.progress)
         self.ui.PredScanProgressBar.setValue(self.progress)
         if not self.isSegmentInput:
@@ -788,7 +793,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
       if self.prediction_step == 2:
 
-        print("inside of if pred_step=2 and progress=100")
         # self.progressBar.setValue(self.progress)
         self.ui.PredSegProgressBar.setValue(self.progress)
         self.ui.PredSegLabel.setText(f"Segmented structures : {self.progress} / {self.total_seg_progress}")
