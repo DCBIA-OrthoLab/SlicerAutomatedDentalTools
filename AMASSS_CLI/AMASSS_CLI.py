@@ -975,9 +975,21 @@ def main(args):
 
                     ## Should avoid error "CUDA OUT OF MEMORY"
                     # thanks to sw_device = DEVICE, device=torch.device('cpu') - see the documentation of sliding_window_inference
-                    val_outputs = sliding_window_inference(input_img, cropSize, args["nbr_GPU_worker"], net,overlap=args["precision"],
-                                                           sw_device= DEVICE, device=torch.device('cpu'))
+                    print("value host_memory :",args["host_memory"])
+                    if args["host_memory"]=="True":
+                        device_memory = torch.device('cpu')
+                    else:
+                        device_memory = DEVICE
 
+                    try:
+                        val_outputs = sliding_window_inference(input_img, cropSize, args["nbr_GPU_worker"], net,overlap=args["precision"],
+                                                               sw_device= DEVICE, device=device_memory)
+                    except RuntimeError as e:
+                        if "CUDA out of memory" in str(e):
+                            print("Error: CUDA out of memory. You can try running again by enabling CPU usage.")
+                        else:
+                            raise
+                    
                     pred_data = torch.argmax(val_outputs, dim=1).detach().cpu().type(torch.int16)
 
                     segmentations = pred_data.permute(0,3,2,1)
@@ -1151,7 +1163,7 @@ if __name__ == "__main__":
         "vtk_smooth": int(sys.argv[10]),
         "prediction_ID": sys.argv[11],
         "nbr_GPU_worker": int(sys.argv[12]),
-        "nbr_CPU_worker": int(sys.argv[13]),
+        "host_memory": sys.argv[13],
         "temp_fold" : sys.argv[14],
         "isSegmentInput" : sys.argv[15] == "true",
         "isDCMInput": sys.argv[16] == "true",
