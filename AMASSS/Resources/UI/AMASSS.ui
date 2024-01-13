@@ -540,6 +540,17 @@
              </widget>
             </item>
             <item>
+             <layout class="QVBoxLayout" name="verticalLayout_5">
+              <item>
+               <widget class="QLabel" name="label_CPU_use">
+                <property name="text">
+                 <string>CPU usage</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
              <widget class="QLabel" name="label_4">
               <property name="text">
                <string>CPU usage</string>
@@ -623,6 +634,13 @@
              </widget>
             </item>
             <item>
+             <widget class="QCheckBox" name="host_memory">
+              <property name="text">
+               <string>check to enable</string>
+              </property>
+             </widget>
+            </item>
+            <item>
              <widget class="QSlider" name="horizontalSliderCPU">
               <property name="minimum">
                <number>1</number>
@@ -683,6 +701,9 @@
                <number>5</number>
               </property>
              </widget>
+            </item>
+            <item>
+             <layout class="QVBoxLayout" name="verticalLayout_10"/>
             </item>
             <item>
              <widget class="QSpinBox" name="spinBoxCPU">
