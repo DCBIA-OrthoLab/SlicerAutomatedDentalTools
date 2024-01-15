@@ -975,7 +975,7 @@ def main(args):
 
                     ## Should avoid error "CUDA OUT OF MEMORY"
                     # thanks to sw_device = DEVICE, device=torch.device('cpu') - see the documentation of sliding_window_inference
-                    print("value host_memory :",args["host_memory"])
+                    
                     if args["host_memory"]=="True":
                         device_memory = torch.device('cpu')
                     else:
