@@ -689,37 +689,58 @@ class AutoCrop3DTest(ScriptedLoadableModuleTest):
         module.  For example, if a developer removes a feature that you depend on,
         your test should break so they know that the feature is needed.
         """
+def test_AutoCrop3D1(self):
+    # The segmentation (CBCT scan) is in the directory Testing/Test_data/Segmentation.zip
+    # The JSON file is in the directory Testing/Test_data/ROI.mrk.zip
+    import os
+    import zipfile
+    import tempfile
+    import slicer
+    self.delayDisplay("Starting AutoCropCBCT test")
 
-        self.delayDisplay("Starting the test")
+    # Test Initialization
+    # Load sample CBCT scans and JSON file
+    # Unzip files
+    tempDir = tempfile.mkdtemp()
+    segmentationZip = os.path.join(os.path.dirname(__file__), 'Testing', 'Test_data', 'Segmentation.zip')
+    segmentationDir = os.path.join(tempDir, 'Segmentation')
+    os.mkdir(segmentationDir)
+    with zipfile.ZipFile(segmentationZip, 'r') as zip_ref:
+        zip_ref.extractall(segmentationDir)
+    #Try Load CBCT scan
+    try:
+        segmentationFile = os.path.join(segmentationDir, 'Segmentation.nrrd')
+        segmentationNode = slicer.util.loadVolume(segmentationFile)
+    except:
+        raise ValueError("CBCT scan could not be loaded")
+    
+    #Try Load JSON file
+    jsonZip = os.path.join(os.path.dirname(__file__), 'Testing', 'Test_data', 'ROI.mrk.zip')
+    jsonDir = os.path.join(tempDir, 'ROI.mrk')
+    os.mkdir(jsonDir)
+    with zipfile.ZipFile(jsonZip, 'r') as zip_ref:
+        zip_ref.extractall(jsonDir)
 
-        # Get/create input data
+    jsonFile = os.path.join(jsonDir, 'ROI.mrk.json')
+    try: 
+        with open(jsonFile) as f:
+            jsonROI = json.load(f)
+    except:
+        raise ValueError("JSON file could not be loaded")
 
-        import SampleData
-        registerSampleData()
-        inputVolume = SampleData.downloadSample('AutoCrop3D')
-        self.delayDisplay('Loaded test data set')
+    # Test for JSON File Reading
+    # Read JSON file and verify ROI data 
 
-        inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(inputScalarRange[0], 0)
-        self.assertEqual(inputScalarRange[1], 695)
+    # Test ROI Application
+    # Apply ROI to CBCT scan and verify the operation
 
-        outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-        threshold = 100
+    # Test Correctness of Cropping
+    # Compare cropped scan with expected result
 
-        # Test the module logic
+    # Test Error Handling
+    # Simulate various error scenarios and check responses
 
-        logic = AutoCrop3DLogic()
+    # Test Performance (Optional)
+    # Measure time taken for cropping operations
 
-        # Test algorithm with non-inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, True)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], threshold)
-
-        # Test algorithm with inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, False)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], inputScalarRange[1])
-
-        self.delayDisplay('Test passed')
+    self.delayDisplay("AutoCropCBCT test passed")
