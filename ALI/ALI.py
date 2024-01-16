@@ -660,11 +660,13 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
               ready = False
               messageBox.information(None, "Information", text)
               
+      if ready :
+        self.RunningUIWindows(True) 
         if not self.conda_wsl.condaTestEnv('ali_ios') :
-              messageBox = qt.QMessageBox()
-              text = "The environnement doesn't exist, creation of the environnement"
-              ready = False
-              messageBox.information(None, "Information", text)
+              
+              # messageBox = qt.QMessageBox()
+              # text = "The environnement doesn't exist, creation of the environnement"
+              # messageBox.information(None, "Information", text)
               
 
               # Processus pour la tâche de longue durée
@@ -674,19 +676,21 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
               start_time = time.time()
               previous_time = start_time
               current_time = start_time
-              msgBox = qt.QMessageBox()
-              msgBox.setWindowTitle("Process en cours")
-              msgBox.setStandardButtons(qt.QMessageBox.NoButton)
-              msgBox.setText(f"Temps écoulé : {current_time-start_time:.2f} secondes")
-              msgBox.show()
+              # msgBox = qt.QMessageBox()
+              # msgBox.setWindowTitle("Process en cours")
+              # msgBox.setStandardButtons(qt.QMessageBox.NoButton)
+              # msgBox.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
+              self.ui.PredScanLabel.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
+              # msgBox.show()
               while process.is_alive():
                     slicer.app.processEvents()
                     current_time = time.time()
                     if current_time - previous_time > 0.3 :
                           previous_time = current_time
-                          msgBox.setText(f"Temps écoulé : {current_time-start_time:.2f} secondes")
+                          self.ui.PredScanLabel.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
+                          # msgBox.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
                           
-              msgBox.close()
+              # msgBox.close()
           
         process = threading.Thread(target=self.process_wsl, args=(param,))
         process.start()
@@ -694,19 +698,21 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         start_time = time.time()
         previous_time = start_time
         current_time = start_time
-        msgBox = qt.QMessageBox()
-        msgBox.setWindowTitle("Process en cours")
-        msgBox.setStandardButtons(qt.QMessageBox.NoButton)
-        msgBox.setText(f"Temps écoulé : {current_time-start_time:.2f} secondes")
-        msgBox.show()
+        # msgBox = qt.QMessageBox()
+        # msgBox.setWindowTitle("Process en cours")
+        # msgBox.setStandardButtons(qt.QMessageBox.NoButton)
+        # msgBox.setText(f"time  : {current_time-start_time:.2f} secondes")
+        self.ui.PredScanLabel.setText(f"Files in process\ntime: : {current_time-start_time:.2f}s")
+        # msgBox.show()
         while process.is_alive():
               slicer.app.processEvents()
               current_time = time.time()
               if current_time - previous_time > 0.3 :
                     previous_time = current_time
-                    msgBox.setText(f"Temps écoulé : {current_time-start_time:.2f} secondes")
-                    
-        msgBox.close()
+                    # msgBox.setText(f"Files in process\ntime: : {current_time-start_time:.2f}s")
+                    self.ui.PredScanLabel.setText(f"Files in process\ntime: : {current_time-start_time:.2f}s")
+                  
+      # msgBox.close()
 
               
         # if self.conda_wsl.condaTestEnv("ali_ios"):
@@ -715,9 +721,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       # text = "ALI_IOS is currently not available on windows"
       # ready = False
       # messageBox.information(None, "Information", text)
-    ready = False
 
-    if ready :
+    else :
       script_path = os.path.dirname(os.path.abspath(__file__))
       file_path = os.path.join(script_path,"tempo.txt")
       with open(file_path, 'a') as file:
@@ -742,7 +747,25 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           path = "/mnt/" + drive.lower() + path_without_drive
 
       return path
+    
   def process_wsl(self,param):
+        
+      file_path = os.path.realpath(__file__)
+      folder = os.path.dirname(file_path)
+      alio_ios_folder = os.path.join(folder, '../ALI_IOS')
+      ali_ios_folder_norm = os.path.normpath(alio_ios_folder)
+      requirement_path = os.path.join(ali_ios_folder_norm, 'requirement.py')
+      print("requirement_path : ",requirement_path)
+      args = []
+      path_pip = self.conda_wsl.getCondaPath()+"/envs/ali_ios/bin/pip"
+      print("path_pip : ",path_pip)
+      args.append(path_pip)
+      result = self.conda_wsl.condaRunFilePython(requirement_path,'ali_ios',args)
+      
+      print("RESULT DE ALI IOS WSL REQUIREMENT : ",result)
+      
+      ###############################
+      
       param["input"] = self.windows_to_linux_path(param["input"])
       param["dir_models"] = self.windows_to_linux_path(param["dir_models"])
       param["output_dir"] = self.windows_to_linux_path(param["output_dir"])
@@ -752,8 +775,20 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             args.append(str(value))
             
       print("args : ",args)
+      file_path = os.path.realpath(__file__)
+      folder = os.path.dirname(file_path)
+      alio_ios_folder = os.path.join(folder, '../ALI_IOS')
+      ali_ios_folder_norm = os.path.normpath(alio_ios_folder)
+      ali_ios_path = os.path.join(ali_ios_folder_norm, 'ALI_IOS_WSL.py')
       
-      result = self.conda_wsl.condaRunFilePython("C:\\Users\\luciacev.UMROOT\\Documents\\SlicerAutomatedDentalTools\\ALI_IOS\\ALI_IOS_WSL.py",'ali_ios',args)
+      print("*"*100)
+      print("alio_ios_path : ",ali_ios_path)
+      
+      # path_pip = "/home/"+self.conda_wsl.getUser()+"/envs/ali_ios/bin/pip"
+      # print("path_pip : ",path_pip)
+      # args.append(path_pip)
+      
+      result = self.conda_wsl.condaRunFilePython(ali_ios_path,'ali_ios',args)
       
       print("RESULT DE ALI IOS WSL : ",result)
         
@@ -764,7 +799,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         librairies = ["torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113",
               "monai==0.7.0",
               "--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113",
-              "fvcore",
+              "fvcore==0.1.5.post20220305",
               "--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html",
               "rpyc",
               "vtk",
