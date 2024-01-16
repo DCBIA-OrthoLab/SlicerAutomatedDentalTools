@@ -1,5 +1,5 @@
-from AREG_Methode.Methode import Methode
-from AREG_Methode.Progress import DisplayAREGIOS, DisplayCrownSeg, DisplayASOIOS
+from AREG_Method.Method import Method
+from AREG_Method.Progress import DisplayAREGIOS, DisplayCrownSeg, DisplayASOIOS
 import slicer
 import webbrowser
 import glob
@@ -8,7 +8,7 @@ import vtk
 import shutil
 
 
-class Auto_IOS(Methode):
+class Auto_IOS(Method):
     def __init__(self, widget):
         super().__init__(widget)
 

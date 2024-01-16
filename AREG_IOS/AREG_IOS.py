@@ -123,9 +123,9 @@ def main(args):
     dataset = DatasetPatch(args.T1, args.T2, "Universal_ID")
     Patched = PredPatch(args.model)
 
-    methode = [vtkICP()]
+    Method = [vtkICP()]
     option = vtkMeshTeeth(list_teeth=[1], property="Butterfly")
-    icp = ICP(methode, option=option)
+    icp = ICP(Method, option=option)
 
     lower = False
     if dataset.isLower():
@@ -161,7 +161,7 @@ def main(args):
 
         name = os.path.basename(dataset.getUpperPath(idx, "T2"))
         WriteSurf(output_icp["source_Or"], args.output, name, args.suffix)
-        
+
 
         if lower:
             surf_lower = dataset.getLowerSurf(idx, "T2")
@@ -170,7 +170,7 @@ def main(args):
             WriteSurf(surf_lower, args.output, name_lower, args.suffix)
 
             surf_lower = dataset.getLowerSurf(idx, "T1")
-            if surf_lower!=None : 
+            if surf_lower!=None :
                 name_lower = os.path.basename(dataset.getLowerPath(idx, "T1"))
                 WriteSurf(surf_lower, args.output, name_lower, args.suffix)
 

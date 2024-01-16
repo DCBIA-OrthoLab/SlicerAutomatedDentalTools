@@ -1,5 +1,5 @@
-from AREG_Methode.Methode import Methode
-from AREG_Methode.Progress import DisplayAREGIOSCBCT, DisplayALICBCT
+from AREG_Method.Method import Method
+from AREG_Method.Progress import DisplayAREGIOSCBCT, DisplayALICBCT
 import webbrowser
 import os
 import slicer
@@ -8,7 +8,7 @@ import time
 import qt
 
 
-class IOSCBCT(Methode):
+class IOSCBCT(Method):
     def __init__(self, widget):
         super().__init__(widget)
 

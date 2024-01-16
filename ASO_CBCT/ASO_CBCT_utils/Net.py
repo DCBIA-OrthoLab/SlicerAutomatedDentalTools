@@ -1,6 +1,20 @@
+from slicer.util import pip_install, pip_uninstall
+
+#try to upgrade pip
+try:
+    pip_install("pip -q --upgrade")
+except:
+    pass
+
+
+try:
+    import torch
+except ImportError:
+    pip_install('torch')
+    import torch
+
 import torch.nn as nn
 import torch.optim as optim
-from slicer.util import pip_install, pip_uninstall
 
 try:
     import pytorch_lightning as pl

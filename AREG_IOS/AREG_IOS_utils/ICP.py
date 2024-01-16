@@ -44,7 +44,7 @@ class ICP:
         assert type(source) == type(
             target
         ), f"source and target dont have the same type source {type(source)}, target {type(target)}"
-        assert self.list_icp != None, "give icp methode"
+        assert self.list_icp != None, "give icp Method"
 
         if isinstance(source, str):
             source, target = self.pathTo(source, target)
