@@ -11,10 +11,10 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 from functools import partialmethod
 
-from AREG_Methode.IOS import Auto_IOS, Semi_IOS
-from AREG_Methode.CBCT import Semi_CBCT, Auto_CBCT, Or_Auto_CBCT
-from AREG_Methode.Methode import Methode
-from AREG_Methode.Progress import Display
+from AREG_Method.IOS import Auto_IOS, Semi_IOS
+from AREG_Method.CBCT import Semi_CBCT, Auto_CBCT, Or_Auto_CBCT
+from AREG_Method.Method import Method
+from AREG_Method.Progress import Display
 
 
 class AREG(ScriptedLoadableModule):
@@ -256,17 +256,17 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # (in the selected parameter node).
 
         """
-            888     888        d8888 8888888b.  8888888        d8888 888888b.   888      8888888888  .d8888b.  
-            888     888       d88888 888   Y88b   888         d88888 888  "88b  888      888        d88P  Y88b 
-            888     888      d88P888 888    888   888        d88P888 888  .88P  888      888        Y88b.      
-            Y88b   d88P     d88P 888 888   d88P   888       d88P 888 8888888K.  888      8888888     "Y888b.   
-             Y88b d88P     d88P  888 8888888P"    888      d88P  888 888  "Y88b 888      888            "Y88b. 
-              Y88o88P     d88P   888 888 T88b     888     d88P   888 888    888 888      888              "888 
-               Y888P     d8888888888 888  T88b    888    d8888888888 888   d88P 888      888        Y88b  d88P 
+            888     888        d8888 8888888b.  8888888        d8888 888888b.   888      8888888888  .d8888b.
+            888     888       d88888 888   Y88b   888         d88888 888  "88b  888      888        d88P  Y88b
+            888     888      d88P888 888    888   888        d88P888 888  .88P  888      888        Y88b.
+            Y88b   d88P     d88P 888 888   d88P   888       d88P 888 8888888K.  888      8888888     "Y888b.
+             Y88b d88P     d88P  888 8888888P"    888      d88P  888 888  "Y88b 888      888            "Y88b.
+              Y88o88P     d88P   888 888 T88b     888     d88P   888 888    888 888      888              "888
+               Y888P     d8888888888 888  T88b    888    d8888888888 888   d88P 888      888        Y88b  d88P
                 Y8P     d88P     888 888   T88b 8888888 d88P     888 8888888P"  88888888 8888888888  "Y8888P"
         """
 
-        self.MethodeDic = {
+        self.MethodDic = {
             "Semi_IOS": Semi_IOS(self),
             "Auto_IOS": Auto_IOS(self),
             "Semi_CBCT": Semi_CBCT(self),
@@ -274,8 +274,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "Or_Auto_CBCT": Or_Auto_CBCT(self),
         }
         self.reference_lm = []
-        self.ActualMeth = Methode
-        self.ActualMeth = self.MethodeDic["Or_Auto_CBCT"]
+        self.ActualMeth = Method
+        self.ActualMeth = self.MethodDic["Or_Auto_CBCT"]
         self.type = "CBCT"
         self.nb_scan = 0
         self.startprocess = 0
@@ -308,38 +308,38 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             os.makedirs(self.SlicerDownloadPath)
 
         """
-                              
-                                        8888888 888b    888 8888888 88888888888 
-                                          888   8888b   888   888       888     
-                                          888   88888b  888   888       888     
-                                          888   888Y88b 888   888       888     
-                                          888   888 Y88b888   888       888     
-                                          888   888  Y88888   888       888     
-                                          888   888   Y8888   888       888     
-                                        8888888 888    Y888 8888888     888 
-                              
+
+                                        8888888 888b    888 8888888 88888888888
+                                          888   8888b   888   888       888
+                                          888   88888b  888   888       888
+                                          888   888Y88b 888   888       888
+                                          888   888 Y88b888   888       888
+                                          888   888  Y88888   888       888
+                                          888   888   Y8888   888       888
+                                        8888888 888    Y888 8888888     888
+
         """
 
         self.initCheckBoxCBCT(
-            self.MethodeDic["Semi_CBCT"],
+            self.MethodDic["Semi_CBCT"],
             self.ui.LayoutSemiCBCT,
             self.ui.tohideCBCT,
         )
 
         self.initCheckBoxCBCT(
-            self.MethodeDic["Auto_CBCT"],
+            self.MethodDic["Auto_CBCT"],
             self.ui.LayoutAutoCBCT,
             self.ui.tohideCBCT_2,
         )
 
         self.initCheckBoxCBCT(
-            self.MethodeDic["Or_Auto_CBCT"],
+            self.MethodDic["Or_Auto_CBCT"],
             self.ui.LayoutOrAutoCBCT,
             self.ui.tohideCBCT_3,
         )
 
         self.HideComputeItems()
-        # self.initTest(self.MethodeDic['Semi_IOS'])
+        # self.initTest(self.MethodDic['Semi_IOS'])
 
         # self.dicchckbox=self.ActualMeth.getcheckbox()
         # self.dicchckbox2=self.ActualMeth.getcheckbox2()
@@ -350,16 +350,16 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.SwitchType()
 
         """
-                                                                                       
-                     .d8888b.   .d88888b.  888b    888 888b    888 8888888888  .d8888b.  88888888888 
-                    d88P  Y88b d88P" "Y88b 8888b   888 8888b   888 888        d88P  Y88b     888     
-                    888    888 888     888 88888b  888 88888b  888 888        888    888     888     
-                    888        888     888 888Y88b 888 888Y88b 888 8888888    888            888     
-                    888        888     888 888 Y88b888 888 Y88b888 888        888            888     
-                    888    888 888     888 888  Y88888 888  Y88888 888        888    888     888     
-                    Y88b  d88P Y88b. .d88P 888   Y8888 888   Y8888 888        Y88b  d88P     888     
-                     "Y8888P"   "Y88888P"  888    Y888 888    Y888 8888888888  "Y8888P"      888 
-                                                                                                            
+
+                     .d8888b.   .d88888b.  888b    888 888b    888 8888888888  .d8888b.  88888888888
+                    d88P  Y88b d88P" "Y88b 8888b   888 8888b   888 888        d88P  Y88b     888
+                    888    888 888     888 88888b  888 88888b  888 888        888    888     888
+                    888        888     888 888Y88b 888 888Y88b 888 8888888    888            888
+                    888        888     888 888 Y88b888 888 Y88b888 888        888            888
+                    888    888 888     888 888  Y88888 888  Y88888 888        888    888     888
+                    Y88b  d88P Y88b. .d88P 888   Y8888 888   Y8888 888        Y88b  d88P     888
+                     "Y8888P"   "Y88888P"  888    Y888 888    Y888 8888888888  "Y8888P"      888
+
         """
 
         self.ui.ButtonSearchScan1.pressed.connect(
@@ -393,17 +393,17 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     """
 
-                                                                                                                                                                    
-                888888b.   888     888 88888888888 88888888888  .d88888b.  888b    888  .d8888b.  
-                888  "88b  888     888     888         888     d88P" "Y88b 8888b   888 d88P  Y88b 
-                888  .88P  888     888     888         888     888     888 88888b  888 Y88b.      
-                8888888K.  888     888     888         888     888     888 888Y88b 888  "Y888b.   
-                888  "Y88b 888     888     888         888     888     888 888 Y88b888     "Y88b. 
-                888    888 888     888     888         888     888     888 888  Y88888       "888 
-                888   d88P Y88b. .d88P     888         888     Y88b. .d88P 888   Y8888 Y88b  d88P 
+
+                888888b.   888     888 88888888888 88888888888  .d88888b.  888b    888  .d8888b.
+                888  "88b  888     888     888         888     d88P" "Y88b 8888b   888 d88P  Y88b
+                888  .88P  888     888     888         888     888     888 88888b  888 Y88b.
+                8888888K.  888     888     888         888     888     888 888Y88b 888  "Y888b.
+                888  "Y88b 888     888     888         888     888     888 888 Y88b888     "Y88b.
+                888    888 888     888     888         888     888     888 888  Y88888       "888
+                888   d88P Y88b. .d88P     888         888     Y88b. .d88P 888   Y8888 Y88b  d88P
                 8888888P"   "Y88888P"      888         888      "Y88888P"  888    Y888  "Y8888P"
-                                                                                                                                                                    
-                                                                                                                                                                    
+
+
 
     """
 
@@ -504,16 +504,16 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Function to change the UI and the Method in AREG depending on the selected type (Semi CBCT, Fully CBCT...)"""
         if self.ui.CbInputType.currentIndex == 0:
             if self.ui.CbModeType.currentIndex == 2:
-                self.ActualMeth = self.MethodeDic["Semi_CBCT"]
+                self.ActualMeth = self.MethodDic["Semi_CBCT"]
                 self.ui.stackedWidget.setCurrentIndex(0)
 
             elif self.ui.CbModeType.currentIndex == 0:
-                self.ActualMeth = self.MethodeDic["Or_Auto_CBCT"]
+                self.ActualMeth = self.MethodDic["Or_Auto_CBCT"]
                 self.ui.stackedWidget.setCurrentIndex(2)
                 self.ui.label_7.setText("Segmentation Model Folder")
 
             elif self.ui.CbModeType.currentIndex == 1:
-                self.ActualMeth = self.MethodeDic["Auto_CBCT"]
+                self.ActualMeth = self.MethodDic["Auto_CBCT"]
                 self.ui.stackedWidget.setCurrentIndex(1)
                 self.ui.label_7.setText("Segmentation Model Folder")
 
@@ -531,12 +531,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         elif self.ui.CbInputType.currentIndex == 1:
             if self.ui.CbModeType.currentIndex == 1:
-                self.ActualMeth = self.MethodeDic["Semi_IOS"]
+                self.ActualMeth = self.MethodDic["Semi_IOS"]
                 self.ui.stackedWidget.setCurrentIndex(3)
                 self.type = "IOS"
 
             elif self.ui.CbModeType.currentIndex == 0:
-                self.ActualMeth = self.MethodeDic["Auto_IOS"]
+                self.ActualMeth = self.MethodDic["Auto_IOS"]
                 self.ui.stackedWidget.setCurrentIndex(3)
                 self.type = "IOS"
                 self.ui.label_7.setText("Segmentation Model Folder")
@@ -892,17 +892,17 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         checkbox2.setChecked(True)
 
     """
-                                                                                    
-                    8888888b.  8888888b.   .d88888b.   .d8888b.  8888888888  .d8888b.   .d8888b.  
-                    888   Y88b 888   Y88b d88P" "Y88b d88P  Y88b 888        d88P  Y88b d88P  Y88b 
-                    888    888 888    888 888     888 888    888 888        Y88b.      Y88b.      
-                    888   d88P 888   d88P 888     888 888        8888888     "Y888b.    "Y888b.   
-                    8888888P"  8888888P"  888     888 888        888            "Y88b.     "Y88b. 
-                    888        888 T88b   888     888 888    888 888              "888       "888 
-                    888        888  T88b  Y88b. .d88P Y88b  d88P 888        Y88b  d88P Y88b  d88P 
-                    888        888   T88b  "Y88888P"   "Y8888P"  8888888888  "Y8888P"   "Y8888P"  
-                                                                                
-                                                                                    
+
+                    8888888b.  8888888b.   .d88888b.   .d8888b.  8888888888  .d8888b.   .d8888b.
+                    888   Y88b 888   Y88b d88P" "Y88b d88P  Y88b 888        d88P  Y88b d88P  Y88b
+                    888    888 888    888 888     888 888    888 888        Y88b.      Y88b.
+                    888   d88P 888   d88P 888     888 888        8888888     "Y888b.    "Y888b.
+                    8888888P"  8888888P"  888     888 888        888            "Y88b.     "Y88b.
+                    888        888 T88b   888     888 888    888 888              "888       "888
+                    888        888  T88b  Y88b. .d88P Y88b  d88P 888        Y88b  d88P Y88b  d88P
+                    888        888   T88b  "Y88888P"   "Y8888P"  8888888888  "Y8888P"   "Y8888P"
+
+
     """
 
     def onPredictButton(self):
@@ -1121,27 +1121,27 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.HideComputeItems(run)
 
     """
-                                                                                                                        
-            8888888888 888     888 888b    888  .d8888b.      8888888 888b    888 8888888 88888888888 
-            888        888     888 8888b   888 d88P  Y88b       888   8888b   888   888       888     
-            888        888     888 88888b  888 888    888       888   88888b  888   888       888     
-            8888888    888     888 888Y88b 888 888              888   888Y88b 888   888       888     
-            888        888     888 888 Y88b888 888              888   888 Y88b888   888       888     
-            888        888     888 888  Y88888 888    888       888   888  Y88888   888       888     
-            888        Y88b. .d88P 888   Y8888 Y88b  d88P       888   888   Y8888   888       888     
-            888         "Y88888P"  888    Y888  "Y8888P"      8888888 888    Y888 8888888     888     
-                                                                                                                                      
-                                                                                                                                    
-                                                                                                                        
-                                                                                                                        
+
+            8888888888 888     888 888b    888  .d8888b.      8888888 888b    888 8888888 88888888888
+            888        888     888 8888b   888 d88P  Y88b       888   8888b   888   888       888
+            888        888     888 88888b  888 888    888       888   88888b  888   888       888
+            8888888    888     888 888Y88b 888 888              888   888Y88b 888   888       888
+            888        888     888 888 Y88b888 888              888   888 Y88b888   888       888
+            888        888     888 888  Y88888 888    888       888   888  Y88888   888       888
+            888        Y88b. .d88P 888   Y8888 Y88b  d88P       888   888   Y8888   888       888
+            888         "Y88888P"  888    Y888  "Y8888P"      8888888 888    Y888 8888888     888
+
+
+
+
     """
 
-    def initCheckBoxCBCT(self, methode, layout, tohide: qt.QLabel):
+    def initCheckBoxCBCT(self, Method, layout, tohide: qt.QLabel):
         # self.ui.advancedCollapsibleButton.setMaximumHeight(180)
         if not tohide is None:
             tohide.setHidden(True)
-        dic = methode.DicLandmark()
-        # status = methode.existsLandmark('','')
+        dic = Method.DicLandmark()
+        # status = Method.existsLandmark('','')
         # Create a checkbox
         # self.ldmk_reg_checkbox = qt.QCheckBox()
         # self.ldmk_reg_checkbox.setText("Register Landmark")
@@ -1164,12 +1164,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             dicchebox[title] = listcheckboxlandmark
 
-        methode.setcheckbox(dicchebox)
+        Method.setcheckbox(dicchebox)
 
-        methode.merge_seg_checkbox = qt.QCheckBox()
-        methode.merge_seg_checkbox.setText("Merge Segmentations")
-        methode.merge_seg_checkbox.setChecked(True)
-        layout.addWidget(methode.merge_seg_checkbox)
+        Method.merge_seg_checkbox = qt.QCheckBox()
+        Method.merge_seg_checkbox.setText("Merge Segmentations")
+        Method.merge_seg_checkbox.setChecked(True)
+        layout.addWidget(Method.merge_seg_checkbox)
 
     def CreateMiniTab(
         self, tabWidget: QTabWidget, name: str, index: int, numberItems=None
@@ -1216,14 +1216,14 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             tohide.hide()
 
     """
-                          .d88888b.  88888888888 888    888 8888888888 8888888b.   .d8888b.  
-                         d88P" "Y88b     888     888    888 888        888   Y88b d88P  Y88b 
-                         888     888     888     888    888 888        888    888 Y88b.      
-                         888     888     888     8888888888 8888888    888   d88P  "Y888b.   
-                         888     888     888     888    888 888        8888888P"      "Y88b. 
-                         888     888     888     888    888 888        888 T88b         "888 
-                         Y88b. .d88P     888     888    888 888        888  T88b  Y88b  d88P 
-                          "Y88888P"      888     888    888 8888888888 888   T88b  "Y8888P"    
+                          .d88888b.  88888888888 888    888 8888888888 8888888b.   .d8888b.
+                         d88P" "Y88b     888     888    888 888        888   Y88b d88P  Y88b
+                         888     888     888     888    888 888        888    888 Y88b.
+                         888     888     888     8888888888 8888888    888   d88P  "Y888b.
+                         888     888     888     888    888 888        8888888P"      "Y88b.
+                         888     888     888     888    888 888        888 T88b         "888
+                         Y88b. .d88P     888     888    888 888        888  T88b  Y88b  d88P
+                          "Y88888P"      888     888    888 8888888888 888   T88b  "Y8888P"
     """
 
     def cleanup(self):
