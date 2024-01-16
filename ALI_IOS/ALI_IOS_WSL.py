@@ -10,6 +10,7 @@ Authors :
 - Maxime Gillot (UoM)
 - Baptiste Baquero (UoM)
 """
+
 import subprocess
 import time
 import os
@@ -28,69 +29,32 @@ import shutil
 
 
 system = platform.system()
-try : 
-    import numpy as np
-except : 
-    command = ['pip', 'install','numpy']
-    result = subprocess.run(command,stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True )
-    import numpy as np
 
-try : 
-    import vtk
-except : 
-    command = ['pip', 'install','vtk']
-    result = subprocess.run(command,stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True )
-    import vtk
+import numpy as np
 
-try :
-    from scipy import linalg
-except :
-    command = ['pip', 'install','scipy']
-    result = subprocess.run(command,stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True )
-    from scipy import linalg
 
-try:
-    import torch
-except ImportError:
-    command = ['pip', 'install','--no-cache-dir', 'torch==1.11.0+cu113', 'torchvision==0.12.0+cu113', 'torchaudio==0.11.0+cu113', '--extra-index-url' ,'https://download.pytorch.org/whl/cu113']
-    result = subprocess.run(command,stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True )
-    import torch
 
-try :
-    from monai.networks.nets import UNETR
-except ImportError:
-    command = ['pip', 'install', 'monai==0.7.0']
-    subprocess.run(command,stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True )
-    from monai.networks.nets import UNETR
+import vtk
+
+
+
+from scipy import linalg
+
+
+
+import torch
+
+
+
+from monai.networks.nets import UNETR
+
 
 from platform import system # to know which OS is used
 
 
 
- # Linux or Windows
-try:
-    import pytorch3d
-    if pytorch3d.__version__ != '0.6.2':
-        raise ImportError
-except ImportError:
-    try:
-        pyt_version_str=torch.__version__.split("+")[0].replace(".", "")
-        version_str="".join([f"py3{sys.version_info.minor}_cu",torch.version.cuda.replace(".",""),f"_pyt{pyt_version_str}"])
-        command = ['pip', 'install','--upgrade' ,'pip']
-        subprocess.run(command,stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True )
-        command = ['pip', 'install','fvcore==0.1.5.post20220305']
-        subprocess.run(command,stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True )     
-        command = ['pip', 'install','--no-index', '--no-cache-dir' ,'pytorch3d', '-f', f'https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html']
-        result = subprocess.run(command,stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True )
-    except: # install correct torch version
-        command = ['pip', 'install','--no-cache-dir', 'torch==1.11.0+cu113', 'torchvision==0.12.0+cu113', 'torchaudio==0.11.0+cu113', '--extra-index-url' ,'https://download.pytorch.org/whl/cu113']
-        result = subprocess.run(command,stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True )
-        command = ['pip', 'install','--no-index', '--no-cache-dir', 'pytorch3d', '-f', 'https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html']
-        result = subprocess.run(command,stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True )
-    import pytorch3d
-    
-command :  ['pip', 'install', '--no-index', '--no-cache-dir', 'pytorch3d', '-f', 'https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html']
-command  : ['pip', 'install', '--no-index', '--no-cache-dir', 'pytorch3d', '-f', 'https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu121_pyt212/download.html']
+
+import pytorch3d
 
 
 import torch.nn as nn
@@ -114,7 +78,6 @@ from pytorch3d.renderer import (
     HardPhongShader, PointLights,look_at_rotation,TexturesVertex,blending
 
 )
-
 
 
 dic_cam = { 'O':{
@@ -1092,7 +1055,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-
+    
 
     print("Starting")
     print(sys.argv)
@@ -1128,5 +1091,6 @@ if __name__ == "__main__":
     #         "sphere_radius": 0.3,
 
     #     }
-
+    # path_pip = sys.argv[7]
+    # import_function(path_pip)
     main(args)
