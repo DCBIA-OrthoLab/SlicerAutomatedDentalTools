@@ -544,7 +544,7 @@
               <item>
                <widget class="QLabel" name="label_CPU_use">
                 <property name="text">
-                 <string>CPU usage</string>
+                 <string>Use CPU memory</string>
                 </property>
                </widget>
               </item>
@@ -635,8 +635,11 @@
             </item>
             <item>
              <widget class="QCheckBox" name="host_memory">
+              <property name="toolTip">
+               <string>Use host memory with a performance penalty. Enable if CUDA runs out of memory.</string>
+              </property>
               <property name="text">
-               <string>check to enable</string>
+               <string/>
               </property>
              </widget>
             </item>
