@@ -44,11 +44,18 @@
       <description>Suffix to name the output files</description>
     </string>
 
+    <string>
+      <name>box_Size</name>
+      <label>box_Size</label>
+      <index>4</index>
+      <description>Chekbox to keep the original size (from input scans)</description>
+    </string>
+
      <string>
       <name>logPath</name>
       <label>logPath</label>
-      <index>4</index>
-      <description>logPath (for the progress bar?)</description>
+      <index>5</index>
+      <description>logPath (for the progress bar)</description>
     </string>
 
 

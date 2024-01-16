@@ -14,7 +14,7 @@
 
     <label>IO</label>
     <description><![CDATA[Input/output parameters]]></description>
-    
+
     <string>
       <name>t1_folder</name>
       <label>t1_folder</label>

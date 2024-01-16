@@ -130,11 +130,11 @@ def main(args):
             chain.from_iterable(search(args.input[0], list_extension).values())
         )
 
-    methode = [InitIcp(), vtkICP()]
+    Method = [InitIcp(), vtkICP()]
     option_upper = vtkMeanTeeth(dic_teeth["Upper"])
     option_lower = vtkMeanTeeth(dic_teeth["Lower"])
-    icp_upper = ICP(methode, option=option_upper)
-    icp_lower = ICP(methode, option=option_lower)
+    icp_upper = ICP(Method, option=option_upper)
+    icp_lower = ICP(Method, option=option_lower)
     icp = {"Upper": icp_upper, "Lower": icp_lower}
 
     for index, file in tqdm(enumerate(list_files), total=len(list_files)):
