@@ -1,16 +1,14 @@
 # Slicer Automated Dental Tools 
 
-**Note :exclamation:** ${\textsf{\color{red}This extension is currently available for Slicer 5.6.0 and earlier versions, but not for the newest version.}}$
-
-
-Slicer automated dental tools is an extension for 3D Slicer to perform important automatic Dental and Cranio Facial analysis tasks via a GUI interface with no coding knowledge needed.
-This extension currently works only on the Stable release of the 3D Slicer. 
+The Slicer Automated Dental Tools extension provides automatic dental and craniofacial analysis capabilities. It features a user-friendly graphical interface on 3D Slicer, enabling users to perform complex tasks without any coding expertise.
 
 
 <p align="center">
     <img src="SlicerAutomaticTools.png" alt="Extension Logo" width="200"/>
 </p>
 
+**Compatible with both stable and nightly versions of 3D Slicer.** 
+Latest versions supported: **5.7.0 (nightly)** and **5.6.1 (stable)** 
 ## Overview
 
 Slicer automated dental tools is an extension that allows users to perform automatic **segmentation**, **landmark identification** and **Automatic Orientation** on CBCT scans and Intra Oral Scan (IOS) using machine learning tools where the learning mdoels are continously updated.
