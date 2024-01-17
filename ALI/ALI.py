@@ -637,11 +637,12 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     ready = True
     system = platform.system()
-    if system=="Windows" and not self.CBCT_as_input :
+    if system=="Windows" and not self.CBCT_as_input : 
+      # If on windows and running ios 
       wsl = self.conda_wsl.testWslAvailable()
-      if wsl :
+      if wsl : # check if wsl is available
         lib = self.check_lib_wsl()
-        if not lib :
+        if not lib : # check if the lib required are installed
             messageBox = qt.QMessageBox()
             text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
             ready = False
@@ -654,7 +655,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       
       if ready :
         
-        if "Error" in self.conda_wsl.condaRunCommand([self.conda_wsl.getCondaExecutable(),"--version"]):
+        if "Error" in self.conda_wsl.condaRunCommand([self.conda_wsl.getCondaExecutable(),"--version"]): # check if miniconda is install in wsl and is setup in SlicerConda
               messageBox = qt.QMessageBox()
               text = "Code can't be launch. \nConda is not setup in WSL. Please go the extension CondaSetUp in SlicerConda to do it."
               ready = False
@@ -662,43 +663,32 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
               
       if ready :
         self.RunningUIWindows(True) 
-        if not self.conda_wsl.condaTestEnv('ali_ios') :
-              userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the landmarks identification  doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
-              if userResponse : 
+        if not self.conda_wsl.condaTestEnv('ali_ios') : # check if the environnement exist
+              userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the landmarks identification  doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist") # ask the persimission to create it
+              if userResponse : #create it in parallele to not blocking slicer
               
-                # messageBox = qt.QMessageBox()
-                # text = "The environnement doesn't exist, creation of the environnement"
-                # messageBox.information(None, "Information", text)
-                
-
-                # Processus pour la tâche de longue durée
                 process = threading.Thread(target=self.creation_env_wsl, args=())
                 process.start()
                 
                 start_time = time.time()
                 previous_time = start_time
                 current_time = start_time
-                # msgBox = qt.QMessageBox()
-                # msgBox.setWindowTitle("Process en cours")
-                # msgBox.setStandardButtons(qt.QMessageBox.NoButton)
-                # msgBox.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
+                
                 self.ui.PredScanLabel.setText(f"The environnement doesn't exist, creation of the environnement")
                 self.ui.TimerLabel.setText(f"time: : {current_time-start_time:.2f}s")
-                # msgBox.show()
+
                 while process.is_alive():
                       slicer.app.processEvents()
                       current_time = time.time()
                       if current_time - previous_time > 0.3 :
                             previous_time = current_time
                             self.ui.TimerLabel.setText(f"time: : {current_time-start_time:.2f}s")
-                            # msgBox.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
-                            
-                # msgBox.close()
+
               else :
                     self.ui.PredScanLabel.setText(f"The environnement doesn't exist, code can't be launch")
                     ready = False
           
-        if ready :
+        if ready : # if everything is setup, launch ali_ios_wsl in parallele on the environnement in wsl. Launch in parallele to not block slicer
           process = threading.Thread(target=self.process_wsl, args=(param,))
           process.start()
           
@@ -707,15 +697,16 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           current_time = start_time
           self.ui.PredScanLabel.setText(f"Files in process")
           self.ui.TimerLabel.setText(f"time: : {current_time-start_time:.2f}s")
-          # msgBox.show()
           while process.is_alive():
                 slicer.app.processEvents()
                 current_time = time.time()
                 if current_time - previous_time > 0.3 :
                       previous_time = current_time
                       self.ui.TimerLabel.setText(f"time: : {current_time-start_time:.2f}s")
+          
 
-    else :
+    else : #running ali as before without wsl
+      self.RunningUIWindows(False) 
       script_path = os.path.dirname(os.path.abspath(__file__))
       file_path = os.path.join(script_path,"tempo.txt")
       with open(file_path, 'a') as file:
@@ -728,13 +719,13 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.onProcessStarted()
 
   def windows_to_linux_path(self,windows_path):
-      # Supprime le caractère de retour chariot
+      '''
+      convert a windows path to a wsl path
+      '''
       windows_path = windows_path.strip()
 
-      # Remplace les backslashes par des slashes
       path = windows_path.replace('\\', '/')
 
-      # Remplace le lecteur par '/mnt/lettre_du_lecteur'
       if ':' in path:
           drive, path_without_drive = path.split(':', 1)
           path = "/mnt/" + drive.lower() + path_without_drive
@@ -742,20 +733,23 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       return path
     
   def process_wsl(self,param):
+      ''' 
+      Function to launch ali_ios_wsl.
+      Launch requirement.py in the environnement to be sure every librairy are well install with the good version
+      Convert all the windows path to wsl path before launching the code
+      '''
         
       file_path = os.path.realpath(__file__)
       folder = os.path.dirname(file_path)
       alio_ios_folder = os.path.join(folder, '../ALI_IOS')
       ali_ios_folder_norm = os.path.normpath(alio_ios_folder)
       requirement_path = os.path.join(ali_ios_folder_norm, 'requirement.py')
-      print("requirement_path : ",requirement_path)
       args = []
       path_pip = self.conda_wsl.getCondaPath()+"/envs/ali_ios/bin/pip"
-      print("path_pip : ",path_pip)
       args.append(path_pip)
       result = self.conda_wsl.condaRunFilePython(requirement_path,'ali_ios',args)
       
-      print("RESULT DE ALI IOS WSL REQUIREMENT : ",result)
+      print("RESULT OF ALI IOS WSL REQUIREMENT : ",result)
       
       ###############################
       
@@ -774,12 +768,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       ali_ios_folder_norm = os.path.normpath(alio_ios_folder)
       ali_ios_path = os.path.join(ali_ios_folder_norm, 'ALI_IOS_WSL.py')
       
-      print("*"*100)
-      print("alio_ios_path : ",ali_ios_path)
-      
-      # path_pip = "/home/"+self.conda_wsl.getUser()+"/envs/ali_ios/bin/pip"
-      # print("path_pip : ",path_pip)
-      # args.append(path_pip)
       
       result = self.conda_wsl.condaRunFilePython(ali_ios_path,'ali_ios',args)
       
@@ -789,6 +777,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         
   def creation_env_wsl(self):
+        '''
+        Create the environnement on wsl to run landmarks identification of ios files
+        '''
         librairies = ["torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113",
               "monai==0.7.0",
               "--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113",
