@@ -637,7 +637,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     ready = True
     system = platform.system()
-    if system=="Windows" :
+    if system=="Windows" and not self.CBCT_as_input :
       wsl = self.conda_wsl.testWslAvailable()
       if wsl :
         lib = self.check_lib_wsl()
@@ -663,64 +663,57 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       if ready :
         self.RunningUIWindows(True) 
         if not self.conda_wsl.condaTestEnv('ali_ios') :
+              userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the landmarks identification  doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+              if userResponse : 
               
-              # messageBox = qt.QMessageBox()
-              # text = "The environnement doesn't exist, creation of the environnement"
-              # messageBox.information(None, "Information", text)
-              
+                # messageBox = qt.QMessageBox()
+                # text = "The environnement doesn't exist, creation of the environnement"
+                # messageBox.information(None, "Information", text)
+                
 
-              # Processus pour la tâche de longue durée
-              process = threading.Thread(target=self.creation_env_wsl, args=())
-              process.start()
-              
-              start_time = time.time()
-              previous_time = start_time
-              current_time = start_time
-              # msgBox = qt.QMessageBox()
-              # msgBox.setWindowTitle("Process en cours")
-              # msgBox.setStandardButtons(qt.QMessageBox.NoButton)
-              # msgBox.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
-              self.ui.PredScanLabel.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
-              # msgBox.show()
-              while process.is_alive():
-                    slicer.app.processEvents()
-                    current_time = time.time()
-                    if current_time - previous_time > 0.3 :
-                          previous_time = current_time
-                          self.ui.PredScanLabel.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
-                          # msgBox.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
-                          
-              # msgBox.close()
+                # Processus pour la tâche de longue durée
+                process = threading.Thread(target=self.creation_env_wsl, args=())
+                process.start()
+                
+                start_time = time.time()
+                previous_time = start_time
+                current_time = start_time
+                # msgBox = qt.QMessageBox()
+                # msgBox.setWindowTitle("Process en cours")
+                # msgBox.setStandardButtons(qt.QMessageBox.NoButton)
+                # msgBox.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
+                self.ui.PredScanLabel.setText(f"The environnement doesn't exist, creation of the environnement")
+                self.ui.TimerLabel.setText(f"time: : {current_time-start_time:.2f}s")
+                # msgBox.show()
+                while process.is_alive():
+                      slicer.app.processEvents()
+                      current_time = time.time()
+                      if current_time - previous_time > 0.3 :
+                            previous_time = current_time
+                            self.ui.TimerLabel.setText(f"time: : {current_time-start_time:.2f}s")
+                            # msgBox.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
+                            
+                # msgBox.close()
+              else :
+                    self.ui.PredScanLabel.setText(f"The environnement doesn't exist, code can't be launch")
+                    ready = False
           
-        process = threading.Thread(target=self.process_wsl, args=(param,))
-        process.start()
-        
-        start_time = time.time()
-        previous_time = start_time
-        current_time = start_time
-        # msgBox = qt.QMessageBox()
-        # msgBox.setWindowTitle("Process en cours")
-        # msgBox.setStandardButtons(qt.QMessageBox.NoButton)
-        # msgBox.setText(f"time  : {current_time-start_time:.2f} secondes")
-        self.ui.PredScanLabel.setText(f"Files in process\ntime: : {current_time-start_time:.2f}s")
-        # msgBox.show()
-        while process.is_alive():
-              slicer.app.processEvents()
-              current_time = time.time()
-              if current_time - previous_time > 0.3 :
-                    previous_time = current_time
-                    # msgBox.setText(f"Files in process\ntime: : {current_time-start_time:.2f}s")
-                    self.ui.PredScanLabel.setText(f"Files in process\ntime: : {current_time-start_time:.2f}s")
-                  
-      # msgBox.close()
-
-              
-        # if self.conda_wsl.condaTestEnv("ali_ios"):
-        #       pass
-      # messageBox = qt.QMessageBox()
-      # text = "ALI_IOS is currently not available on windows"
-      # ready = False
-      # messageBox.information(None, "Information", text)
+        if ready :
+          process = threading.Thread(target=self.process_wsl, args=(param,))
+          process.start()
+          
+          start_time = time.time()
+          previous_time = start_time
+          current_time = start_time
+          self.ui.PredScanLabel.setText(f"Files in process")
+          self.ui.TimerLabel.setText(f"time: : {current_time-start_time:.2f}s")
+          # msgBox.show()
+          while process.is_alive():
+                slicer.app.processEvents()
+                current_time = time.time()
+                if current_time - previous_time > 0.3 :
+                      previous_time = current_time
+                      self.ui.TimerLabel.setText(f"time: : {current_time-start_time:.2f}s")
 
     else :
       script_path = os.path.dirname(os.path.abspath(__file__))
