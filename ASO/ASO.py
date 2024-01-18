@@ -15,15 +15,48 @@ from qt import (
     QGridLayout,
     QMediaPlayer,
 )
+import pkg_resources
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin
+from slicer.util import VTKObservationMixin,pip_install
 from functools import partial
+import platform
 
 from ASO_Method.IOS import Auto_IOS, Semi_IOS
 from ASO_Method.CBCT import Semi_CBCT, Auto_CBCT
 from ASO_Method.Method import Method
 from ASO_Method.Progress import Display
 
+def check_lib_installed(lib_name, required_version=None):
+    try:
+        installed_version = pkg_resources.get_distribution(lib_name).version
+        if required_version and installed_version != required_version:
+            return False
+        return True
+    except pkg_resources.DistributionNotFound:
+        return False
+
+# import csv
+    
+def install_function():
+    libs = [('vtk', None), ('torch', None), ('monai', None),('pytorch_lightning',None),('dicom2nifti',None)]
+    libs_to_install = []
+    for lib, version in libs:
+        if not check_lib_installed(lib, version):
+            libs_to_install.append((lib, version))
+
+    if libs_to_install:
+        message = "The following libraries are not installed or need updating:\n"
+        message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
+        message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
+        user_choice = slicer.util.confirmYesNoDisplay(message)
+
+        if user_choice:
+            for lib, version in libs_to_install:
+                lib_version = f'{lib}=={version}' if version else lib
+                pip_install(lib_version)
+        else :
+          return False
+    return True
 
 class ASO(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -817,6 +850,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
 
     def onPredictButton(self):
+        install_function()
         """Function to launch the prediction"""
         error = self.ActualMeth.TestProcess(
             input_folder=self.ui.lineEditScanLmPath.text,
