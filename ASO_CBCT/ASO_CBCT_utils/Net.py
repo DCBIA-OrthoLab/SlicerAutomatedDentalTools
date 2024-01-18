@@ -1,29 +1,21 @@
 from slicer.util import pip_install, pip_uninstall
 
 #try to upgrade pip
-try:
-    pip_install("pip -q --upgrade")
-except:
-    pass
 
 
-try:
-    import torch
-except ImportError:
-    pip_install('torch')
-    import torch
+
+
+import torch
+
 
 import torch.nn as nn
 import torch.optim as optim
 
-try:
-    import pytorch_lightning as pl
-except ImportError:
-    pip_install("pytorch_lightning -q")
-    import pytorch_lightning as pl
 
-pip_uninstall("monai -q")
-pip_install("monai -q")
+import pytorch_lightning as pl
+
+
+
 from monai.networks.nets.densenet import DenseNet169
 
 # Different Network
