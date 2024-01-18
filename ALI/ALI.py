@@ -7,23 +7,73 @@ import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 import webbrowser
-import textwrap
+import pkg_resources
+import sys
+
 
 import platform
-import subprocess
 import slicer
 from slicer.util import pip_install, pip_uninstall
 
-try :
-    import rpyc
-except :
-    pip_install('rpyc -q')
-    import rpyc
 
-import inspect
+def check_lib_installed(lib_name, required_version=None):
+    try:
+        installed_version = pkg_resources.get_distribution(lib_name).version
+        if required_version and installed_version != required_version:
+            return False
+        return True
+    except pkg_resources.DistributionNotFound:
+        return False
 
 # import csv
-import sys
+def install_function():
+    libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('pytorch3d', '0.6.2')]
+    if platform.system() == "Windows":
+        libs.append(('torch', None))
+        libs.append(('torchvision', None))
+        libs.append(('torchaudio', None))
+    else:
+        libs.append(('torch', None))
+        libs.append(('torchvision', None))
+        libs.append(('torchaudio', None))
+
+    libs_to_install = []
+    for lib, version in libs:
+        if not check_lib_installed(lib, version):
+            libs_to_install.append((lib, version))
+
+    if libs_to_install:
+        message = "The following libraries are not installed or need updating:\n"
+        message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
+        message += "\n\nDo you want to install/update these libraries?"
+        user_choice = slicer.util.confirmYesNoDisplay(message)
+
+        if user_choice:
+            for lib, version in libs_to_install:
+                if lib in ['torch', 'torchvision', 'torchaudio']:
+                    extra_url = 'https://download.pytorch.org/whl/cu118' if platform.system() == "Windows" else 'https://download.pytorch.org/whl/cu113'
+                    pip_install(f'{lib} --extra-index-url {extra_url}')
+
+                elif lib=="pytorch3d":
+                    try : 
+                      import torch
+                      pyt_version_str = torch.__version__.split("+")[0].replace(".", "")
+                      version_str = "".join([f"py3{sys.version_info.minor}_cu", torch.version.cuda.replace(".", ""), f"_pyt{pyt_version_str}"])
+                      pip_install('--upgrade pip')
+                      pip_install('fvcore==0.1.5.post20220305')
+                      pip_install(f'--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
+                    except:
+                      pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
+                      pip_install('--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
+                else:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+        else :
+          return False
+    return True
+
+
+
 
 
 #region ========== FUNCTIONS ==========
@@ -513,155 +563,157 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def onPredictButton(self):
+    lib_ok = install_function()
+    if lib_ok :
 
-    ready = True
+      ready = True
 
-    if self.folder_as_input:
-      if self.input_path == None:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a scan folder')
-        ready = False
-    else:
-      if not self.onNodeChanged():
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select an input file')
-        ready = False
-
-    if self.model_folder == None:
-      qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a model folder')
-      ready = False
-
-    if not ready:
-      return
-
-
-
-    # print("Selected landmarks : ", selected_lm_lst)
-
-    if self.output_folder == None:
-      if os.path.isfile(self.input_path):
-        outPath = os.path.dirname(self.input_path)
+      if self.folder_as_input:
+        if self.input_path == None:
+          qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a scan folder')
+          ready = False
       else:
-        outPath = self.input_path
+        if not self.onNodeChanged():
+          qt.QMessageBox.warning(self.parent, 'Warning', 'Please select an input file')
+          ready = False
 
-    else:
-      outPath = self.output_folder
+      if self.model_folder == None:
+        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a model folder')
+        ready = False
 
-    self.output_folder = outPath
-
-    param = {}
-
-    if self.CBCT_as_input:
-
-      selected_lm_lst = self.lm_tab.GetSelected()
-      self.landmark_cout = len(selected_lm_lst)
-      if len(selected_lm_lst) == 0:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
+      if not ready:
         return
 
-      selected_lm = " ".join(selected_lm_lst)
-
-      param["input"] = self.input_path
-      param["dir_models"] = self.model_folder
-      param["landmarks"] = selected_lm
-
-      self.goup_output_files = self.ui.GroupInFolderCheckBox.isChecked()
-      param["save_in_folder"] = self.goup_output_files
-      param["output_dir"] = outPath
-
-      documentsLocation = qt.QStandardPaths.DocumentsLocation
-      documents = qt.QStandardPaths.writableLocation(documentsLocation)
-      temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp_ALI")
-
-      param["temp_fold"] = temp_dir
-
-      param["DCMInput"] = self.isDCMInput
-
-    else:
-      selected_lm_lst = self.lm_tab.GetSelected()
-      selected_tooth_lst = self.tooth_lm.GetSelected()
-
-      if len(selected_lm_lst) == 0:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
-        return
-
-      if len(selected_tooth_lst) == 0:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one tooth')
-        return
-
-      selected_lm = " ".join(selected_lm_lst)
-      selected_tooth = " ".join(selected_tooth_lst)
-
-      param["input"] = self.input_path
-      param["dir_models"] = self.model_folder
-      param["landmarks"] = selected_lm
-      param["teeth"] = selected_tooth
-
-      self.goup_output_files = self.ui.GroupInFolderCheckBox.isChecked()
-      param["save_in_folder"] = self.goup_output_files
-      param["output_dir"] = outPath
 
 
+      # print("Selected landmarks : ", selected_lm_lst)
+
+      if self.output_folder == None:
+        if os.path.isfile(self.input_path):
+          outPath = os.path.dirname(self.input_path)
+        else:
+          outPath = self.input_path
+
+      else:
+        outPath = self.output_folder
+
+      self.output_folder = outPath
+
+      param = {}
+
+      if self.CBCT_as_input:
+
+        selected_lm_lst = self.lm_tab.GetSelected()
+        self.landmark_cout = len(selected_lm_lst)
+        if len(selected_lm_lst) == 0:
+          qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
+          return
+
+        selected_lm = " ".join(selected_lm_lst)
+
+        param["input"] = self.input_path
+        param["dir_models"] = self.model_folder
+        param["landmarks"] = selected_lm
+
+        self.goup_output_files = self.ui.GroupInFolderCheckBox.isChecked()
+        param["save_in_folder"] = self.goup_output_files
+        param["output_dir"] = outPath
+
+        documentsLocation = qt.QStandardPaths.DocumentsLocation
+        documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp_ALI")
+
+        param["temp_fold"] = temp_dir
+
+        param["DCMInput"] = self.isDCMInput
+
+      else:
+        selected_lm_lst = self.lm_tab.GetSelected()
+        selected_tooth_lst = self.tooth_lm.GetSelected()
+
+        if len(selected_lm_lst) == 0:
+          qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
+          return
+
+        if len(selected_tooth_lst) == 0:
+          qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one tooth')
+          return
+
+        selected_lm = " ".join(selected_lm_lst)
+        selected_tooth = " ".join(selected_tooth_lst)
+
+        param["input"] = self.input_path
+        param["dir_models"] = self.model_folder
+        param["landmarks"] = selected_lm
+        param["teeth"] = selected_tooth
+
+        self.goup_output_files = self.ui.GroupInFolderCheckBox.isChecked()
+        param["save_in_folder"] = self.goup_output_files
+        param["output_dir"] = outPath
 
 
-    print(param)
-
-    ready = True
-    system = platform.system()
-    if system=="Windows" :
-      # wsl = self.is_ubuntu_installed()
-      # if wsl :
-      #   lib = self.check_lib_wsl()
-      #   if not lib :
-      #       messageBox = qt.QMessageBox()
-      #       text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
-      #       ready = False
-      #       messageBox.information(None, "Information", text)
-      # else :
-      #   messageBox = qt.QMessageBox()
-      #   text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
-      #   ready = False
-      #   messageBox.information(None, "Information", text)
-      messageBox = qt.QMessageBox()
-      text = "ALI_IOS is currently not available on windows"
-      ready = False
-      messageBox.information(None, "Information", text)
-
-    if ready :
-      script_path = os.path.dirname(os.path.abspath(__file__))
-      file_path = os.path.join(script_path,"tempo.txt")
-      with open(file_path, 'a') as file:
-        file.write("Beginning of the process" + '\n')  # Écrire le message suivi d'une nouvelle ligne
-
-      self.logic = ALILogic()
-      self.logic.process(param, self.CBCT_as_input)
-
-      self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
-      self.onProcessStarted()
 
 
-  # def is_ubuntu_installed(self)->bool:
-  #   '''
-  #   Check if wsl is install with Ubuntu
-  #   '''
-  #   result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
-  #   output = result.stdout.encode('utf-16-le').decode('utf-8')
-  #   clean_output = output.replace('\x00', '')  # Enlève tous les octets null
+      print(param)
 
-  #   return 'Ubuntu' in clean_output
+      ready = True
+      system = platform.system()
+      if system=="Windows" :
+        # wsl = self.is_ubuntu_installed()
+        # if wsl :
+        #   lib = self.check_lib_wsl()
+        #   if not lib :
+        #       messageBox = qt.QMessageBox()
+        #       text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
+        #       ready = False
+        #       messageBox.information(None, "Information", text)
+        # else :
+        #   messageBox = qt.QMessageBox()
+        #   text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
+        #   ready = False
+        #   messageBox.information(None, "Information", text)
+        messageBox = qt.QMessageBox()
+        text = "ALI_IOS is currently not available on windows"
+        ready = False
+        messageBox.information(None, "Information", text)
+
+      if ready :
+        script_path = os.path.dirname(os.path.abspath(__file__))
+        file_path = os.path.join(script_path,"tempo.txt")
+        with open(file_path, 'a') as file:
+          file.write("Beginning of the process" + '\n')  # Écrire le message suivi d'une nouvelle ligne
+
+        self.logic = ALILogic()
+        self.logic.process(param, self.CBCT_as_input)
+
+        self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
+        self.onProcessStarted()
 
 
-  # def check_lib_wsl(self)->bool:
-  #   '''
-  #   Check if wsl contains the require librairies
-  #   '''
-  #   result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
-  #   output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
-  #   clean_output1 = output1.replace('\x00', '')
+    # def is_ubuntu_installed(self)->bool:
+    #   '''
+    #   Check if wsl is install with Ubuntu
+    #   '''
+    #   result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
+    #   output = result.stdout.encode('utf-16-le').decode('utf-8')
+    #   clean_output = output.replace('\x00', '')  # Enlève tous les octets null
 
-  #   result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
-  #   output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
-  #   clean_output2 = output2.replace('\x00', '')
+    #   return 'Ubuntu' in clean_output
 
-  #   return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
+
+    # def check_lib_wsl(self)->bool:
+    #   '''
+    #   Check if wsl contains the require librairies
+    #   '''
+    #   result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
+    #   output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
+    #   clean_output1 = output1.replace('\x00', '')
+
+    #   result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
+    #   output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
+    #   clean_output2 = output2.replace('\x00', '')
+
+    #   return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
 
 
   def onProcessStarted(self):
