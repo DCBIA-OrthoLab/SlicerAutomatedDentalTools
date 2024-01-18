@@ -45,7 +45,7 @@ def install_function():
     if libs_to_install:
         message = "The following libraries are not installed or need updating:\n"
         message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
-        message += "\n\nDo you want to install/update these libraries?"
+        message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
         user_choice = slicer.util.confirmYesNoDisplay(message)
 
         if user_choice:
