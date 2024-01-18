@@ -26,11 +26,9 @@ from vtkmodules.vtkCommonDataModel import (
 )
 from vtkmodules.vtkFiltersGeneral import vtkTransformPolyDataFilter
 
-try:
-    import dicom2nifti
-except ImportError:
-    pip_install("dicom2nifti -q")
-    import dicom2nifti
+
+import dicom2nifti
+
 
 cross = lambda x, y: np.cross(
     x, y
