@@ -21,58 +21,28 @@ import glob
 import sys
 import platform
 
+
+import torch
+import dicom2nifti
+import itk
+import cc3d
+
+import SimpleITK as sitk
+import vtk
+import numpy as np
+
+
 # try:
-#     import argparse
+#     import torch
 # except ImportError:
-#     pip_install('argparse')
-#     import argparse
+#     if platform.system() == "Windows":
+#         pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118 -q')
+#     else:
+#         pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
+#     import torch
 
-
-# print(sys.argv)
-
-
-from slicer.util import pip_install, pip_uninstall
-
-# from slicer.util import pip_uninstall
-# # pip_uninstall('torch torchvision torchaudio')
-
-# pip_uninstall('monai')
-
-# try :
-#     import logic
-# except ImportError:
-
-
-try:
-    import torch
-except ImportError:
-    if platform.system() == "Windows":
-        pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118 -q')
-    else:
-        pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
-    import torch
-
-try:
-    import nibabel
-except ImportError:
-    pip_install('nibabel -q')
-    import nibabel
-
-try:
-    import einops
-except ImportError:
-    pip_install('einops -q')
-    import einops
-
-try:
-    import dicom2nifti
-except ImportError:
-    pip_install('dicom2nifti -q')
-    import dicom2nifti
 
 #region try import
-pip_uninstall('monai -q')
-pip_install('monai==0.7.0 -q')
 from monai.networks.nets import UNETR
 
 from monai.data import (
@@ -92,26 +62,8 @@ from monai.transforms import (
 
 from monai.inferers import sliding_window_inference
 
-import SimpleITK as sitk
-import vtk
-import numpy as np
-try :
-    import itk
-except ImportError:
-    pip_install('itk -q')
-    import itk
-
-
-try:
-    import cc3d
-except ImportError:
-    pip_install('connected-components-3d==3.9.1 -q')
-    import cc3d
-
- #endregion
-
-
-
+# pip_install('connected-components-3d==3.9.1 -q') #Could connected-components-3d be replaced with itk.connected_component_image_filter or itk.scalar_connected_component_image_filter
+   
 # endregion
 
 #region Global variables
