@@ -8,7 +8,7 @@ from qt import (
     QGridLayout,
 )
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin
+from slicer.util import VTKObservationMixin, pip_install
 from functools import partialmethod
 
 from AREG_Method.IOS import Auto_IOS, Semi_IOS
@@ -16,7 +16,122 @@ from AREG_Method.CBCT import Semi_CBCT, Auto_CBCT, Or_Auto_CBCT
 from AREG_Method.Method import Method
 from AREG_Method.Progress import Display
 
+import pkg_resources
+import platform
 
+
+def check_lib_installed(lib_name, required_version=None):
+    '''
+    Check if the library with the good version (if needed) is already installed in the slicer environment 
+    input: lib_name (str) : name of the library
+            required_version (str) : required version of the library (if None, any version is accepted)
+    output: bool : True if the library is installed with the good version, False otherwise
+    '''
+   
+    try:
+        installed_version = pkg_resources.get_distribution(lib_name).version
+        # check if the version is the good one - if required_version != None it's considered as a True
+        if required_version and installed_version != required_version:
+          return False
+        else:
+          return True
+    except pkg_resources.DistributionNotFound:
+        return False
+
+# import csv
+
+def install_function(list_libs:list):
+    '''
+    Test the necessary libraries and install them with the specific version if needed
+    User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
+    '''
+    libs = list_libs
+    libs_to_install = []
+    libs_to_update = []
+    installation_errors = []
+    for lib, version_constraint,url in libs:
+        if "pytorch3d" in lib:
+            system = platform.system()
+            from platform import system
+            if system() == 'Darwin':  # MACOS
+                try:
+                    import pytorch3d
+                except ImportError:
+                    pip_install('pytorch3d')
+                    import pytorch3d
+
+            else: # Linux or Windows
+                try:
+                    import pytorch3d
+                    if pytorch3d.__version__ != version_constraint.split("==")[1].split("<=")[1].split(">=")[1].split("<")[1].split(">")[1]:
+                        raise ImportError
+                except ImportError:
+                    try:
+                        import torch
+                        pyt_version_str=torch.__version__.split("+")[0].replace(".", "")
+                        version_str="".join([f"py3{sys.version_info.minor}_cu",torch.version.cuda.replace(".",""),f"_pyt{pyt_version_str}"])
+                        # pip_install('--upgrade pip')
+                        pip_install(f'pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
+                    except: # install correct torch version
+                        pip_install('torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
+                        pip_install('pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
+
+        else: 
+            if not check_lib_installed(lib, version_constraint):
+                try:
+                # check if the library is already installed
+                    if pkg_resources.get_distribution(lib).version:
+                        libs_to_update.append((lib, version_constraint))
+                except:
+                    libs_to_install.append((lib, version_constraint))
+            
+    if libs_to_install or libs_to_update:
+          message = "The following changes are required for the libraries:\n"
+
+          #Specify which libraries will be updated with a new version 
+          #and which libraries will be installed for the first time
+          if libs_to_update:
+              
+              message += "\n --- Libraries to update (version mismatch): \n"
+              message += "\n".join([f"{lib} (current: {pkg_resources.get_distribution(lib).version}) -> {version_constraint}" for lib, version_constraint in libs_to_update])
+
+          if libs_to_install:
+              message += "\n"
+              message += "\n --- Libraries to install:  \n"
+              message += "\n".join([f"{lib}{version_constraint}" for lib, version_constraint in libs_to_install])
+
+          message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
+          message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
+          
+          user_choice = slicer.util.confirmYesNoDisplay(message)
+
+          if user_choice:
+            try:
+                for lib, version_constraint in libs_to_install + libs_to_update:
+                    if "https:/" in version_constraint:
+                        print("version_constraint", version_constraint)
+                        # download the library from the url
+                        pip_install(version_constraint)
+                    else:
+                        print("version_constraint else", version_constraint)
+                        lib_version = f'{lib}{version_constraint}' if version_constraint else lib
+                        pip_install(lib_version)
+                
+                return True
+            except Exception as e:
+                    installation_errors.append((lib, str(e)))
+                    
+            if installation_errors:
+                error_message = "The following errors occured during installation:\n"
+                error_message += "\n".join([f"{lib}: {error}" for lib, error in installation_errors])
+                slicer.util.errorDisplay(error_message)
+                return False
+          else :
+            return False
+          
+    else:
+        return True
+    
 class AREG(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -906,6 +1021,21 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
 
     def onPredictButton(self):
+        # install required libraries for all modules used (ASO,ALI,AMASS) 
+        # The list below was created to not repeat the same libraries for each module and avoid compatibility issues
+        # https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html
+        # libs_dic = {'ALI': ["itk", "torchvision"], 'ASO': ["torch", "torchvision"], 'AMASS': [],'AREG_CBCT': ["itk<5.4.rc2", "itk-elastix==0.17.1"],'AREG_IOS': [('pytorch_lightning','1.7.7'), ('numpy','1.21.1'),"torchvision"]}
+        libs_list = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
+                     ('vtk',None,None),('pandas',None,None),('torch','==1.12..0',None),('monai','==0.7.0',None),
+                     ('pytorch3d',"0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"),
+                     ('pytorch_lightning',None,None),('numpy',None,None)] #(lib_name, version, url)
+        
+        # for each key (modules) in the dictionary, install the required libraries
+        # use the list as argument for install_function
+        is_installed = install_function(libs_list)
+        if not is_installed:
+            qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
+            return
         error = self.ActualMeth.TestProcess(
             input_t1_folder=self.ui.lineEditScanT1LmPath.text,
             input_t2_folder=self.ui.lineEditScanT2LmPath.text,
