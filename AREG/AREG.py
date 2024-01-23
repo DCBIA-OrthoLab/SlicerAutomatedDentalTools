@@ -1042,10 +1042,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         if self.type == "IOS":
             # libraries and versions compatibility to use AREG_IOS
-            #('pytorch3d',"==0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html")
             libs_list_IOS= [('itk',None,None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
                         ('vtk',None,None),('pandas',None,None),('torch',None,None),('monai','==0.7.0',None),
-                        ('pytorch3d',None,None),
+                        ('pytorch3d',"==0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"),
                         ('torchmetrics',None,None),('pytorch-lightning',None,None),('numpy','>=1.21.6,<1.28',None)]
          
             is_installed = install_function(libs_list_IOS)
