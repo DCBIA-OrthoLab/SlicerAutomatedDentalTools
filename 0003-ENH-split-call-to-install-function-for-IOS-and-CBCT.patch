@@ -1,0 +1,180 @@
+From 4afa6bf5f6cec57baa86210e1b08cc06511fecd7 Mon Sep 17 00:00:00 2001
+From: Jeanneclre <jeanne.claret@cpe.fr>
+Date: Tue, 23 Jan 2024 16:58:50 -0500
+Subject: [PATCH 3/4] ENH: split call to install function for IOS and CBCT
+
+---
+ AREG/AREG.py | 123 +++++++++++++++++++++++++++++----------------------
+ 1 file changed, 71 insertions(+), 52 deletions(-)
+
+diff --git a/AREG/AREG.py b/AREG/AREG.py
+index e6ec343..e446001 100644
+--- a/AREG/AREG.py
++++ b/AREG/AREG.py
+@@ -19,6 +19,39 @@ from AREG_Method.Progress import Display
+ import pkg_resources
+ import platform
+ 
++def install_pytorch3d():
++    system = platform.system()
++    from platform import system
++
++    if system() == 'Darwin':  # MACOS
++        try:
++            import pytorch3d
++        except ImportError:
++            pip_install('pytorch3d')
++            import pytorch3d
++
++    else: # Linux or Windows
++        # try:
++        #     import pytorch3d
++        #     # print('version_constraint splitted', version_constraint.split("==").split("<=").split(">=").split("<").split(">"))
++        #     if pytorch3d.__version__ != version_constraint.replace("==","").replace("<=","").replace(">=","").replace("<","").replace(">",""):
++        #         raise ImportError
++        # except ImportError:
++        # pyt_message = "ALI IOS needs to install pytorch3d library. \n"
++        # pyt_message += "Do you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
++        # pyt_user_choice = slicer.util.confirmYesNoDisplay(pyt_message)
++        # if pyt_user_choice:
++        try:
++            import torch
++            pyt_version_str=torch.__version__.split("+")[0].replace(".", "")
++            version_str="".join([f"py3{sys.version_info.minor}_cu",torch.version.cuda.replace(".",""),f"_pyt{pyt_version_str}"])
++            # pip_install('--upgrade pip')
++            pip_install(f'pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
++        except: # install correct torch version
++            print('force install pytorch3d')
++            pip_install('torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
++            pip_install('pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
++
+ 
+ def check_lib_installed(lib_name, required_version=None):
+     '''
+@@ -50,40 +83,13 @@ def install_function(list_libs:list):
+     libs_to_update = []
+     installation_errors = []
+     for lib, version_constraint,url in libs:
+-        if "pytorch3d" in lib:
+-            system = platform.system()
+-            from platform import system
+-            if system() == 'Darwin':  # MACOS
+-                try:
+-                    import pytorch3d
+-                except ImportError:
+-                    pip_install('pytorch3d')
+-                    import pytorch3d
+-
+-            else: # Linux or Windows
+-                try:
+-                    import pytorch3d
+-                    if pytorch3d.__version__ != version_constraint.split("==")[1].split("<=")[1].split(">=")[1].split("<")[1].split(">")[1]:
+-                        raise ImportError
+-                except ImportError:
+-                    try:
+-                        import torch
+-                        pyt_version_str=torch.__version__.split("+")[0].replace(".", "")
+-                        version_str="".join([f"py3{sys.version_info.minor}_cu",torch.version.cuda.replace(".",""),f"_pyt{pyt_version_str}"])
+-                        # pip_install('--upgrade pip')
+-                        pip_install(f'pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
+-                    except: # install correct torch version
+-                        pip_install('torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
+-                        pip_install('pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
+-
+-        else: 
+-            if not check_lib_installed(lib, version_constraint):
+-                try:
+-                # check if the library is already installed
+-                    if pkg_resources.get_distribution(lib).version:
+-                        libs_to_update.append((lib, version_constraint))
+-                except:
+-                    libs_to_install.append((lib, version_constraint))
++        if not check_lib_installed(lib, version_constraint):
++            try:
++            # check if the library is already installed
++                if pkg_resources.get_distribution(lib).version:
++                    libs_to_update.append((lib, version_constraint))
++            except:
++                libs_to_install.append((lib, version_constraint))
+             
+     if libs_to_install or libs_to_update:
+           message = "The following changes are required for the libraries:\n"
+@@ -91,14 +97,13 @@ def install_function(list_libs:list):
+           #Specify which libraries will be updated with a new version 
+           #and which libraries will be installed for the first time
+           if libs_to_update:
+-              
+               message += "\n --- Libraries to update (version mismatch): \n"
+-              message += "\n".join([f"{lib} (current: {pkg_resources.get_distribution(lib).version}) -> {version_constraint}" for lib, version_constraint in libs_to_update])
+-
+-          if libs_to_install:
++              message += "\n".join([f"{lib} (current: {pkg_resources.get_distribution(lib).version}) -> {version_constraint.replace('==','').replace('<=','').replace('>=','').replace('<','').replace('>','')}" for lib, version_constraint in libs_to_update])
+               message += "\n"
++          if libs_to_install:
++              
+               message += "\n --- Libraries to install:  \n"
+-              message += "\n".join([f"{lib}{version_constraint}" for lib, version_constraint in libs_to_install])
++          message += "\n".join([f"{lib}{version_constraint}" if version_constraint else lib for lib, version_constraint in libs_to_install])
+ 
+           message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
+           message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
+@@ -108,7 +113,13 @@ def install_function(list_libs:list):
+           if user_choice:
+             try:
+                 for lib, version_constraint in libs_to_install + libs_to_update:
+-                    if "https:/" in version_constraint:
++                    if lib == "pytorch3d":
++                        install_pytorch3d()
++                        continue
++                    if not version_constraint:
++                        pip_install(lib)
++
++                    elif "https:/" in version_constraint:
+                         print("version_constraint", version_constraint)
+                         # download the library from the url
+                         pip_install(version_constraint)
+@@ -1021,21 +1032,29 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
+     """
+ 
+     def onPredictButton(self):
+-        # install required libraries for all modules used (ASO,ALI,AMASS) 
+-        # The list below was created to not repeat the same libraries for each module and avoid compatibility issues
+-        # https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html
+-        # libs_dic = {'ALI': ["itk", "torchvision"], 'ASO': ["torch", "torchvision"], 'AMASS': [],'AREG_CBCT': ["itk<5.4.rc2", "itk-elastix==0.17.1"],'AREG_IOS': [('pytorch_lightning','1.7.7'), ('numpy','1.21.1'),"torchvision"]}
+-        libs_list = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
+-                     ('vtk',None,None),('pandas',None,None),('torch','==1.12..0',None),('monai','==0.7.0',None),
+-                     ('pytorch3d',"0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"),
+-                     ('pytorch_lightning',None,None),('numpy',None,None)] #(lib_name, version, url)
+-        
+-        # for each key (modules) in the dictionary, install the required libraries
+-        # use the list as argument for install_function
+-        is_installed = install_function(libs_list)
++        # install required libraries for all modules used (ASO,ALI,AMASS) and for the selected module
++        if self.type == "CBCT":
++            # libraries and versions compatibility to use AREG_CBCT
++            libs_list_CBCT = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
++                        ('vtk',None,None),('pandas',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
++            
++            is_installed = install_function(libs_list_CBCT)
++
++        if self.type == "IOS":
++            # libraries and versions compatibility to use AREG_IOS
++            #('pytorch3d',"==0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html")
++            libs_list_IOS= [('itk',None,None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
++                        ('vtk',None,None),('pandas',None,None),('torch',None,None),('monai','==0.7.0',None),
++                        ('pytorch3d',None,None),
++                        ('torchmetrics',None,None),('pytorch-lightning',None,None),('numpy','>=1.21.6,<1.28',None)]
++         
++            is_installed = install_function(libs_list_IOS)
++
++        # If the user didn't accept the installation, the module doesn't run
+         if not is_installed:
+             qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
+             return
++        
+         error = self.ActualMeth.TestProcess(
+             input_t1_folder=self.ui.lineEditScanT1LmPath.text,
+             input_t2_folder=self.ui.lineEditScanT2LmPath.text,
+-- 
+2.34.1
+

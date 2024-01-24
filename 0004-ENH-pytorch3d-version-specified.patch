@@ -1,0 +1,28 @@
+From 20b77db580ada62d7f203e84c2e9b81e15862e0e Mon Sep 17 00:00:00 2001
+From: Jeanneclre <jeanne.claret@cpe.fr>
+Date: Tue, 23 Jan 2024 17:01:27 -0500
+Subject: [PATCH 4/4] ENH: pytorch3d version specified
+
+---
+ AREG/AREG.py | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/AREG/AREG.py b/AREG/AREG.py
+index e446001..1434d04 100644
+--- a/AREG/AREG.py
++++ b/AREG/AREG.py
+@@ -1042,10 +1042,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
+ 
+         if self.type == "IOS":
+             # libraries and versions compatibility to use AREG_IOS
+-            #('pytorch3d',"==0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html")
+             libs_list_IOS= [('itk',None,None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
+                         ('vtk',None,None),('pandas',None,None),('torch',None,None),('monai','==0.7.0',None),
+-                        ('pytorch3d',None,None),
++                        ('pytorch3d',"==0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"),
+                         ('torchmetrics',None,None),('pytorch-lightning',None,None),('numpy','>=1.21.6,<1.28',None)]
+          
+             is_installed = install_function(libs_list_IOS)
+-- 
+2.34.1
+
