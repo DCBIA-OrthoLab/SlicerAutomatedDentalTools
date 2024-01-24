@@ -60,7 +60,6 @@ def check_lib_installed(lib_name, required_version=None):
             required_version (str) : required version of the library (if None, any version is accepted)
     output: bool : True if the library is installed with the good version, False otherwise
     '''
-   
     try:
         installed_version = pkg_resources.get_distribution(lib_name).version
         # check if the version is the good one - if required_version != None it's considered as a True
@@ -90,24 +89,24 @@ def install_function(list_libs:list):
                     libs_to_update.append((lib, version_constraint))
             except:
                 libs_to_install.append((lib, version_constraint))
-            
+
     if libs_to_install or libs_to_update:
           message = "The following changes are required for the libraries:\n"
 
-          #Specify which libraries will be updated with a new version 
+          #Specify which libraries will be updated with a new version
           #and which libraries will be installed for the first time
           if libs_to_update:
               message += "\n --- Libraries to update (version mismatch): \n"
               message += "\n".join([f"{lib} (current: {pkg_resources.get_distribution(lib).version}) -> {version_constraint.replace('==','').replace('<=','').replace('>=','').replace('<','').replace('>','')}" for lib, version_constraint in libs_to_update])
               message += "\n"
           if libs_to_install:
-              
+
               message += "\n --- Libraries to install:  \n"
           message += "\n".join([f"{lib}{version_constraint}" if version_constraint else lib for lib, version_constraint in libs_to_install])
 
           message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
           message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
-          
+
           user_choice = slicer.util.confirmYesNoDisplay(message)
 
           if user_choice:
@@ -127,11 +126,11 @@ def install_function(list_libs:list):
                         print("version_constraint else", version_constraint)
                         lib_version = f'{lib}{version_constraint}' if version_constraint else lib
                         pip_install(lib_version)
-                
+
                 return True
             except Exception as e:
                     installation_errors.append((lib, str(e)))
-                    
+
             if installation_errors:
                 error_message = "The following errors occured during installation:\n"
                 error_message += "\n".join([f"{lib}: {error}" for lib, error in installation_errors])
@@ -139,10 +138,10 @@ def install_function(list_libs:list):
                 return False
           else :
             return False
-          
+
     else:
         return True
-    
+
 class AREG(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -1037,23 +1036,23 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # libraries and versions compatibility to use AREG_CBCT
             libs_list_CBCT = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
                         ('vtk',None,None),('pandas',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
-            
+
             is_installed = install_function(libs_list_CBCT)
 
         if self.type == "IOS":
             # libraries and versions compatibility to use AREG_IOS
             libs_list_IOS= [('itk',None,None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
-                        ('vtk',None,None),('pandas',None,None),('torch',None,None),('monai','==0.7.0',None),
+                        ('vtk',None,None),('pandas',None,None),('torch','==1.12.0',None),('monai','==0.7.0',None),
                         ('pytorch3d',"==0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"),
-                        ('torchmetrics',None,None),('pytorch-lightning',None,None),('numpy','>=1.21.6,<1.28',None)]
-         
+                        ('torchmetrics','==0.9.3',None),('pytorch-lightning','==1.7.7',None),('numpy','>=1.21.6,<1.28',None)]
+
             is_installed = install_function(libs_list_IOS)
 
         # If the user didn't accept the installation, the module doesn't run
         if not is_installed:
             qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
             return
-        
+
         error = self.ActualMeth.TestProcess(
             input_t1_folder=self.ui.lineEditScanT1LmPath.text,
             input_t2_folder=self.ui.lineEditScanT2LmPath.text,
