@@ -743,7 +743,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       folder = os.path.dirname(file_path)
       alio_ios_folder = os.path.join(folder, '../ALI_IOS')
       ali_ios_folder_norm = os.path.normpath(alio_ios_folder)
-      requirement_path = os.path.join(ali_ios_folder_norm, 'requirement.py')
+      requirement_path = os.path.join(ali_ios_folder_norm, 'utils','requirement.py')
       args = []
       path_pip = self.conda_wsl.getCondaPath()+"/envs/ali_ios/bin/pip"
       args.append(path_pip)
@@ -766,7 +766,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       folder = os.path.dirname(file_path)
       alio_ios_folder = os.path.join(folder, '../ALI_IOS')
       ali_ios_folder_norm = os.path.normpath(alio_ios_folder)
-      ali_ios_path = os.path.join(ali_ios_folder_norm, 'ALI_IOS_WSL.py')
+      ali_ios_path = os.path.join(ali_ios_folder_norm, 'utils','ALI_IOS_WSL.py')
       
       
       result = self.conda_wsl.condaRunFilePython(ali_ios_path,'ali_ios',args)

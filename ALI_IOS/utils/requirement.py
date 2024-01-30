@@ -1,3 +1,7 @@
+#!/home/luciacev/Slicer-5.4.0-linux-amd64/bin/PythonSlicer
+#/usr/bin/env pythonSlicer
+# /usr/bin/env python-real
+
 import sys
 
 def import_function(pip_path):
