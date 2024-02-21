@@ -701,7 +701,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if platform.system() == "Windows":
       list_libs= [('torch','cu118'),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
 
-    libs_installation = install_function(list_libs)
+    libs_installation = install_function(list_libs,platform.system())
     if not libs_installation:
       qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
       return  # stop the function
