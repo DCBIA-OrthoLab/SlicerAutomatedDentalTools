@@ -21,7 +21,7 @@ import pkg_resources
 
 def check_lib_installed(lib_name, required_version=None):
     '''
-    Check if the library with the good version (if needed) is already installed in the slicer environment 
+    Check if the library with the good version (if needed) is already installed in the slicer environment
     input: lib_name (str) : name of the library
             required_version (str) : required version of the library (if None, any version is accepted)
     output: bool : True if the library is installed with the good version, False otherwise
@@ -79,14 +79,14 @@ def install_function(list_libs:list,system:str):
               if system == "Windows":
                 # Installation specified for Windows system
                 for lib, version in libs_to_install:
-                  if lib == "torch":
+                  if lib == "torch, torchvision, torchaudio":
                     pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
                   else:
                     lib_version = f'{lib}=={version}' if version else lib
                     pip_install(lib_version)
 
                 for lib, version in libs_to_update:
-                    if lib == "torch":
+                    if lib == "torch, torchvision, torchaudio":
                       pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
                     else:
                       lib_version = f'{lib}=={version}' if version else lib
@@ -699,7 +699,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     list_libs = [('torch', None),('torchvision', None),('torchaudio',None),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
 
     if platform.system() == "Windows":
-      list_libs= [('torch','cu118'),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
+      list_libs= [('torch, torchvision, torchaudio','cu118'),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
 
     libs_installation = install_function(list_libs,platform.system())
     if not libs_installation:
