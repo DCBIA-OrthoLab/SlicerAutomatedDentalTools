@@ -21,12 +21,12 @@ import pkg_resources
 
 def check_lib_installed(lib_name, required_version=None):
     '''
-    Check if the library with the good version (if needed) is already installed in the slicer environment 
+    Check if the library with the good version (if needed) is already installed in the slicer environment
     input: lib_name (str) : name of the library
             required_version (str) : required version of the library (if None, any version is accepted)
     output: bool : True if the library is installed with the good version, False otherwise
     '''
-   
+
     try:
         installed_version = pkg_resources.get_distribution(lib_name).version
         # check if the version is the good one - if required_version != None it's considered as a True
@@ -39,7 +39,7 @@ def check_lib_installed(lib_name, required_version=None):
 
 # import csv
 
-def install_function(list_libs:list):
+def install_function(list_libs:list,system:str):
     '''
     Test the necessary libraries and install them with the specific version if needed
     User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
@@ -55,14 +55,14 @@ def install_function(list_libs:list):
                 libs_to_update.append((lib, version))
             except:
               libs_to_install.append((lib, version))
-            
+
     if libs_to_install or libs_to_update:
           message = "The following changes are required for the libraries:\n"
 
-          #Specify which libraries will be updated with a new version 
+          #Specify which libraries will be updated with a new version
           #and which libraries will be installed for the first time
           if libs_to_update:
-              
+
               message += "\nLibraries to update (version mismatch):\n"
               message += "\n".join([f"{lib} (current: {pkg_resources.get_distribution(lib).version}) -> {version}" for lib, version in libs_to_update])
 
@@ -72,18 +72,38 @@ def install_function(list_libs:list):
 
           message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
           message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
-          
+
           user_choice = slicer.util.confirmYesNoDisplay(message)
 
           if user_choice:
-              for lib, version in libs_to_install:
-                  lib_version = f'{lib}=={version}' if version else lib
-                  pip_install(lib_version)
-              
-              for lib, version in libs_to_update:
-                  lib_version = f'{lib}=={version}' if version else lib
-                  pip_install(lib_version)
-              return True
+              if system == "Windows":
+                # Installation specified for Windows system
+                for lib, version in libs_to_install:
+                  if lib == "torch, torchvision, torchaudio":
+                    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
+                  else:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+
+                for lib, version in libs_to_update:
+                    if lib == "torch, torchvision, torchaudio":
+                      pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
+                    else:
+                      lib_version = f'{lib}=={version}' if version else lib
+                      pip_install(lib_version)
+
+
+                return True
+
+              else:
+                for lib, version in libs_to_install:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+
+                for lib, version in libs_to_update:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+                return True
           else :
             return False
     else:
@@ -677,15 +697,15 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     import platform
     # first, install the required libraries and their version
     list_libs = [('torch', None),('torchvision', None),('torchaudio',None),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
-    
-    if platform.system() == "Windows":
-      list_libs= [('torch', 'cu118'),('torchvision', 'cu118'),('torchaudio','cu118'),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
 
-    libs_installation = install_function(list_libs)
+    if platform.system() == "Windows":
+      list_libs= [('torch, torchvision, torchaudio','cu118'),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
+
+    libs_installation = install_function(list_libs,platform.system())
     if not libs_installation:
       qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
       return  # stop the function
-    
+
     ready = True
 
     if self.folder_as_input:
@@ -881,7 +901,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def onProcessUpdate(self,caller,event):
-    
+
     # print(caller.GetProgress(),caller.GetStatus())
 
     # self.ui.TimerLabel.setText(f"Time : {self.startTime:.2f}s")
