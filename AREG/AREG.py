@@ -20,10 +20,21 @@ import pkg_resources
 import platform
 
 def install_pytorch3d():
-    system = platform.system()
-    from platform import system
+    try:
+        import torch
+        desired_pytorch_version= "1.11.0"
+        desired_cuda_version = "cu113"
+        if torch.__version__ != desired_pytorch_version or torch.version.cuda != desired_cuda_version.replace("cu",""):
+            raise ImportError("Incompatible Pytorch version or CUDA version")
+    except ImportError:
+        # torch_install_cmd = f'torch=={desired_pytorch_version}+{desired_cuda_version} torchvision==0.12.0+{desired_cuda_version} torchaudio==0.11.0+{desired_cuda_version} --extra-index-url https://download.pytorch.org/whl/{desired_cuda_version}'
+        # pip_install(torch_install_cmd)
 
-    if system() == 'Darwin':  # MACOS
+        pip_install(f'--force-reinstall torch==1.12.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{desired_cuda_version}')
+
+    system = platform.system()
+
+    if system == 'Darwin':  # MACOS
         try:
             import pytorch3d
         except ImportError:
@@ -41,21 +52,38 @@ def install_pytorch3d():
         # pyt_message += "Do you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
         # pyt_user_choice = slicer.util.confirmYesNoDisplay(pyt_message)
         # if pyt_user_choice:
-        try:
-            import torch
-            pyt_version_str=torch.__version__.split("+")[0].replace(".", "")
-            version_str="".join([f"py3{sys.version_info.minor}_cu",torch.version.cuda.replace(".",""),f"_pyt{pyt_version_str}"])
-            # pip_install('--upgrade pip')
-            pip_install(f'pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
-        except: # install correct torch version
-            print('force install pytorch3d')
-            pip_install('torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
-            pip_install('pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
 
+        # try:
+        #     import torch
+        #     pyt_version_str=torch.__version__.split("+")[0].replace(".", "")
+        #     version_str="".join([f"py3{sys.version_info.minor}_cu",torch.version.cuda.replace(".",""),f"_pyt{pyt_version_str}"])
+        #     # pip_install('--upgrade pip')
+        #     pip_install(f'pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
+        # except: # install correct torch version
+        #     print('force install pytorch3d')
+        #     pip_install('torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
+        #     pip_install('pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
+
+        try:
+            code_path = os.sep.join(
+                os.path.dirname(os.path.abspath(__file__)).split(os.sep)
+            )
+            # print(code_path)
+            pip_install(
+                os.path.join(
+                    code_path,
+                    "AREG_IOS_utils",
+                    "pytorch3d-0.7.0-cp39-cp39-linux_x86_64.whl",
+                )
+            )  # py39_cu113_pyt1120
+        except:
+            pip_install(
+                "--force-reinstall --no-deps --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"
+            )
 
 def check_lib_installed(lib_name, required_version=None):
     '''
-    Check if the library with the good version (if needed) is already installed in the slicer environment 
+    Check if the library with the good version (if needed) is already installed in the slicer environment
     input: lib_name (str) : name of the library
             required_version (str) : required version of the library (if None, any version is accepted)
     output: bool : True if the library is installed with the good version, False otherwise
@@ -72,7 +100,7 @@ def check_lib_installed(lib_name, required_version=None):
 
 # import csv
 
-def install_function(list_libs:list):
+def install_function(self,list_libs:list):
     '''
     Test the necessary libraries and install them with the specific version if needed
     User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
@@ -110,6 +138,7 @@ def install_function(list_libs:list):
           user_choice = slicer.util.confirmYesNoDisplay(message)
 
           if user_choice:
+            self.ui.label_LibsInstallation.setVisible(True)
             try:
                 for lib, version_constraint in libs_to_install + libs_to_update:
                     if lib == "pytorch3d":
@@ -558,6 +587,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.label_4.setVisible(False)
             self.ui.lineEditModel3.setVisible(False)
             self.ui.ButtonSearchModel3.setVisible(False)
+            self.ui.label_LibsInstallation.setVisible(False)
 
         if index == 1:  # Fully Automated
             # self.ui.label_6.setVisible(True)
@@ -570,6 +600,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.label_4.setVisible(False)
             self.ui.lineEditModel3.setVisible(False)
             self.ui.ButtonSearchModel3.setVisible(False)
+            self.ui.label_LibsInstallation.setVisible(False)
 
         if index == 0:  #  Orientation & Fully Auto Reg
             if self.type == "CBCT":
@@ -585,6 +616,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.label_CBCTInputType.setVisible(False)
                 self.ui.label_CBCTInputType_2.setVisible(False)
                 self.isDCMInput = False
+                self.ui.label_LibsInstallation.setVisible(False)
 
     def SwitchModeIOS(self, index):
         self.ui.CbCBCTInputType.setVisible(False)
@@ -608,6 +640,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditModel3.setVisible(True)
             self.ui.ButtonSearchModel3.setVisible(True)
 
+            self.ui.label_LibsInstallation.setVisible(False)
         # Registration
         if index == 1:
             self.ui.label_7.setVisible(False)
@@ -625,6 +658,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditModel3.setVisible(True)
             self.ui.ButtonSearchModel3.setVisible(True)
 
+            self.ui.label_LibsInstallation.setVisible(False)
     def SwitchType(self):
         """Function to change the UI and the Method in AREG depending on the selected type (Semi CBCT, Fully CBCT...)"""
         if self.ui.CbInputType.currentIndex == 0:
@@ -1032,27 +1066,39 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onPredictButton(self):
         # install required libraries for all modules used (ASO,ALI,AMASS) and for the selected module
-        if self.type == "CBCT":
-            # libraries and versions compatibility to use AREG_CBCT
-            libs_list_CBCT = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
-                        ('vtk',None,None),('pandas',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
+        if platform.system()== "Windows":
+            if self.type == "CBCT":
+                # libraries and versions compatibility to use AREG_CBCT
+                list_libs_CBCT_windows = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
+                            ('vtk',None,None),('pandas',None,None),('torch',None,"https://download.pytorch.org/whl/cu118"),('monai','==0.7.0',None)] #(lib_name, version, url)
 
-            is_installed = install_function(libs_list_CBCT)
+                is_installed = install_function(self,list_libs_CBCT_windows)
 
-        if self.type == "IOS":
-            # libraries and versions compatibility to use AREG_IOS
-            libs_list_IOS= [('itk',None,None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
-                        ('vtk',None,None),('pandas',None,None),('torch','==1.12.0',None),('monai','==0.7.0',None),
-                        ('pytorch3d',"==0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"),
-                        ('torchmetrics','==0.9.3',None),('pytorch-lightning','==1.7.7',None),('numpy','>=1.21.6,<1.28',None)]
+            if self.type == "IOS":
+                qt.QMessageBox.warning(self.parent, 'Warning', 'AREG IOS is currently not available on Windows. Please use a Linux or MacOS system to run the module.')
+                is_installed = False
+        else:
+            if self.type == "CBCT":
+                # libraries and versions compatibility to use AREG_CBCT
+                list_libs_CBCT = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
+                            ('vtk',None,None),('pandas',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
 
-            is_installed = install_function(libs_list_IOS)
+                is_installed = install_function(self,list_libs_CBCT)
+
+            if self.type == "IOS":
+                # Installation of pytorch is done before pytorch3d installation in the function because the order is important andfor version compatibility
+                list_libs_IOS =[('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None),
+                                ('pytorch3d',"==0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"),
+                                ('torchmetrics','==0.9.3',None),('pytorch-lightning','==1.7.7',None),('numpy','>=1.21.6,<1.28',None)]
+
+                is_installed = install_function(self,list_libs_IOS)
 
         # If the user didn't accept the installation, the module doesn't run
         if not is_installed:
             qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
             return
 
+        self.ui.label_LibsInstallation.setVisible(False)
         error = self.ActualMeth.TestProcess(
             input_t1_folder=self.ui.lineEditScanT1LmPath.text,
             input_t2_folder=self.ui.lineEditScanT2LmPath.text,
