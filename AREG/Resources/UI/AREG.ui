@@ -513,6 +513,13 @@
          </widget>
         </item>
         <item>
+         <widget class="QLabel" name="label_LibsInstallation">
+          <property name="text">
+           <string>...Installing Libraries - Open Python Console to see errors...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QLabel" name="LabelTimer">
           <property name="cursor">
            <cursorShape>WaitCursor</cursorShape>
