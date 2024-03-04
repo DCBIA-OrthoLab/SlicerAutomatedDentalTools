@@ -31,6 +31,7 @@ def install_pytorch3d():
         # pip_install(torch_install_cmd)
 
         pip_install(f'--force-reinstall torch==1.12.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{desired_cuda_version}')
+        import torch
 
     system = platform.system()
 
@@ -76,10 +77,12 @@ def install_pytorch3d():
                     "pytorch3d-0.7.0-cp39-cp39-linux_x86_64.whl",
                 )
             )  # py39_cu113_pyt1120
+            import pytorch3d
         except:
             pip_install(
                 "--force-reinstall --no-deps --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"
             )
+            import pytorch3d
 
 def check_lib_installed(lib_name, required_version=None):
     '''
@@ -91,6 +94,7 @@ def check_lib_installed(lib_name, required_version=None):
     try:
         installed_version = pkg_resources.get_distribution(lib_name).version
         # check if the version is the good one - if required_version != None it's considered as a True
+        #required_version can have some constraints like ==, <=, >=, <, >, ex: >=1.0.0
         if required_version and installed_version != required_version:
           return False
         else:
