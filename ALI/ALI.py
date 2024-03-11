@@ -18,6 +18,7 @@ from CondaSetUp import CondaSetUpCall,CondaSetUpCallWsl
 import time
 import threading
 from multiprocessing import Process, Value
+import subprocess
 
 from CondaSetUp import CondaSetUpCall,CondaSetUpCallWsl
 import time
@@ -597,8 +598,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def onPredictButton(self):
     if platform.system()=="Windows" and not self.CBCT_as_input :
-      qt.QMessageBox.warning(self.parent, 'Warning', 'ALI_IOS is currently not available on Windows')
-      lib_ok = False
+      # qt.QMessageBox.warning(self.parent, 'Warning', 'ALI_IOS is currently not available on Windows')
+      lib_ok = True
     else :
       lib_ok = install_function()
 
@@ -698,6 +699,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     system = platform.system()
     if system=="Windows" and not self.CBCT_as_input : 
       # If on windows and running ios 
+      self.ui.PredictionButton.setEnabled(False)
+      self.ui.PredScanLabel.setVisible(True)
+      self.ui.PredScanLabel.setText(f"Verification of WSL, this step can take few minutes")
       wsl = self.conda_wsl.testWslAvailable()
       if wsl : # check if wsl is available
         lib = self.check_lib_wsl()
@@ -1108,6 +1112,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.TimerLabel.setVisible(run)
 
   def RunningUIWindows(self,run=False):
+    self.ui.PredictionButton.setEnabled(not run)
     self.ui.TimerLabel.setVisible(run)
     self.ui.PredScanLabel.setVisible(run)
 
