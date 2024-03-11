@@ -14,9 +14,100 @@ import time
 import shutil
 import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin
+from slicer.util import VTKObservationMixin, pip_install
 
 import webbrowser
+import pkg_resources
+
+def check_lib_installed(lib_name, required_version=None):
+    '''
+    Check if the library with the good version (if needed) is already installed in the slicer environment
+    input: lib_name (str) : name of the library
+            required_version (str) : required version of the library (if None, any version is accepted)
+    output: bool : True if the library is installed with the good version, False otherwise
+    '''
+
+    try:
+        installed_version = pkg_resources.get_distribution(lib_name).version
+        # check if the version is the good one - if required_version != None it's considered as a True
+        if required_version and installed_version != required_version:
+          return False
+        else:
+          return True
+    except pkg_resources.DistributionNotFound:
+        return False
+
+# import csv
+
+def install_function(list_libs:list,system:str):
+    '''
+    Test the necessary libraries and install them with the specific version if needed
+    User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
+    '''
+    libs = list_libs
+    libs_to_install = []
+    libs_to_update = []
+    for lib, version in libs:
+        if not check_lib_installed(lib, version):
+            try:
+              # check if the library is already installed
+              if pkg_resources.get_distribution(lib).version:
+                libs_to_update.append((lib, version))
+            except:
+              libs_to_install.append((lib, version))
+
+    if libs_to_install or libs_to_update:
+          message = "The following changes are required for the libraries:\n"
+
+          #Specify which libraries will be updated with a new version
+          #and which libraries will be installed for the first time
+          if libs_to_update:
+
+              message += "\nLibraries to update (version mismatch):\n"
+              message += "\n".join([f"{lib} (current: {pkg_resources.get_distribution(lib).version}) -> {version}" for lib, version in libs_to_update])
+
+          if libs_to_install:
+              message += "\nLibraries to install:\n"
+              message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
+
+          message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
+          message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
+
+          user_choice = slicer.util.confirmYesNoDisplay(message)
+
+          if user_choice:
+              if system == "Windows":
+                # Installation specified for Windows system
+                for lib, version in libs_to_install:
+                  if lib == "torch, torchvision, torchaudio":
+                    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
+                  else:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+
+                for lib, version in libs_to_update:
+                    if lib == "torch, torchvision, torchaudio":
+                      pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
+                    else:
+                      lib_version = f'{lib}=={version}' if version else lib
+                      pip_install(lib_version)
+
+
+                return True
+
+              else:
+                for lib, version in libs_to_install:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+
+                for lib, version in libs_to_update:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+                return True
+          else :
+            return False
+    else:
+        return True
 
 #region ========== FUNCTIONS ==========
 def GetSegGroup(group_landmark):
@@ -273,6 +364,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.SaveFolderLineEdit.setHidden(True)
     self.ui.PredictFolderLabel.setHidden(True)
 
+    # Checkbox to enable usage of CPU memory in case GPU memory is not enough
+    self.ui.host_memory.setChecked(False)
+
     self.ui.label_4.setVisible(False)
     self.ui.horizontalSliderCPU.setVisible(False)
     self.ui.spinBoxCPU.setVisible(False)
@@ -427,6 +521,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.label_3.setVisible(not SegInput)
     self.ui.horizontalSliderGPU.setVisible(not SegInput)
     self.ui.spinBoxGPU.setVisible(not SegInput)
+
+    self.ui.label_CPU_use.setVisible(not SegInput)
+    self.ui.host_memory.setVisible(not SegInput)
+
 
 
     # self.ui..setVisible(not self.isSegmentInput)
@@ -596,6 +694,17 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     #region == RUN ==
   def onPredictButton(self):
+    import platform
+    # first, install the required libraries and their version
+    list_libs = [('torch', None),('torchvision', None),('torchaudio',None),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
+
+    if platform.system() == "Windows":
+      list_libs= [('torch, torchvision, torchaudio','cu118'),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
+
+    libs_installation = install_function(list_libs,platform.system())
+    if not libs_installation:
+      qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
+      return  # stop the function
 
     ready = True
 
@@ -616,9 +725,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       return
 
     # scan_folder = self.ui.lineEditScanPath.text
-
-
-
     # self.input_path =  '/home/luciacev/Desktop/REQUESTED_SEG/BAMP_SegPred'
     # self.input_path = '/home/luciacev/Desktop/TEST_SEG/TEMP/AnaJ_Scan_T1_OR.gipl.gz'
     # self.model_folder = '/home/luciacev/Desktop/Maxime_Gillot/Data/AMASSS/FULL_FACE_MODELS'
@@ -687,7 +793,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     param["prediction_ID"] = self.ui.SaveId.text
 
     param["gpu_usage"] = self.ui.spinBoxGPU.value
-    param["cpu_usage"] = self.ui.spinBoxCPU.value
+    param["host_memory"] = self.ui.host_memory.isChecked()
 
 
     documentsLocation = qt.QStandardPaths.DocumentsLocation
@@ -755,7 +861,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def UpdateProgressBar(self,progress):
 
     # print("UpdateProgressBar")
-
     if progress == 200:
       self.prediction_step += 1
 
@@ -775,6 +880,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     if progress == 100:
+      # self.prediction_step += 1
 
       if self.prediction_step == 1:
         # self.progressBar.setValue(self.progress)
@@ -785,6 +891,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : {self.progress} / {self.scan_count}")
 
       if self.prediction_step == 2:
+
         # self.progressBar.setValue(self.progress)
         self.ui.PredSegProgressBar.setValue(self.progress)
         self.ui.PredSegLabel.setText(f"Segmented structures : {self.progress} / {self.total_seg_progress}")
