@@ -40,32 +40,21 @@ from slicer.util import pip_install, pip_uninstall
 import SimpleITK as sitk
 import numpy as np
 
-try:
-    import itk
-except ImportError:
-    pip_install('itk -q')
-    import itk
 
-try:
-    import torch
-except ImportError:
-    if platform.system() == "Windows":
-        pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118 -q')
-    else:
-        pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
-    import torch
+import itk
 
-try:
-    import dicom2nifti
-except ImportError:
-    pip_install('dicom2nifti -q')
-    import dicom2nifti
+
+import torch
+
+
+
+import dicom2nifti
+
 
 from torch import nn
 import torch.nn.functional as F
 
-pip_uninstall('monai -q')
-pip_install('monai==0.7.0 -q')
+
 
 from monai.data import (
     DataLoader,

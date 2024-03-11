@@ -10,6 +10,8 @@ Authors :
 - Maxime Gillot (UoM)
 - Baptiste Baquero (UoM)
 """
+#pytorch3d : need version 0.6.2
+#monai : need version 0.7.0
 #IMPORT DE BASE
 import time
 import os
@@ -47,43 +49,19 @@ from slicer.util import pip_install
 # pip_uninstall('monai')
 system = platform.system()
 if system!="Windows":
-    try:
-        import torch
-    except ImportError:
-        pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
-        import torch
 
-    try :
-        from monai.networks.nets import UNETR
-    except ImportError:
-        pip_install('monai==0.7.0')
-        from monai.networks.nets import UNETR
+    import torch
+
+
+    from monai.networks.nets import UNETR
+
 
     from platform import system # to know which OS is used
 
-    if system() == 'Darwin':  # MACOS
-        try:
-            import pytorch3d
-        except ImportError:
-            pip_install('pytorch3d')
-            import pytorch3d
 
-    else: # Linux or Windows
-        try:
-            import pytorch3d
-            if pytorch3d.__version__ != '0.6.2':
-                raise ImportError
-        except ImportError:
-            try:
-            #   import torch
-                pyt_version_str=torch.__version__.split("+")[0].replace(".", "")
-                version_str="".join([f"py3{sys.version_info.minor}_cu",torch.version.cuda.replace(".",""),f"_pyt{pyt_version_str}"])
-                pip_install('--upgrade pip')
-                pip_install('fvcore==0.1.5.post20220305')
-                pip_install('--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
-            except: # install correct torch version
-                pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
-                pip_install('--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
+
+
+    import pytorch3d #need version 0.6.2
 
 
     import torch.nn as nn
@@ -117,11 +95,7 @@ else :
     import time
     import sys
 
-    try :
-        import rpyc
-    except ImportError:
-        pip_install('rpyc')
-        import rpyc
+
 
 from scipy import linalg
 
