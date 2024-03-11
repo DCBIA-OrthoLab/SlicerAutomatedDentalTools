@@ -21,58 +21,28 @@ import glob
 import sys
 import platform
 
+
+import torch
+import dicom2nifti
+import itk
+import cc3d
+
+import SimpleITK as sitk
+import vtk
+import numpy as np
+
+
 # try:
-#     import argparse
+#     import torch
 # except ImportError:
-#     pip_install('argparse')
-#     import argparse
+#     if platform.system() == "Windows":
+#         pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118 -q')
+#     else:
+#         pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
+#     import torch
 
-
-# print(sys.argv)
-
-
-from slicer.util import pip_install, pip_uninstall
-
-# from slicer.util import pip_uninstall
-# # pip_uninstall('torch torchvision torchaudio')
-
-# pip_uninstall('monai')
-
-# try :
-#     import logic
-# except ImportError:
-
-
-try:
-    import torch
-except ImportError:
-    if platform.system() == "Windows":
-        pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118 -q')
-    else:
-        pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 -q')
-    import torch
-
-try:
-    import nibabel
-except ImportError:
-    pip_install('nibabel -q')
-    import nibabel
-
-try:
-    import einops
-except ImportError:
-    pip_install('einops -q')
-    import einops
-
-try:
-    import dicom2nifti
-except ImportError:
-    pip_install('dicom2nifti -q')
-    import dicom2nifti
 
 #region try import
-pip_uninstall('monai -q')
-pip_install('monai==0.7.0 -q')
 from monai.networks.nets import UNETR
 
 from monai.data import (
@@ -92,26 +62,8 @@ from monai.transforms import (
 
 from monai.inferers import sliding_window_inference
 
-import SimpleITK as sitk
-import vtk
-import numpy as np
-try :
-    import itk
-except ImportError:
-    pip_install('itk -q')
-    import itk
-
-
-try:
-    import cc3d
-except ImportError:
-    pip_install('connected-components-3d==3.9.1 -q')
-    import cc3d
-
- #endregion
-
-
-
+# pip_install('connected-components-3d==3.9.1 -q') #Could connected-components-3d be replaced with itk.connected_component_image_filter or itk.scalar_connected_component_image_filter
+   
 # endregion
 
 #region Global variables
@@ -952,7 +904,8 @@ def main(args):
 
                 prediction_segmentation = {}
 
-
+                #Get as much memory as possible by cleaning the cache before the 2nd loop
+                torch.cuda.empty_cache()
 
                 for model_id,model_path in models_to_use.items():
 
@@ -972,9 +925,23 @@ def main(args):
                     net.load_state_dict(torch.load(model_path,map_location=DEVICE))
                     net.eval()
 
+                    ## Should avoid error "CUDA OUT OF MEMORY"
+                    # thanks to sw_device = DEVICE, device=torch.device('cpu') - see the documentation of sliding_window_inference
+                    
+                    if args["host_memory"]=="True":
+                        device_memory = torch.device('cpu')
+                    else:
+                        device_memory = DEVICE
 
-                    val_outputs = sliding_window_inference(input_img, cropSize, args["nbr_GPU_worker"], net,overlap=args["precision"])
-
+                    try:
+                        val_outputs = sliding_window_inference(input_img, cropSize, args["nbr_GPU_worker"], net,overlap=args["precision"],
+                                                               sw_device= DEVICE, device=device_memory)
+                    except RuntimeError as e:
+                        if "CUDA out of memory" in str(e):
+                            print("Error: CUDA out of memory. You can try running again by enabling CPU usage.")
+                        else:
+                            raise
+                    
                     pred_data = torch.argmax(val_outputs, dim=1).detach().cpu().type(torch.int16)
 
                     segmentations = pred_data.permute(0,3,2,1)
@@ -1006,7 +973,8 @@ def main(args):
                         sys.stdout.flush()
                         time.sleep(0.5)
 
-
+                # Clear the cache of GPU memory after the loop 
+                torch.cuda.empty_cache()
                 #endregion
 
                 # print(f"""<filter-progress>{1}</filter-progress>""")
@@ -1147,7 +1115,7 @@ if __name__ == "__main__":
         "vtk_smooth": int(sys.argv[10]),
         "prediction_ID": sys.argv[11],
         "nbr_GPU_worker": int(sys.argv[12]),
-        "nbr_CPU_worker": int(sys.argv[13]),
+        "host_memory": sys.argv[13],
         "temp_fold" : sys.argv[14],
         "isSegmentInput" : sys.argv[15] == "true",
         "isDCMInput": sys.argv[16] == "true",
