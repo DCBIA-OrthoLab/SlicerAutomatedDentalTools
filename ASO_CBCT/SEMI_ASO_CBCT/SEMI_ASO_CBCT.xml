@@ -14,7 +14,7 @@
 
     <label>IO</label>
     <description><![CDATA[Input/output parameters]]></description>
-    
+
     <string>
       <name>input</name>
       <label>input</label>

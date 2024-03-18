@@ -87,6 +87,13 @@
          </layout>
         </item>
         <item>
+         <widget class="QCheckBox" name="checkBoxSize">
+          <property name="text">
+           <string>Keep the same size as input</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <layout class="QHBoxLayout" name="horizontalLayout_11"/>
         </item>
        </layout>

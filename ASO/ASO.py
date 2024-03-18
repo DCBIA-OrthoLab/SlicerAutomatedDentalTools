@@ -15,15 +15,48 @@ from qt import (
     QGridLayout,
     QMediaPlayer,
 )
+import pkg_resources
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin
+from slicer.util import VTKObservationMixin,pip_install
 from functools import partial
+import platform
 
-from Methode.IOS import Auto_IOS, Semi_IOS
-from Methode.CBCT import Semi_CBCT, Auto_CBCT
-from Methode.Methode import Methode
-from Methode.Progress import Display
+from ASO_Method.IOS import Auto_IOS, Semi_IOS
+from ASO_Method.CBCT import Semi_CBCT, Auto_CBCT
+from ASO_Method.Method import Method
+from ASO_Method.Progress import Display
 
+def check_lib_installed(lib_name, required_version=None):
+    try:
+        installed_version = pkg_resources.get_distribution(lib_name).version
+        if required_version and installed_version != required_version:
+            return False
+        return True
+    except pkg_resources.DistributionNotFound:
+        return False
+
+# import csv
+    
+def install_function():
+    libs = [('vtk', None), ('torch', None), ('monai', None),('pytorch_lightning',None),('dicom2nifti',None)]
+    libs_to_install = []
+    for lib, version in libs:
+        if not check_lib_installed(lib, version):
+            libs_to_install.append((lib, version))
+
+    if libs_to_install:
+        message = "The following libraries are not installed or need updating:\n"
+        message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
+        message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
+        user_choice = slicer.util.confirmYesNoDisplay(message)
+
+        if user_choice:
+            for lib, version in libs_to_install:
+                lib_version = f'{lib}=={version}' if version else lib
+                pip_install(lib_version)
+        else :
+          return False
+    return True
 
 class ASO(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -266,25 +299,25 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # (in the selected parameter node).
 
         """
-            888     888        d8888 8888888b.  8888888        d8888 888888b.   888      8888888888  .d8888b.  
-            888     888       d88888 888   Y88b   888         d88888 888  "88b  888      888        d88P  Y88b 
-            888     888      d88P888 888    888   888        d88P888 888  .88P  888      888        Y88b.      
-            Y88b   d88P     d88P 888 888   d88P   888       d88P 888 8888888K.  888      8888888     "Y888b.   
-             Y88b d88P     d88P  888 8888888P"    888      d88P  888 888  "Y88b 888      888            "Y88b. 
-              Y88o88P     d88P   888 888 T88b     888     d88P   888 888    888 888      888              "888 
-               Y888P     d8888888888 888  T88b    888    d8888888888 888   d88P 888      888        Y88b  d88P 
+            888     888        d8888 8888888b.  8888888        d8888 888888b.   888      8888888888  .d8888b.
+            888     888       d88888 888   Y88b   888         d88888 888  "88b  888      888        d88P  Y88b
+            888     888      d88P888 888    888   888        d88P888 888  .88P  888      888        Y88b.
+            Y88b   d88P     d88P 888 888   d88P   888       d88P 888 8888888K.  888      8888888     "Y888b.
+             Y88b d88P     d88P  888 8888888P"    888      d88P  888 888  "Y88b 888      888            "Y88b.
+              Y88o88P     d88P   888 888 T88b     888     d88P   888 888    888 888      888              "888
+               Y888P     d8888888888 888  T88b    888    d8888888888 888   d88P 888      888        Y88b  d88P
                 Y8P     d88P     888 888   T88b 8888888 d88P     888 8888888P"  88888888 8888888888  "Y8888P"
         """
 
-        self.MethodeDic = {
+        self.MethodDic = {
             "Semi_IOS": Semi_IOS(self),
             "Auto_IOS": Auto_IOS(self),
             "Semi_CBCT": Semi_CBCT(self),
             "Auto_CBCT": Auto_CBCT(self),
         }
         self.reference_lm = []
-        self.ActualMeth = Methode
-        self.ActualMeth = self.MethodeDic["Auto_CBCT"]
+        self.ActualMeth = Method
+        self.ActualMeth = self.MethodDic["Auto_CBCT"]
         self.type = "CBCT"
         self.nb_scan = 0
         self.startprocess = 0
@@ -315,29 +348,29 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             os.makedirs(self.SlicerDownloadPath)
 
         """
-                              
-                                        8888888 888b    888 8888888 88888888888 
-                                          888   8888b   888   888       888     
-                                          888   88888b  888   888       888     
-                                          888   888Y88b 888   888       888     
-                                          888   888 Y88b888   888       888     
-                                          888   888  Y88888   888       888     
-                                          888   888   Y8888   888       888     
-                                        8888888 888    Y888 8888888     888 
-                              
+
+                                        8888888 888b    888 8888888 88888888888
+                                          888   8888b   888   888       888
+                                          888   88888b  888   888       888
+                                          888   888Y88b 888   888       888
+                                          888   888 Y88b888   888       888
+                                          888   888  Y88888   888       888
+                                          888   888   Y8888   888       888
+                                        8888888 888    Y888 8888888     888
+
         """
 
-        # self.initCheckbox(self.MethodeDic['Semi_IOS'],self.ui.LayoutLandmarkSemiIOS,self.ui.tohideIOS)
-        # self.initCheckbox(self.MethodeDic['Auto_IOS'],self.ui.LayoutLandmarkAutoIOS,self.ui.tohideIOS)
+        # self.initCheckbox(self.MethodDic['Semi_IOS'],self.ui.LayoutLandmarkSemiIOS,self.ui.tohideIOS)
+        # self.initCheckbox(self.MethodDic['Auto_IOS'],self.ui.LayoutLandmarkAutoIOS,self.ui.tohideIOS)
         self.initCheckboxIOS(
-            self.MethodeDic["Auto_IOS"],
+            self.MethodDic["Auto_IOS"],
             self.ui.LayoutAutoIOS_tooth,
             self.ui.tohideAutoIOS_tooth,
             self.ui.LayoutLandmarkAutoIOS,
             self.ui.checkBoxOcclusionAutoIOS,
         )
         self.initCheckboxIOS(
-            self.MethodeDic["Semi_IOS"],
+            self.MethodDic["Semi_IOS"],
             self.ui.LayoutSemiIOS_tooth,
             self.ui.tohideSemiIOS_tooth,
             self.ui.LayoutLandmarkSemiIOS,
@@ -345,17 +378,17 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
 
         self.initCheckbox(
-            self.MethodeDic["Semi_CBCT"],
+            self.MethodDic["Semi_CBCT"],
             self.ui.LayoutLandmarkSemiCBCT,
             self.ui.tohideCBCT,
         )  # a decommmente
         self.initCheckbox(
-            self.MethodeDic["Auto_CBCT"],
+            self.MethodDic["Auto_CBCT"],
             self.ui.LayoutLandmarkAutoCBCT,
             self.ui.tohideCBCT,
         )
         self.HideComputeItems()
-        # self.initTest(self.MethodeDic['Semi_IOS'])
+        # self.initTest(self.MethodDic['Semi_IOS'])
 
         # self.dicchckbox=self.ActualMeth.getcheckbox()
         # self.dicchckbox2=self.ActualMeth.getcheckbox2()
@@ -366,16 +399,16 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.SwitchType()
 
         """
-                                                                                       
-                     .d8888b.   .d88888b.  888b    888 888b    888 8888888888  .d8888b.  88888888888 
-                    d88P  Y88b d88P" "Y88b 8888b   888 8888b   888 888        d88P  Y88b     888     
-                    888    888 888     888 88888b  888 88888b  888 888        888    888     888     
-                    888        888     888 888Y88b 888 888Y88b 888 8888888    888            888     
-                    888        888     888 888 Y88b888 888 Y88b888 888        888            888     
-                    888    888 888     888 888  Y88888 888  Y88888 888        888    888     888     
-                    Y88b  d88P Y88b. .d88P 888   Y8888 888   Y8888 888        Y88b  d88P     888     
-                     "Y8888P"   "Y88888P"  888    Y888 888    Y888 8888888888  "Y8888P"      888 
-                                                                                                            
+
+                     .d8888b.   .d88888b.  888b    888 888b    888 8888888888  .d8888b.  88888888888
+                    d88P  Y88b d88P" "Y88b 8888b   888 8888b   888 888        d88P  Y88b     888
+                    888    888 888     888 88888b  888 88888b  888 888        888    888     888
+                    888        888     888 888Y88b 888 888Y88b 888 8888888    888            888
+                    888        888     888 888 Y88b888 888 Y88b888 888        888            888
+                    888    888 888     888 888  Y88888 888  Y88888 888        888    888     888
+                    Y88b  d88P Y88b. .d88P 888   Y8888 888   Y8888 888        Y88b  d88P     888
+                     "Y8888P"   "Y88888P"  888    Y888 888    Y888 8888888888  "Y8888P"      888
+
         """
 
         self.ui.ButtonSearchScanLmFolder.connect("clicked(bool)", self.SearchScanLm)
@@ -394,25 +427,25 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.checkBoxOcclusionAutoIOS.toggled.connect(
             partial(
                 self.OcclusionCheckbox,
-                self.MethodeDic["Auto_IOS"].getcheckbox()["Jaw"]["Upper"],
-                self.MethodeDic["Auto_IOS"].getcheckbox()["Jaw"]["Lower"],
-                self.MethodeDic["Semi_IOS"].getcheckbox()["Teeth"],
+                self.MethodDic["Auto_IOS"].getcheckbox()["Jaw"]["Upper"],
+                self.MethodDic["Auto_IOS"].getcheckbox()["Jaw"]["Lower"],
+                self.MethodDic["Semi_IOS"].getcheckbox()["Teeth"],
             )
         )
 
     """
 
-                                                                                                                                                                    
-                888888b.   888     888 88888888888 88888888888  .d88888b.  888b    888  .d8888b.  
-                888  "88b  888     888     888         888     d88P" "Y88b 8888b   888 d88P  Y88b 
-                888  .88P  888     888     888         888     888     888 88888b  888 Y88b.      
-                8888888K.  888     888     888         888     888     888 888Y88b 888  "Y888b.   
-                888  "Y88b 888     888     888         888     888     888 888 Y88b888     "Y88b. 
-                888    888 888     888     888         888     888     888 888  Y88888       "888 
-                888   d88P Y88b. .d88P     888         888     Y88b. .d88P 888   Y8888 Y88b  d88P 
+
+                888888b.   888     888 88888888888 88888888888  .d88888b.  888b    888  .d8888b.
+                888  "88b  888     888     888         888     d88P" "Y88b 8888b   888 d88P  Y88b
+                888  .88P  888     888     888         888     888     888 88888b  888 Y88b.
+                8888888K.  888     888     888         888     888     888 888Y88b 888  "Y888b.
+                888  "Y88b 888     888     888         888     888     888 888 Y88b888     "Y88b.
+                888    888 888     888     888         888     888     888 888  Y88888       "888
+                888   d88P Y88b. .d88P     888         888     Y88b. .d88P 888   Y8888 Y88b  d88P
                 8888888P"   "Y88888P"      888         888      "Y88888P"  888    Y888  "Y8888P"
-                                                                                                                                                                    
-                                                                                                                                                                    
+
+
 
     """
 
@@ -458,7 +491,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.CbInputType.currentIndex == 0
             and self.ui.CbModeType.currentIndex == 1
         ):
-            self.ActualMeth = self.MethodeDic["Semi_CBCT"]
+            self.ActualMeth = self.MethodDic["Semi_CBCT"]
             self.ui.CbCBCTInputType.setVisible(True)
             self.ui.stackedWidget.setCurrentIndex(0)
             self.type = "CBCT"
@@ -467,7 +500,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.CbInputType.currentIndex == 0
             and self.ui.CbModeType.currentIndex == 0
         ):
-            self.ActualMeth = self.MethodeDic["Auto_CBCT"]
+            self.ActualMeth = self.MethodDic["Auto_CBCT"]
             self.ui.stackedWidget.setCurrentIndex(1)
             self.ui.CbCBCTInputType.setVisible(True)
             self.type = "CBCT"
@@ -477,7 +510,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.CbInputType.currentIndex == 1
             and self.ui.CbModeType.currentIndex == 1
         ):
-            self.ActualMeth = self.MethodeDic["Semi_IOS"]
+            self.ActualMeth = self.MethodDic["Semi_IOS"]
             self.ui.stackedWidget.setCurrentIndex(2)
             self.ui.CbCBCTInputType.setVisible(False)
             self.type = "IOS"
@@ -486,7 +519,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.CbInputType.currentIndex == 1
             and self.ui.CbModeType.currentIndex == 0
         ):
-            self.ActualMeth = self.MethodeDic["Auto_IOS"]
+            self.ActualMeth = self.MethodDic["Auto_IOS"]
             self.ui.stackedWidget.setCurrentIndex(3)
             self.ui.CbCBCTInputType.setVisible(False)
             self.type = "IOS"
@@ -803,20 +836,21 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         checkbox2.setChecked(True)
 
     """
-                                                                                    
-                    8888888b.  8888888b.   .d88888b.   .d8888b.  8888888888  .d8888b.   .d8888b.  
-                    888   Y88b 888   Y88b d88P" "Y88b d88P  Y88b 888        d88P  Y88b d88P  Y88b 
-                    888    888 888    888 888     888 888    888 888        Y88b.      Y88b.      
-                    888   d88P 888   d88P 888     888 888        8888888     "Y888b.    "Y888b.   
-                    8888888P"  8888888P"  888     888 888        888            "Y88b.     "Y88b. 
-                    888        888 T88b   888     888 888    888 888              "888       "888 
-                    888        888  T88b  Y88b. .d88P Y88b  d88P 888        Y88b  d88P Y88b  d88P 
-                    888        888   T88b  "Y88888P"   "Y8888P"  8888888888  "Y8888P"   "Y8888P"  
-                                                                                
-                                                                                    
+
+                    8888888b.  8888888b.   .d88888b.   .d8888b.  8888888888  .d8888b.   .d8888b.
+                    888   Y88b 888   Y88b d88P" "Y88b d88P  Y88b 888        d88P  Y88b d88P  Y88b
+                    888    888 888    888 888     888 888    888 888        Y88b.      Y88b.
+                    888   d88P 888   d88P 888     888 888        8888888     "Y888b.    "Y888b.
+                    8888888P"  8888888P"  888     888 888        888            "Y88b.     "Y88b.
+                    888        888 T88b   888     888 888    888 888              "888       "888
+                    888        888  T88b  Y88b. .d88P Y88b  d88P 888        Y88b  d88P Y88b  d88P
+                    888        888   T88b  "Y88888P"   "Y8888P"  8888888888  "Y8888P"   "Y8888P"
+
+
     """
 
     def onPredictButton(self):
+        install_function()
         """Function to launch the prediction"""
         error = self.ActualMeth.TestProcess(
             input_folder=self.ui.lineEditScanLmPath.text,
@@ -1009,27 +1043,27 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.HideComputeItems(run)
 
     """
-                                                                                                                        
-            8888888888 888     888 888b    888  .d8888b.      8888888 888b    888 8888888 88888888888 
-            888        888     888 8888b   888 d88P  Y88b       888   8888b   888   888       888     
-            888        888     888 88888b  888 888    888       888   88888b  888   888       888     
-            8888888    888     888 888Y88b 888 888              888   888Y88b 888   888       888     
-            888        888     888 888 Y88b888 888              888   888 Y88b888   888       888     
-            888        888     888 888  Y88888 888    888       888   888  Y88888   888       888     
-            888        Y88b. .d88P 888   Y8888 Y88b  d88P       888   888   Y8888   888       888     
-            888         "Y88888P"  888    Y888  "Y8888P"      8888888 888    Y888 8888888     888     
-                                                                                                                                      
-                                                                                                                                    
-                                                                                                                        
-                                                                                                                        
+
+            8888888888 888     888 888b    888  .d8888b.      8888888 888b    888 8888888 88888888888
+            888        888     888 8888b   888 d88P  Y88b       888   8888b   888   888       888
+            888        888     888 88888b  888 888    888       888   88888b  888   888       888
+            8888888    888     888 888Y88b 888 888              888   888Y88b 888   888       888
+            888        888     888 888 Y88b888 888              888   888 Y88b888   888       888
+            888        888     888 888  Y88888 888    888       888   888  Y88888   888       888
+            888        Y88b. .d88P 888   Y8888 Y88b  d88P       888   888   Y8888   888       888
+            888         "Y88888P"  888    Y888  "Y8888P"      8888888 888    Y888 8888888     888
+
+
+
+
     """
 
-    def initCheckbox(self, methode, layout, tohide: qt.QLabel):
+    def initCheckbox(self, Method, layout, tohide: qt.QLabel):
         """Function to create the checkbox at the beginning of the program"""
         if not tohide is None:
             tohide.setHidden(True)
-        dic = methode.DicLandmark()
-        # status = methode.existsLandmark('','')
+        dic = Method.DicLandmark()
+        # status = Method.existsLandmark('','')
         dicchebox = {}
         dicchebox2 = {}
         for type, tab in dic.items():
@@ -1059,8 +1093,8 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             dicchebox[type] = listcheckboxlandmark
             dicchebox2[type] = listcheckboxlandmark2
 
-        methode.setcheckbox(dicchebox)
-        methode.setcheckbox2(dicchebox2)
+        Method.setcheckbox(dicchebox)
+        Method.setcheckbox2(dicchebox2)
 
         return dicchebox, dicchebox2
 
@@ -1102,7 +1136,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def initCheckboxIOS(
         self,
-        methode: Auto_IOS,
+        Method: Auto_IOS,
         layout: QGridLayout,
         tohide: QLabel,
         layout2: QVBoxLayout,
@@ -1269,10 +1303,10 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             partial(self.UpperLowerChooseOcclusion, upper_checbox, occlusion)
         )
 
-        if isinstance(methode, Semi_IOS):
-            dic1, dic2 = self.initCheckbox(methode, layout2, None)
+        if isinstance(Method, Semi_IOS):
+            dic1, dic2 = self.initCheckbox(Method, layout2, None)
 
-            methode.setcheckbox(
+            Method.setcheckbox(
                 {
                     "Teeth": diccheckbox,
                     "Landmark": dic1,
@@ -1280,7 +1314,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     "Occlusion": occlusion,
                 }
             )
-            methode.setcheckbox2(
+            Method.setcheckbox2(
                 {
                     "Teeth": diccheckbox,
                     "Landmark": dic2,
@@ -1290,14 +1324,14 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             )
         else:
 
-            methode.setcheckbox(
+            Method.setcheckbox(
                 {
                     "Teeth": diccheckbox,
                     "Jaw": {"Upper": upper_checbox, "Lower": lower_checkbox},
                     "Occlusion": occlusion,
                 }
             )
-            methode.setcheckbox2(
+            Method.setcheckbox2(
                 {
                     "Teeth": diccheckbox,
                     "Jaw": {"Upper": upper_checbox, "Lower": lower_checkbox},
@@ -1328,14 +1362,14 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             opposit_jaw.setChecked(False)
 
     """
-                          .d88888b.  88888888888 888    888 8888888888 8888888b.   .d8888b.  
-                         d88P" "Y88b     888     888    888 888        888   Y88b d88P  Y88b 
-                         888     888     888     888    888 888        888    888 Y88b.      
-                         888     888     888     8888888888 8888888    888   d88P  "Y888b.   
-                         888     888     888     888    888 888        8888888P"      "Y88b. 
-                         888     888     888     888    888 888        888 T88b         "888 
-                         Y88b. .d88P     888     888    888 888        888  T88b  Y88b  d88P 
-                          "Y88888P"      888     888    888 8888888888 888   T88b  "Y8888P"    
+                          .d88888b.  88888888888 888    888 8888888888 8888888b.   .d8888b.
+                         d88P" "Y88b     888     888    888 888        888   Y88b d88P  Y88b
+                         888     888     888     888    888 888        888    888 Y88b.
+                         888     888     888     8888888888 8888888    888   d88P  "Y888b.
+                         888     888     888     888    888 888        8888888P"      "Y88b.
+                         888     888     888     888    888 888        888 T88b         "888
+                         Y88b. .d88P     888     888    888 888        888  T88b  Y88b  d88P
+                          "Y88888P"      888     888    888 8888888888 888   T88b  "Y8888P"
     """
 
     def cleanup(self):
@@ -1486,14 +1520,14 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 """
-                d8888  .d8888b.   .d88888b.      888       .d88888b.   .d8888b.  8888888  .d8888b.  
-               d88888 d88P  Y88b d88P" "Y88b     888      d88P" "Y88b d88P  Y88b   888   d88P  Y88b 
-              d88P888 Y88b.      888     888     888      888     888 888    888   888   888    888 
-             d88P 888  "Y888b.   888     888     888      888     888 888          888   888        
-            d88P  888     "Y88b. 888     888     888      888     888 888  88888   888   888        
-           d88P   888       "888 888     888     888      888     888 888    888   888   888    888 
-          d8888888888 Y88b  d88P Y88b. .d88P     888      Y88b. .d88P Y88b  d88P   888   Y88b  d88P 
-         d88P     888  "Y8888P"   "Y88888P"      88888888  "Y88888P"   "Y8888P88 8888888  "Y8888P"                                                                                  
+                d8888  .d8888b.   .d88888b.      888       .d88888b.   .d8888b.  8888888  .d8888b.
+               d88888 d88P  Y88b d88P" "Y88b     888      d88P" "Y88b d88P  Y88b   888   d88P  Y88b
+              d88P888 Y88b.      888     888     888      888     888 888    888   888   888    888
+             d88P 888  "Y888b.   888     888     888      888     888 888          888   888
+            d88P  888     "Y88b. 888     888     888      888     888 888  88888   888   888
+           d88P   888       "888 888     888     888      888     888 888    888   888   888    888
+          d8888888888 Y88b  d88P Y88b. .d88P     888      Y88b. .d88P Y88b  d88P   888   Y88b  d88P
+         d88P     888  "Y8888P"   "Y88888P"      88888888  "Y88888P"   "Y8888P88 8888888  "Y8888P"
 """
 
 

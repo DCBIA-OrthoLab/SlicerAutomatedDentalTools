@@ -1,6 +1,6 @@
 #-----------------------------------------------------------------------------
 set(MODULE_NAME AutoMatrix)
-set(FOLDER_LIBRARY Methode)
+set(FOLDER_LIBRARY Method)
 
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
@@ -8,12 +8,10 @@ set(MODULE_PYTHON_SCRIPTS
   ${FOLDER_LIBRARY}/General_tools.py
 )
 
-
-
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
   Resources/UI/${MODULE_NAME}.ui
-  )
+)
 
 #-----------------------------------------------------------------------------
 slicerMacroBuildScriptedModule(
@@ -21,10 +19,10 @@ slicerMacroBuildScriptedModule(
   SCRIPTS ${MODULE_PYTHON_SCRIPTS}
   RESOURCES ${MODULE_PYTHON_RESOURCES}
   WITH_GENERIC_TESTS
-  )
+)
 
 #-----------------------------------------------------------------------------
-if(BUILD_TESTING)
+if (BUILD_TESTING)
 
   # Register the unittest subclass in the main script as a ctest.
   # Note that the test will also be available at runtime.
@@ -32,4 +30,4 @@ if(BUILD_TESTING)
 
   # Additional build-time testing
   add_subdirectory(Testing)
-endif()
+endif ()

@@ -54,12 +54,12 @@ def main(args):
     with open(args.log_path[0], "w") as log_f:
         log_f.truncate(0)
 
-    methode = [InitIcp(), vtkICP()]
+    Method = [InitIcp(), vtkICP()]
     option_upper = SelectKey(dic_landmark["Upper"])
     option_lower = SelectKey(dic_landmark["Lower"])
     print("dic landmark", dic_landmark)
-    icp_upper = ICP(methode, option=option_upper)
-    icp_lower = ICP(methode, option=option_lower)
+    icp_upper = ICP(Method, option=option_upper)
+    icp_lower = ICP(Method, option=option_lower)
     icp = {"Lower": icp_lower, "Upper": icp_upper}
     print("--------------" * 10)
 
