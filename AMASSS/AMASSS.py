@@ -14,9 +14,100 @@ import time
 import shutil
 import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin
+from slicer.util import VTKObservationMixin, pip_install
 
 import webbrowser
+import pkg_resources
+
+def check_lib_installed(lib_name, required_version=None):
+    '''
+    Check if the library with the good version (if needed) is already installed in the slicer environment
+    input: lib_name (str) : name of the library
+            required_version (str) : required version of the library (if None, any version is accepted)
+    output: bool : True if the library is installed with the good version, False otherwise
+    '''
+
+    try:
+        installed_version = pkg_resources.get_distribution(lib_name).version
+        # check if the version is the good one - if required_version != None it's considered as a True
+        if required_version and installed_version != required_version:
+          return False
+        else:
+          return True
+    except pkg_resources.DistributionNotFound:
+        return False
+
+# import csv
+
+def install_function(list_libs:list,system:str):
+    '''
+    Test the necessary libraries and install them with the specific version if needed
+    User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
+    '''
+    libs = list_libs
+    libs_to_install = []
+    libs_to_update = []
+    for lib, version in libs:
+        if not check_lib_installed(lib, version):
+            try:
+              # check if the library is already installed
+              if pkg_resources.get_distribution(lib).version:
+                libs_to_update.append((lib, version))
+            except:
+              libs_to_install.append((lib, version))
+
+    if libs_to_install or libs_to_update:
+          message = "The following changes are required for the libraries:\n"
+
+          #Specify which libraries will be updated with a new version
+          #and which libraries will be installed for the first time
+          if libs_to_update:
+
+              message += "\nLibraries to update (version mismatch):\n"
+              message += "\n".join([f"{lib} (current: {pkg_resources.get_distribution(lib).version}) -> {version}" for lib, version in libs_to_update])
+
+          if libs_to_install:
+              message += "\nLibraries to install:\n"
+              message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
+
+          message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
+          message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
+
+          user_choice = slicer.util.confirmYesNoDisplay(message)
+
+          if user_choice:
+              if system == "Windows":
+                # Installation specified for Windows system
+                for lib, version in libs_to_install:
+                  if lib == "torch, torchvision, torchaudio":
+                    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
+                  else:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+
+                for lib, version in libs_to_update:
+                    if lib == "torch, torchvision, torchaudio":
+                      pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
+                    else:
+                      lib_version = f'{lib}=={version}' if version else lib
+                      pip_install(lib_version)
+
+
+                return True
+
+              else:
+                for lib, version in libs_to_install:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+
+                for lib, version in libs_to_update:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+                return True
+          else :
+            return False
+    else:
+        return True
 
 #region ========== FUNCTIONS ==========
 def GetSegGroup(group_landmark):
@@ -143,22 +234,22 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.logic = None
     self._parameterNode = None
     self._updatingGUIFromParameterNode = False
-    
+
     self.MRMLNode_scan = None # MRML node of the selected scan
 
 
     self.input_path = None # path to the folder containing the scans
-    self.folder_as_input = False # 0 for file, 1 for folder 
+    self.folder_as_input = False # 0 for file, 1 for folder
 
-    self.isSegmentInput = False # Is the input (folder or file) is a Segmentation 
+    self.isSegmentInput = False # Is the input (folder or file) is a Segmentation
     self.isDCMInput = False
 
     self.output_folder = None # path to the folder where the segmentations will be saved
     self.vtk_output_folder = None
 
-  
+
     self.model_folder = None # path to the folder containing the models
-  
+
     self.use_small_FOV = False # use high resolution model
 
 
@@ -173,12 +264,12 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.center_all = False # True: center all the scan seg and surfaces in the same position
     self.save_adjusted = False # True: save the contrast adjusted scan
-    self.precision = 50 # Default precision for the segmentation 
+    self.precision = 50 # Default precision for the segmentation
     self.smoothing = 5 # Default smoothing value for the generated surface
 
 
     self.scan_count = 0 # number of scans in the input folder
-    self.seg_cout = 0 # number of segmentations to perform 
+    self.seg_cout = 0 # number of segmentations to perform
 
     self.total_seg_progress = 0 # total number of step to perform
 
@@ -193,7 +284,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     Called when the user opens the module the first time and the widget is initialized.
     """
     #region ===== WIDGET =====
-    
+
 
     ScriptedLoadableModuleWidget.setup(self)
 
@@ -273,6 +364,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.SaveFolderLineEdit.setHidden(True)
     self.ui.PredictFolderLabel.setHidden(True)
 
+    # Checkbox to enable usage of CPU memory in case GPU memory is not enough
+    self.ui.host_memory.setChecked(False)
+
     self.ui.label_4.setVisible(False)
     self.ui.horizontalSliderCPU.setVisible(False)
     self.ui.spinBoxCPU.setVisible(False)
@@ -313,7 +407,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     self.ui.PredictionButton.connect('clicked(bool)', self.onPredictButton)
-  
+
     self.ui.CancelButton.connect('clicked(bool)', self.onCancel)
     self.RunningUI(False)
 
@@ -336,7 +430,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if index == 1:
       self.folder_as_input = True
       self.input_path = None
-    
+
     else:
       self.folder_as_input = False
       self.onNodeChanged()
@@ -354,7 +448,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.isSegmentInputFunction(False)
       self.SwitchInputType(0)
       self.isDCMInput = False
-      
+
       self.ui.label.setVisible(True)
       self.ui.input_type_select.setVisible(True)
     if index == 1: # DICOM Files
@@ -364,12 +458,12 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.ui.input_type_select.setVisible(False)
       self.ui.label_folder_select.setText('DICOM\'s Folder')
       self.isDCMInput = True
-      
+
     if index == 2: # Segmentation Files
       self.isSegmentInputFunction(True)
 
   def isSegmentInputFunction(self,SegInput):
-    
+
     # Set the value to True when checked and vice-versa
     # self.isSegmentInput = not self.isSegmentInput
 
@@ -388,36 +482,36 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.seg_tab.FillTab(GROUPS_FF_SEG)
       self.ui.PrePredInfo.setText("Number of scans to process : 0")
     # Set to invisble all the unnecessary input
-    
+
     self.ui.DownloadScanButton.setVisible(not SegInput)
     self.ui.DownloadButton.setVisible(not SegInput)
     self.ui.label_model_select.setVisible(not SegInput)
     self.ui.lineEditModelPath.setVisible(not SegInput)
     self.ui.SearchModelFolder.setVisible(not SegInput)
-    
+
     self.ui.smallFOVCheckBox.setVisible(not SegInput)
     self.ui.label_6.setVisible(not SegInput)
-    
+
     # OUTPUT
     self.ui.CenterAllCheckBox.setVisible(not SegInput)
     self.ui.SaveAdjustedCheckBox.setVisible(not SegInput)
-    
+
     self.ui.label_2.setVisible(not SegInput)
     self.ui.OutputTypecomboBox.setVisible(not SegInput)
-    
+
     self.ui.label_9.setVisible(not SegInput)
     self.ui.SaveId.setVisible(not SegInput)
 
     self.ui.checkBoxSurfaceSelect.setVisible(not SegInput)
 
-    
+
 
 
     # ADVANCED
     self.ui.labelSmoothing.setVisible(SegInput)
     self.ui.horizontalSliderSmoothing.setVisible(SegInput)
     self.ui.spinBoxSmoothing.setVisible(SegInput)
-      
+
     self.ui.saveInFolder.setVisible(not SegInput)
 
     self.ui.labelPrecision.setVisible(not SegInput)
@@ -427,10 +521,14 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.label_3.setVisible(not SegInput)
     self.ui.horizontalSliderGPU.setVisible(not SegInput)
     self.ui.spinBoxGPU.setVisible(not SegInput)
-       
+
+    self.ui.label_CPU_use.setVisible(not SegInput)
+    self.ui.host_memory.setVisible(not SegInput)
+
+
 
     # self.ui..setVisible(not self.isSegmentInput)
-    
+
 
   def onNodeChanged(self):
     selected = False
@@ -464,7 +562,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     file_explorer = qt.QFileDialog()
     # file_explorer.setFileMode(qt.QFileDialog.AnyFile)
     scan_folder = file_explorer.getExistingDirectory(self.parent, "Select a scan folder")
-  
+
     if scan_folder != '':
       if self.isSegmentInput:
         nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],exception=["scan"])
@@ -525,7 +623,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # self.ui.SearchSaveFolder.setEnabled(not caller)
     # self.ui.SaveFolderLineEdit.setEnabled(not caller)
-    
+
     self.save_in_input_folder = checked
 
   def UpdateSaveSurface(self,checked):
@@ -533,7 +631,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.labelSmoothing.setVisible(checked)
     self.ui.horizontalSliderSmoothing.setVisible(checked)
     self.ui.spinBoxSmoothing.setVisible(checked)
-    
+
     self.save_surface = checked
     if checked:
       self.ui.saveInFolder.checked = True
@@ -593,9 +691,20 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     #region == RUN ==
     #endregion
 
-  
+
     #region == RUN ==
   def onPredictButton(self):
+    import platform
+    # first, install the required libraries and their version
+    list_libs = [('torch', None),('torchvision', None),('torchaudio',None),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
+
+    if platform.system() == "Windows":
+      list_libs= [('torch, torchvision, torchaudio','cu118'),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
+
+    libs_installation = install_function(list_libs,platform.system())
+    if not libs_installation:
+      qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
+      return  # stop the function
 
     ready = True
 
@@ -616,9 +725,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       return
 
     # scan_folder = self.ui.lineEditScanPath.text
-
-
-
     # self.input_path =  '/home/luciacev/Desktop/REQUESTED_SEG/BAMP_SegPred'
     # self.input_path = '/home/luciacev/Desktop/TEST_SEG/TEMP/AnaJ_Scan_T1_OR.gipl.gz'
     # self.model_folder = '/home/luciacev/Desktop/Maxime_Gillot/Data/AMASSS/FULL_FACE_MODELS'
@@ -638,7 +744,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     param = {}
 
     param["inputVolume"] = self.input_path
-    
+
     if self.isSegmentInput:
       self.model_folder = '/'
 
@@ -687,9 +793,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     param["prediction_ID"] = self.ui.SaveId.text
 
     param["gpu_usage"] = self.ui.spinBoxGPU.value
-    param["cpu_usage"] = self.ui.spinBoxCPU.value
+    param["host_memory"] = self.ui.host_memory.isChecked()
 
-    
+
     documentsLocation = qt.QStandardPaths.DocumentsLocation
     documents = qt.QStandardPaths.writableLocation(documentsLocation)
     temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp_AMASSS")
@@ -706,12 +812,12 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
     self.onProcessStarted()
 
-    
+
     # self.OnEndProcess()
 
     # def onCliModified(self, caller, event):
     #     self.progressBar.setValue(caller.GetProgress())
-    #     if caller.GetStatus() == 32: 
+    #     if caller.GetStatus() == 32:
     #         self.progressBar.close()
 
 
@@ -735,7 +841,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
     self.ui.PredSegProgressBar.setValue(0)
-    self.ui.PredSegLabel.setText(f"Segmented structures : 0 / {self.total_seg_progress}") 
+    self.ui.PredSegLabel.setText(f"Segmented structures : 0 / {self.total_seg_progress}")
 
     self.prediction_step = 0
     self.progress = 0
@@ -755,7 +861,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def UpdateProgressBar(self,progress):
 
     # print("UpdateProgressBar")
-
     if progress == 200:
       self.prediction_step += 1
 
@@ -775,6 +880,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     if progress == 100:
+      # self.prediction_step += 1
 
       if self.prediction_step == 1:
         # self.progressBar.setValue(self.progress)
@@ -785,9 +891,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : {self.progress} / {self.scan_count}")
 
       if self.prediction_step == 2:
+
         # self.progressBar.setValue(self.progress)
         self.ui.PredSegProgressBar.setValue(self.progress)
-        self.ui.PredSegLabel.setText(f"Segmented structures : {self.progress} / {self.total_seg_progress}") 
+        self.ui.PredSegLabel.setText(f"Segmented structures : {self.progress} / {self.total_seg_progress}")
 
       self.progress += 1
 
@@ -814,7 +921,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # print(progress)
 
 
-  
+
     if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
       # process complete
 
@@ -851,7 +958,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     print("Cancelled")
-    
+
   def RunningUI(self, run = False):
 
     self.ui.PredictionButton.setVisible(not run)
@@ -873,7 +980,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def OnEndProcess(self):
 
-    
+
     print('PROCESS DONE.')
     # self.progressBar.setValue(100)
     # self.progressBar.close()
@@ -937,7 +1044,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     if self.logic.cliNode is not None:
       if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
-        self.logic.cliNode.Cancel()    
+        self.logic.cliNode.Cancel()
     self.removeObservers()
 
 
@@ -1077,7 +1184,7 @@ class LMTab:
 
     # def Test(self, index):
     #   print(index)
-    
+
     def Clear(self):
       self.seg_tab_widget.clear()
 
@@ -1090,13 +1197,13 @@ class LMTab:
       self.seg_status_dic = {}
       self.seg_group_dic = {}
       self.seg_group_dic["All"] = []
-      for group,seg_lst in seg_dic.items(): 
+      for group,seg_lst in seg_dic.items():
         self.seg_group_dic[group] = seg_lst
         for seg in seg_lst:
           self.seg_group_dic["All"].append(seg)
           if seg not in self.seg_status_dic.keys():
             self.seg_status_dic[seg] = seg in DEFAULT_SELECT
-      
+
       # print(self.seg_group_dic)
 
 
@@ -1141,10 +1248,10 @@ class LMTab:
           state = True
         else:
           state = False
-        
+
         if self.seg_status_dic[seg] != state:
           self.UpdateSegSelect(seg,state)
-      
+
     def ToggleSelection(self):
       idx = self.seg_tab_widget.currentIndex
       # print(idx)
@@ -1199,7 +1306,7 @@ class LMTab:
 
     def SelectAll(self):
       self.UpdateAll(True)
-    
+
     def ClearAll(self):
       self.UpdateAll(False)
 
@@ -1234,14 +1341,14 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
 
     logging.info('Processing started')
 
- 
+
     print ('parameters : ', parameters)
 
 
     AMASSSProcess = slicer.modules.amasss_cli
 
     self.cliNode = slicer.cli.run(AMASSSProcess, None, parameters)
-    
+
     # We don't need the CLI module node anymore, remove it to not clutter the scene with it
     # slicer.mrmlScene.RemoveNode(cliNode)
 

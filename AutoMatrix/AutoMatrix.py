@@ -16,8 +16,8 @@ from functools import partial
 import SimpleITK as sitk
 from pathlib import Path
 
-# import Methode.General_tools as gt
-from Methode.General_tools import search, GetPatients
+# import Method.General_tools as gt
+from Method.General_tools import search, GetPatients
 
 
 
@@ -187,7 +187,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.ComboBoxMatrix.setEnabled(False)
             self.DownloadMirror()
 
-        else : 
+        else :
             self.ui.SearchButtonMatrix.setEnabled(True)
             self.ui.LineEditMatrix.setEnabled(True)
             self.ui.ComboBoxMatrix.setCurrentIndex(1)
@@ -290,13 +290,13 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ComboBoxPatient.setCurrentIndex(1)
         self.ui.ComboBoxMatrix.setCurrentIndex(1)
 
-    
-    def openFinder(self,nom : str,_) -> None : 
+
+    def openFinder(self,nom : str,_) -> None :
         """
          Open finder to let the user choose is files or folder
-        """ 
-        
-        
+        """
+
+
         if nom=="Matrix":
             if self.ui.ComboBoxMatrix.currentIndex==1:
                   surface_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
@@ -315,7 +315,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         elif nom=="Output":
             surface_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
             self.ui.LineEditOutput.setText(surface_folder)
-        
+
 
     def cleanup(self):
         """
@@ -437,7 +437,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.progressBar.setVisible(True)
             self.ui.progressBar.setEnabled(True)
             self.ui.progressBar.setTextVisible(True)
-            
+
             self.ui.label_info.setVisible(True)
             self.ui.label_time.setVisible(True)
             self.ui.label_time.setText(f"time : 0.0s")
@@ -449,7 +449,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.UpdateProgressBar(True)
 
 
-        
+
     def ProcessVolume(self)-> None:
         '''
         Function that will apply the matrix to all the files
@@ -461,10 +461,10 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             for key,values in patients.items():
                 for scan in values['scan']:
                     fname, extension_scan = os.path.splitext(scan)
-                    try : 
+                    try :
                         fname, extension2 = os.path.splitext(os.path.basename(fname))
                         extension_scan = extension2+extension_scan
-                    except : 
+                    except :
                         print("not a .nii.gz")
 
                     self.UpdateTime()
@@ -484,21 +484,21 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
                             else :
                                 tform = slicer.util.loadTransform(matrix)
-                            
+
                             if Path(self.ui.LineEditPatient.text).is_dir():
                                     outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
-                            else : 
+                            else :
                                 outpath = scan.replace(os.path.dirname(self.ui.LineEditPatient.text),self.ui.LineEditOutput.text)
 
-                            try : 
+                            try :
                                 if Path(self.ui.LineEditMatrix.text).is_dir():
                                     matrix_name = os.path.basename(matrix).split(extension_mat)[0].split(key)[1]
                                 else :
                                     matrix_name = os.path.basename(matrix).split(extension_mat)[0]
-                            except : 
+                            except :
                                 print('Impossible to extract the name of the matrix')
                                 matrix_name="matrix_name"
-                            
+
                             if not os.path.exists(os.path.dirname(outpath)):
                                 os.makedirs(os.path.dirname(outpath))
 
@@ -529,24 +529,24 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     self.UpdateTime()
                     slicer.mrmlScene.RemoveNode(model)
                     self.UpdateTime()
-                    
 
-        
+
+
 
 
     def saveOutput(self, outputVolumeNode, outputFilePath)->None:
         """
         Saves the output volume in the specified file with the .nii.gz extension.
-        
+
         :param outputVolumeNode: The output volume node in Slicer MRML scene.
         :param outputFilePath: The full path where the file is to be saved.
         """
         if not os.path.exists(os.path.dirname(outputFilePath)):
             os.makedirs(os.path.dirname(outputFilePath))
-            
+
         slicer.util.exportNode(outputVolumeNode, outputFilePath,world=True)
 
-         
+
 
 
     def UpdateTime(self)->None:
@@ -554,12 +554,12 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Update the time since the beginning
         '''
         current_time = time.time()
-        elapsed_time = current_time - self.start_time 
+        elapsed_time = current_time - self.start_time
         gap = current_time - self.previous_time
         if gap>0.5:
             self.ui.label_time.setText(f"time : {round(elapsed_time,2)}s")
             self.previous_time = current_time
-              
+
 
     def UpdateProgressBar(self,end:bool)->None:
         '''
@@ -576,7 +576,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.progressBar.setFormat("99%")
             self.ui.label_info.setText("Number of processed files : "+str(self.progress-1)+"/"+str(self.nbFiles))
 
-        else : 
+        else :
             # success
             print('PROCESS DONE.')
             self.ui.progressBar.setValue(100)
@@ -587,13 +587,13 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # qt.QMessageBox.information(self.parent,"Matrix applied with sucess")
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Information)
-        
+
             # setting message for Message Box
             msg.setText("Matrix applied with success")
-            
+
             # setting Message box window title
             msg.setWindowTitle("Information")
-            
+
             # declaring buttons on Message Box
             msg.setStandardButtons(QMessageBox.Ok)
             msg.exec_()
@@ -609,12 +609,12 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.ComboBoxPatient.setCurrentIndex(1)
 
 
-            
 
-    def onProcessStarted(self)->None:   
+
+    def onProcessStarted(self)->None:
         """
         Initialize the variables and progress bar.
-        """ 
+        """
         if os.path.isdir(self.ui.LineEditPatient.text):
             self.nbFiles = len(self.dico_patient[".vtk"]) + len(self.dico_patient['.vtp']) + len(self.dico_patient['.stl']) + len(self.dico_patient['.off']) + len(self.dico_patient['.obj']) + len(self.dico_patient['.nii.gz'])
         else:
@@ -626,18 +626,18 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setHidden(False)
         self.ui.progressBar.setTextVisible(True)
         self.ui.progressBar.setFormat("0%")
-    
 
-    
+
+
     def CheckGoodEntre(self)->bool:
         """
         Check if the folder and/or files have the right type of files in entries, return true or false
-        """ 
+        """
 
         warning_text = ""
         if self.ui.LineEditOutput.text=="":
             warning_text = warning_text + "Enter folder output" + "\n"
-    
+
         if self.ui.LineEditPatient.text=="":
             if self.ui.ComboBoxPatient.currentIndex==1 : # folder option
                 warning_text = warning_text + "Enter folder patients" + "\n"
@@ -651,15 +651,15 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz" + "\n"
             elif self.ui.ComboBoxPatient.currentIndex==0 : # file option
                 fname, extension = os.path.splitext(os.path.basename(self.ui.LineEditPatient.text))
-                try : 
+                try :
                     fname, extension2 = os.path.splitext(os.path.basename(fname))
                     extension = extension2+extension
-                except : 
+                except :
                     print("not a .nii.gz")
                 if extension != ".vtk" and extension != ".vtp" and extension != ".stl" and extension != ".off" and extension != ".obj" and extension != ".nii.gz" :
                         warning_text = warning_text + "Wrong type of file patient detected" + "\n"
                         warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz" + "\n"
-        
+
 
         if self.ui.LineEditMatrix.text=="":
             if self.ui.ComboBoxMatrix.currentIndex==1 : # folder option
@@ -684,7 +684,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else :
             qt.QMessageBox.warning(self.parent, "Warning", warning_text)
             return False
-        
+
 
 
 #
@@ -716,7 +716,7 @@ class AutoMatrixLogic(ScriptedLoadableModuleLogic):
         self.logPath = logPath
         self.cliNode = None
         self.installCliNode = None
-        
+
 
     def setDefaultParameters(self, parameterNode):
         """
@@ -730,11 +730,11 @@ class AutoMatrixLogic(ScriptedLoadableModuleLogic):
     def process(self)->None:
         """
          Call the process with the parameters
-        """ 
-        
+        """
+
         pass
 
-   
+
 
 #
 # AutoMatrixTest
@@ -774,32 +774,34 @@ class AutoMatrixTest(ScriptedLoadableModuleTest):
 
         # Get/create input data
 
-        import SampleData
-        registerSampleData()
-        inputVolume = SampleData.downloadSample('AutoMatrix1')
-        self.delayDisplay('Loaded test data set')
+        # import SampleData
+        # registerSampleData()
+        # inputVolume = SampleData.downloadSample('AutoMatrix1')
+        # self.delayDisplay('Loaded test data set')
 
-        inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(inputScalarRange[0], 0)
-        self.assertEqual(inputScalarRange[1], 695)
+        # inputScalarRange = inputVolume.GetImageData().GetScalarRange()
+        # self.assertEqual(inputScalarRange[0], 0)
+        # self.assertEqual(inputScalarRange[1], 695)
 
-        outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-        threshold = 100
+        # outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+        # threshold = 100
 
-        # Test the module logic
+        # # Test the module logic
 
-        logic = AutoMatrixLogic()
+        # logic = AutoMatrixLogic()
 
-        # Test algorithm with non-inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, True)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], threshold)
+        # # Test algorithm with non-inverted threshold
+        # logic.process(inputVolume, outputVolume, threshold, True)
+        # outputScalarRange = outputVolume.GetImageData().GetScalarRange()
+        # self.assertEqual(outputScalarRange[0], inputScalarRange[0])
+        # self.assertEqual(outputScalarRange[1], threshold)
 
-        # Test algorithm with inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, False)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], inputScalarRange[1])
+        # # Test algorithm with inverted threshold
+        # logic.process(inputVolume, outputVolume, threshold, False)
+        # outputScalarRange = outputVolume.GetImageData().GetScalarRange()
+        # self.assertEqual(outputScalarRange[0], inputScalarRange[0])
+        # self.assertEqual(outputScalarRange[1], inputScalarRange[1])
+
+        #This module is not using AutoMatrixLogic
 
         self.delayDisplay('Test passed')
