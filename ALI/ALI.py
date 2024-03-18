@@ -7,23 +7,73 @@ import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 import webbrowser
-import textwrap
+import pkg_resources
+import sys
+
 
 import platform
-import subprocess
 import slicer
 from slicer.util import pip_install, pip_uninstall
 
-try :
-    import rpyc
-except :
-    pip_install('rpyc -q')
-    import rpyc
 
-import inspect
+def check_lib_installed(lib_name, required_version=None):
+    try:
+        installed_version = pkg_resources.get_distribution(lib_name).version
+        if required_version and installed_version != required_version:
+            return False
+        return True
+    except pkg_resources.DistributionNotFound:
+        return False
 
 # import csv
-import sys
+def install_function():
+    libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('pytorch3d', '0.6.2')]
+    if platform.system() == "Windows":
+        libs.append(('torch', None))
+        libs.append(('torchvision', None))
+        libs.append(('torchaudio', None))
+    else:
+        libs.append(('torch', None))
+        libs.append(('torchvision', None))
+        libs.append(('torchaudio', None))
+
+    libs_to_install = []
+    for lib, version in libs:
+        if not check_lib_installed(lib, version):
+            libs_to_install.append((lib, version))
+
+    if libs_to_install:
+        message = "The following libraries are not installed or need updating:\n"
+        message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
+        message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
+        user_choice = slicer.util.confirmYesNoDisplay(message)
+
+        if user_choice:
+            for lib, version in libs_to_install:
+                if lib in ['torch', 'torchvision', 'torchaudio']:
+                    extra_url = 'https://download.pytorch.org/whl/cu118' if platform.system() == "Windows" else 'https://download.pytorch.org/whl/cu113'
+                    pip_install(f'{lib} --extra-index-url {extra_url}')
+
+                elif lib=="pytorch3d":
+                    try : 
+                      import torch
+                      pyt_version_str = torch.__version__.split("+")[0].replace(".", "")
+                      version_str = "".join([f"py3{sys.version_info.minor}_cu", torch.version.cuda.replace(".", ""), f"_pyt{pyt_version_str}"])
+                      pip_install('--upgrade pip')
+                      pip_install('fvcore==0.1.5.post20220305')
+                      pip_install(f'--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
+                    except:
+                      pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
+                      pip_install('--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
+                else:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+        else :
+          return False
+    return True
+
+
+
 
 
 #region ========== FUNCTIONS ==========
@@ -81,7 +131,7 @@ SURFACE_NETWORK = {
 
 
   # "Dental" :  ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7','UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7'] ,
-  
+
   # "Landmarks type" : ['CL','CB','O','DB','MB','R','RIP','OIP']
 
 
@@ -192,12 +242,12 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.model_folder = None
 
     self.available_landmarks = [] # list of available landmarks to predict
-    
+
     self.output_folder = None # If save the output in a folder
     self.goup_output_files = False
 
     self.scan_count = 0 # number of scans in the input folder
-    self.landmark_cout = 0 # number of landmark to identify 
+    self.landmark_cout = 0 # number of landmark to identify
 
 
 
@@ -312,7 +362,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.lm_tab.FillTab(SURFACE_LANDMARKS)
       self.ui.ExtensionLabel.setVisible(False)
       self.ui.ExtensioncomboBox.setVisible(False)
-    
+
     else:
       self.CBCT_as_input = True
       self.ui.MRMLNodeComboBox.nodeTypes = ['vtkMRMLVolumeNode']
@@ -327,14 +377,14 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # print()
 
   def SwitchInputExtension(self,index):
-    
+
     if index == 0: # NIFTI, NRRD, GIPL Files
       self.SwitchInput(0)
       self.isDCMInput = False
-      
+
       self.ui.label_11.setVisible(True)
       self.ui.InputComboBox.setVisible(True)
-    
+
     if index == 1: # DICOM Files
       self.SwitchInput(1)
       self.ui.label_11.setVisible(False)
@@ -410,7 +460,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # self.ui.SearchSaveFolder.setEnabled(not caller)
     # self.ui.SaveFolderLineEdit.setEnabled(not caller)
-    
+
     self.save_scan_folder = caller
 
 
@@ -513,155 +563,162 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def onPredictButton(self):
+    if platform.system()=="Windows" and not self.CBCT_as_input :
+      qt.QMessageBox.warning(self.parent, 'Warning', 'ALI_IOS is currently not available on Windows')
+      lib_ok = False
+    else :
+      lib_ok = install_function()
 
-    ready = True
+    if lib_ok :
 
-    if self.folder_as_input:
-      if self.input_path == None:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a scan folder')
-        ready = False
-    else:
-      if not self.onNodeChanged():
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select an input file')
-        ready = False
+      ready = True
 
-    if self.model_folder == None:
-      qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a model folder')
-      ready = False
-    
-    if not ready:
-      return
-
-
-
-    # print("Selected landmarks : ", selected_lm_lst)
-
-    if self.output_folder == None:
-      if os.path.isfile(self.input_path):
-        outPath = os.path.dirname(self.input_path)
+      if self.folder_as_input:
+        if self.input_path == None:
+          qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a scan folder')
+          ready = False
       else:
-        outPath = self.input_path
+        if not self.onNodeChanged():
+          qt.QMessageBox.warning(self.parent, 'Warning', 'Please select an input file')
+          ready = False
 
-    else:
-      outPath = self.output_folder
+      if self.model_folder == None:
+        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a model folder')
+        ready = False
 
-    self.output_folder = outPath
-
-    param = {}
-
-    if self.CBCT_as_input:
-
-      selected_lm_lst = self.lm_tab.GetSelected()
-      self.landmark_cout = len(selected_lm_lst)
-      if len(selected_lm_lst) == 0:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
+      if not ready:
         return
 
-      selected_lm = " ".join(selected_lm_lst)
-
-      param["input"] = self.input_path
-      param["dir_models"] = self.model_folder
-      param["landmarks"] = selected_lm
-
-      self.goup_output_files = self.ui.GroupInFolderCheckBox.isChecked()
-      param["save_in_folder"] = self.goup_output_files
-      param["output_dir"] = outPath
-
-      documentsLocation = qt.QStandardPaths.DocumentsLocation
-      documents = qt.QStandardPaths.writableLocation(documentsLocation)
-      temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp_ALI")
-
-      param["temp_fold"] = temp_dir
-
-      param["DCMInput"] = self.isDCMInput
-    
-    else:
-      selected_lm_lst = self.lm_tab.GetSelected()
-      selected_tooth_lst = self.tooth_lm.GetSelected()
-
-      if len(selected_lm_lst) == 0:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
-        return
-
-      if len(selected_tooth_lst) == 0:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one tooth')
-        return
-
-      selected_lm = " ".join(selected_lm_lst)
-      selected_tooth = " ".join(selected_tooth_lst)
-
-      param["input"] = self.input_path
-      param["dir_models"] = self.model_folder
-      param["landmarks"] = selected_lm
-      param["teeth"] = selected_tooth
-
-      self.goup_output_files = self.ui.GroupInFolderCheckBox.isChecked()
-      param["save_in_folder"] = self.goup_output_files
-      param["output_dir"] = outPath
 
 
+      # print("Selected landmarks : ", selected_lm_lst)
+
+      if self.output_folder == None:
+        if os.path.isfile(self.input_path):
+          outPath = os.path.dirname(self.input_path)
+        else:
+          outPath = self.input_path
+
+      else:
+        outPath = self.output_folder
+
+      self.output_folder = outPath
+
+      param = {}
+
+      if self.CBCT_as_input:
+
+        selected_lm_lst = self.lm_tab.GetSelected()
+        self.landmark_cout = len(selected_lm_lst)
+        if len(selected_lm_lst) == 0:
+          qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
+          return
+
+        selected_lm = " ".join(selected_lm_lst)
+
+        param["input"] = self.input_path
+        param["dir_models"] = self.model_folder
+        param["landmarks"] = selected_lm
+
+        self.goup_output_files = self.ui.GroupInFolderCheckBox.isChecked()
+        param["save_in_folder"] = self.goup_output_files
+        param["output_dir"] = outPath
+
+        documentsLocation = qt.QStandardPaths.DocumentsLocation
+        documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp_ALI")
+
+        param["temp_fold"] = temp_dir
+
+        param["DCMInput"] = self.isDCMInput
+
+      else:
+        selected_lm_lst = self.lm_tab.GetSelected()
+        selected_tooth_lst = self.tooth_lm.GetSelected()
+
+        if len(selected_lm_lst) == 0:
+          qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
+          return
+
+        if len(selected_tooth_lst) == 0:
+          qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one tooth')
+          return
+
+        selected_lm = " ".join(selected_lm_lst)
+        selected_tooth = " ".join(selected_tooth_lst)
+
+        param["input"] = self.input_path
+        param["dir_models"] = self.model_folder
+        param["landmarks"] = selected_lm
+        param["teeth"] = selected_tooth
+
+        self.goup_output_files = self.ui.GroupInFolderCheckBox.isChecked()
+        param["save_in_folder"] = self.goup_output_files
+        param["output_dir"] = outPath
 
 
-    print(param)
-
-    ready = True
-    system = platform.system()
-    if system=="Windows" :
-      # wsl = self.is_ubuntu_installed()
-      # if wsl :
-      #   lib = self.check_lib_wsl()
-      #   if not lib :
-      #       messageBox = qt.QMessageBox()
-      #       text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
-      #       ready = False
-      #       messageBox.information(None, "Information", text)
-      # else : 
-      #   messageBox = qt.QMessageBox()
-      #   text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
-      #   ready = False
-      #   messageBox.information(None, "Information", text)
-      messageBox = qt.QMessageBox()
-      text = "ALI_IOS is currently not available on windows"
-      ready = False
-      messageBox.information(None, "Information", text)
-    
-    if ready :
-      script_path = os.path.dirname(os.path.abspath(__file__))
-      file_path = os.path.join(script_path,"tempo.txt")
-      with open(file_path, 'a') as file:
-        file.write("Beginning of the process" + '\n')  # Écrire le message suivi d'une nouvelle ligne
-        
-      self.logic = ALILogic()
-      self.logic.process(param, self.CBCT_as_input)
-
-      self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
-      self.onProcessStarted()
-      
-
-  # def is_ubuntu_installed(self)->bool:
-  #   '''
-  #   Check if wsl is install with Ubuntu
-  #   '''
-  #   result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
-  #   output = result.stdout.encode('utf-16-le').decode('utf-8')
-  #   clean_output = output.replace('\x00', '')  # Enlève tous les octets null
-
-  #   return 'Ubuntu' in clean_output
 
 
-  # def check_lib_wsl(self)->bool:
-  #   '''
-  #   Check if wsl contains the require librairies
-  #   '''
-  #   result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
-  #   output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
-  #   clean_output1 = output1.replace('\x00', '') 
-    
-  #   result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
-  #   output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
-  #   clean_output2 = output2.replace('\x00', '')
+      print(param)
 
-  #   return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
+      ready = True
+      system = platform.system()
+      if system=="Windows" :
+        # wsl = self.is_ubuntu_installed()
+        # if wsl :
+        #   lib = self.check_lib_wsl()
+        #   if not lib :
+        #       messageBox = qt.QMessageBox()
+        #       text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
+        #       ready = False
+        #       messageBox.information(None, "Information", text)
+        # else :
+        #   messageBox = qt.QMessageBox()
+        #   text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
+        #   ready = False
+        #   messageBox.information(None, "Information", text)
+        messageBox = qt.QMessageBox()
+        text = "ALI_IOS is currently not available on windows"
+        ready = False
+        messageBox.information(None, "Information", text)
+
+      if ready :
+        script_path = os.path.dirname(os.path.abspath(__file__))
+        file_path = os.path.join(script_path,"tempo.txt")
+        with open(file_path, 'a') as file:
+          file.write("Beginning of the process" + '\n')  # Écrire le message suivi d'une nouvelle ligne
+
+        self.logic = ALILogic()
+        self.logic.process(param, self.CBCT_as_input)
+
+        self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
+        self.onProcessStarted()
+
+
+    # def is_ubuntu_installed(self)->bool:
+    #   '''
+    #   Check if wsl is install with Ubuntu
+    #   '''
+    #   result = subprocess.run(['wsl', '--list'], capture_output=True, text=True)
+    #   output = result.stdout.encode('utf-16-le').decode('utf-8')
+    #   clean_output = output.replace('\x00', '')  # Enlève tous les octets null
+
+    #   return 'Ubuntu' in clean_output
+
+
+    # def check_lib_wsl(self)->bool:
+    #   '''
+    #   Check if wsl contains the require librairies
+    #   '''
+    #   result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
+    #   output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
+    #   clean_output1 = output1.replace('\x00', '')
+
+    #   result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
+    #   output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
+    #   clean_output2 = output2.replace('\x00', '')
+
+    #   return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
 
 
   def onProcessStarted(self):
@@ -672,8 +729,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       pass
       # self.ui.PredScanLabel.setText(f"Beginning of the process")
       # self.RunningUIWindows(True)
-          
-    else : 
+
+    else :
       self.ui.PredScanProgressBar.setMaximum(self.scan_count)
       self.ui.PredScanProgressBar.setValue(0)
       self.ui.PredSegProgressBar.setValue(0)
@@ -684,7 +741,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.total_seg_progress = self.scan_count * self.landmark_cout
 
         self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
-        self.ui.PredSegLabel.setText(f"Landmarks found : 0 / {self.total_seg_progress}") 
+        self.ui.PredSegLabel.setText(f"Landmarks found : 0 / {self.total_seg_progress}")
 
       else:
         self.ui.PredScanLabel.setText(f"Scan : 0 / {self.scan_count}")
@@ -700,7 +757,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.total_seg_progress = len(self.tooth_lm.GetSelected()) * len(model_used)
 
         self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
-        self.ui.PredSegLabel.setText(f"Identified : 0 / {self.total_seg_progress}") 
+        self.ui.PredSegLabel.setText(f"Identified : 0 / {self.total_seg_progress}")
 
       self.prediction_step = 0
       self.progress = 0
@@ -710,8 +767,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
       self.RunningUI(True)
 
-  
-  
+
+
 
 
   def UpdateALICBCT(self,progress):
@@ -748,7 +805,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       if self.prediction_step == 2:
         # self.progressBar.setValue(self.progress)
         self.ui.PredSegProgressBar.setValue(self.progress)
-        self.ui.PredSegLabel.setText(f"Landmarks found : {self.progress} / {self.total_seg_progress}") 
+        self.ui.PredSegLabel.setText(f"Landmarks found : {self.progress} / {self.total_seg_progress}")
 
       self.progress += 1
 
@@ -760,14 +817,14 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.ui.PredScanProgressBar.setValue(self.prediction_step)
       self.ui.PredScanLabel.setText(f"Scan : {self.prediction_step} / {self.scan_count}")
       self.ui.PredSegProgressBar.setValue(self.progress)
-      self.ui.PredSegLabel.setText(f"Identified: {self.progress} / {self.total_seg_progress}") 
+      self.ui.PredSegLabel.setText(f"Identified: {self.progress} / {self.total_seg_progress}")
 
 
     if progress == 100:
 
       self.progress += 1
       self.ui.PredSegProgressBar.setValue(self.progress)
-      self.ui.PredSegLabel.setText(f"Identified : {self.progress} / {self.total_seg_progress}") 
+      self.ui.PredSegLabel.setText(f"Identified : {self.progress} / {self.total_seg_progress}")
 
 
 
@@ -802,8 +859,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if system=="Windows" and not self.CBCT_as_input:
           pass
           # line = self.read_txt()
-          # self.ui.PredScanLabel.setText(f"{line}") 
-          
+          # self.ui.PredScanLabel.setText(f"{line}")
+
     else:
       if progress == 0:
         self.updateProgessBar = False
@@ -837,8 +894,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # success
 
         self.OnEndProcess()
- 
-    
+
+
   def OnEndProcess(self):
 
       script_path = os.path.dirname(os.path.abspath(__file__))
@@ -848,7 +905,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("File delete")
       else:
         print("The file doesn't exist")
-        
+
       print('PROCESS DONE.')
       # script_path = os.path.dirname(os.path.abspath(__file__))
       # file_path = os.path.join(script_path,"tempo.txt")
@@ -865,7 +922,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
       if not self.folder_as_input:
 
-        input_id = os.path.basename(self.input_path).split(".")[0] 
+        input_id = os.path.basename(self.input_path).split(".")[0]
 
         normpath = os.path.normpath("/".join([self.output_folder, '**', '']))
         for img_fn in sorted(glob.iglob(normpath, recursive=True)):
@@ -889,7 +946,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     print("Cancelled")
-    
+
   def RunningUI(self, run = False):
 
     self.ui.PredictionButton.setVisible(not run)
@@ -900,11 +957,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.PredSegLabel.setVisible(run)
     self.ui.PredSegProgressBar.setVisible(run)
     self.ui.TimerLabel.setVisible(run)
-    
+
   # def RunningUIWindows(self,run=False):
   #   self.ui.TimerLabel.setVisible(run)
   #   self.ui.PredScanLabel.setVisible(run)
-        
+
 
   def cleanup(self):
     """
@@ -912,7 +969,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
     if self.logic.cliNode is not None:
       # if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
-      self.logic.cliNode.Cancel() 
+      self.logic.cliNode.Cancel()
 
     self.removeObservers()
 
@@ -1134,10 +1191,10 @@ class LMTab:
           state = True
         else:
           state = False
-        
+
         if self.lm_status_dic[lm] != state:
           self.UpdateLmSelect(lm,state)
-      
+
     def ToggleSelection(self):
       idx = self.LM_tab_widget.currentIndex
       # print(idx)
@@ -1193,7 +1250,7 @@ class LMTab:
 
     def SelectAll(self):
       self.UpdateAll(True)
-    
+
     def ClearAll(self):
       self.UpdateAll(False)
 
@@ -1301,7 +1358,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
 
     # stopTime = time.time()
     # logging.info('Processing completed in {0:.2f} seconds'.format(stopTime-startTime))
-    
+
 
 #
 # ALITest

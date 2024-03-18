@@ -99,12 +99,12 @@
       <description>Number of GPU to use</description>
     </integer>
 
-    <integer>
-      <name>cpu_usage</name>
-      <label>cpu_usage</label>
+    <boolean>
+      <name>host_memory</name>
+      <label>host_memory</label>
       <index>12</index>
-      <description>Number of CPU to use</description>
-    </integer>
+      <description>Switch to CPU memory if True</description>
+    </boolean>
 
 
     <string>
@@ -113,7 +113,7 @@
       <index>13</index>
       <description>temp folder</description>
     </string>
-    
+
     <string>
       <name>SegmentInput</name>
       <label>SegmentInput</label>

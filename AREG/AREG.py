@@ -8,14 +8,172 @@ from qt import (
     QGridLayout,
 )
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin
+from slicer.util import VTKObservationMixin, pip_install
 from functools import partialmethod
 
-from AREG_Methode.IOS import Auto_IOS, Semi_IOS
-from AREG_Methode.CBCT import Semi_CBCT, Auto_CBCT, Or_Auto_CBCT
-from AREG_Methode.Methode import Methode
-from AREG_Methode.Progress import Display
+from AREG_Method.IOS import Auto_IOS, Semi_IOS
+from AREG_Method.CBCT import Semi_CBCT, Auto_CBCT, Or_Auto_CBCT
+from AREG_Method.Method import Method
+from AREG_Method.Progress import Display
 
+import pkg_resources
+import platform
+
+def install_pytorch3d():
+    try:
+        import torch
+        desired_pytorch_version= "1.11.0"
+        desired_cuda_version = "cu113"
+        if torch.__version__ != desired_pytorch_version or torch.version.cuda != desired_cuda_version.replace("cu",""):
+            raise ImportError("Incompatible Pytorch version or CUDA version")
+    except ImportError:
+        # torch_install_cmd = f'torch=={desired_pytorch_version}+{desired_cuda_version} torchvision==0.12.0+{desired_cuda_version} torchaudio==0.11.0+{desired_cuda_version} --extra-index-url https://download.pytorch.org/whl/{desired_cuda_version}'
+        # pip_install(torch_install_cmd)
+
+        pip_install(f'--force-reinstall torch==1.12.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{desired_cuda_version}')
+        import torch
+
+    system = platform.system()
+
+    if system == 'Darwin':  # MACOS
+        try:
+            import pytorch3d
+        except ImportError:
+            pip_install('pytorch3d')
+            import pytorch3d
+
+    else: # Linux or Windows
+        # try:
+        #     import pytorch3d
+        #     # print('version_constraint splitted', version_constraint.split("==").split("<=").split(">=").split("<").split(">"))
+        #     if pytorch3d.__version__ != version_constraint.replace("==","").replace("<=","").replace(">=","").replace("<","").replace(">",""):
+        #         raise ImportError
+        # except ImportError:
+        # pyt_message = "ALI IOS needs to install pytorch3d library. \n"
+        # pyt_message += "Do you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
+        # pyt_user_choice = slicer.util.confirmYesNoDisplay(pyt_message)
+        # if pyt_user_choice:
+
+        # try:
+        #     import torch
+        #     pyt_version_str=torch.__version__.split("+")[0].replace(".", "")
+        #     version_str="".join([f"py3{sys.version_info.minor}_cu",torch.version.cuda.replace(".",""),f"_pyt{pyt_version_str}"])
+        #     # pip_install('--upgrade pip')
+        #     pip_install(f'pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
+        # except: # install correct torch version
+        #     print('force install pytorch3d')
+        #     pip_install('torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
+        #     pip_install('pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
+
+        try:
+            code_path = os.sep.join(
+                os.path.dirname(os.path.abspath(__file__)).split(os.sep)
+            )
+            # print(code_path)
+            pip_install(
+                os.path.join(
+                    code_path,
+                    "AREG_IOS_utils",
+                    "pytorch3d-0.7.0-cp39-cp39-linux_x86_64.whl",
+                )
+            )  # py39_cu113_pyt1120
+            import pytorch3d
+        except:
+            pip_install(
+                "--force-reinstall --no-deps --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"
+            )
+            import pytorch3d
+
+def check_lib_installed(lib_name, required_version=None):
+    '''
+    Check if the library with the good version (if needed) is already installed in the slicer environment
+    input: lib_name (str) : name of the library
+            required_version (str) : required version of the library (if None, any version is accepted)
+    output: bool : True if the library is installed with the good version, False otherwise
+    '''
+    try:
+        installed_version = pkg_resources.get_distribution(lib_name).version
+        # check if the version is the good one - if required_version != None it's considered as a True
+        #required_version can have some constraints like ==, <=, >=, <, >, ex: >=1.0.0
+        if required_version and installed_version != required_version:
+          return False
+        else:
+          return True
+    except pkg_resources.DistributionNotFound:
+        return False
+
+# import csv
+
+def install_function(self,list_libs:list):
+    '''
+    Test the necessary libraries and install them with the specific version if needed
+    User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
+    '''
+    libs = list_libs
+    libs_to_install = []
+    libs_to_update = []
+    installation_errors = []
+    for lib, version_constraint,url in libs:
+        if not check_lib_installed(lib, version_constraint):
+            try:
+            # check if the library is already installed
+                if pkg_resources.get_distribution(lib).version:
+                    libs_to_update.append((lib, version_constraint))
+            except:
+                libs_to_install.append((lib, version_constraint))
+
+    if libs_to_install or libs_to_update:
+          message = "The following changes are required for the libraries:\n"
+
+          #Specify which libraries will be updated with a new version
+          #and which libraries will be installed for the first time
+          if libs_to_update:
+              message += "\n --- Libraries to update (version mismatch): \n"
+              message += "\n".join([f"{lib} (current: {pkg_resources.get_distribution(lib).version}) -> {version_constraint.replace('==','').replace('<=','').replace('>=','').replace('<','').replace('>','')}" for lib, version_constraint in libs_to_update])
+              message += "\n"
+          if libs_to_install:
+
+              message += "\n --- Libraries to install:  \n"
+          message += "\n".join([f"{lib}{version_constraint}" if version_constraint else lib for lib, version_constraint in libs_to_install])
+
+          message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
+          message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
+
+          user_choice = slicer.util.confirmYesNoDisplay(message)
+
+          if user_choice:
+            self.ui.label_LibsInstallation.setVisible(True)
+            try:
+                for lib, version_constraint in libs_to_install + libs_to_update:
+                    if lib == "pytorch3d":
+                        install_pytorch3d()
+                        continue
+                    if not version_constraint:
+                        pip_install(lib)
+
+                    elif "https:/" in version_constraint:
+                        print("version_constraint", version_constraint)
+                        # download the library from the url
+                        pip_install(version_constraint)
+                    else:
+                        print("version_constraint else", version_constraint)
+                        lib_version = f'{lib}{version_constraint}' if version_constraint else lib
+                        pip_install(lib_version)
+
+                return True
+            except Exception as e:
+                    installation_errors.append((lib, str(e)))
+
+            if installation_errors:
+                error_message = "The following errors occured during installation:\n"
+                error_message += "\n".join([f"{lib}: {error}" for lib, error in installation_errors])
+                slicer.util.errorDisplay(error_message)
+                return False
+          else :
+            return False
+
+    else:
+        return True
 
 class AREG(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -256,17 +414,17 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # (in the selected parameter node).
 
         """
-            888     888        d8888 8888888b.  8888888        d8888 888888b.   888      8888888888  .d8888b.  
-            888     888       d88888 888   Y88b   888         d88888 888  "88b  888      888        d88P  Y88b 
-            888     888      d88P888 888    888   888        d88P888 888  .88P  888      888        Y88b.      
-            Y88b   d88P     d88P 888 888   d88P   888       d88P 888 8888888K.  888      8888888     "Y888b.   
-             Y88b d88P     d88P  888 8888888P"    888      d88P  888 888  "Y88b 888      888            "Y88b. 
-              Y88o88P     d88P   888 888 T88b     888     d88P   888 888    888 888      888              "888 
-               Y888P     d8888888888 888  T88b    888    d8888888888 888   d88P 888      888        Y88b  d88P 
+            888     888        d8888 8888888b.  8888888        d8888 888888b.   888      8888888888  .d8888b.
+            888     888       d88888 888   Y88b   888         d88888 888  "88b  888      888        d88P  Y88b
+            888     888      d88P888 888    888   888        d88P888 888  .88P  888      888        Y88b.
+            Y88b   d88P     d88P 888 888   d88P   888       d88P 888 8888888K.  888      8888888     "Y888b.
+             Y88b d88P     d88P  888 8888888P"    888      d88P  888 888  "Y88b 888      888            "Y88b.
+              Y88o88P     d88P   888 888 T88b     888     d88P   888 888    888 888      888              "888
+               Y888P     d8888888888 888  T88b    888    d8888888888 888   d88P 888      888        Y88b  d88P
                 Y8P     d88P     888 888   T88b 8888888 d88P     888 8888888P"  88888888 8888888888  "Y8888P"
         """
 
-        self.MethodeDic = {
+        self.MethodDic = {
             "Semi_IOS": Semi_IOS(self),
             "Auto_IOS": Auto_IOS(self),
             "Semi_CBCT": Semi_CBCT(self),
@@ -274,8 +432,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "Or_Auto_CBCT": Or_Auto_CBCT(self),
         }
         self.reference_lm = []
-        self.ActualMeth = Methode
-        self.ActualMeth = self.MethodeDic["Or_Auto_CBCT"]
+        self.ActualMeth = Method
+        self.ActualMeth = self.MethodDic["Or_Auto_CBCT"]
         self.type = "CBCT"
         self.nb_scan = 0
         self.startprocess = 0
@@ -308,38 +466,38 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             os.makedirs(self.SlicerDownloadPath)
 
         """
-                              
-                                        8888888 888b    888 8888888 88888888888 
-                                          888   8888b   888   888       888     
-                                          888   88888b  888   888       888     
-                                          888   888Y88b 888   888       888     
-                                          888   888 Y88b888   888       888     
-                                          888   888  Y88888   888       888     
-                                          888   888   Y8888   888       888     
-                                        8888888 888    Y888 8888888     888 
-                              
+
+                                        8888888 888b    888 8888888 88888888888
+                                          888   8888b   888   888       888
+                                          888   88888b  888   888       888
+                                          888   888Y88b 888   888       888
+                                          888   888 Y88b888   888       888
+                                          888   888  Y88888   888       888
+                                          888   888   Y8888   888       888
+                                        8888888 888    Y888 8888888     888
+
         """
 
         self.initCheckBoxCBCT(
-            self.MethodeDic["Semi_CBCT"],
+            self.MethodDic["Semi_CBCT"],
             self.ui.LayoutSemiCBCT,
             self.ui.tohideCBCT,
         )
 
         self.initCheckBoxCBCT(
-            self.MethodeDic["Auto_CBCT"],
+            self.MethodDic["Auto_CBCT"],
             self.ui.LayoutAutoCBCT,
             self.ui.tohideCBCT_2,
         )
 
         self.initCheckBoxCBCT(
-            self.MethodeDic["Or_Auto_CBCT"],
+            self.MethodDic["Or_Auto_CBCT"],
             self.ui.LayoutOrAutoCBCT,
             self.ui.tohideCBCT_3,
         )
 
         self.HideComputeItems()
-        # self.initTest(self.MethodeDic['Semi_IOS'])
+        # self.initTest(self.MethodDic['Semi_IOS'])
 
         # self.dicchckbox=self.ActualMeth.getcheckbox()
         # self.dicchckbox2=self.ActualMeth.getcheckbox2()
@@ -350,16 +508,16 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.SwitchType()
 
         """
-                                                                                       
-                     .d8888b.   .d88888b.  888b    888 888b    888 8888888888  .d8888b.  88888888888 
-                    d88P  Y88b d88P" "Y88b 8888b   888 8888b   888 888        d88P  Y88b     888     
-                    888    888 888     888 88888b  888 88888b  888 888        888    888     888     
-                    888        888     888 888Y88b 888 888Y88b 888 8888888    888            888     
-                    888        888     888 888 Y88b888 888 Y88b888 888        888            888     
-                    888    888 888     888 888  Y88888 888  Y88888 888        888    888     888     
-                    Y88b  d88P Y88b. .d88P 888   Y8888 888   Y8888 888        Y88b  d88P     888     
-                     "Y8888P"   "Y88888P"  888    Y888 888    Y888 8888888888  "Y8888P"      888 
-                                                                                                            
+
+                     .d8888b.   .d88888b.  888b    888 888b    888 8888888888  .d8888b.  88888888888
+                    d88P  Y88b d88P" "Y88b 8888b   888 8888b   888 888        d88P  Y88b     888
+                    888    888 888     888 88888b  888 88888b  888 888        888    888     888
+                    888        888     888 888Y88b 888 888Y88b 888 8888888    888            888
+                    888        888     888 888 Y88b888 888 Y88b888 888        888            888
+                    888    888 888     888 888  Y88888 888  Y88888 888        888    888     888
+                    Y88b  d88P Y88b. .d88P 888   Y8888 888   Y8888 888        Y88b  d88P     888
+                     "Y8888P"   "Y88888P"  888    Y888 888    Y888 8888888888  "Y8888P"      888
+
         """
 
         self.ui.ButtonSearchScan1.pressed.connect(
@@ -393,17 +551,17 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     """
 
-                                                                                                                                                                    
-                888888b.   888     888 88888888888 88888888888  .d88888b.  888b    888  .d8888b.  
-                888  "88b  888     888     888         888     d88P" "Y88b 8888b   888 d88P  Y88b 
-                888  .88P  888     888     888         888     888     888 88888b  888 Y88b.      
-                8888888K.  888     888     888         888     888     888 888Y88b 888  "Y888b.   
-                888  "Y88b 888     888     888         888     888     888 888 Y88b888     "Y88b. 
-                888    888 888     888     888         888     888     888 888  Y88888       "888 
-                888   d88P Y88b. .d88P     888         888     Y88b. .d88P 888   Y8888 Y88b  d88P 
+
+                888888b.   888     888 88888888888 88888888888  .d88888b.  888b    888  .d8888b.
+                888  "88b  888     888     888         888     d88P" "Y88b 8888b   888 d88P  Y88b
+                888  .88P  888     888     888         888     888     888 88888b  888 Y88b.
+                8888888K.  888     888     888         888     888     888 888Y88b 888  "Y888b.
+                888  "Y88b 888     888     888         888     888     888 888 Y88b888     "Y88b.
+                888    888 888     888     888         888     888     888 888  Y88888       "888
+                888   d88P Y88b. .d88P     888         888     Y88b. .d88P 888   Y8888 Y88b  d88P
                 8888888P"   "Y88888P"      888         888      "Y88888P"  888    Y888  "Y8888P"
-                                                                                                                                                                    
-                                                                                                                                                                    
+
+
 
     """
 
@@ -433,6 +591,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.label_4.setVisible(False)
             self.ui.lineEditModel3.setVisible(False)
             self.ui.ButtonSearchModel3.setVisible(False)
+            self.ui.label_LibsInstallation.setVisible(False)
 
         if index == 1:  # Fully Automated
             # self.ui.label_6.setVisible(True)
@@ -445,6 +604,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.label_4.setVisible(False)
             self.ui.lineEditModel3.setVisible(False)
             self.ui.ButtonSearchModel3.setVisible(False)
+            self.ui.label_LibsInstallation.setVisible(False)
 
         if index == 0:  #  Orientation & Fully Auto Reg
             if self.type == "CBCT":
@@ -460,6 +620,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.label_CBCTInputType.setVisible(False)
                 self.ui.label_CBCTInputType_2.setVisible(False)
                 self.isDCMInput = False
+                self.ui.label_LibsInstallation.setVisible(False)
 
     def SwitchModeIOS(self, index):
         self.ui.CbCBCTInputType.setVisible(False)
@@ -483,6 +644,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditModel3.setVisible(True)
             self.ui.ButtonSearchModel3.setVisible(True)
 
+            self.ui.label_LibsInstallation.setVisible(False)
         # Registration
         if index == 1:
             self.ui.label_7.setVisible(False)
@@ -500,20 +662,21 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditModel3.setVisible(True)
             self.ui.ButtonSearchModel3.setVisible(True)
 
+            self.ui.label_LibsInstallation.setVisible(False)
     def SwitchType(self):
         """Function to change the UI and the Method in AREG depending on the selected type (Semi CBCT, Fully CBCT...)"""
         if self.ui.CbInputType.currentIndex == 0:
             if self.ui.CbModeType.currentIndex == 2:
-                self.ActualMeth = self.MethodeDic["Semi_CBCT"]
+                self.ActualMeth = self.MethodDic["Semi_CBCT"]
                 self.ui.stackedWidget.setCurrentIndex(0)
 
             elif self.ui.CbModeType.currentIndex == 0:
-                self.ActualMeth = self.MethodeDic["Or_Auto_CBCT"]
+                self.ActualMeth = self.MethodDic["Or_Auto_CBCT"]
                 self.ui.stackedWidget.setCurrentIndex(2)
                 self.ui.label_7.setText("Segmentation Model Folder")
 
             elif self.ui.CbModeType.currentIndex == 1:
-                self.ActualMeth = self.MethodeDic["Auto_CBCT"]
+                self.ActualMeth = self.MethodDic["Auto_CBCT"]
                 self.ui.stackedWidget.setCurrentIndex(1)
                 self.ui.label_7.setText("Segmentation Model Folder")
 
@@ -531,12 +694,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         elif self.ui.CbInputType.currentIndex == 1:
             if self.ui.CbModeType.currentIndex == 1:
-                self.ActualMeth = self.MethodeDic["Semi_IOS"]
+                self.ActualMeth = self.MethodDic["Semi_IOS"]
                 self.ui.stackedWidget.setCurrentIndex(3)
                 self.type = "IOS"
 
             elif self.ui.CbModeType.currentIndex == 0:
-                self.ActualMeth = self.MethodeDic["Auto_IOS"]
+                self.ActualMeth = self.MethodDic["Auto_IOS"]
                 self.ui.stackedWidget.setCurrentIndex(3)
                 self.type = "IOS"
                 self.ui.label_7.setText("Segmentation Model Folder")
@@ -892,20 +1055,54 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         checkbox2.setChecked(True)
 
     """
-                                                                                    
-                    8888888b.  8888888b.   .d88888b.   .d8888b.  8888888888  .d8888b.   .d8888b.  
-                    888   Y88b 888   Y88b d88P" "Y88b d88P  Y88b 888        d88P  Y88b d88P  Y88b 
-                    888    888 888    888 888     888 888    888 888        Y88b.      Y88b.      
-                    888   d88P 888   d88P 888     888 888        8888888     "Y888b.    "Y888b.   
-                    8888888P"  8888888P"  888     888 888        888            "Y88b.     "Y88b. 
-                    888        888 T88b   888     888 888    888 888              "888       "888 
-                    888        888  T88b  Y88b. .d88P Y88b  d88P 888        Y88b  d88P Y88b  d88P 
-                    888        888   T88b  "Y88888P"   "Y8888P"  8888888888  "Y8888P"   "Y8888P"  
-                                                                                
-                                                                                    
+
+                    8888888b.  8888888b.   .d88888b.   .d8888b.  8888888888  .d8888b.   .d8888b.
+                    888   Y88b 888   Y88b d88P" "Y88b d88P  Y88b 888        d88P  Y88b d88P  Y88b
+                    888    888 888    888 888     888 888    888 888        Y88b.      Y88b.
+                    888   d88P 888   d88P 888     888 888        8888888     "Y888b.    "Y888b.
+                    8888888P"  8888888P"  888     888 888        888            "Y88b.     "Y88b.
+                    888        888 T88b   888     888 888    888 888              "888       "888
+                    888        888  T88b  Y88b. .d88P Y88b  d88P 888        Y88b  d88P Y88b  d88P
+                    888        888   T88b  "Y88888P"   "Y8888P"  8888888888  "Y8888P"   "Y8888P"
+
+
     """
 
     def onPredictButton(self):
+        # install required libraries for all modules used (ASO,ALI,AMASS) and for the selected module
+        if platform.system()== "Windows":
+            if self.type == "CBCT":
+                # libraries and versions compatibility to use AREG_CBCT
+                list_libs_CBCT_windows = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
+                            ('vtk',None,None),('pandas',None,None),('torch',None,"https://download.pytorch.org/whl/cu118"),('monai','==0.7.0',None)] #(lib_name, version, url)
+
+                is_installed = install_function(self,list_libs_CBCT_windows)
+
+            if self.type == "IOS":
+                qt.QMessageBox.warning(self.parent, 'Warning', 'AREG IOS is currently not available on Windows. Please use a Linux or MacOS system to run the module.')
+                is_installed = False
+        else:
+            if self.type == "CBCT":
+                # libraries and versions compatibility to use AREG_CBCT
+                list_libs_CBCT = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
+                            ('vtk',None,None),('pandas',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
+
+                is_installed = install_function(self,list_libs_CBCT)
+
+            if self.type == "IOS":
+                # Installation of pytorch is done before pytorch3d installation in the function because the order is important andfor version compatibility
+                list_libs_IOS =[('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None),
+                                ('pytorch3d',"==0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"),
+                                ('torchmetrics','==0.9.3',None),('pytorch-lightning','==1.7.7',None),('numpy','>=1.21.6,<1.28',None)]
+
+                is_installed = install_function(self,list_libs_IOS)
+
+        # If the user didn't accept the installation, the module doesn't run
+        if not is_installed:
+            qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
+            return
+
+        self.ui.label_LibsInstallation.setVisible(False)
         error = self.ActualMeth.TestProcess(
             input_t1_folder=self.ui.lineEditScanT1LmPath.text,
             input_t2_folder=self.ui.lineEditScanT2LmPath.text,
@@ -1121,27 +1318,27 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.HideComputeItems(run)
 
     """
-                                                                                                                        
-            8888888888 888     888 888b    888  .d8888b.      8888888 888b    888 8888888 88888888888 
-            888        888     888 8888b   888 d88P  Y88b       888   8888b   888   888       888     
-            888        888     888 88888b  888 888    888       888   88888b  888   888       888     
-            8888888    888     888 888Y88b 888 888              888   888Y88b 888   888       888     
-            888        888     888 888 Y88b888 888              888   888 Y88b888   888       888     
-            888        888     888 888  Y88888 888    888       888   888  Y88888   888       888     
-            888        Y88b. .d88P 888   Y8888 Y88b  d88P       888   888   Y8888   888       888     
-            888         "Y88888P"  888    Y888  "Y8888P"      8888888 888    Y888 8888888     888     
-                                                                                                                                      
-                                                                                                                                    
-                                                                                                                        
-                                                                                                                        
+
+            8888888888 888     888 888b    888  .d8888b.      8888888 888b    888 8888888 88888888888
+            888        888     888 8888b   888 d88P  Y88b       888   8888b   888   888       888
+            888        888     888 88888b  888 888    888       888   88888b  888   888       888
+            8888888    888     888 888Y88b 888 888              888   888Y88b 888   888       888
+            888        888     888 888 Y88b888 888              888   888 Y88b888   888       888
+            888        888     888 888  Y88888 888    888       888   888  Y88888   888       888
+            888        Y88b. .d88P 888   Y8888 Y88b  d88P       888   888   Y8888   888       888
+            888         "Y88888P"  888    Y888  "Y8888P"      8888888 888    Y888 8888888     888
+
+
+
+
     """
 
-    def initCheckBoxCBCT(self, methode, layout, tohide: qt.QLabel):
+    def initCheckBoxCBCT(self, Method, layout, tohide: qt.QLabel):
         # self.ui.advancedCollapsibleButton.setMaximumHeight(180)
         if not tohide is None:
             tohide.setHidden(True)
-        dic = methode.DicLandmark()
-        # status = methode.existsLandmark('','')
+        dic = Method.DicLandmark()
+        # status = Method.existsLandmark('','')
         # Create a checkbox
         # self.ldmk_reg_checkbox = qt.QCheckBox()
         # self.ldmk_reg_checkbox.setText("Register Landmark")
@@ -1164,12 +1361,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             dicchebox[title] = listcheckboxlandmark
 
-        methode.setcheckbox(dicchebox)
+        Method.setcheckbox(dicchebox)
 
-        methode.merge_seg_checkbox = qt.QCheckBox()
-        methode.merge_seg_checkbox.setText("Merge Segmentations")
-        methode.merge_seg_checkbox.setChecked(True)
-        layout.addWidget(methode.merge_seg_checkbox)
+        Method.merge_seg_checkbox = qt.QCheckBox()
+        Method.merge_seg_checkbox.setText("Merge Segmentations")
+        Method.merge_seg_checkbox.setChecked(True)
+        layout.addWidget(Method.merge_seg_checkbox)
 
     def CreateMiniTab(
         self, tabWidget: QTabWidget, name: str, index: int, numberItems=None
@@ -1216,14 +1413,14 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             tohide.hide()
 
     """
-                          .d88888b.  88888888888 888    888 8888888888 8888888b.   .d8888b.  
-                         d88P" "Y88b     888     888    888 888        888   Y88b d88P  Y88b 
-                         888     888     888     888    888 888        888    888 Y88b.      
-                         888     888     888     8888888888 8888888    888   d88P  "Y888b.   
-                         888     888     888     888    888 888        8888888P"      "Y88b. 
-                         888     888     888     888    888 888        888 T88b         "888 
-                         Y88b. .d88P     888     888    888 888        888  T88b  Y88b  d88P 
-                          "Y88888P"      888     888    888 8888888888 888   T88b  "Y8888P"    
+                          .d88888b.  88888888888 888    888 8888888888 8888888b.   .d8888b.
+                         d88P" "Y88b     888     888    888 888        888   Y88b d88P  Y88b
+                         888     888     888     888    888 888        888    888 Y88b.
+                         888     888     888     8888888888 8888888    888   d88P  "Y888b.
+                         888     888     888     888    888 888        8888888P"      "Y88b.
+                         888     888     888     888    888 888        888 T88b         "888
+                         Y88b. .d88P     888     888    888 888        888  T88b  Y88b  d88P
+                          "Y88888P"      888     888    888 8888888888 888   T88b  "Y8888P"
     """
 
     def cleanup(self):

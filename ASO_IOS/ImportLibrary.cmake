@@ -3,17 +3,17 @@ set(MODULE_NAME ASO_IOS_utils)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
-ASO_IOS_utils/__init__.py
-ASO_IOS_utils/data_file.py 
-ASO_IOS_utils/icp.py 
-ASO_IOS_utils/OFFReader.py 
-ASO_IOS_utils/pre_icp.py 
-ASO_IOS_utils/transformation.py 
-ASO_IOS_utils/utils.py
-  )
+  ${MODULE_NAME}/__init__.py
+  ${MODULE_NAME}/data_file.py
+  ${MODULE_NAME}/icp.py
+  ${MODULE_NAME}/OFFReader.py
+  ${MODULE_NAME}/pre_icp.py
+  ${MODULE_NAME}/transformation.py
+  ${MODULE_NAME}/utils.py
+)
 
 #-----------------------------------------------------------------------------
 slicerMacroBuildScriptedModule(
   NAME ${MODULE_NAME}
   SCRIPTS ${MODULE_PYTHON_SCRIPTS}
-  )
+)

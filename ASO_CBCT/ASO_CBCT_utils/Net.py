@@ -1,15 +1,21 @@
-import torch.nn as nn
-import torch.optim as optim
 from slicer.util import pip_install, pip_uninstall
 
-try:
-    import pytorch_lightning as pl
-except ImportError:
-    pip_install("pytorch_lightning -q")
-    import pytorch_lightning as pl
+#try to upgrade pip
 
-pip_uninstall("monai -q")
-pip_install("monai -q")
+
+
+
+import torch
+
+
+import torch.nn as nn
+import torch.optim as optim
+
+
+import pytorch_lightning as pl
+
+
+
 from monai.networks.nets.densenet import DenseNet169
 
 # Different Network
