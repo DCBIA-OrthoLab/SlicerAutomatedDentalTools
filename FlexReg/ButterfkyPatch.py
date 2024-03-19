@@ -1491,7 +1491,7 @@ class WidgetParameter:
                         
         conda = CondaSetUpCall()
         path_conda = conda.getCondaPath()
-        if "Error" in self.conda.condaRunCommand([self.conda.getCondaExecutable(),"--version"]):
+        if "Error" in conda.condaRunCommand([conda.getCondaExecutable(),"--version"]):
           slicer.util.infoDisplay("Path to conda is no set up. Open the module SlicerConda to do it",windowTitle="Can't found conda path")
         else :
           name_env = "shapeaxi"
@@ -1522,9 +1522,9 @@ class WidgetParameter:
                 flag = False
 
           if flag :
-            command = [f'dentalmodelseg --vtk {self.lineedit.text} --stl {None} --csv {None} --out {None} --overwrite {True} --model {None} --crown_segmentation {False} --array_name {"Universal_ID"} --fdi {0} --suffix {"None"} --vtk_folder {os.path.dirname(self.lineedit.text)}']
+            command = [f'dentalmodelseg --vtk \"{self.lineedit.text}\" --stl \"{None}\" --csv \"{None}\" --out \"{None}\" --overwrite \"{True}\" --model \"{None}\" --crown_segmentation \"{False}\" --array_name \"{"Universal_ID"}\" --fdi \"{0}\" --suffix \"{None}\" --vtk_folder \"{os.path.dirname(self.lineedit.text)}\"']
             print("command : ",command)
-            process = threading.Thread(target=conda.condaRunCommand, args=(name_env,command,))
+            process = threading.Thread(target=conda.condaRunCommand, args=(command,name_env))
             process.start()
             
             msg_box = QMessageBox()
