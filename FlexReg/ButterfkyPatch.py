@@ -1491,7 +1491,7 @@ class WidgetParameter:
                         
         conda = CondaSetUpCall()
         path_conda = conda.getCondaPath()
-        if path_conda == "None":
+        if "Error" in self.conda.condaRunCommand([self.conda.getCondaExecutable(),"--version"]):
           slicer.util.infoDisplay("Path to conda is no set up. Open the module SlicerConda to do it",windowTitle="Can't found conda path")
         else :
           name_env = "shapeaxi"
