@@ -1,6 +1,7 @@
 import os
 import sys
 from slicer.util import pip_install
+import platform
 
 try : 
     import vtk
@@ -23,7 +24,7 @@ import subprocess
 
 import io
 import multiprocessing
-from CondaSetUp import  CondaSetUpCall
+from CondaSetUp import  CondaSetUpCall,CondaSetUpCallWsl
 
 # try:
 #     import pytorch3d
@@ -1345,83 +1346,155 @@ class WidgetParameter:
             slicer.util.infoDisplay(f' Error : {error}')
             return False
         
-        except NoSegmentationSurf as error : 
-            # print("OUI"*150)
-            # original_stdin = sys.stdin
-            # sys.stdin = DummyFile()
-
-            # msg_box = QMessageBox()
-            # msg_box.setIcon(QMessageBox.Information)
-            # start_time = time.time()
-            # previous_time = start_time
-            # msg_box.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: 0.0s")
-            # msg_box.setStandardButtons(QMessageBox.NoButton)
-            # msg_box.show()
-
-            # # queue = multiprocessing.Queue()
-            # # process = multiprocessing.Process(target=self.shapeaxi, args=())
-            # # process.start()
-            # # process.join()
-            
-            # q = queue.Queue()
-            # process = threading.Thread(target=self.shapeaxi, args=(q,))
-            # process.start()
-
-
-            # while process.is_alive():
-            #     slicer.app.processEvents()
-            #     current_time = time.time()
-            #     gap=current_time-previous_time
-            #     if gap>0.3:
-            #         previous_time = current_time
-            #         elapsed_time = current_time - start_time
-            #         msg_box.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
-
-            #     if not q.empty():
-            #         message = q.get()
-            #         break  
-
-            # if not q.empty():
-            #     message = q.get()
-            sucess_segmentation = self.shapeaxi()
+        except NoSegmentationSurf as error :
+            if platform.system()!="Windows":
+                sucess_segmentation = self.shapeaxi()
+            else :
+                sucess_segmentation = self.shapeaxi_windows()
             if sucess_segmentation:
                 self.viewScan()
                 # msg_box.hide()
                 return True
             return False
+        
+    def check_lib_wsl(self)->bool:
+          
+          '''
+            Check if wsl contains the require librairies
+          '''
+          result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
+          output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
+          clean_output1 = output1.replace('\x00', '')
+
+          result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
+          output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
+          clean_output2 = output2.replace('\x00', '')
+
+          return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
+            
+    def shapeaxi_windows(self):
+        self.conda_wsl = CondaSetUpCallWsl()  
+        wsl = self.conda_wsl.testWslAvailable()
+        ready = True
+        self.label_time.setHidden(False)
+        self.label_time.setText(f"Checking if wsl is installed, this task may take a moments")
+        slicer.app.processEvents()
+        if wsl : # if wsl is install
+            lib = self.check_lib_wsl()
+            if not lib : # if lib required are not install
+                self.label_time.setText(f"Checking if the required librairies are installed, this task may take a moments")
+                messageBox = qt.QMessageBox()
+                text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
+                ready = False
+                messageBox.information(None, "Information", text)
+        else :
+            messageBox = qt.QMessageBox()
+            text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
+            ready = False
+            messageBox.information(None, "Information", text)
+        
+        if ready :
+            self.label_time.setText(f"Checking if miniconda is installed")
+            if "Error" in self.conda_wsl.condaRunCommand([self.conda_wsl.getCondaExecutable(),"--version"]): # if conda is setup
+                messageBox = qt.QMessageBox()
+                text = "Code can't be launch. \nConda is not setup in WSL. Please go the extension CondaSetUp in SlicerConda to do it."
+                ready = False
+                messageBox.information(None, "Information", text)
+        
+        if ready :
+            self.label_time.setText(f"Checking if environnement exist")
+            if not self.conda_wsl.condaTestEnv('shapeaxi') : # check is environnement exist, if not ask user the permission to do it
+                userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the segmentation doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+                if userResponse :
+                    start_time = time.time()
+                    previous_time = start_time
+                    self.label_time.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: 0.0s")
+                    name_env = "shapeaxi"
+                    process = threading.Thread(target=self.conda_wsl.condaCreateEnv, args=(name_env,"3.9",["shapeaxi"],)) #run in paralle to not block slicer
+                    process.start()
+                    self.label_time.setVisible(True)
+                    
+                    while process.is_alive():
+                        slicer.app.processEvents()
+                        current_time = time.time()
+                        gap=current_time-previous_time
+                        if gap>0.3:
+                            previous_time = current_time
+                            elapsed_time = current_time - start_time
+                            self.label_time.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+                
+                    start_time = time.time()
+                    previous_time = start_time
+                    self.label_time.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: 0.0s")
+                    name_env = "shapeaxi"
+                    file_path = os.path.realpath(__file__)
+                    folder = os.path.dirname(file_path)
+                    utils_folder = os.path.join(folder, "utils")
+                    utils_folder_norm = os.path.normpath(utils_folder)
+                    install_path = self.windows_to_linux_path(os.path.join(utils_folder_norm, 'install_pytorch.py'))
+                    path_pip = self.conda_wsl.getCondaPath()+"/envs/shapeaxi/bin/pip"
+                    process = threading.Thread(target=self.conda_wsl.condaRunFilePython, args=(install_path,name_env,[path_pip],)) # launch install_pythorch.py with the environnement ali_ios to install pytorch3d on it
+                    process.start()
+                    
+                    while process.is_alive():
+                        slicer.app.processEvents()
+                        current_time = time.time()
+                        gap=current_time-previous_time
+                        if gap>0.3:
+                            previous_time = current_time
+                            elapsed_time = current_time - start_time
+                            self.label_time.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+                else :
+                    ready = False
+                
+        if ready : # if everything is ready launch dentalmodelseg on the environnement shapeaxi in wsl
+            
+
+            command = [f'dentalmodelseg --vtk \"{self.windows_to_linux_path(self.lineedit.text)}\" --stl \"{None}\" --csv \"{None}\" --out \"{None}\" --overwrite \"{True}\" --model \"{None}\" --crown_segmentation \"{False}\" --array_name \"Universal_ID\" --fdi \"{0}\" --suffix \"None\" --vtk_folder \"{self.windows_to_linux_path(os.path.dirname(self.lineedit.text))}\"']
+            print("command : ",command)
+            name_env = "shapeaxi"
+            process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command, "shapeaxi"))
+            process.start()
+            self.label_time.setHidden(False)
+            self.label_time.setText(f"time : 0.00s")
+            start_time = time.time()
+            previous_time = start_time
+            while process.is_alive():
+                slicer.app.processEvents()
+                current_time = time.time()
+                gap=current_time-previous_time
+                if gap>0.3:
+                    previous_time = current_time
+                    elapsed_time = current_time - start_time
+                    self.label_time.setText(f"Segmentation in process time : {elapsed_time:.2f}s")
+
+            return True 
+        return False
+
+    def windows_to_linux_path(self,windows_path):
+      '''
+      Convert a windows path to a wsl path
+      '''
+      windows_path = windows_path.strip()
+
+      path = windows_path.replace('\\', '/')
+
+      if ':' in path:
+          drive, path_without_drive = path.split(':', 1)
+          path = "/mnt/" + drive.lower() + path_without_drive
+
+      return path
+
             
 
     def shapeaxi(self):
-
-        # python_executable = sys.executable
-        # current_file_path = os.path.abspath(__file__)
-        # current_directory = os.path.dirname(current_file_path)
-        # path_next_file = os.path.join(current_directory,'Dentalmodelseg','first.py') #Next files to call
-        # command_to_execute = [python_executable,path_next_file,os.path.basename(str(self.lineedit.text)),str(self.lineedit.text),"true",os.path.dirname(str(self.lineedit.text)),"shapeAxi"]
-
-        # result = subprocess.run(command_to_execute, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,errors='ignore')
-        # if result.returncode != 0:
-        #     print(f"Error creating the environment. Return code: {result.returncode}")
-        #     print("result.stdout : ","*"*150)
-        #     print(result.stdout)
-        #     print("result.stderr : ","*"*150)
-        #     print(result.stderr)
-        #     q.put("False")
-        #     # return False
-        # else:
-        #     print(result.stdout)
-        #     print("Environment created successfully.")
-        #     q.put("True")
-        #     # self.viewScan()
-        #     # return True
-              
-          
+                        
         conda = CondaSetUpCall()
         path_conda = conda.getCondaPath()
         if path_conda == "None":
           slicer.util.infoDisplay("Path to conda is no set up. Open the module SlicerConda to do it",windowTitle="Can't found conda path")
         else :
-          name_env = "shapeAxi"
+          name_env = "shapeaxi"
           flag = True
           if not conda.condaTestEnv(name_env):
             userResponse = slicer.util.confirmYesNoDisplay("Your file is not segmented.\nThe environnement to run the segmentation doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
@@ -1445,7 +1518,7 @@ class WidgetParameter:
                       previous_time = current_time
                       elapsed_time = current_time - start_time
                       msg_box.setText(f"Your file is not segmented.\nCreation of the new environment for the segmentation. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
-              else :
+            else :
                 flag = False
 
           if flag :
@@ -1486,7 +1559,6 @@ class WidgetParameter:
         '''
         if self.checkSurfExist() :
             if self.checkSegmentation():
-                print("COUCOU")
                 self._processed2 = False
                 if self.add_patch.isChecked():
                     index=int(self.addItemsCombobox())
