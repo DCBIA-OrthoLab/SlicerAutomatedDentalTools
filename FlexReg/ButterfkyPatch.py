@@ -1499,25 +1499,50 @@ class WidgetParameter:
           if not conda.condaTestEnv(name_env):
             userResponse = slicer.util.confirmYesNoDisplay("Your file is not segmented.\nThe environnement to run the segmentation doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
             if userResponse :
-              msg_box = QMessageBox()
-              msg_box.setIcon(QMessageBox.Information)
-              start_time = time.time()
-              previous_time = start_time
-              msg_box.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: 0.0s")
-              msg_box.setStandardButtons(QMessageBox.NoButton)
-              msg_box.show()
+                msg_box = QMessageBox()
+                msg_box.setIcon(QMessageBox.Information)
+                start_time = time.time()
+                previous_time = start_time
+                msg_box.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: 0.0s")
+                msg_box.setStandardButtons(QMessageBox.NoButton)
+                msg_box.show()
 
-              process = threading.Thread(target=conda.condaCreateEnv, args=(name_env,"3.9",["shapeaxi"],))
-              process.start()
+                process = threading.Thread(target=conda.condaCreateEnv, args=(name_env,"3.9",["shapeaxi"],))
+                process.start()
 
-              while process.is_alive():
-                  slicer.app.processEvents()
-                  current_time = time.time()
-                  gap=current_time-previous_time
-                  if gap>0.3:
-                      previous_time = current_time
-                      elapsed_time = current_time - start_time
-                      msg_box.setText(f"Your file is not segmented.\nCreation of the new environment for the segmentation. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+                while process.is_alive():
+                    slicer.app.processEvents()
+                    current_time = time.time()
+                    gap=current_time-previous_time
+                    if gap>0.3:
+                        previous_time = current_time
+                        elapsed_time = current_time - start_time
+                        msg_box.setText(f"Your file is not segmented.\nCreation of the new environment for the segmentation. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+                        
+                start_time = time.time()
+                previous_time = start_time
+                self.label_time.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: 0.0s")
+                name_env = "shapeaxi"
+                file_path = os.path.realpath(__file__)
+                folder = os.path.dirname(file_path)
+                utils_folder = os.path.join(folder, "utils")
+                utils_folder_norm = os.path.normpath(utils_folder)
+                install_path =(os.path.join(utils_folder_norm, 'install_pytorch.py'))
+                # install_path =(os.path.join(utils_folder_norm, 'test.py'))
+                path_pip = conda.getCondaPath()+"/envs/shapeaxi/bin/pip"
+                print("path_pip : ",path_pip)
+                print("install_path : ",install_path)
+                process = threading.Thread(target=conda.condaRunFilePython, args=(install_path,[path_pip],name_env)) # launch install_pythorch.py with the environnement ali_ios to install pytorch3d on it
+                process.start()
+                print("ON INSTALL PYTORCH 3D !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                while process.is_alive():
+                    slicer.app.processEvents()
+                    current_time = time.time()
+                    gap=current_time-previous_time
+                    if gap>0.3:
+                        previous_time = current_time
+                        elapsed_time = current_time - start_time
+                        self.label_time.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
             else :
                 flag = False
 
