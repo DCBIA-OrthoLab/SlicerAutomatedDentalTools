@@ -1528,13 +1528,9 @@ class WidgetParameter:
                 utils_folder = os.path.join(folder, "utils")
                 utils_folder_norm = os.path.normpath(utils_folder)
                 install_path =(os.path.join(utils_folder_norm, 'install_pytorch.py'))
-                # install_path =(os.path.join(utils_folder_norm, 'test.py'))
                 path_pip = conda.getCondaPath()+"/envs/shapeaxi/bin/pip"
-                print("path_pip : ",path_pip)
-                print("install_path : ",install_path)
                 process = threading.Thread(target=conda.condaRunFilePython, args=(install_path,[path_pip],name_env)) # launch install_pythorch.py with the environnement ali_ios to install pytorch3d on it
                 process.start()
-                print("ON INSTALL PYTORCH 3D !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                 while process.is_alive():
                     slicer.app.processEvents()
                     current_time = time.time()
