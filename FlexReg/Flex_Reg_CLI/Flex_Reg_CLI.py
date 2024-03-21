@@ -14,6 +14,7 @@ from vtk.util.numpy_support import vtk_to_numpy,numpy_to_vtk
 
 def main(args):
     print("*"*200)
+    print("args.lower_arch : ",args.lower_arch)
     print("index_patch : ",args.index_patch)
     # Read the file (coordinate using : LPS)
     reader = vtk.vtkPolyDataReader()
@@ -115,6 +116,22 @@ def main(args):
         transformFilter.Update()
 
         modelNodeT1 = transformFilter.GetOutput()
+        
+        if args.lower_arch != "None":
+            reader = vtk.vtkPolyDataReader()
+            reader.SetFileName(args.lower_arch)
+            reader.Update()
+            modelNodeLowerArch = reader.GetOutput()
+            
+            transform = vtk.vtkTransform()
+            transform.Scale(-1, -1, 1)
+
+            transformFilter = vtk.vtkTransformPolyDataFilter()
+            transformFilter.SetInputData(modelNodeLowerArch)
+            transformFilter.SetTransform(transform)
+            transformFilter.Update()
+
+            modelNodeLowerArch = transformFilter.GetOutput()
 
         # ICP
         methode = [vtkICP()]
@@ -140,6 +157,20 @@ def main(args):
 
         modelNode = transformFilter.GetOutput()
         modelNode.Modified()
+        
+        if args.lower_arch != "None":
+            transform = vtk.vtkTransform()
+            transform.SetMatrix(vtk_matrix)
+            transformFilter = vtk.vtkTransformPolyDataFilter()
+            transformFilter.SetInputData(modelNodeLowerArch)
+            transformFilter.SetTransform(transform)
+            transformFilter.Update()
+
+            modelNodeLowerArch = transformFilter.GetOutput()
+            modelNodeLowerArch.Modified()
+            modelNodeLowerArch.Modified()
+        
+       
 
         
 
@@ -205,6 +236,28 @@ def main(args):
 
     writer.SetInputData(modelNode)
     writer.Write()
+    
+    if args.lower_arch != "None":
+        # Put back the data in the LPS coordinate
+        inverseTransform = vtk.vtkTransform()
+        inverseTransform.Scale(-1, -1, 1)
+
+        inverseTransformFilter = vtk.vtkTransformPolyDataFilter()
+        inverseTransformFilter.SetInputData(modelNodeLowerArch)
+        inverseTransformFilter.SetTransform(inverseTransform)
+        inverseTransformFilter.Update()
+
+        modelNodeLowerArch = inverseTransformFilter.GetOutput()
+
+        modelNodeLowerArch.Modified()
+        
+        outpath = args.lower_arch.replace(os.path.dirname(args.lower_arch),args.path_output)
+        if not os.path.exists(os.path.dirname(outpath)):
+            os.makedirs(os.path.dirname(outpath))
+
+        writer.SetFileName(outpath.split('.vtk')[0].split('vtp')[0]+args.suffix+'.vtk')
+        writer.SetInputData(modelNodeLowerArch)
+        writer.Write()
 
     print("dans cli apres traitement")
 
@@ -245,6 +298,8 @@ if __name__ == "__main__":
     parser.add_argument('suffix',type=str)
 
     parser.add_argument('index_patch',type=int)
+    
+    parser.add_argument('lower_arch',type=str)
     
     
 
