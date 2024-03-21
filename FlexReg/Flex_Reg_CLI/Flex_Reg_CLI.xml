@@ -156,6 +156,13 @@
       <description>icp : suffix to add to the register file</description>
     </string>
 
+    <string>
+      <name>lower_arch</name>
+      <label>lower_arch</label>
+      <index>20</index>
+      <description>lower_arch : path to lower arch T2</description>
+    </string>
+
 
 
 

@@ -22,6 +22,8 @@ except ImportError :
 
 import subprocess
 
+from pathlib import Path
+
 import io
 import multiprocessing
 from CondaSetUp import  CondaSetUpCall,CondaSetUpCallWsl
@@ -229,6 +231,7 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.manageNumberWidgetScan(2)
         self.ui.applyButton.enabled = True
         self.ui.buttonSelectOutput.connect("clicked(bool)",partial(self.openFinder,"Output"))
+        self.ui.ButtonLowerArch.connect("clicked(bool)",partial(self.openFinder,"LowerArch"))
         self.ui.applyButton.connect("clicked(bool)",self.on_apply_button_clicked)
 
 # Creation of the custom layout with 3 windows
@@ -266,7 +269,13 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         '''
         output_text = self.ui.lineEditOutput.text
         suffix_text = self.ui.lineEditSuffix.text
-        self.reg.run(output_text, suffix_text)
+        lower_arch = self.ui.lineEditLowerArch.text
+        print("lower_arch : ",lower_arch)
+        print(Path(lower_arch).is_file())
+        if Path(lower_arch).is_file():
+            self.reg.run(output_text, suffix_text, lower_arch)
+        else :
+            self.reg.run(output_text, suffix_text, "None")
 
     def manageNumberWidgetScan(self,number)->None:
         '''
@@ -310,19 +319,19 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
          Open finder to let the user choose is folder
         """ 
-        # Path ordi lucia lab
-        # self.ui.lineEditOutput.setText("/home/luciacev/Documents/Gaelle/Data/FlexReg/output")
 
-        surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-        self.ui.lineEditOutput.setText(surface_folder)
+        # surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+        # self.ui.lineEditOutput.setText(surface_folder)
 
-        # self.ui.lineEditOutput.setText("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/output")
-        # self.ui.lineEditSuffix.setText("_REG")
 
-        # if nom=="Output":
-        #     surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-        #     self.ui.lineEditOutput.setText(surface_folder)
+        if nom=="Output":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditOutput.setText(surface_folder)
 
+        if nom=="LowerArch":
+            path_file = QFileDialog.getOpenFileName(self.parent,'Open a file','', 'VTK Files (*.vtk)')
+            self.ui.lineEditLowerArch.setText(path_file)
+            
 
 
 
@@ -465,7 +474,8 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
                  path_reg="",
                  path_output="",
                  suffix="",
-                 index_patch=0):
+                 index_patch=0,
+                 lower_arch="None"):
         """
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
@@ -496,6 +506,8 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
         self.suffix=suffix
         
         self.index_patch=index_patch
+        
+        self.lower_arch=lower_arch
 
     def setDefaultParameters(self, parameterNode):
         """
@@ -541,6 +553,8 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
         parameters["suffix"] = self.suffix
 
         parameters["index_patch"] = self.index_patch
+        
+        parameters["lower_arch"] = self.lower_arch
 
 
 
@@ -661,9 +675,10 @@ class Reg:
         self.start_time=0
         self.output_folder=None
         self.suffix=None
+        self.lower_arch=None
         self.timer = QTimer()
 
-    def run(self,output_folder:str,suffix:str)->None:
+    def run(self,output_folder:str,suffix:str, lower_arch:str)->None:
         '''
         call the cli for the registration with icp method and launch onProcessUpdateICP
         '''
@@ -671,6 +686,7 @@ class Reg:
             if self.isButterflyPatchAvailable(self.T1.getSurf()) and self.isButterflyPatchAvailable(self.T2.getSurf()) :
                 self.output_folder=output_folder
                 self.suffix=suffix
+                self.lower_arch=lower_arch
                 self._processed = False # To allow onProcessUpdateICP to display the time and launch endProcess
                 # CLI 
                 self.logic = ButterfkyPatchLogic(self.T2.getPath(),
@@ -691,7 +707,9 @@ class Reg:
                             "icp",
                             self.T1.getPath(),
                             output_folder,
-                            suffix)
+                            suffix,
+                            0,
+                            lower_arch)
                 self.logic.process()
 
                 self.start_time = time.time()
@@ -854,7 +872,10 @@ class WidgetParameter:
 
         self.layout_file = QHBoxLayout()
         layout.addLayout(self.layout_file)
-        self.label_1 = QLabel(f'Scan T{title}')
+        if title==2:
+            self.label_1 = QLabel(f'Moving scan : ')
+        else :
+            self.label_1 = QLabel(f'Fix scan : ')
         self.lineedit = QLineEdit()
         self.button_select_scan = QPushButton('Select')
         self.button_select_scan.pressed.connect(self.selectFile)
@@ -1403,13 +1424,14 @@ class WidgetParameter:
         
         if ready :
             self.label_time.setText(f"Checking if environnement exist")
-            if not self.conda_wsl.condaTestEnv('shapeaxi') : # check is environnement exist, if not ask user the permission to do it
+            name_env = "shapeAxiEnv"
+            if not self.conda_wsl.condaTestEnv(name_env) : # check is environnement exist, if not ask user the permission to do it
                 userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the segmentation doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
                 if userResponse :
                     start_time = time.time()
                     previous_time = start_time
                     self.label_time.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: 0.0s")
-                    name_env = "shapeaxi"
+                    # name_env = "shapeaxi"
                     process = threading.Thread(target=self.conda_wsl.condaCreateEnv, args=(name_env,"3.9",["shapeaxi"],)) #run in paralle to not block slicer
                     process.start()
                     self.label_time.setVisible(True)
@@ -1426,13 +1448,14 @@ class WidgetParameter:
                     start_time = time.time()
                     previous_time = start_time
                     self.label_time.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: 0.0s")
-                    name_env = "shapeaxi"
+                    # name_env = "shapeaxi"
+                    name_env = "shapeAxiEnv"
                     file_path = os.path.realpath(__file__)
                     folder = os.path.dirname(file_path)
                     utils_folder = os.path.join(folder, "utils")
                     utils_folder_norm = os.path.normpath(utils_folder)
                     install_path = self.windows_to_linux_path(os.path.join(utils_folder_norm, 'install_pytorch.py'))
-                    path_pip = self.conda_wsl.getCondaPath()+"/envs/shapeaxi/bin/pip"
+                    path_pip = self.conda_wsl.getCondaPath()+f"/envs/{name_env}/bin/pip"
                     process = threading.Thread(target=self.conda_wsl.condaRunFilePython, args=(install_path,name_env,[path_pip],)) # launch install_pythorch.py with the environnement ali_ios to install pytorch3d on it
                     process.start()
                     
@@ -1452,8 +1475,8 @@ class WidgetParameter:
 
             command = [f'dentalmodelseg --vtk \"{self.windows_to_linux_path(self.lineedit.text)}\" --stl \"{None}\" --csv \"{None}\" --out \"{None}\" --overwrite \"{True}\" --model \"{None}\" --crown_segmentation \"{False}\" --array_name \"Universal_ID\" --fdi \"{0}\" --suffix \"None\" --vtk_folder \"{self.windows_to_linux_path(os.path.dirname(self.lineedit.text))}\"']
             print("command : ",command)
-            name_env = "shapeaxi"
-            process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command, "shapeaxi"))
+            name_env = "shapeAxiEnv"
+            process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command, name_env))
             process.start()
             self.label_time.setHidden(False)
             self.label_time.setText(f"time : 0.00s")
@@ -1494,18 +1517,15 @@ class WidgetParameter:
         if "Error" in conda.condaRunCommand([conda.getCondaExecutable(),"--version"]):
           slicer.util.infoDisplay("Path to conda is no set up. Open the module SlicerConda to do it",windowTitle="Can't found conda path")
         else :
-          name_env = "shapeaxi"
+        #   name_env = "shapeaxi"
+          name_env = "shapeAxiEnv"
           flag = True
+          self.label_time.setVisible(True)
           if not conda.condaTestEnv(name_env):
             userResponse = slicer.util.confirmYesNoDisplay("Your file is not segmented.\nThe environnement to run the segmentation doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
             if userResponse :
-                msg_box = QMessageBox()
-                msg_box.setIcon(QMessageBox.Information)
                 start_time = time.time()
                 previous_time = start_time
-                msg_box.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: 0.0s")
-                msg_box.setStandardButtons(QMessageBox.NoButton)
-                msg_box.show()
 
                 process = threading.Thread(target=conda.condaCreateEnv, args=(name_env,"3.9",["shapeaxi"],))
                 process.start()
@@ -1517,18 +1537,19 @@ class WidgetParameter:
                     if gap>0.3:
                         previous_time = current_time
                         elapsed_time = current_time - start_time
-                        msg_box.setText(f"Your file is not segmented.\nCreation of the new environment for the segmentation. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+                        self.label_time.setText(f"Your file is not segmented.\nCreation of the new environment for the segmentation. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
                         
                 start_time = time.time()
                 previous_time = start_time
                 self.label_time.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: 0.0s")
-                name_env = "shapeaxi"
+                # name_env = "shapeaxi"
+                name_env = "shapeAxiEnv"
                 file_path = os.path.realpath(__file__)
                 folder = os.path.dirname(file_path)
                 utils_folder = os.path.join(folder, "utils")
                 utils_folder_norm = os.path.normpath(utils_folder)
                 install_path =(os.path.join(utils_folder_norm, 'install_pytorch.py'))
-                path_pip = conda.getCondaPath()+"/envs/shapeaxi/bin/pip"
+                path_pip = conda.getCondaPath()+f"/envs/{name_env}/bin/pip"
                 process = threading.Thread(target=conda.condaRunFilePython, args=(install_path,[path_pip],name_env)) # launch install_pythorch.py with the environnement ali_ios to install pytorch3d on it
                 process.start()
                 while process.is_alive():
@@ -1548,13 +1569,8 @@ class WidgetParameter:
             process = threading.Thread(target=conda.condaRunCommand, args=(command,name_env))
             process.start()
             
-            msg_box = QMessageBox()
-            msg_box.setIcon(QMessageBox.Information)
             start_time = time.time()
             previous_time = start_time
-            msg_box.setText(f"Your file wasn't segmented. Segmentation in process. This task may take a few minutes.\ntime: 0.0s")
-            msg_box.setStandardButtons(QMessageBox.NoButton)
-            msg_box.show()
             while process.is_alive():
                 slicer.app.processEvents()
                 current_time = time.time()
@@ -1562,7 +1578,7 @@ class WidgetParameter:
                 if gap>0.3:
                     previous_time = current_time
                     elapsed_time = current_time - start_time
-                    msg_box.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+                    self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
             return True
         return False
 
@@ -1605,7 +1621,8 @@ class WidgetParameter:
                             "None",
                             "None",
                             "None",
-                            index)
+                            index,
+                            "None")
                 self.logic.process()
                 self.start_time = time.time()
                 self.timer.timeout.connect(self.onProcessUpdateButterfly)
@@ -1856,7 +1873,8 @@ class WidgetParameter:
                         "None",
                         "None",
                         "None",
-                        index)
+                        index,
+                        "None")
             self.logic.process()
 
             self.start_time = time.time()
