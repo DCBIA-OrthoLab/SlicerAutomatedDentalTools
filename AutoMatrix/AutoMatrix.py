@@ -22,7 +22,7 @@ from Method.General_tools import search, GetPatients
 
 
 import time
-import multiprocessing
+import threading
 import io
 
 
@@ -510,7 +510,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             original_stdin = sys.stdin
                             sys.stdin = DummyFile()
 
-                            process = multiprocessing.Process(target=self.saveOutput, args=(model,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan))
+                            process =  threading.Thread(target=self.saveOutput, args=(model,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan,))
                             process.start()
 
                             while process.is_alive():
