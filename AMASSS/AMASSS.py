@@ -26,16 +26,31 @@ def check_lib_installed(lib_name, required_version=None):
             required_version (str) : required version of the library (if None, any version is accepted)
     output: bool : True if the library is installed with the good version, False otherwise
     '''
-
-    try:
-        installed_version = pkg_resources.get_distribution(lib_name).version
-        # check if the version is the good one - if required_version != None it's considered as a True
-        if required_version and installed_version != required_version:
+    lib_torch = ["torch","torchvision","torchaudio"]
+    list_cuda_version =[]
+    if lib_name in lib_torch:
+      for lib in lib_torch:
+        try:
+          import lib
+          cuda_version = lib.__version__.split('cu')[1]
+          list_cuda_version.append(cuda_version)
+        except ImportError:
+          return False
+      for i in range(len(list_cuda_version)-1):
+        if list_cuda_version[i] != list_cuda_version[i+1]:
           return False
         else:
           return True
-    except pkg_resources.DistributionNotFound:
-        return False
+    else:
+      try:
+          installed_version = pkg_resources.get_distribution(lib_name).version
+          # check if the version is the good one - if required_version != None it's considered as a True
+          if required_version and installed_version != required_version:
+            return False
+          else:
+            return True
+      except pkg_resources.DistributionNotFound:
+          return False
 
 # import csv
 
@@ -71,6 +86,7 @@ def install_function(list_libs:list,system:str):
               message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
 
           message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
+          message +="\n\n ** If you are using a Windows system and torch,torchvision or torchaudio needs to be change, the 3 of them are going to be modified **"
           message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
 
           user_choice = slicer.util.confirmYesNoDisplay(message)
@@ -78,20 +94,31 @@ def install_function(list_libs:list,system:str):
           if user_choice:
               if system == "Windows":
                 # Installation specified for Windows system
+                already_installed =False
                 for lib, version in libs_to_install:
-                  if lib == "torch, torchvision, torchaudio":
-                    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
-                  else:
-                    lib_version = f'{lib}=={version}' if version else lib
-                    pip_install(lib_version)
+                  if lib == "torch" or lib=="torchvision" or lib== "torchaudio":
+                    try:
+                      import torch
+                      cuda_version = torch.cuda.version
+                      if cuda_version =="11.8" or cuda_version=="12.1":
+                        cuda_version= f"cu{cuda_version.replace('.','')}"
+                      elif float(cuda_version) > 12.1:
+                        cuda_version = "cu121"
+                      elif 11.8 < float(cuda_version) < 12.1:
+                        cuda_version = "cu118"
+                      else:
+                        cuda_version = "cu118"
+                      print('required cuda version:',cuda_version)
+                    except ImportError:
+                      cuda_version = "cu121"
 
-                for lib, version in libs_to_update:
-                    if lib == "torch, torchvision, torchaudio":
-                      pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
+                    if not already_installed:
+                      already_installed = True
+                      pip_install(f'torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{cuda_version}')
+
                     else:
                       lib_version = f'{lib}=={version}' if version else lib
                       pip_install(lib_version)
-
 
                 return True
 
@@ -698,8 +725,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # first, install the required libraries and their version
     list_libs = [('torch', None),('torchvision', None),('torchaudio',None),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
 
-    if platform.system() == "Windows":
-      list_libs= [('torch, torchvision, torchaudio','cu118'),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
+    # if platform.system() == "Windows":
+    #   list_libs= [('torch',None), ('torchvision',None), ('torchaudio',None),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
 
     libs_installation = install_function(list_libs,platform.system())
     if not libs_installation:
