@@ -94,8 +94,11 @@ def install_function(self,list_libs:list,system:str):
 
           if user_choice:
               self.ui.label_installation.setVisible(True)
+              self.ui.nb_package.setVisible(True)
               len_libs = len(libs_to_install+libs_to_update)
+              self.ui.nb_package.setText(f"Package: 0/{len_libs}")
               nb_installed = 0
+
               if system == "Windows":
                 # Installation specified for Windows system
                 already_installed =False
@@ -130,6 +133,9 @@ def install_function(self,list_libs:list,system:str):
                 return True
 
               else:
+
+
+                pip_install(f'torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
                 for lib, version in libs_to_install:
                   print('lib:',lib)
                   lib_version = f'{lib}=={version}' if version else lib
