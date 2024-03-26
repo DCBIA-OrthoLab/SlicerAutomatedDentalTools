@@ -18,29 +18,32 @@ from slicer.util import VTKObservationMixin, pip_install
 
 import webbrowser
 import pkg_resources
+import importlib
 
-def check_lib_installed(lib_name, required_version=None):
+def check_lib_installed(lib_name, required_version=None,system="Windows"):
     '''
     Check if the library with the good version (if needed) is already installed in the slicer environment
     input: lib_name (str) : name of the library
             required_version (str) : required version of the library (if None, any version is accepted)
     output: bool : True if the library is installed with the good version, False otherwise
     '''
-    lib_torch = ["torch","torchvision","torchaudio"]
-    list_cuda_version =[]
-    if lib_name in lib_torch:
-      for lib in lib_torch:
-        try:
-          import lib
-          cuda_version = lib.__version__.split('cu')[1]
-          list_cuda_version.append(cuda_version)
-        except ImportError:
-          return False
-      for i in range(len(list_cuda_version)-1):
-        if list_cuda_version[i] != list_cuda_version[i+1]:
-          return False
-        else:
-          return True
+    if system == "Windows":
+      lib_torch = ["torch","torchvision","torchaudio"]
+      list_cuda_version =[]
+      if lib_name in lib_torch:
+        for lib_str in lib_torch:
+          try:
+            lib = importlib.import_module(lib_str)
+            cuda_version = lib.__version__.split('cu')[1]
+            list_cuda_version.append(cuda_version)
+          except:
+
+            return False
+        for i in range(len(list_cuda_version)-1):
+          if list_cuda_version[i] != list_cuda_version[i+1]:
+            return False
+          else:
+            return True
     else:
       try:
           installed_version = pkg_resources.get_distribution(lib_name).version
@@ -54,7 +57,7 @@ def check_lib_installed(lib_name, required_version=None):
 
 # import csv
 
-def install_function(list_libs:list,system:str):
+def install_function(self,list_libs:list,system:str):
     '''
     Test the necessary libraries and install them with the specific version if needed
     User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
@@ -63,7 +66,7 @@ def install_function(list_libs:list,system:str):
     libs_to_install = []
     libs_to_update = []
     for lib, version in libs:
-        if not check_lib_installed(lib, version):
+        if not check_lib_installed(lib, version,system):
             try:
               # check if the library is already installed
               if pkg_resources.get_distribution(lib).version:
@@ -86,12 +89,14 @@ def install_function(list_libs:list,system:str):
               message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
 
           message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
-          message +="\n\n ** If you are using a Windows system and torch,torchvision or torchaudio needs to be change, the 3 of them are going to be modified **"
           message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
 
           user_choice = slicer.util.confirmYesNoDisplay(message)
 
           if user_choice:
+              self.ui.label_installation.setVisible(True)
+              len_libs = len(libs_to_install+libs_to_update)
+              nb_installed = 0
               if system == "Windows":
                 # Installation specified for Windows system
                 already_installed =False
@@ -115,21 +120,31 @@ def install_function(list_libs:list,system:str):
                     if not already_installed:
                       already_installed = True
                       pip_install(f'torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{cuda_version}')
+                      nb_installed += 3
 
-                    else:
-                      lib_version = f'{lib}=={version}' if version else lib
-                      pip_install(lib_version)
+                  else:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+                    nb_installed += 1
+                  self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
 
                 return True
 
               else:
                 for lib, version in libs_to_install:
-                    lib_version = f'{lib}=={version}' if version else lib
-                    pip_install(lib_version)
+                  print('lib:',lib)
+                  lib_version = f'{lib}=={version}' if version else lib
+                  pip_install(lib_version)
+                  nb_installed += 1
+                  self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
+
 
                 for lib, version in libs_to_update:
-                    lib_version = f'{lib}=={version}' if version else lib
-                    pip_install(lib_version)
+                  lib_version = f'{lib}=={version}' if version else lib
+                  pip_install(lib_version)
+                  nb_installed += 1
+                  self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
+
                 return True
           else :
             return False
@@ -427,6 +442,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.UpdateSaveSurface(False)
 
+    self.ui.nb_package.setVisible(False)
+    self.ui.label_installation.setVisible(False)
 
     #endregion
 
@@ -725,13 +742,13 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # first, install the required libraries and their version
     list_libs = [('torch', None),('torchvision', None),('torchaudio',None),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
 
-    # if platform.system() == "Windows":
-    #   list_libs= [('torch',None), ('torchvision',None), ('torchaudio',None),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
-
-    libs_installation = install_function(list_libs,platform.system())
+    libs_installation = install_function(self,list_libs,platform.system())
     if not libs_installation:
       qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
       return  # stop the function
+
+    self.ui.nb_package.setVisible(False)
+    self.ui.label_installation.setVisible(False)
 
     ready = True
 
