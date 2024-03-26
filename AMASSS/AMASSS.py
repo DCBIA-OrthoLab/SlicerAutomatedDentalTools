@@ -37,23 +37,22 @@ def check_lib_installed(lib_name, required_version=None,system="Windows"):
             cuda_version = lib.__version__.split('cu')[1]
             list_cuda_version.append(cuda_version)
           except:
-
             return False
         for i in range(len(list_cuda_version)-1):
           if list_cuda_version[i] != list_cuda_version[i+1]:
             return False
           else:
             return True
-    else:
-      try:
-          installed_version = pkg_resources.get_distribution(lib_name).version
-          # check if the version is the good one - if required_version != None it's considered as a True
-          if required_version and installed_version != required_version:
-            return False
-          else:
-            return True
-      except pkg_resources.DistributionNotFound:
+
+    try:
+        installed_version = pkg_resources.get_distribution(lib_name).version
+        # check if the version is the good one - if required_version != None it's considered as a True
+        if required_version and installed_version != required_version:
           return False
+        else:
+          return True
+    except pkg_resources.DistributionNotFound:
+        return False
 
 # import csv
 
