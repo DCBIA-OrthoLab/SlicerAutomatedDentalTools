@@ -806,6 +806,20 @@
          </widget>
         </item>
         <item>
+         <widget class="QLabel" name="nb_package">
+          <property name="text">
+           <string>Package: 0/X</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_installation">
+          <property name="text">
+           <string>...Installing packages - Check the Python Console for errors...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QLabel" name="TimerLabel">
           <property name="text">
            <string>Time : 0</string>
