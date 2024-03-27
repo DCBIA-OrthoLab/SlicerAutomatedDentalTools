@@ -19,7 +19,9 @@ from slicer.util import VTKObservationMixin, pip_install
 import webbrowser
 import pkg_resources
 import importlib
+import importlib
 
+def check_lib_installed(lib_name, required_version=None,system="Windows"):
 def check_lib_installed(lib_name, required_version=None,system="Windows"):
     '''
     Check if the library with the good version (if needed) is already installed in the slicer environment
@@ -27,6 +29,22 @@ def check_lib_installed(lib_name, required_version=None,system="Windows"):
             required_version (str) : required version of the library (if None, any version is accepted)
     output: bool : True if the library is installed with the good version, False otherwise
     '''
+    if system == "Windows":
+      lib_torch = ["torch","torchvision","torchaudio"]
+      list_cuda_version =[]
+      if lib_name in lib_torch:
+        for lib_str in lib_torch:
+          try:
+            lib = importlib.import_module(lib_str)
+            cuda_version = lib.__version__.split('cu')[1]
+            list_cuda_version.append(cuda_version)
+          except:
+            return False
+        for i in range(len(list_cuda_version)-1):
+          if list_cuda_version[i] != list_cuda_version[i+1]:
+            return False
+          else:
+            return True
     if system == "Windows":
       lib_torch = ["torch","torchvision","torchaudio"]
       list_cuda_version =[]
@@ -57,6 +75,7 @@ def check_lib_installed(lib_name, required_version=None,system="Windows"):
 # import csv
 
 def install_function(self,list_libs:list,system:str):
+def install_function(self,list_libs:list,system:str):
     '''
     Test the necessary libraries and install them with the specific version if needed
     User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
@@ -65,6 +84,7 @@ def install_function(self,list_libs:list,system:str):
     libs_to_install = []
     libs_to_update = []
     for lib, version in libs:
+        if not check_lib_installed(lib, version,system):
         if not check_lib_installed(lib, version,system):
             try:
               # check if the library is already installed
@@ -99,8 +119,15 @@ def install_function(self,list_libs:list,system:str):
               self.ui.nb_package.setText(f"Package: 0/{len_libs}")
               nb_installed = 0
 
+              self.ui.label_installation.setVisible(True)
+              self.ui.nb_package.setVisible(True)
+              len_libs = len(libs_to_install+libs_to_update)
+              self.ui.nb_package.setText(f"Package: 0/{len_libs}")
+              nb_installed = 0
+
               if system == "Windows":
                 # Installation specified for Windows system
+                already_installed =False
                 already_installed =False
                 for lib, version in libs_to_install:
                   if lib == "torch" or lib=="torchvision" or lib== "torchaudio":
@@ -129,10 +156,23 @@ def install_function(self,list_libs:list,system:str):
                     pip_install(lib_version)
                     nb_installed += 1
                   self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
+                    if not already_installed:
+                      already_installed = True
+                      pip_install(f'torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{cuda_version}')
+                      nb_installed += 3
+
+                  else:
+                    lib_version = f'{lib}=={version}' if version else lib
+                    pip_install(lib_version)
+                    nb_installed += 1
+                  self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
 
                 return True
 
               else:
+
+
+                pip_install(f'torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
 
 
                 pip_install(f'torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
@@ -143,8 +183,19 @@ def install_function(self,list_libs:list,system:str):
                   nb_installed += 1
                   self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
 
+                  print('lib:',lib)
+                  lib_version = f'{lib}=={version}' if version else lib
+                  pip_install(lib_version)
+                  nb_installed += 1
+                  self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
+
 
                 for lib, version in libs_to_update:
+                  lib_version = f'{lib}=={version}' if version else lib
+                  pip_install(lib_version)
+                  nb_installed += 1
+                  self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
+
                   lib_version = f'{lib}=={version}' if version else lib
                   pip_install(lib_version)
                   nb_installed += 1
@@ -449,6 +500,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.ui.nb_package.setVisible(False)
     self.ui.label_installation.setVisible(False)
+    self.ui.nb_package.setVisible(False)
+    self.ui.label_installation.setVisible(False)
 
     #endregion
 
@@ -748,9 +801,13 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     list_libs = [('torch', None),('torchvision', None),('torchaudio',None),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
 
     libs_installation = install_function(self,list_libs,platform.system())
+    libs_installation = install_function(self,list_libs,platform.system())
     if not libs_installation:
       qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
       return  # stop the function
+
+    self.ui.nb_package.setVisible(False)
+    self.ui.label_installation.setVisible(False)
 
     self.ui.nb_package.setVisible(False)
     self.ui.label_installation.setVisible(False)
