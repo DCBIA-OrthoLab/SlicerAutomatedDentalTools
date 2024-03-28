@@ -25,9 +25,40 @@ import subprocess
 from pathlib import Path
 
 import io
-import multiprocessing
 from CondaSetUp import  CondaSetUpCall,CondaSetUpCallWsl
 
+def func_import(install=False): 
+  try : 
+    import pkg_resources
+    shapeaxi_version = pkg_resources.get_distribution("shapeaxi").version 
+    print("Distribution    Found for shapeaxi")
+    # pytorch3d = pkg_resources.get_distribution("pytorch3d").version 
+    import pytorch3d
+    return True
+  except : 
+    print("ERROR")
+    if install :
+      pip_install("shapeaxi")
+      try:
+        import torch
+      except ImportError:
+        pip_install(f'torch')
+      try:
+        import pytorch3d
+      except ImportError:
+        try : 
+          import torch
+          pyt_version_str = torch.__version__.split("+")[0].replace(".", "")
+          version_str = "".join([f"py3{sys.version_info.minor}_cu", torch.version.cuda.replace(".", ""), f"_pyt{pyt_version_str}"])
+          pip_install('--upgrade pip')
+          pip_install('fvcore==0.1.5.post20220305')
+          pip_install(f'--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
+        except:
+            pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
+            pip_install('--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
+
+      return True
+    return False
 # try:
 #     import pytorch3d
 #     if pytorch3d.__version__ != '0.6.2':
@@ -1508,82 +1539,120 @@ class WidgetParameter:
 
       return path
 
-            
+    def parall_process(self,function,arguments=[],message=""):
+        process = threading.Thread(target=function, args=tuple(arguments)) #run in paralle to not block slicer
+        process.start()
+        start_time = time.time()
+        previous_time = time.time()
+        while process.is_alive():
+          slicer.app.processEvents()
+          current_time = time.time()
+          gap=current_time-previous_time
+          if gap>0.3:
+              previous_time = current_time
+              elapsed_time = current_time - start_time
+              self.label_time.setText(f"{message}\ntime: {elapsed_time:.1f}s")
 
     def shapeaxi(self):
                         
-        conda = CondaSetUpCall()
-        path_conda = conda.getCondaPath()
-        if "Error" in conda.condaRunCommand([conda.getCondaExecutable(),"--version"]):
-          slicer.util.infoDisplay("Path to conda is no set up. Open the module SlicerConda to do it",windowTitle="Can't found conda path")
-        else :
-        #   name_env = "shapeaxi"
-          name_env = "shapeAxiEnv"
-          flag = True
-          self.label_time.setVisible(True)
-          if not conda.condaTestEnv(name_env):
-            userResponse = slicer.util.confirmYesNoDisplay("Your file is not segmented.\nThe environnement to run the segmentation doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
-            if userResponse :
-                start_time = time.time()
-                previous_time = start_time
+        env_ok = func_import(False)
+        print("env_ok : ",env_ok)
+        if not env_ok : 
+            userResponse = slicer.util.confirmYesNoDisplay("Some of the required libraries are not installed in Slicer. Would you like to install them?\nThis may take a few minutes.", windowTitle="Env doesn't exist")
+            if userResponse : 
+                self.parall_process(func_import,[True],"Installing the required packages in Slicer")
+                env_ok = True
+            # env_ok=func_import(True)
+        if env_ok : 
+            slicer_path = slicer.app.applicationDirPath()
+            dentalmodelseg_path = os.path.join(slicer_path,"..","lib","Python","bin","dentalmodelseg")
+            print("dentalmodelseg_path : ",dentalmodelseg_path)
+            # self.logic = CrownSegmentationLogic(surf,
+            #                                 input_csv, 
+            #                                 self.ui.outputLineEdit.text,
+            #                                 "1" if self.ui.checkBoxOverwrite.checked else "0", 
+            #                                 self.model, 
+            #                                 "1" if self.ui.sepOutputsCheckbox.isChecked() else "0",
+            #                                 self.predictedId,
+            #                                 self.chooseFDI,
+            #                                 self.ui.outputFileLineEdit.text,
+            #                                 vtk_folder,
+            #                                 dentalmodelseg_path)
 
-                process = threading.Thread(target=conda.condaCreateEnv, args=(name_env,"3.9",["shapeaxi"],))
-                process.start()
 
-                while process.is_alive():
-                    slicer.app.processEvents()
-                    current_time = time.time()
-                    gap=current_time-previous_time
-                    if gap>0.3:
-                        previous_time = current_time
-                        elapsed_time = current_time - start_time
-                        self.label_time.setText(f"Your file is not segmented.\nCreation of the new environment for the segmentation. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
-                        
-                start_time = time.time()
-                previous_time = start_time
-                self.label_time.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: 0.0s")
-                # name_env = "shapeaxi"
-                name_env = "shapeAxiEnv"
-                file_path = os.path.realpath(__file__)
-                folder = os.path.dirname(file_path)
-                utils_folder = os.path.join(folder, "utils")
-                utils_folder_norm = os.path.normpath(utils_folder)
-                install_path =(os.path.join(utils_folder_norm, 'install_pytorch.py'))
-                path_pip = conda.getCondaPath()+f"/envs/{name_env}/bin/pip"
-                process = threading.Thread(target=conda.condaRunFilePython, args=(install_path,[path_pip],name_env)) # launch install_pythorch.py with the environnement ali_ios to install pytorch3d on it
-                process.start()
-                while process.is_alive():
-                    slicer.app.processEvents()
-                    current_time = time.time()
-                    gap=current_time-previous_time
-                    if gap>0.3:
-                        previous_time = current_time
-                        elapsed_time = current_time - start_time
-                        self.label_time.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
-            else :
-                flag = False
-
-          if flag :
-            command = [f'dentalmodelseg --vtk \"{self.lineedit.text}\" --stl \"{None}\" --csv \"{None}\" --out \"{None}\" --overwrite \"{True}\" --model \"{None}\" --crown_segmentation \"{False}\" --array_name \"{"Universal_ID"}\" --fdi \"{0}\" --suffix \"{None}\" --vtk_folder \"{os.path.dirname(self.lineedit.text)}\"']
-            print("command : ",command)
-            process = threading.Thread(target=conda.condaRunCommand, args=(command,name_env))
-            process.start()
+            moduleName = "CrownSegmentation"
+            moduleAvailable = moduleName in slicer.app.moduleManager().modulesNames()
+            self._processed2 = False
+            if moduleAvailable : 
+                # modelFilePath = self.downloadModel()
+                parameters = {
+                    "surf" :self.lineedit.text,
+                    "input_csv":"None",
+                    "out" : "None",
+                    "overwrite":"1",
+                    "model": "latest",
+                    "crown_segmentation" : "0",
+                    "array_name":"Universal_ID",
+                    "fdi":"0",
+                    "suffix":"None",
+                    "vtk_folder":os.path.dirname(self.lineedit.text),
+                    "dentalmodelseg_path":dentalmodelseg_path
+                }
+                print("parametres : ", parameters)
+                # print(f' Error {error}')
+                self.start_time = time.time()
+                flybyProcess = slicer.modules.crownsegmentationcli
+                self.start_time = time.time()
+                self.timer.timeout.connect(self.onProcessUpdateSeg)
+                self.timer.start(500)
+                cliNode = slicer.cli.run(flybyProcess,None, parameters)    
+                
+                # self.addObserver(cliNode, vtk.vtkCommand.ModifiedEvent, self.onProcessUpdateSeg)
+                # self.onProcessStarted()
             
-            start_time = time.time()
-            previous_time = start_time
-            while process.is_alive():
-                slicer.app.processEvents()
-                current_time = time.time()
-                gap=current_time-previous_time
-                if gap>0.3:
-                    previous_time = current_time
-                    elapsed_time = current_time - start_time
-                    self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+            # self.logic.process()
+            # self.addObserver(self.logic.cliNode,vtk.vtkCommand.ModifiedEvent,self.onProcessUpdateSeg)
+            # self.onProcessStarted()
+            # file_path = os.path.abspath(__file__)
+            # folder_path = os.path.dirname(file_path)
+
+        #   if flag :
+        #     command = [f'dentalmodelseg --vtk \"{self.lineedit.text}\" --stl \"{None}\" --csv \"{None}\" --out \"{None}\" --overwrite \"{True}\" --model \"{None}\" --crown_segmentation \"{False}\" --array_name \"{"Universal_ID"}\" --fdi \"{0}\" --suffix \"{None}\" --vtk_folder \"{os.path.dirname(self.lineedit.text)}\"']
+        #     print("command : ",command)
+        #     process = threading.Thread(target=conda.condaRunCommand, args=(command,name_env))
+        #     process.start()
+            
+        #     start_time = time.time()
+        #     previous_time = start_time
+        #     while process.is_alive():
+        #         slicer.app.processEvents()
+        #         current_time = time.time()
+        #         gap=current_time-previous_time
+        #         if gap>0.3:
+        #             previous_time = current_time
+        #             elapsed_time = current_time - start_time
+        #             self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
             return True
         return False
 
             
+    def onProcessUpdateSeg(self):
+        '''
+        Update time since the beginning of the cli. When it's the end of the cli, display the patch
+        '''
+        if hasattr(self, "_processed2") and self._processed2:
+            return
+        
+        elapsed_time = time.time() - self.start_time
+        self.label_time.setVisible(True)
+        self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
 
+        if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+            self._processed2 = True
+            self.timer.stop()
+            self.viewScan()
+            # self.displaySegmentation(self.surf)
+            
             
 
 
