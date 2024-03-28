@@ -106,7 +106,7 @@ def install_function(self,list_libs:list,system:str):
                   if lib == "torch" or lib=="torchvision" or lib== "torchaudio":
                         try:
                       import torch
-                      cuda_version = torch.cuda.version
+                      cuda_version = torch.version.cuda
                       if cuda_version =="11.8" or cuda_version=="12.1":
                         cuda_version= f"cu{cuda_version.replace('.','')}"
                       elif float(cuda_version) > 12.1:
