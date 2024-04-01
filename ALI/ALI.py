@@ -15,6 +15,17 @@ import platform
 import slicer
 from slicer.util import pip_install, pip_uninstall
 
+from CondaSetUp import CondaSetUpCall,CondaSetUpCallWsl
+import time
+import threading
+from multiprocessing import Process, Value
+import subprocess
+
+from CondaSetUp import CondaSetUpCall,CondaSetUpCallWsl
+import time
+import threading
+import sys
+
 
 def check_lib_installed(lib_name, required_version=None):
     try:
