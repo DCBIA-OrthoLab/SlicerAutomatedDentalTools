@@ -24,6 +24,7 @@ import subprocess
 from CondaSetUp import CondaSetUpCall,CondaSetUpCallWsl
 import time
 import threading
+import sys
 
 
 def check_lib_installed(lib_name, required_version=None):
