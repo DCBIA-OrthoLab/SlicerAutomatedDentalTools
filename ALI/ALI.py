@@ -7,8 +7,8 @@ import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 import webbrowser
+import textwrap
 import pkg_resources
-import sys
 
 
 import platform
