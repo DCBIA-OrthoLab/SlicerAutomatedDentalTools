@@ -143,7 +143,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Connections
         self.ui.SearchPathButtonF.connect("clicked(bool)", partial(self.SearchPath,"Folder_file"))
-        self.ui.SearchPathButtonV.connect("clicked(bool)", partial(self.SearchPath,"Volume"))
+        self.ui.SearchPathButtonV.connect("clicked(bool)", partial(self.SearchPath,"ROI"))
         self.ui.SearchPathButtonOut.connect("clicked(bool)", partial(self.SearchPath,"Output"))
         #self.ui.TestFiles.connect("clicked(bool)",self.Autofill)
         #self.ui.chooseType.connect("clicked(bool)", self.SearchPath)
@@ -186,6 +186,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.editPathVolume.setText("/home/luciacev/Desktop/Jeanne/DJD_Data/Volume/Crop_Volume_ROI_1.mrk.json")
         self.ui.editPathOutput.setText("/home/luciacev/Desktop/Jeanne/DJD_Data/Output")
         self.ui.chooseType.setCurrentIndex(1)
+        self.ui.chooseType_ROI.setCurrentIndex(0)
 
     def cleanup(self):
         """
@@ -296,7 +297,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onApplyButton(self):
         """
-        Run processing when user clicks "Apply" button.
+        Run process when user clicks "Apply" button.
         """
         isValid = self.CheckInput()
         if isValid :
@@ -318,25 +319,6 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.logic.process()
             self.addObserver(self.logic.cliNode,vtk.vtkCommand.ModifiedEvent,self.onProcessUpdate)
             self.onProcessStarted()
-
-
-        ## A VOIR l'utilite ##
-        #self.addObserver(self.logic.cliNode,vtk.vtkCommand.ModifiedEvent,self.onProcessUpdate)
-        #self.onProcessStarted()
-
-
-
-        # with slicer.util.tryWithErrorDisplay("Failed to compute results.", waitCursor=True):
-
-        #     # Compute output
-        #     self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(),
-        #                        self.ui.imageThresholdSliderWidget.value, self.ui.invertOutputCheckBox.checked)
-
-        #     # Compute inverted output (if needed)
-        #     if self.ui.invertedOutputSelector.currentNode():
-        #         # If additional output volume is selected then result with inverted threshold is written there
-        #         self.logic.process(self.ui.inputSelector.currentNode(), self.ui.invertedOutputSelector.currentNode(),
-        #                            self.ui.imageThresholdSliderWidget.value, not self.ui.invertOutputCheckBox.checked, showResult=False)
 
 
     def onProcessStarted(self):
@@ -418,6 +400,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.editPathOutput.setText("")
                 self.ui.checkBoxSize.setChecked(False)
                 self.ui.chooseType.setCurrentIndex(0)
+                self.ui.chooseType_ROI.setCurrentIndex(0)
 
 
                 processTime = round(time.time() - self.startTime,3)
@@ -445,9 +428,17 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if path_folder != "":
                 self.ui.editPathF.setText(path_folder)
 
-        if object == "Volume":
-            path_folder = qt.QFileDialog.getOpenFileName(self.parent,'Open a file')
-            self.ui.editPathVolume.setText(path_folder)
+        if object == "ROI":
+            if self.ui.chooseType.currentIndex == 0:
+                path_folder = qt.QFileDialog.getOpenFileName(self.parent,'Open a file')
+
+            else:
+                path_folder = qt.QFileDialog.getExistingDirectory(
+                    self.parent, "Select a scan folder for Input"
+                )
+
+            if path_folder != "":
+                self.ui.editPathVolume.setText(path_folder)
 
         if object == "Output":
             path_folder = qt.QFileDialog.getExistingDirectory(
@@ -535,22 +526,34 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             warning_text = warning_text + "Choose a ROI file (.json)" + "\n"
 
         else :
+            self.list_roi=self.Search(self.ui.editPathVolume.text,".mrk.json")
             self.list_patient=self.Search(self.ui.editPathF.text,".nii.gz",".nrrd.gz",".gipl.gz") #dictionnary with all path of file (working on folder or file)
 
-            isfile = 0
+            isfile = False
+            isroi = False
+            if len(self.list_roi['.mrk.json'])!=0 :
+                isroi = True
+
             for key,data in self.list_patient.items() :
 
                 if len(self.list_patient[key])!=0 :
-                    isfile = 1 # There are good types of files in the folder
+                    isfile = True # There are good types of files in the folder
 
-            if self.ui.chooseType.currentIndex==1 and isfile ==0 :
+            # Test type of the scans
+            if self.ui.chooseType.currentIndex==1 and not isfile:
                 warning_text = warning_text + "Folder empty or wrong type of patient files " + "\n"
                 warning_text = warning_text + "File authorized : .nii.gz, .nrrd.gz, .gipl.gz" + "\n"
-
-            elif self.ui.chooseType.currentIndex==0 and isfile ==0 :
-                warning_text = warning_text + "Wrong type of patient file  detected" + "\n"
+            elif self.ui.chooseType.currentIndex==0 and not isfile:
+                warning_text = warning_text + "Wrong type of patient file detected" + "\n"
                 warning_text = warning_text + "File authorized : .nii.gz, .nrrd.gz, .gipl.gz" + "\n"
 
+            # Test type of the ROI
+            if self.ui.chooseType_ROI.currentIndex==1 and not isroi:
+                warning_text = warning_text + "Folder empty or wrong type of ROI files" + "\n"
+                warning_text = warning_text + "File authorized : .mrk.json" + "\n"
+            elif self.ui.chooseType_ROI.currentIndex==0 and not isroi:
+                warning_text = warning_text + "Wrong type of ROI file detected" + "\n"
+                warning_text = warning_text + "File authorized : .mrk.json" + "\n"
 
         if self.ui.editPathOutput.text=="":
 
