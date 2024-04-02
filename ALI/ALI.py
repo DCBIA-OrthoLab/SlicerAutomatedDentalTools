@@ -8,8 +8,7 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 import webbrowser
 import textwrap
-import pkg_resources
-
+import importlib.metadata
 
 import platform
 import slicer
@@ -29,11 +28,11 @@ import sys
 
 def check_lib_installed(lib_name, required_version=None):
     try:
-        installed_version = pkg_resources.get_distribution(lib_name).version
+        installed_version =importlib.metadata.version(lib_name)
         if required_version and installed_version != required_version:
             return False
         return True
-    except pkg_resources.DistributionNotFound:
+    except :
         return False
 
 # import csv
