@@ -32,7 +32,7 @@ def check_lib_installed(lib_name, required_version=None):
         if required_version and installed_version != required_version:
             return False
         return True
-    except :
+    except importlib.metadata.PackageNotFoundError:
         return False
 
 # import csv
