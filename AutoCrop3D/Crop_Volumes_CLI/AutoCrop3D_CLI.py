@@ -2,7 +2,7 @@
 
 import argparse
 import SimpleITK as sitk
-from Crop_Volumes_utils.FilesType import Search
+from Crop_Volumes_utils.FilesType import Search, ChangeKeyDict
 from Crop_Volumes_utils.GenerateVTKfromSeg import convertNiftiToVTK
 import numpy as np
 import os,json
@@ -31,12 +31,26 @@ def main(args)-> None:
         log_f.truncate(0)
     index =0
     ScanList = Search(path_input, ".nii.gz",".nrrd.gz",".gipl.gz")
+
+    # Include case with a folder of ROI corresponding to a folder of scans
+    ROIList = Search(ROI_Path,".mrk.json")
+
+    if len(ROIList['.mrk.json']) >1:
+        ROI_dict = ChangeKeyDict(ROIList)
+
     for key,data in ScanList.items():
 
         for patient_path in data:
             patient = os.path.basename(patient_path).split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0]
 
             img = sitk.ReadImage(patient_path)
+
+            if len(ROIList['.mrk.json']) >1:
+                try:
+                    ROI_Path = ROI_dict[patient]
+                except:
+                    print('No ROI for patient:',patient)
+                    continue
 
             ROI = json.load(open(ROI_Path))['markups'][0]
             ROI_Center = np.array(ROI['center'])
@@ -56,7 +70,6 @@ def main(args)-> None:
             Lower = [max(0, l) for l in Lower]
 
             Upper = [min(img_size[i], u) for i, u in enumerate(Upper)]
-
 
             # # Ensure non-zero size for all dimensions and that lower < upper
             # for i in range(3):
@@ -84,7 +97,6 @@ def main(args)-> None:
                             Lower[1]:Upper[1],
                             Lower[2]:Upper[2]]
 
-
             if originalSize=='True':
                 img_roi_arr = sitk.GetArrayFromImage(img_roi)
 
@@ -99,12 +111,6 @@ def main(args)-> None:
 
             else:
                 img_crop = img_roi
-
-
-            # Didn't work:
-            # paste_filter = sitk.PasteImageFilter()
-            # paste_filter.SetDestinationIndex(start_coord)
-            # img_crop = paste_filter.Execute(img_blank, img_roi)
 
             # Create the output path
             # relative_path = all folder to get to the file we want in the input
