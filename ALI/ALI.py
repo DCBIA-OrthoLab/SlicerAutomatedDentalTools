@@ -564,7 +564,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def onPredictButton(self):
     if platform.system()=="Windows" and not self.CBCT_as_input :
-      qt.QMessageBox.warning(self.parent, 'Warning', 'ALI_IOS is currently not available on Windows')
+          qt.QMessageBox.warning(self.parent, 'Warning', 'ALI_IOS is currently not available on Windows')
       lib_ok = False
     else :
       lib_ok = install_function()
