@@ -28,7 +28,7 @@ def check_lib_installed(lib_name, required_version=None,system="Windows"):
     output: bool : True if the library is installed with the good version, False otherwise
     '''
     if system == "Windows":
-          lib_torch = ["torch","torchvision","torchaudio"]
+      lib_torch = ["torch","torchvision","torchaudio"]
       list_cuda_version =[]
       if lib_name in lib_torch:
         for lib_str in lib_torch:
@@ -104,7 +104,7 @@ def install_function(self,list_libs:list,system:str):
                 already_installed =False
                 for lib, version in libs_to_install:
                   if lib == "torch" or lib=="torchvision" or lib== "torchaudio":
-                        try:
+                    try:
                       import torch
                       if torch.cuda.is_available():
                         cuda_version = torch.version.cuda
