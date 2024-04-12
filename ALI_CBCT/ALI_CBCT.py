@@ -66,7 +66,6 @@ from monai.data import (
 
 from monai.transforms import (
     AsDiscrete,
-    AddChanneld,
     AddChannel,
     Compose,
     CropForegroundd,
