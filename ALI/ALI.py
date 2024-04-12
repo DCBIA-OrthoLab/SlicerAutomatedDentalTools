@@ -29,6 +29,7 @@ import sys
 def check_lib_installed(lib_name, required_version=None):
     try:
         installed_version =importlib.metadata.version(lib_name)
+        # print(f"{lib_name} : {installed_version} / required : {required_version}")
         if required_version and installed_version != required_version:
             return False
         return True
@@ -37,7 +38,7 @@ def check_lib_installed(lib_name, required_version=None):
 
 # import csv
 def install_function():
-    libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('pytorch3d', '0.6.2')]
+    libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('pytorch3d', '0.7.4')]
     if platform.system() == "Windows":
         libs.append(('torch', None))
         libs.append(('torchvision', None))
