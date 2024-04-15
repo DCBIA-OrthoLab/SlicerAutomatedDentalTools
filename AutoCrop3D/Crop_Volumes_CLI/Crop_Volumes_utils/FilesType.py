@@ -57,4 +57,27 @@ def Search(path : str,*args ) :
         result[key] = files_matching_key
 
     return result
-    
+
+def ChangeKeyDict(list_files : list) -> dict:
+    """
+    Return a dictionary with the name of the patient being the key and the path of the file being the value.
+    Example:
+    list_files = ['path/a.json', 'path/b.json','path/c.json']
+    return:
+        {
+            'a' : 'path/a_ROI.mrk.json',
+            'b' : 'path/b_ROI.mrk.json',
+            'c' : 'path/c_ROI.mrk.json'
+        }
+
+    Input : Dictionary with the extension of the file as key and the list of the path of the file as value
+    Output : dictionnary with the key and the associated path
+    """
+    result = {}  # Initialize an empty dictionary
+
+    for key, value in list_files.items():
+        for file in value:
+            patient = os.path.basename(file).split('_')[0]
+            result[patient] = file
+
+    return result

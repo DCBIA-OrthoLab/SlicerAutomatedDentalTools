@@ -106,17 +106,22 @@ def install_function(self,list_libs:list,system:str):
                   if lib == "torch" or lib=="torchvision" or lib== "torchaudio":
                     try:
                       import torch
-                      cuda_version = torch.cuda.version
-                      if cuda_version =="11.8" or cuda_version=="12.1":
-                        cuda_version= f"cu{cuda_version.replace('.','')}"
-                      elif float(cuda_version) > 12.1:
-                        cuda_version = "cu121"
-                      elif 11.8 < float(cuda_version) < 12.1:
-                        cuda_version = "cu118"
+                      if torch.cuda.is_available():
+                        cuda_version = torch.version.cuda
+                        if cuda_version =="11.8" or cuda_version=="12.1":
+                          cuda_version= f"cu{cuda_version.replace('.','')}"
+                        elif float(cuda_version) > 12.1:
+                          cuda_version = "cu121"
+                        elif 11.8 < float(cuda_version) < 12.1:
+                          cuda_version = "cu118"
+                        else:
+                          cuda_version = "cu118"
+                        print('required cuda version:',cuda_version)
                       else:
-                        cuda_version = "cu118"
-                      print('required cuda version:',cuda_version)
+                        raise RuntimeError("CUDA is not available")
                     except ImportError:
+                      cuda_version = "cu121"
+                    except RuntimeError:
                       cuda_version = "cu121"
 
                     if not already_installed:

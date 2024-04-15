@@ -78,6 +78,23 @@
            </widget>
           </item>
           <item>
+           <widget class="QComboBox" name="chooseType_ROI">
+            <property name="currentText">
+             <string>File</string>
+            </property>
+            <item>
+             <property name="text">
+              <string>File</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Folder</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item>
            <widget class="QPushButton" name="SearchPathButtonV">
             <property name="text">
              <string>Select</string>
