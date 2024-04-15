@@ -11,10 +11,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+# pip_install(pytorch_lightning)
+try :
+    import pytorch_lightning as pl
+except ImportError :
+    pip_install('pytorch_lightning')
+    import pytorch_lightning as pl
 
-import pytorch_lightning as pl
-
-
+import pytorch_lightning
 
 from monai.networks.nets.densenet import DenseNet169
 

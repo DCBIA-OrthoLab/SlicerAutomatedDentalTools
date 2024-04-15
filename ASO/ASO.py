@@ -38,7 +38,9 @@ def check_lib_installed(lib_name, required_version=None):
 # import csv
     
 def install_function():
-    libs = [('vtk', None), ('torch', None), ('monai', None),('pytorch_lightning',None),('dicom2nifti',None)]
+    # libs = [('vtk', None), ('torch', None), ('monai', None),('pytorch_lightning',None),('dicom2nifti',None),('itk',None)]
+    libs = [('itk',None),('itk-elastix',"0.17.1"),('dicom2nifti',None),('einops',None),('nibabel',None),('connected-components-3d','3.9.1'),
+                            ('vtk',None),('pandas',None),('torch',None),('monai','0.7.0')]
     libs_to_install = []
     for lib, version in libs:
         if not check_lib_installed(lib, version):

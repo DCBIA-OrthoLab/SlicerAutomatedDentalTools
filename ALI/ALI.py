@@ -14,13 +14,13 @@ import platform
 import slicer
 from slicer.util import pip_install, pip_uninstall
 
-from CondaSetUp import CondaSetUpCall,CondaSetUpCallWsl
+
 import time
 import threading
 from multiprocessing import Process, Value
 import subprocess
 
-from CondaSetUp import CondaSetUpCall,CondaSetUpCallWsl
+
 import time
 import threading
 import sys
@@ -37,7 +37,7 @@ def check_lib_installed(lib_name, required_version=None):
 
 # import csv
 def install_function():
-    libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('pytorch3d', '0.6.2')]
+    libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('pytorch3d', '0.7.4')]
     if platform.system() == "Windows":
         libs.append(('torch', None))
         libs.append(('torchvision', None))
@@ -159,7 +159,7 @@ class ALI(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "ALI"  # TODO: make this more human readable by adding spaces
     self.parent.categories = ["Automated Dental Tools"]  # set categories (folders where the module shows up in the module selector)
-    self.parent.dependencies = ["CondaSetUp"]  # TODO: add here list of module names that this module requires
+    self.parent.dependencies = []  # TODO: add here list of module names that this module requires
     self.parent.contributors = ["Maxime Gillot (UoM), Baptiste Baquero (UoM)"]  # TODO: replace with "Firstname Lastname (Organization)"
     # TODO: update with short description of the module and a link to online module documentation
     self.parent.helpText = """
@@ -292,7 +292,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
     Called when the user opens the module the first time and the widget is initialized.
     """
-    self.conda_wsl = CondaSetUpCallWsl()
+    # self.conda_wsl = CondaSetUpCallWsl()
     ScriptedLoadableModuleWidget.setup(self)
 
     # Load widget from .ui file (created by Qt Designer).
@@ -599,8 +599,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def onPredictButton(self):
     if platform.system()=="Windows" and not self.CBCT_as_input :
-      # qt.QMessageBox.warning(self.parent, 'Warning', 'ALI_IOS is currently not available on Windows')
-      lib_ok = True
+
+      qt.QMessageBox.warning(self.parent, 'Warning', 'ALI_IOS is currently not available on Windows system on the version 5.6 of Slicer. Please use the Preview version of Slicer or a Linux system.')
+      lib_ok = False
     else :
       lib_ok = install_function()
 
@@ -699,74 +700,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     ready = True
     system = platform.system()
     if system=="Windows" and not self.CBCT_as_input : 
-      # If on windows and running ios 
-      self.ui.PredictionButton.setEnabled(False)
-      self.ui.PredScanLabel.setVisible(True)
-      self.ui.PredScanLabel.setText(f"Verification of WSL, this step can take few minutes")
-      wsl = self.conda_wsl.testWslAvailable()
-      if wsl : # check if wsl is available
-        lib = self.check_lib_wsl()
-        if not lib : # check if the lib required are installed
-            messageBox = qt.QMessageBox()
-            text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
-            ready = False
-            messageBox.information(None, "Information", text)
-      else :
-        messageBox = qt.QMessageBox()
-        text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
-        ready = False
-        messageBox.information(None, "Information", text)
-      
-      if ready :
-        
-        if "Error" in self.conda_wsl.condaRunCommand([self.conda_wsl.getCondaExecutable(),"--version"]): # check if miniconda is install in wsl and is setup in SlicerConda
-              messageBox = qt.QMessageBox()
-              text = "Code can't be launch. \nConda is not setup in WSL. Please go the extension CondaSetUp in SlicerConda to do it."
-              ready = False
-              messageBox.information(None, "Information", text)
-              
-      if ready :
-        self.RunningUIWindows(True) 
-        if not self.conda_wsl.condaTestEnv('ali_ios') : # check if the environnement exist
-              userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the landmarks identification  doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist") # ask the persimission to create it
-              if userResponse : #create it in parallele to not blocking slicer
-              
-                process = threading.Thread(target=self.creation_env_wsl, args=())
-                process.start()
-                
-                start_time = time.time()
-                previous_time = start_time
-                current_time = start_time
-                
-                self.ui.PredScanLabel.setText(f"The environnement doesn't exist, creation of the environnement")
-                self.ui.TimerLabel.setText(f"time: : {current_time-start_time:.2f}s")
-
-                while process.is_alive():
-                      slicer.app.processEvents()
-                      current_time = time.time()
-                      if current_time - previous_time > 0.3 :
-                            previous_time = current_time
-                            self.ui.TimerLabel.setText(f"time: : {current_time-start_time:.2f}s")
-
-              else :
-                    self.ui.PredScanLabel.setText(f"The environnement doesn't exist, code can't be launch")
-                    ready = False
-          
-        if ready : # if everything is setup, launch ali_ios_wsl in parallele on the environnement in wsl. Launch in parallele to not block slicer
-          process = threading.Thread(target=self.process_wsl, args=(param,))
-          process.start()
-          
-          start_time = time.time()
-          previous_time = start_time
-          current_time = start_time
-          self.ui.PredScanLabel.setText(f"Files in process")
-          self.ui.TimerLabel.setText(f"time: : {current_time-start_time:.2f}s")
-          while process.is_alive():
-                slicer.app.processEvents()
-                current_time = time.time()
-                if current_time - previous_time > 0.3 :
-                      previous_time = current_time
-                      self.ui.TimerLabel.setText(f"time: : {current_time-start_time:.2f}s")
+      msg = qt.QMessageBox()
+      msg.setText("DentalModelSeg is not available on Slicer version 5.6 on a Windows system. Please use the Preview version of Slicer or a Linux system.")
+      msg.setWindowTitle("Error")
+      msg.exec_()
+      return
           
 
     else : #running ali as before without wsl
@@ -781,98 +719,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
         self.onProcessStarted()
-
-  def windows_to_linux_path(self,windows_path):
-      '''
-      convert a windows path to a wsl path
-      '''
-      windows_path = windows_path.strip()
-
-      path = windows_path.replace('\\', '/')
-
-      if ':' in path:
-          drive, path_without_drive = path.split(':', 1)
-          path = "/mnt/" + drive.lower() + path_without_drive
-
-      return path
-    
-  def process_wsl(self,param):
-      ''' 
-      Function to launch ali_ios_wsl.
-      Launch requirement.py in the environnement to be sure every librairy are well install with the good version
-      Convert all the windows path to wsl path before launching the code
-      '''
-        
-      file_path = os.path.realpath(__file__)
-      folder = os.path.dirname(file_path)
-      alio_ios_folder = os.path.join(folder, '../ALI_IOS')
-      ali_ios_folder_norm = os.path.normpath(alio_ios_folder)
-      requirement_path = os.path.join(ali_ios_folder_norm, 'utils','requirement.py')
-      args = []
-      path_pip = self.conda_wsl.getCondaPath()+"/envs/ali_ios/bin/pip"
-      args.append(path_pip)
-      result = self.conda_wsl.condaRunFilePython(requirement_path,'ali_ios',args)
-      
-      print("RESULT OF ALI IOS WSL REQUIREMENT : ",result)
-      
-      ###############################
-      
-      param["input"] = self.windows_to_linux_path(param["input"])
-      param["dir_models"] = self.windows_to_linux_path(param["dir_models"])
-      param["output_dir"] = self.windows_to_linux_path(param["output_dir"])
-      print("param : ",param)
-      args = []
-      for key,value in param.items() :
-            args.append(str(value))
-            
-      print("args : ",args)
-      file_path = os.path.realpath(__file__)
-      folder = os.path.dirname(file_path)
-      alio_ios_folder = os.path.join(folder, '../ALI_IOS')
-      ali_ios_folder_norm = os.path.normpath(alio_ios_folder)
-      ali_ios_path = os.path.join(ali_ios_folder_norm, 'utils','ALI_IOS_WSL.py')
-      
-      
-      result = self.conda_wsl.condaRunFilePython(ali_ios_path,'ali_ios',args)
-      
-      print("RESULT DE ALI IOS WSL : ",result)
-        
-        
-        
-        
-  def creation_env_wsl(self):
-        '''
-        Create the environnement on wsl to run landmarks identification of ios files
-        '''
-        librairies = ["torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113",
-              "monai==0.7.0",
-              "--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113",
-              "fvcore==0.1.5.post20220305",
-              "--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html",
-              "rpyc",
-              "vtk",
-              "scipy"]
-        
-        self.conda_wsl.condaCreateEnv('ali_ios','3.9')
-        
-        for lib in librairies :
-              self.conda_wsl.condaInstallLibEnv('ali_ios',[lib])
-        
-
-
-  def check_lib_wsl(self)->bool:
-    '''
-    Check if wsl contains the require librairies
-    '''
-    result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
-    output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
-    clean_output1 = output1.replace('\x00', '')
-
-    result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
-    output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
-    clean_output2 = output2.replace('\x00', '')
-
-    return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
 
 
   def onProcessStarted(self):
@@ -920,9 +766,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
       self.RunningUI(True)
-
-
-
 
 
   def UpdateALICBCT(self,progress):
