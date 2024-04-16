@@ -4,6 +4,9 @@ set(MODULE_NAME ALI)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
+  ALI_IOS_utils/__init__.py
+  ALI_IOS_utils/ALI_IOS_WSL.py
+  ALI_IOS_utils/requirement.py
 )
 
 set(MODULE_PYTHON_RESOURCES
