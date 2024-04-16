@@ -36,7 +36,7 @@ def func_import(install=False):
     import pytorch3d
     return True
   except : 
-    print("ERROR")
+    print("Distribution not found for shapeaxi")
     if install :
       pip_install("shapeaxi")
       try:
@@ -301,8 +301,8 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         output_text = self.ui.lineEditOutput.text
         suffix_text = self.ui.lineEditSuffix.text
         lower_arch = self.ui.lineEditLowerArch.text
-        print("lower_arch : ",lower_arch)
-        print(Path(lower_arch).is_file())
+        # print("lower_arch : ",lower_arch)
+        # print(Path(lower_arch).is_file())
         if Path(lower_arch).is_file():
             self.reg.run(output_text, suffix_text, lower_arch)
         else :
@@ -1154,9 +1154,10 @@ class WidgetParameter:
         
         elapsed_time = time.time() - self.start_time
         self.label_time.setVisible(True)
-        self.label_time.setText(f"time : {round(float(elapsed_time),2)}s")
+        self.label_time.setText(f"Patch deletion, time : {round(float(elapsed_time),2)}s")
 
         if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+            self.label_time.setText(f"Patch deleted, time : {round(float(elapsed_time),2)}s")
             self._processed3 = True
             self.timer.stop()
             self.viewScan()
@@ -1400,6 +1401,7 @@ class WidgetParameter:
         
         except NoSegmentationSurf as error :
             if platform.system()!="Windows":
+                print("on appel shapeaxi")
                 sucess_segmentation = self.shapeaxi()
             else :
                 sucess_segmentation = self.shapeaxi_windows()
@@ -1479,7 +1481,6 @@ class WidgetParameter:
                     start_time = time.time()
                     previous_time = start_time
                     self.label_time.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: 0.0s")
-                    # name_env = "shapeaxi"
                     name_env = "shapeAxiEnv"
                     file_path = os.path.realpath(__file__)
                     folder = os.path.dirname(file_path)
@@ -1544,6 +1545,8 @@ class WidgetParameter:
         process.start()
         start_time = time.time()
         previous_time = time.time()
+        self.label_time.setVisible(True)
+        self.label_time.setText(f"{message}\ntime: 0s")
         while process.is_alive():
           slicer.app.processEvents()
           current_time = time.time()
@@ -1554,37 +1557,26 @@ class WidgetParameter:
               self.label_time.setText(f"{message}\ntime: {elapsed_time:.1f}s")
 
     def shapeaxi(self):
+        '''
+        run shapeaxi (segmentation of the crown, dentalmodelseg) in slicer (for Linux system)
+        '''
                         
         env_ok = func_import(False)
         print("env_ok : ",env_ok)
         if not env_ok : 
-            userResponse = slicer.util.confirmYesNoDisplay("Some of the required libraries are not installed in Slicer. Would you like to install them?\nThis may take a few minutes.", windowTitle="Env doesn't exist")
+            userResponse = slicer.util.confirmYesNoDisplay("Some of the required libraries are not installed in Slicer. Would you like to install them?\nThis operation takes a few minutes and may affect other modules.", windowTitle="Env doesn't exist")
             if userResponse : 
                 self.parall_process(func_import,[True],"Installing the required packages in Slicer")
                 env_ok = True
-            # env_ok=func_import(True)
         if env_ok : 
             slicer_path = slicer.app.applicationDirPath()
             dentalmodelseg_path = os.path.join(slicer_path,"..","lib","Python","bin","dentalmodelseg")
-            print("dentalmodelseg_path : ",dentalmodelseg_path)
-            # self.logic = CrownSegmentationLogic(surf,
-            #                                 input_csv, 
-            #                                 self.ui.outputLineEdit.text,
-            #                                 "1" if self.ui.checkBoxOverwrite.checked else "0", 
-            #                                 self.model, 
-            #                                 "1" if self.ui.sepOutputsCheckbox.isChecked() else "0",
-            #                                 self.predictedId,
-            #                                 self.chooseFDI,
-            #                                 self.ui.outputFileLineEdit.text,
-            #                                 vtk_folder,
-            #                                 dentalmodelseg_path)
 
 
             moduleName = "CrownSegmentation"
             moduleAvailable = moduleName in slicer.app.moduleManager().modulesNames()
             self._processed2 = False
             if moduleAvailable : 
-                # modelFilePath = self.downloadModel()
                 parameters = {
                     "surf" :self.lineedit.text,
                     "input_csv":"None",
@@ -1598,47 +1590,30 @@ class WidgetParameter:
                     "vtk_folder":os.path.dirname(self.lineedit.text),
                     "dentalmodelseg_path":dentalmodelseg_path
                 }
-                print("parametres : ", parameters)
-                # print(f' Error {error}')
+                print("parameters : ",parameters)
                 self.start_time = time.time()
                 flybyProcess = slicer.modules.crownsegmentationcli
                 self.start_time = time.time()
+                try:
+                    self.timer.timeout.disconnect()
+                except TypeError:
+                    pass
                 self.timer.timeout.connect(self.onProcessUpdateSeg)
                 self.timer.start(500)
-                cliNode = slicer.cli.run(flybyProcess,None, parameters)    
+                self.seg_clinode = slicer.cli.run(flybyProcess,None, parameters)    
                 
-                # self.addObserver(cliNode, vtk.vtkCommand.ModifiedEvent, self.onProcessUpdateSeg)
-                # self.onProcessStarted()
-            
-            # self.logic.process()
-            # self.addObserver(self.logic.cliNode,vtk.vtkCommand.ModifiedEvent,self.onProcessUpdateSeg)
-            # self.onProcessStarted()
-            # file_path = os.path.abspath(__file__)
-            # folder_path = os.path.dirname(file_path)
-
-        #   if flag :
-        #     command = [f'dentalmodelseg --vtk \"{self.lineedit.text}\" --stl \"{None}\" --csv \"{None}\" --out \"{None}\" --overwrite \"{True}\" --model \"{None}\" --crown_segmentation \"{False}\" --array_name \"{"Universal_ID"}\" --fdi \"{0}\" --suffix \"{None}\" --vtk_folder \"{os.path.dirname(self.lineedit.text)}\"']
-        #     print("command : ",command)
-        #     process = threading.Thread(target=conda.condaRunCommand, args=(command,name_env))
-        #     process.start()
-            
-        #     start_time = time.time()
-        #     previous_time = start_time
-        #     while process.is_alive():
-        #         slicer.app.processEvents()
-        #         current_time = time.time()
-        #         gap=current_time-previous_time
-        #         if gap>0.3:
-        #             previous_time = current_time
-        #             elapsed_time = current_time - start_time
-        #             self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+                self._segmentationCompleted = False
+                while not self._segmentationCompleted:
+                    slicer.app.processEvents()  # Process GUI events
+                return True
+                
             return True
         return False
 
             
     def onProcessUpdateSeg(self):
         '''
-        Update time since the beginning of the cli. When it's the end of the cli, display the patch
+        Update time since the beginning of the segmentation. When it's the end of it, load the new scan segmented
         '''
         if hasattr(self, "_processed2") and self._processed2:
             return
@@ -1647,11 +1622,12 @@ class WidgetParameter:
         self.label_time.setVisible(True)
         self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
 
-        if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+
+        if self.seg_clinode.GetStatus() & self.seg_clinode.Completed:
             self._processed2 = True
             self.timer.stop()
-            self.viewScan()
-            # self.displaySegmentation(self.surf)
+            self.viewScan() 
+            self._segmentationCompleted = True
             
             
 
@@ -1664,7 +1640,8 @@ class WidgetParameter:
         Call the cli for the butterfly patch. Launch onProcessUpdateButterfly
         '''
         if self.checkSurfExist() :
-            if self.checkSegmentation():
+            seg = self.checkSegmentation()
+            if seg:
                 self._processed2 = False
                 if self.add_patch.isChecked():
                     index=int(self.addItemsCombobox())
@@ -1694,6 +1671,10 @@ class WidgetParameter:
                             "None")
                 self.logic.process()
                 self.start_time = time.time()
+                try:
+                    self.timer.timeout.disconnect()
+                except TypeError:
+                    pass
                 self.timer.timeout.connect(self.onProcessUpdateButterfly)
                 self.timer.start(500)
         else :
@@ -1709,9 +1690,10 @@ class WidgetParameter:
         
         elapsed_time = time.time() - self.start_time
         self.label_time.setVisible(True)
-        self.label_time.setText(f"time : {round(float(elapsed_time),2)}s")
+        self.label_time.setText(f"Creation of the patch, time : {round(float(elapsed_time),2)}s")
 
         if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+            self.label_time.setText(f"Patch created, time : {round(float(elapsed_time),2)}s")
             self._processed2 = True
             self.timer.stop()
             self.viewScan()
@@ -1947,6 +1929,10 @@ class WidgetParameter:
             self.logic.process()
 
             self.start_time = time.time()
+            try:
+                self.timer.timeout.disconnect()
+            except TypeError:
+                pass
             self.timer.timeout.connect(self.onProcessUpdateCurve)
             self.timer.start(500)
 
@@ -1967,10 +1953,11 @@ class WidgetParameter:
 
         elapsed_time = time.time() - self.start_time
         self.label_time.setVisible(True)
-        self.label_time.setText(f"time : {round(float(elapsed_time),2)}s")
+        self.label_time.setText(f"Creation of the patch, time : {round(float(elapsed_time),2)}s")
 
         if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
             #PLACE BACK THE CURVE AND THE MIDDLE POINT ON THE CENTER MODEL 
+            self.label_time.setText(f"Patch created, time : {round(float(elapsed_time),2)}s")
             self.camera=True
             self.viewScan()
             self.moveCurve(self.matrix)
@@ -2027,7 +2014,7 @@ class WidgetParameter:
         '''
 
         self.createButterfly(model_node.GetPolyData())
-
+        
         displayNode = model_node.GetModelDisplayNode()
         displayNode.SetScalarVisibility(False)
         disabledModify = displayNode.StartModify()
