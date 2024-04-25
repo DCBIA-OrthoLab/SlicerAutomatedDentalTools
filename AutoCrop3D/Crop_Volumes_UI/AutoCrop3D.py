@@ -6,7 +6,7 @@ import SimpleITK as sitk
 
 import slicer
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin
+from slicer.util import VTKObservationMixin,pip_install
 
 import qt
 from qt import QFileDialog, QMessageBox
@@ -17,11 +17,17 @@ from functools import partial
 
 from pathlib import Path
 import time
+import threading
+from queue import Queue
+import sys
+import io
 #import Crop_Volumes_CLI.Crop_Volumes_utils as cpu
 
 #
 # AutoCrop3D
 #
+
+
 
 class AutoCrop3D(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -148,8 +154,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #self.ui.TestFiles.connect("clicked(bool)",self.Autofill)
         #self.ui.chooseType.connect("clicked(bool)", self.SearchPath)
 
-
-
+        self.ui.checkBoxCV.toggled.connect(self.optionCheckBox)
 
         # These connections ensure that we update parameter node when scene is closed
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
@@ -177,7 +182,6 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setTextVisible(True)
         self.ui.label_4.setVisible(False)
         self.ui.label_time.setVisible(False)
-
 
 
 
@@ -291,9 +295,17 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
 
-
-
         self._parameterNode.EndModify(wasModified)
+
+    def optionCheckBox(self,index):
+        '''
+        function to remove the checkboxSize option when the user choose the Crop Volume module
+        '''
+        if index ==1:
+            self.ui.checkBoxSize.setChecked(False)
+            self.ui.checkBoxSize.setVisible(False)
+        else:
+            self.ui.checkBoxSize.setVisible(True)
 
     def onApplyButton(self):
         """
@@ -301,28 +313,44 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         isValid = self.CheckInput()
         if isValid :
-        #     cpu.Crop(dict_patient_files,self.ui.editPathF.text,self.ui.editPathVolume.text,self.ui.editPathOutput.text,self.ui.editSuffix.text)
+            if self.ui.checkBoxCV.isChecked():
+                pass
+                self.onProcessStarted()
+                # Start the thread
+                path_input = self.ui.editPathF.text
+                roi_input = self.ui.editPathVolume.text
+                output_dir = self.ui.editPathOutput.text
+                suffix = self.ui.editSuffix.text
 
-        # else :
-        #     print("Error input")
+                # self.thread = threading.Thread(target=self.processCropVolume, args=(path_input,roi_input,output_dir,suffix))
+                # self.thread.start()
+                self.processCropVolume(self.ui.editPathF.text,
+                                        self.ui.editPathVolume.text,
+                                        self.ui.editPathOutput.text,
+                                        self.ui.editSuffix.text) # use module Crop Volume of Slicer
+                # Progress Bar/ thread for Crop Volume module
+                # self.worker = Worker(self.nbFiles)
+                # self.worker.signals.progress.connect(self.updateProgressCV)
+                # self.worker.signals.finished.connect(self.updateProgressCV)
+                # if not self.worker.isRunning():
+                #     self.worker.start()
+            else:
+                box_Size =str(self.ui.checkBoxSize.isChecked())
+                self.logic = AutoCrop3DLogic(self.ui.editPathF.text,
+                                                self.ui.editPathVolume.text,
+                                                self.ui.editPathOutput.text,
+                                                self.ui.editSuffix.text,
+                                                box_Size,
+                                                self.log_path)
 
-
-            box_Size =str(self.ui.checkBoxSize.isChecked())
-            self.logic = AutoCrop3DLogic(self.ui.editPathF.text,
-                                            self.ui.editPathVolume.text,
-                                            self.ui.editPathOutput.text,
-                                            self.ui.editSuffix.text,
-                                            box_Size,
-                                            self.log_path)
-
-
-            self.logic.process()
-            self.addObserver(self.logic.cliNode,vtk.vtkCommand.ModifiedEvent,self.onProcessUpdate)
-            self.onProcessStarted()
+                self.logic.process()
+                self.addObserver(self.logic.cliNode,vtk.vtkCommand.ModifiedEvent,self.onProcessUpdate)
+                self.onProcessStarted()
 
 
     def onProcessStarted(self):
         self.nbFiles = 0
+        self.processedFiles = 0
         for key,data in self.list_patient.items() :
             self.nbFiles += len(self.list_patient[key])
 
@@ -357,7 +385,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 
-        if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+        if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed :
             # process complete
             self.ui.applyButton.setEnabled(True)
             self.ui.label_4.setText("Number of processed files : "+str(self.progress)+"/"+str(self.nbFiles))
@@ -399,6 +427,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.editPathVolume.setText("")
                 self.ui.editPathOutput.setText("")
                 self.ui.checkBoxSize.setChecked(False)
+                self.ui.checkBoxCV.setChecked(False)
                 self.ui.chooseType.setCurrentIndex(0)
                 self.ui.chooseType_ROI.setCurrentIndex(0)
 
@@ -406,6 +435,53 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 processTime = round(time.time() - self.startTime,3)
                 self.ui.label_time.setVisible(True)
                 self.ui.label_time.setText("done in "+ str(processTime)+ "s")
+
+
+    def updateProgressCV(self):
+        try:
+            progress_value = round((self.processedFiles / self.nbFiles) * 100)
+            self.ui.label_4.setText(f"Number of processed files: {self.processedFiles}/{self.nbFiles}")
+            self.ui.progressBar.setValue(progress_value)
+
+            if self.processedFiles >= self.nbFiles:
+
+                self.ui.progressBar.setValue(100)  # Ensure it's set to 100% at the end
+                self.ui.progressBar.setFormat("100%")
+
+                msg = qt.QMessageBox()
+                msg.setIcon(qt.QMessageBox.Information)
+
+                # setting message for Message Box
+                msg.setText("Scan(s) cropped with success")
+
+                # setting Message box window title
+                msg.setWindowTitle("End of Process")
+
+                # declaring buttons on Message Box
+                msg.setStandardButtons(qt.QMessageBox.Ok)
+                msg.exec_()
+
+                self.ui.progressBar.setVisible(False)
+                self.ui.label_4.setVisible(False)
+                self.ui.editPathF.setText("")
+                self.ui.editPathVolume.setText("")
+                self.ui.editPathOutput.setText("")
+                self.ui.checkBoxSize.setChecked(False)
+                self.ui.checkBoxCV.setChecked(False)
+                self.ui.chooseType.setCurrentIndex(0)
+                self.ui.chooseType_ROI.setCurrentIndex(0)
+
+
+                processTime = round(time.time() - self.startTime,3)
+                self.ui.label_time.setVisible(True)
+                self.ui.label_time.setText("done in "+ str(processTime)+ "s")
+
+            return
+        except Exception as e:
+            print(f"Error reading log file: {e}")
+            return
+
+
 
     def SearchPath(self,object : str,_):
         """
@@ -429,7 +505,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.editPathF.setText(path_folder)
 
         if object == "ROI":
-            if self.ui.chooseType.currentIndex == 0:
+            if self.ui.chooseType_ROI.currentIndex == 0:
                 path_folder = qt.QFileDialog.getOpenFileName(self.parent,'Open a file')
 
             else:
@@ -568,9 +644,171 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             qt.QMessageBox.warning(self.parent, "Warning", warning_text)
             result = False
             return result
+
+    def resetGUI(self):
+        """
+        Reset the GUI elements like progress bar, labels, etc.
+        """
+        self.ui.label_4.setVisible(False)
+        self.ui.progressBar.setVisible(False)
+        self.ui.editPathF.setText("")
+        self.ui.editPathVolume.setText("")
+        self.ui.editPathOutput.setText("")
+        self.ui.checkBoxSize.setChecked(False)
+        self.ui.checkBoxCV.setChecked(False)
+
+    def ChangeKeyDict(self,list_files : list) -> dict:
+        """
+        Return a dictionary with the name of the patient being the key and the path of the file being the value.
+        Example:
+        list_files = ['path/a.json', 'path/b.json','path/c.json']
+        return:
+            {
+                'a' : 'path/a_ROI.mrk.json',
+                'b' : 'path/b_ROI.mrk.json',
+                'c' : 'path/c_ROI.mrk.json'
+            }
+
+        Input : Dictionary with the extension of the file as key and the list of the path of the file as value
+        Output : dictionnary with the key and the associated path
+        """
+        result = {}  # Initialize an empty dictionary
+
+        for key, value in list_files.items():
+            for file in value:
+                patient = os.path.basename(file).split('_')[0]
+                result[patient] = file
+
+        return result
+
+
+    def saveOutput(self, outputQueue,outputVolume,path_input,patient_path,output_dir,suffix):
+        """
+        Save the output volume to a file.
+        """
+        output_filename = os.path.basename(patient_path).replace('.nii.gz',f'_{suffix}.nii.gz')
+        if os.path.isdir(path_input):
+            relative_path= patient_path.replace(path_input,output_dir)
+        else:
+            relative_path= patient_path.replace(os.path.dirname(path_input),output_dir)
+        output_path = relative_path.replace(os.path.basename(patient_path),output_filename)
+        try:
+            slicer.util.saveNode(outputVolume, output_path)
+            success = True
+        except:
+            success = False
+
+        self.processedFiles += 1
+
+        if self.processedFiles%1==0 or self.processedFiles>=self.nbFiles:
+            self.updateProgressCV()
+
+
+        outputQueue.put((success))
+        self.updateProgressCV()
+
+        return success
+
+
+    def processCropVolume(self,path_input,path_ROI,output_dir,suffix):
+        index =0
+        ScanList = self.Search(path_input, ".nii.gz",".nii",".nrrd.gz",".nrrd",".gipl.gz",".gipl")
+        if os.path.isdir(path_ROI):
+            ROIList = self.Search(path_ROI,".mrk.json")
+            ROI_dict = self.ChangeKeyDict(ROIList)
+        else:
+            ROIList = None
+
+        idx=0
+        for key,data in ScanList.items():
+            for patient_path in data:
+                patient = os.path.basename(patient_path).split('_Scan')[0].split('_scan')[0].split('_Seg')[0].split('_seg')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0]
+
+                img = sitk.ReadImage(patient_path)
+
+                if ROIList is not None:
+                    try:
+                        ROI_Path = ROI_dict[patient]
+                    except:
+                        print('No ROI for patient:',patient)
+                        idx+=1
+                        if idx==self.nbFiles:
+                            print('No ROI for any patient, exiting')
+                            #qmessage box to inform the user that no ROI was found for any patient
+                            msg = qt.QMessageBox()
+                            msg.setIcon(qt.QMessageBox.Warning)
+                            msg.setText("No ROI was found for any patient")
+                            msg.setWindowTitle("Error")
+                            msg.exec_()
+
+                            self.resetGUI()
+                            break
+                        else:
+                            continue
+                else:
+                    ROI_Path = path_ROI
+
+                roiNode = slicer.util.loadMarkups(ROI_Path)
+
+                # Crop Volume is not working on segmentation so we need to put them as scans :)
+
+                # if "Seg" in patient_path or "seg" in patient_path:
+                #     inputVolume = slicer.util.loadSegmentation(patient_path)
+                # else:
+                inputVolume = slicer.util.loadVolume(patient_path)
+
+                outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+
+                #Crop Volume being a Loadable module and not a cli, suggestion:
+                cropVolumeLogic= slicer.modules.cropvolume.logic()
+
+                parameters = slicer.vtkMRMLCropVolumeParametersNode()
+                parameters.SetInputVolumeNodeID(inputVolume.GetID())
+                parameters.SetROINodeID(roiNode.GetID())
+                parameters.SetOutputVolumeNodeID(outputVolume.GetID())
+
+                slicer.mrmlScene.AddNode(parameters)
+
+                cropVolumeLogic.Apply(parameters)
+
+                outputVolume = slicer.mrmlScene.GetNodeByID(parameters.GetOutputVolumeNodeID())
+
+                original_stdin = sys.stdin
+                sys.stdin = DummyFile()
+
+                outputQueue = Queue()
+
+                self.thread = threading.Thread(target=self.saveOutput, args=(outputQueue,outputVolume,path_input,patient_path,output_dir,suffix))
+                self.thread.start()
+
+                while self.thread.is_alive():
+                    slicer.app.processEvents()
+                    self.updateProgressCV()
+                    try:
+                        success = outputQueue.get_nowait()
+                        if not success:
+                            print(f"Failed to save volume {patient_path}")
+                            continue
+                    except:
+                        pass
+
+                sys.stdin = original_stdin
+
+                # print(f"Volume saved as {output_path}")
+                slicer.mrmlScene.RemoveNode(inputVolume)
+                slicer.mrmlScene.RemoveNode(outputVolume)
+                slicer.mrmlScene.RemoveNode(roiNode)
+                slicer.mrmlScene.Clear(0)
+
+
+
 #
 # AutoCrop3D Logic
 #
+
+class DummyFile(io.IOBase):
+        def close(self):
+            pass
 
 class AutoCrop3DLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
@@ -621,10 +859,10 @@ class AutoCrop3DLogic(ScriptedLoadableModuleLogic):
         parameters ["logPath"] = self.logPath
 
 
-        flybyProcess = slicer.modules.autocrop3d_cli
-        self.cliNode = slicer.cli.run(flybyProcess,None, parameters)
+        CLI_autoCrop3D = slicer.modules.autocrop3d_cli
+        self.cliNode = slicer.cli.run(CLI_autoCrop3D,None, parameters)
 
-        return flybyProcess
+        return CLI_autoCrop3D
 
     # def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
     #     """
@@ -716,7 +954,7 @@ def test_AutoCrop3D1(self):
         segmentationNode = slicer.util.loadVolume(segmentationFile)
     except:
         raise ValueError("CBCT scan could not be loaded")
-    
+
     #Try Load JSON file
     jsonZip = os.path.join(os.path.dirname(__file__), 'Testing', 'Test_data', 'ROI.mrk.zip')
     jsonDir = os.path.join(tempDir, 'ROI.mrk')
@@ -725,14 +963,14 @@ def test_AutoCrop3D1(self):
         zip_ref.extractall(jsonDir)
 
     jsonFile = os.path.join(jsonDir, 'ROI.mrk.json')
-    try: 
+    try:
         with open(jsonFile) as f:
             jsonROI = json.load(f)
     except:
         raise ValueError("JSON file could not be loaded")
 
     # Test for JSON File Reading
-    # Read JSON file and verify ROI data 
+    # Read JSON file and verify ROI data
 
     # Test ROI Application
     # Apply ROI to CBCT scan and verify the operation
