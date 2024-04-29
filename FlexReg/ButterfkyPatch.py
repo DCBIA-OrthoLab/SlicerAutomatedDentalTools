@@ -16,14 +16,15 @@ from slicer.util import VTKObservationMixin
 try : 
     import torch
 except ImportError :
-    pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
-    pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
+    # pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
+    # pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
+    pip_install('torch torchvision torchaudio')
     import torch
 
 import subprocess
 
 from pathlib import Path
-
+import re
 import io
 from CondaSetUp import  CondaSetUpCall,CondaSetUpCallWsl
 
@@ -57,6 +58,20 @@ def func_import(install=False):
             pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
             pip_install('--no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
 
+      return True
+    return False
+
+def func_import_windows(install=False): 
+  try : 
+    import pkg_resources
+    shapeaxi_version = pkg_resources.get_distribution("torch").version 
+    print("Distribution    Found for torch")
+    return True
+  except : 
+    print("Distribution not found for torch")
+    if install :
+      pip_install(f'torch torchaudio torchvision')
+      import torch 
       return True
     return False
 # try:
@@ -1458,6 +1473,7 @@ class WidgetParameter:
         if ready :
             self.label_time.setText(f"Checking if environnement exist")
             name_env = "shapeAxiEnv"
+            name_env = "shapeaxi"
             if not self.conda_wsl.condaTestEnv(name_env) : # check is environnement exist, if not ask user the permission to do it
                 userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the segmentation doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
                 if userResponse :
@@ -1482,11 +1498,18 @@ class WidgetParameter:
                     previous_time = start_time
                     self.label_time.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: 0.0s")
                     name_env = "shapeAxiEnv"
-                    file_path = os.path.realpath(__file__)
-                    folder = os.path.dirname(file_path)
-                    utils_folder = os.path.join(folder, "utils")
-                    utils_folder_norm = os.path.normpath(utils_folder)
-                    install_path = self.windows_to_linux_path(os.path.join(utils_folder_norm, 'install_pytorch.py'))
+                    name_env = "shapeaxi"
+                    # file_path = os.path.realpath(__file__)
+                    # folder = os.path.dirname(file_path)
+                    # utils_folder = os.path.join(folder, "utils")
+                    # utils_folder_norm = os.path.normpath(utils_folder)
+                    # install_path = self.windows_to_linux_path(os.path.join(utils_folder_norm, 'install_pytorch.py'))
+                    # path_pip = self.conda_wsl.getCondaPath()+f"/envs/{name_env}/bin/pip"
+                    PYTHONPATH = os.environ.get('PYTHONPATH')
+                    search_term = "SlicerDentalModelSeg"
+                    filename_to_search = "install_pytorch.py"
+                    install_path = self.windows_to_linux_path(self.filter_and_search_paths(PYTHONPATH, search_term, filename_to_search))
+                    install_path = self.windows_to_linux_path("C:\\Users\\Lucia Cevidanes\\Documents\\Gaelle\\SlicerAutomatedDentalTools\\FlexReg\\FlexReg_utils\\install_pytorch.py")# A RETIRER JUSTE POUR TEST !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     path_pip = self.conda_wsl.getCondaPath()+f"/envs/{name_env}/bin/pip"
                     process = threading.Thread(target=self.conda_wsl.condaRunFilePython, args=(install_path,name_env,[path_pip],)) # launch install_pythorch.py with the environnement ali_ios to install pytorch3d on it
                     process.start()
@@ -1504,14 +1527,55 @@ class WidgetParameter:
                 
         if ready : # if everything is ready launch dentalmodelseg on the environnement shapeaxi in wsl
             
-
-            command = [f'dentalmodelseg --vtk \"{self.windows_to_linux_path(self.lineedit.text)}\" --stl \"{None}\" --csv \"{None}\" --out \"{None}\" --overwrite \"{True}\" --model \"{None}\" --crown_segmentation \"{False}\" --array_name \"Universal_ID\" --fdi \"{0}\" --suffix \"None\" --vtk_folder \"{self.windows_to_linux_path(os.path.dirname(self.lineedit.text))}\"']
-            print("command : ",command)
-            name_env = "shapeAxiEnv"
-            process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command, name_env))
+            # PYTHONPATH = os.environ.get('PYTHONPATH')
+            # print("PYTHONPATH : ",PYTHONPATH)
+            # print("*"*100)
+            # print(self.find_file("CrownSegmentationcli.py",None, PYTHONPATH))
+            # print(2)
+            # print(self.find_file_old("CrownSegmentationcli.py",PYTHONPATH))
+            # print(3)
+            # print(self.find_file_old("CrownSegmentation.py",PYTHONPATH))
+            # print(4)
+            # search_term = "SlicerDentalModelSeg"
+            # filename_to_search = "CrownSegmentationcli.py"
+            # print(self.filter_and_search_paths(PYTHONPATH, search_term, filename_to_search))
+            # search_term = "SlicerAutomatedDentalTools"
+            # filename_to_search = "ALI_IOS_WSL.py"
+            # print(5)
+            # print(self.filter_and_search_paths(PYTHONPATH, search_term, filename_to_search))
+            # print(6)
+            # print(self.windows_to_linux_path(self.filter_and_search_paths(PYTHONPATH, search_term, filename_to_search)))
+            
+            PYTHONPATH = os.environ.get('PYTHONPATH')
+            search_term = "SlicerDentalModelSeg"
+            filename_to_search = "CrownSegmentationcli.py"
+            cli_path = self.windows_to_linux_path(self.filter_and_search_paths(PYTHONPATH, search_term, filename_to_search))
+            print(f"cli_path : {cli_path}")
+            
+            # Creation path in wsl to dentalmodelseg
+            output_command = self.conda_wsl.condaRunCommand(["which","dentalmodelseg"],"shapeaxi").strip()
+            clean_output = re.search(r"Result: (.+)", output_command)
+            dentalmodelseg_path = clean_output.group(1).strip()
+            dentalmodelseg_path_clean = dentalmodelseg_path.replace("\\n","")
+            
+            args = [self.lineedit.text,                 #surf
+                    "None",                             #input_csv
+                    os.path.dirname(self.lineedit.text),#out
+                    "1",                                #overwrite
+                    "latest",                           #model
+                    "0",                                #crownsegmentation
+                    "Universal_ID",                     #array_name
+                    "0",                                #fdi
+                    "None",                             #suffix 
+                    os.path.dirname(self.lineedit.text),#vtk_folder
+                    dentalmodelseg_path_clean]          #dentalmodelseg_path
+            
+            print("args : ",args)
+            
+            process = threading.Thread(target=self.conda_wsl.condaRunFilePython, args=(cli_path,"shapeaxi",args))
             process.start()
-            self.label_time.setHidden(False)
-            self.label_time.setText(f"time : 0.00s")
+            self.label_time.setVisible(True)
+            self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: 0.0s")
             start_time = time.time()
             previous_time = start_time
             while process.is_alive():
@@ -1521,10 +1585,115 @@ class WidgetParameter:
                 if gap>0.3:
                     previous_time = current_time
                     elapsed_time = current_time - start_time
-                    self.label_time.setText(f"Segmentation in process time : {elapsed_time:.2f}s")
+                    self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+            
+            self.viewScan()
+            # command = [f'dentalmodelseg --surf \"{self.windows_to_linux_path(self.lineedit.text)}\" --out \"{1}\" --overwrite \"{1}\" --crown_segmentation \"{False}\" --array_name \"Universal_ID\" --fdi \"{0}\" --suffix \"None\" --vtk_folder \"{self.windows_to_linux_path(os.path.dirname(self.lineedit.text))}\"']
+            # print("command : ",command)
+            # name_env = "shapeAxiEnv"
+            # process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command, name_env))
+            # process.start()
+            # self.label_time.setHidden(False)
+            # self.label_time.setText(f"time : 0.00s")
+            # start_time = time.time()
+            # previous_time = start_time
+            # while process.is_alive():
+            #     slicer.app.processEvents()
+            #     current_time = time.time()
+            #     gap=current_time-previous_time
+            #     if gap>0.3:
+            #         previous_time = current_time
+            #         elapsed_time = current_time - start_time
+            #         self.label_time.setText(f"Segmentation in process time : {elapsed_time:.2f}s")
 
             return True 
         return False
+    
+    def windows_to_linux_path(self,windows_path):
+        '''
+        Convert a windows path to a wsl path
+        '''
+        windows_path = windows_path.strip()
+
+        path = windows_path.replace('\\', '/')
+
+        if ':' in path:
+            drive, path_without_drive = path.split(':', 1)
+            path = "/mnt/" + drive.lower() + path_without_drive
+
+        return path
+    
+    def find_file_in_subdirectories(self,root_path, filename):
+        """
+        Search recursively for a file in given root directory and its subdirectories.
+        """
+        for dirpath, dirnames, files in os.walk(root_path):
+            if filename in files:
+                return os.path.join(dirpath, filename)
+        return None
+
+    def filter_and_search_paths(self,pythonpath, search_term, filename):
+        """
+        Filter paths containing a specific term, crop the path from that term,
+        and search for a specific file in that directory and its subdirectories.
+        """
+        # Split the pythonpath into individual paths
+        paths = pythonpath.split(';')
+        
+        # Filter and modify paths
+        filtered_paths = [path.split(search_term)[0] + search_term for path in paths if search_term in path]
+        
+        # Search for the file in each path
+        for path in filtered_paths:
+            found_file = self.find_file_in_subdirectories(path, filename)
+            if found_file:
+                return found_file
+        
+        return "File not found in any specified directories."
+    
+    def find_file(self,filename, foldername, path_variable):
+        """
+        This function searches for a file named 'filename' within a specific 'foldername' across various paths listed in 'path_variable'.
+        If 'foldername' is None, it searches for the file directly within the paths.
+        It returns the full path of the file if found, otherwise it returns a message stating the folder or file was not found.
+        """
+        paths = path_variable.split(os.pathsep)
+        
+        for path in paths:
+            # Check if a specific folder is provided
+            if foldername:
+                # Build the path to the specific folder
+                folder_path = os.path.join(path, foldername)
+                # Check if the folder exists
+                if os.path.isdir(folder_path):
+                    path = folder_path  # Use the folder path if it exists
+            
+            # Build the full path to the file
+            file_path = os.path.join(path, filename)
+            
+            if "SlicerDentalModelSeg" in file_path:
+                print(file_path)
+            
+            # Check if the file exists at this location
+            if os.path.isfile(file_path):
+                return file_path
+        
+        return "File or folder not found"
+    
+    def find_file_old(self,filename, path_variable):
+        # Diviser la variable d'environnement PYTHONPATH en une liste de chemins
+        paths = path_variable.split(os.pathsep)
+        
+        # Parcourir chaque chemin
+        for path in paths:
+            # Construire le chemin complet vers le fichier potentiel
+            full_path = os.path.join(path, filename)
+            
+            # Vérifier si le fichier existe à cet emplacement
+            if os.path.isfile(full_path):
+                return full_path
+        
+        return "Fichier non trouvé"
 
     def windows_to_linux_path(self,windows_path):
       '''
@@ -1641,7 +1810,16 @@ class WidgetParameter:
         '''
         if self.checkSurfExist() :
             seg = self.checkSegmentation()
-            if seg:
+            env_ok = True
+            if platform.system()=="Windows" :
+                env_ok = func_import_windows(False)
+                print("env_ok : ",env_ok)
+                if not env_ok :
+                    userResponse = slicer.util.confirmYesNoDisplay("Some of the required libraries are not installed in Slicer. Would you like to install them?\nThis operation takes a few minutes and may affect other modules.", windowTitle="Env doesn't exist")
+                    if userResponse : 
+                        self.parall_process(func_import_windows,[True],"Installing the required packages in Slicer")
+                        env_ok = True
+            if seg and env_ok:
                 self._processed2 = False
                 if self.add_patch.isChecked():
                     index=int(self.addItemsCombobox())
