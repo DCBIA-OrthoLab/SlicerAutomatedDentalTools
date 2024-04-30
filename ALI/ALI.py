@@ -796,55 +796,64 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
       return path
     
+  def check_pythonpath_windows(self,name_env,file):
+      conda_exe = self.conda_wsl.getCondaExecutable()
+      command = [conda_exe, "run", "-n", name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
+      print("command : ",command)
+      result = self.conda_wsl.condaRunCommand(command)
+      print("result = ",result)
+      if "True" in result :
+          return True
+      return False
+    
+  def give_pythonpath_windows(self,name_env):
+      paths = slicer.app.moduleManager().factoryManager().searchPaths
+      mnt_paths = []
+      for path in paths :
+          mnt_paths.append(f"\"{self.windows_to_linux_path(path)}\"")
+      pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
+      conda_exe = self.conda_wsl.getCondaExecutable()
+      # print("Conda_exe : ",conda_exe)
+      argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', name_env, pythonpath_arg]
+      print("arguments : ",argument)
+      self.conda_wsl.condaRunCommand(argument)
+    
   def process_wsl(self,param):
       ''' 
       Function to launch ali_ios_wsl.
       Launch requirement.py in the environnement to be sure every librairy are well install with the good version
       Convert all the windows path to wsl path before launching the code
       '''
+      name_env = "ali_ios"
+      result_pythonpath = self.check_pythonpath_windows(name_env,"ALI_IOS_utils.ALI_IOS_WSL")
+      if not result_pythonpath : 
+        self.give_pythonpath_windows(name_env)
+        result_pythonpath = self.check_pythonpath_windows(name_env,"ALI_IOS_utils.ALI_IOS_WSL")
+      
+      if result_pythonpath:
+        param["input"] = self.windows_to_linux_path(param["input"])
+        param["dir_models"] = self.windows_to_linux_path(param["dir_models"])
+        param["output_dir"] = self.windows_to_linux_path(param["output_dir"])
+        print("param : ",param)
+        conda_exe = self.conda_wsl.getCondaExecutable()
+        command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"ALI_IOS_utils.ALI_IOS_WSL"]
+        for key,value in param.items() :
+              command.append("\""+str(value)+"\"")
+              
+        print("command : ",command)
+
+        result = self.conda_wsl.condaRunCommand(command)
         
-      file_path = os.path.realpath(__file__)
-      folder = os.path.dirname(file_path)
-      alio_ios_folder = os.path.join(folder, 'ALI_IOS_utils')
-      ali_ios_folder_norm = os.path.normpath(alio_ios_folder)
-      requirement_path = os.path.join(ali_ios_folder_norm,'requirement.py')
-      args = []
-      path_pip = self.conda_wsl.getCondaPath()+"/envs/ali_ios/bin/pip"
-      args.append(path_pip)
-      result = self.conda_wsl.condaRunFilePython(requirement_path,'ali_ios',args)
-      
-      print("RESULT OF ALI IOS WSL REQUIREMENT : ",result)
-      
-      ###############################
-      
-      param["input"] = self.windows_to_linux_path(param["input"])
-      param["dir_models"] = self.windows_to_linux_path(param["dir_models"])
-      param["output_dir"] = self.windows_to_linux_path(param["output_dir"])
-      print("param : ",param)
-      args = []
-      for key,value in param.items() :
-            args.append(str(value))
-            
-      print("args : ",args)
-      file_path = os.path.realpath(__file__)
-      folder = os.path.dirname(file_path)
-      alio_ios_folder = os.path.join(folder, 'ALI_IOS_utils')
-      ali_ios_folder_norm = os.path.normpath(alio_ios_folder)
-      ali_ios_path = os.path.join(ali_ios_folder_norm,'ALI_IOS_WSL.py')
-      
-      
-      result = self.conda_wsl.condaRunFilePython(ali_ios_path,'ali_ios',args)
-      
-      print("RESULT DE ALI IOS WSL : ",result)
+        print("RESULT DE ALI IOS WSL : ",result)
         
         
         
         
   def creation_env_wsl(self):
-        '''
-        Create the environnement on wsl to run landmarks identification of ios files
-        '''
-        librairies = ["torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113",
+      '''
+      Create the environnement on wsl to run landmarks identification of ios files
+      '''
+      librairies = ["torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113",
               "monai==0.7.0",
               "--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113",
               "fvcore==0.1.5.post20220305",
@@ -852,11 +861,30 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
               "rpyc",
               "vtk",
               "scipy"]
+      
+      name_env = "ali_ios"
+      self.conda_wsl.condaCreateEnv(name_env,'3.9')
+      result_pythonpath = self.check_pythonpath_windows(name_env,"ALI_IOS_utils.requirement")
+      print("result_pythonpath : ",result_pythonpath)
+      if not result_pythonpath : 
+        self.give_pythonpath_windows(name_env)
+        # result_pythonpath = self.check_pythonpath_windows(name_env,"ALI_IOS_utils.requirement") # THIS LINE IS WORKING
+        result_pythonpath = self.check_pythonpath_windows(name_env,"ALI_IOS_utils.requirement")
+        print("result_pythonpath : ",result_pythonpath)
         
-        self.conda_wsl.condaCreateEnv('ali_ios','3.9')
+      if result_pythonpath : 
+        conda_exe = self.conda_wsl.getCondaExecutable()
+        path_pip = self.conda_wsl.getCondaPath()+f"/envs/{name_env}/bin/pip"
+        # command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"ALI_IOS_utils.requirement",path_pip] # THIS LINE IS WORKING
+        command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"ALI_IOS_utils.requirement",path_pip]
+        print("command : ",command)
         
-        for lib in librairies :
-              self.conda_wsl.condaInstallLibEnv('ali_ios',[lib])
+        result = self.conda_wsl.condaRunCommand(command)
+      
+        print("RESULT OF ALI IOS WSL REQUIREMENT : ",result)
+        
+        # for lib in librairies :
+        #       self.conda_wsl.condaInstallLibEnv('ali_ios',[lib])
         
 
 
