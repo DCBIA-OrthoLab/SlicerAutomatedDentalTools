@@ -12,7 +12,7 @@ set(EXTENSION_ICONURL "https://raw.githubusercontent.com/DCBIA-OrthoLab/SlicerAu
 set(EXTENSION_SCREENSHOTURLS "https://raw.githubusercontent.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/main/ADT-exemple.png")
 set(EXTENSION_DEPENDS 
     SlicerDentalModelSeg
-    Conda)# Specified as a list or "NA" if no dependencies
+    SlicerConda)# Specified as a list or "NA" if no dependencies
 
 #-----------------------------------------------------------------------------
 # Extension dependencies
