@@ -1079,6 +1079,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 is_installed = install_function(self,list_libs_CBCT_windows)
 
             if self.type == "IOS":
+                #HERE GAELLE
                 qt.QMessageBox.warning(self.parent, 'Warning', 'AREG IOS is currently not available on Windows. Please use a Linux or MacOS system to run the module.')
                 is_installed = False
         else:
@@ -1246,6 +1247,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
                 print(self.process.GetOutputText())
                 try:
+                    #HERE GAELLE
+                    print("name process : ",self.list_Processes_Parameters[0]["Process"])
                     self.process = slicer.cli.run(
                         self.list_Processes_Parameters[0]["Process"],
                         None,
