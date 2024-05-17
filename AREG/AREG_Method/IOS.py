@@ -6,6 +6,8 @@ import glob
 import os
 import vtk
 import shutil
+import platform
+import csv
 
 
 class Auto_IOS(Method):
@@ -63,6 +65,47 @@ class Auto_IOS(Method):
                     out = "Please give folder with only one .ckpt file \n"
 
         return out
+    
+    def create_csv(self,input_dir,name_csv):
+        '''
+        create a csv with the complete path of the files in the folder (used for segmentation only)
+        '''
+        file_path = os.path.abspath(__file__)
+        folder_path = os.path.dirname(file_path)
+        csv_file = os.path.join(folder_path,f"{name_csv}.csv")
+        with open(csv_file, 'w', newline='') as fichier:
+            writer = csv.writer(fichier)
+            # Écrire l'en-tête du CSV
+            writer.writerow(["surf"])
+
+            # Parcourir le dossier et ses sous-dossiers
+            for root, dirs, files in os.walk(input_dir):
+                for file in files:
+                    if file.endswith(".vtk") or file.endswith(".stl"):
+                        # Écrire le chemin complet du fichier dans le CSV
+                        if platform.system() != "Windows" :    
+                            writer.writerow([os.path.join(root, file)])
+                        else :
+                            file_path = os.path.join(root, file)
+                            norm_file_path = os.path.normpath(file_path)
+                            writer.writerow([self.windows_to_linux_path(norm_file_path)])
+
+
+        return csv_file
+    
+    def windows_to_linux_path(self,windows_path):
+        '''
+        Convert a windows path to a wsl path
+        '''
+        windows_path = windows_path.strip()
+
+        path = windows_path.replace('\\', '/')
+
+        if ':' in path:
+            drive, path_without_drive = path.split(':', 1)
+            path = "/mnt/" + drive.lower() + path_without_drive
+
+        return path
 
     def TestReference(self, ref_folder: str):
 
@@ -239,30 +282,61 @@ class Auto_IOS(Method):
         number_scan_toseg_T2 = self.__BypassCrownseg__(
             kwargs["input_t2_folder"], path_input_T2, path_seg_T2
         )
+        slicer_path = slicer.app.applicationDirPath()
+        dentalmodelseg_path = os.path.join(slicer_path,"..","lib","Python","bin","dentalmodelseg")
+
+        surf_T1 = "None"
+        input_csv_T1 = "None"
+        vtk_folder_T1 = "None"
+        if os.path.isfile(path_input_T1):
+            extension = os.path.splitext(self.input)[1]
+            if extension == ".vtk" or extension == ".stl":
+              surf_T1 = path_input_T1
+              
+        elif os.path.isdir(path_input_T1):
+          input_csv_T1 = self.create_csv(path_input_T1,"liste_csv_file_T1")
+          vtk_folder_T1 = path_input_T1
 
         parameter_segteeth_T1 = {
-            "input": path_input_T1,
-            "output": path_seg_T1,
-            "subdivision_level": 2,
-            "resolution": 320,
-            "model": self.getModel(kwargs["model_folder_1"], extension="pth"),
-            "predictedId": "Universal_ID",
-            "sepOutputs": 0,
-            "chooseFDI": 0,
-            "logPath": kwargs["logPath"],
+            "surf": surf_T1,
+            "input_csv": input_csv_T1,
+            "out": path_seg_T1,
+            "overwrite": "0",
+            "model": "latest",
+            "crown_segmentation": "0",
+            "array_name": "Universal_ID",
+            "fdi": 0,
+            "suffix": "None",
+            "vtk_folder": vtk_folder_T1,
+            "dentalmodelseg_path":dentalmodelseg_path
         }
 
+        surf_T2 = "None"
+        input_csv_T2 = "None"
+        vtk_folder_T2 = "None"
+        if os.path.isfile(path_input_T2):
+            extension = os.path.splitext(self.input)[1]
+            if extension == ".vtk" or extension == ".stl":
+              surf_T2 = path_input_T2
+              
+        elif os.path.isdir(path_input_T1):
+          input_csv_T2 = self.create_csv(path_input_T1,"liste_csv_file_T2")
+          vtk_folder_T2 = path_input_T2
+
         parameter_segteeth_T2 = {
-            "input": path_input_T2,
-            "output": path_seg_T2,
-            "subdivision_level": 2,
-            "resolution": 320,
-            "model": self.getModel(kwargs["model_folder_1"], extension="pth"),
-            "predictedId": "Universal_ID",
-            "sepOutputs": 0,
-            "chooseFDI": 0,
-            "logPath": kwargs["logPath"],
+            "surf": surf_T2,
+            "input_csv": input_csv_T2,
+            "out": path_seg_T2,
+            "overwrite": "0",
+            "model": "latest",
+            "crown_segmentation": "0",
+            "array_name": "Universal_ID",
+            "fdi": 0,
+            "suffix": "None",
+            "vtk_folder": vtk_folder_T2,
+            "dentalmodelseg_path":dentalmodelseg_path
         }
+        
 
         parameter_pre_aso_T1 = {
             "input": path_seg_T1,

@@ -814,6 +814,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             name, url = self.ActualMeth.getTestFileList()
 
+        print("name : ",name)
+        print("url : ",url)
+
         scan_folder = self.DownloadUnzip(
             url=url,
             directory=os.path.join(self.SlicerDownloadPath),
@@ -821,6 +824,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if not self.isDCMInput
             else os.path.join("Test_Files", "DCM", name),
         )
+
+        print("scan folder : ",scan_folder)
         scan_folder_t1 = os.path.join(scan_folder, "T1")
         scan_folder_t2 = os.path.join(scan_folder, "T2")
 
@@ -1092,7 +1097,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             if self.type == "IOS":
                 # Installation of pytorch is done before pytorch3d installation in the function because the order is important andfor version compatibility
-                list_libs_IOS =[('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None),
+                list_libs_IOS =[("shapeaxi",None,None),('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None),
                                 ('pytorch3d',"==0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"),
                                 ('torchmetrics','==0.9.3',None),('pytorch-lightning','==1.7.7',None),('numpy','>=1.21.6,<1.28',None)]
 
@@ -1155,6 +1160,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.onProcessStarted()
 
             # /!\ Launch of the first process /!\
+            print("module name : ",self.list_Processes_Parameters[0]["Module"])
             self.process = slicer.cli.run(
                 self.list_Processes_Parameters[0]["Process"],
                 None,
@@ -1306,6 +1312,18 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             ),
         )
         s.exec_()
+
+        file_path = os.path.abspath(__file__)
+        folder_path = os.path.dirname(file_path)
+        csv_file = os.path.join(folder_path,"AREG_Method","liste_csv_file_T1.csv")
+        print("csv_file : ",csv_file)
+        if os.path.exists(csv_file):
+          os.remove(csv_file)
+
+        csv_file = os.path.join(folder_path,"AREG_Method","liste_csv_file_T2.csv")
+        print("csv_file : ",csv_file)
+        if os.path.exists(csv_file):
+          os.remove(csv_file)
 
     def onCancel(self):
         self.process.Cancel()
