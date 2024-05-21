@@ -1089,7 +1089,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 is_installed = install_function(self,list_libs_CBCT_windows)
 
             if self.type == "IOS":
-                #HERE GAELLE
                 is_installed = False
                 check_env = self.check_wsl_environment()
                 print("seg_env : ",check_env)
@@ -1274,10 +1273,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
                 print(self.process.GetOutputText())
                 try:
-                    #HERE GAELLE
+                    print("name process : ",self.list_Processes_Parameters[0]["Process"])
                     if self.list_Processes_Parameters[0]["Module"]=="AREG_IOS" and platform.system()== "Windows" :
                         self.run_wsl("areg")
-                    print("name process : ",self.list_Processes_Parameters[0]["Process"])
                     self.process = slicer.cli.run(
                         self.list_Processes_Parameters[0]["Process"],
                         None,
