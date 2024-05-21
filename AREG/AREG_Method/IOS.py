@@ -205,12 +205,15 @@ class Auto_IOS(Method):
         files = self.search(folder, ".vtk")[".vtk"]
         toseg = 0
         for file in files:
-            name = os.path.basename(file)
+            base_name  = os.path.basename(file)
             if self.__isSegmented__(file):
-                shutil.copy(file, os.path.join(folder_bypass, name))
+                name, ext = os.path.splitext(base_name)
+                new_name = f"{name}_Seg{ext}"
+                print("new_name : ",new_name)
+                shutil.copy(file, os.path.join(folder_bypass, new_name))
 
             else:
-                shutil.copy(file, os.path.join(folder_toseg, name))
+                shutil.copy(file, os.path.join(folder_toseg, base_name))
                 toseg += 1
 
         return toseg
@@ -306,7 +309,7 @@ class Auto_IOS(Method):
             "crown_segmentation": "0",
             "array_name": "Universal_ID",
             "fdi": 0,
-            "suffix": "None",
+            "suffix": "Seg",
             "vtk_folder": vtk_folder_T1,
             "dentalmodelseg_path":dentalmodelseg_path
         }
@@ -319,8 +322,8 @@ class Auto_IOS(Method):
             if extension == ".vtk" or extension == ".stl":
               surf_T2 = path_input_T2
               
-        elif os.path.isdir(path_input_T1):
-          input_csv_T2 = self.create_csv(path_input_T1,"liste_csv_file_T2")
+        elif os.path.isdir(path_input_T2):
+          input_csv_T2 = self.create_csv(path_input_T2,"liste_csv_file_T2")
           vtk_folder_T2 = path_input_T2
 
         parameter_segteeth_T2 = {
@@ -332,7 +335,7 @@ class Auto_IOS(Method):
             "crown_segmentation": "0",
             "array_name": "Universal_ID",
             "fdi": 0,
-            "suffix": "None",
+            "suffix": "Seg",
             "vtk_folder": vtk_folder_T2,
             "dentalmodelseg_path":dentalmodelseg_path
         }
