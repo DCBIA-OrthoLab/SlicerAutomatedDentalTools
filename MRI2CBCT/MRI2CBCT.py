@@ -1,10 +1,12 @@
 import logging
 import os
 from typing import Annotated, Optional
+from qt import QApplication, QWidget, QTableWidget, QTableWidgetItem, QHeaderView,QSpinBox, QVBoxLayout, QLabel, QSizePolicy, QCheckBox, QFileDialog
 
 import vtk
 
 import slicer
+from functools import partial
 from slicer.i18n import tr as _
 from slicer.i18n import translate
 from slicer.ScriptedLoadableModule import *
@@ -139,6 +141,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
         self.logic = None
+        self.checked_cells = set() 
+        self.minus_checked_rows = set()
         self._parameterNode = None
         self._parameterNodeGuiTag = None
 
@@ -162,16 +166,249 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = MRI2CBCTLogic()
 
         # Connections
-
+        #        LineEditOutputReg
         # These connections ensure that we update parameter node when scene is closed
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
 
         # Buttons
         self.ui.applyButton.connect("clicked(bool)", self.onApplyButton)
+        self.ui.SearchButtonCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCT"))
+        self.ui.SearchButtonMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRI"))
+        self.ui.SearchButtonRegMRI.connect("clicked(bool)",partial(self.openFinder,"InputRegMRI"))
+        self.ui.SearchButtonRegCBCT.connect("clicked(bool)",partial(self.openFinder,"InputRegCBCT"))
+        self.ui.SearchButtonRegLabel.connect("clicked(bool)",partial(self.openFinder,"InputRegLabel"))
+        self.ui.SearchOutputFolderOrientCBCT.connect("clicked(bool)",partial(self.openFinder,"OutputOrientCBCT"))
+        self.ui.SearchOutputFolderOrientMRI.connect("clicked(bool)",partial(self.openFinder,"OutputOrientMRI"))
+        self.ui.SearchOutputFolderResample.connect("clicked(bool)",partial(self.openFinder,"OutputOrientResample"))
+        self.ui.SearchButtonOutput.connect("clicked(bool)",partial(self.openFinder,"OutputReg"))
 
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
+        
+        self.ui.outputCollapsibleButton.setText("Registration")
+        self.ui.inputsCollapsibleButton.setText("Preprocess")
+        
+        self.ui.outputCollapsibleButton.setChecked(True)  # True to expand, False to collapse
+        self.ui.inputsCollapsibleButton.setChecked(False) 
+        ##################################################################################################
+        ### Orientation Table
+        self.tableWidgetOrient = self.ui.tableWidgetOrient
+        self.tableWidgetOrient.setRowCount(3)  # Rows for New Direction X, Y, Z
+        self.tableWidgetOrient.setColumnCount(4)  # Columns for X, Y, Z, and Minus
+
+        # Set the headers
+        self.tableWidgetOrient.setHorizontalHeaderLabels(["X", "Y", "Z", "Negative"])
+        self.tableWidgetOrient.setVerticalHeaderLabels(["New Direction X", "New Direction Y", "New Direction Z"])
+
+        # Set the horizontal header to stretch and fill the available space
+        header = self.tableWidgetOrient.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        
+        # Set a fixed height for the table to avoid stretching
+        self.tableWidgetOrient.setFixedHeight(self.tableWidgetOrient.horizontalHeader().height + 
+                                            self.tableWidgetOrient.verticalHeader().sectionSize(0) * self.tableWidgetOrient.rowCount)
+
+        # Add widgets for each cell
+        for row in range(3):
+            for col in range(4):  # Columns X, Y, Z, and Minus
+                if col!=3 :
+                    checkBox = QCheckBox('0')
+                    checkBox.stateChanged.connect(lambda state, r=row, c=col: self.onCheckboxOrientClicked(r, c, state))
+                    self.tableWidgetOrient.setCellWidget(row, col, checkBox)
+                else :
+                    checkBox = QCheckBox('No')
+                    checkBox.stateChanged.connect(lambda state, r=row, c=col: self.onCheckboxOrientClicked(r, c, state))
+                    self.tableWidgetOrient.setCellWidget(row, col, checkBox)
+
+        self.ui.ButtonDefaultOrientMRI.connect("clicked(bool)",self.defaultOrientMRI)
+        
+        ##################################################################################################
+        ### Normalization Table
+        self.tableWidgetNorm = self.ui.tableWidgetNorm
+
+        self.tableWidgetNorm.setRowCount(2)  # MRI and CBCT rows + header row
+        self.tableWidgetNorm.setColumnCount(4)  # Min, Max for Normalization and Percentile
+        
+        # Set the horizontal header to stretch and fill the available space
+        header = self.tableWidgetNorm.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        
+        # Set a fixed height for the table to avoid stretching
+        self.tableWidgetNorm.setFixedHeight(self.tableWidgetNorm.horizontalHeader().height + 
+                                            self.tableWidgetNorm.verticalHeader().sectionSize(0) * self.tableWidgetNorm.rowCount)
+
+        # Set the headers
+        self.tableWidgetNorm.setHorizontalHeaderLabels(["Normalization Min", "Normalization Max", "Percentile Min", "Percentile Max"])
+        self.tableWidgetNorm.setVerticalHeaderLabels([ "MRI", "CBCT"])
+
+
+        for row in range(2):
+            for col in range(4):
+                spinBox = QSpinBox()
+                spinBox.setMaximum(10000)
+                self.tableWidgetNorm.setCellWidget(row, col, spinBox)
+                
+        self.ui.ButtonCheckBoxDefaultNorm1.connect("clicked(bool)",partial(self.DefaultNorm,"1"))
+        self.ui.ButtonCheckBoxDefaultNorm2.connect("clicked(bool)",partial(self.DefaultNorm,"2"))
+                
+        ##################################################################################################
+        ### Resample Table
+        self.tableWidgetResample = self.ui.tableWidgetResample
+
+        self.tableWidgetResample.setRowCount(1)  # MRI and CBCT rows + header row
+        self.tableWidgetResample.setColumnCount(3)  # Min, Max for Normalization and Percentile
+        
+        # Set the horizontal header to stretch and fill the available space
+        header = self.tableWidgetResample.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        
+        # Set a fixed height for the table to avoid stretching
+        self.tableWidgetResample.setFixedHeight(self.tableWidgetResample.horizontalHeader().height + 
+                                            self.tableWidgetResample.verticalHeader().sectionSize(0) * self.tableWidgetResample.rowCount)
+
+        # Set the headers
+        self.tableWidgetResample.setHorizontalHeaderLabels(["X", "Y", "Z"])
+        self.tableWidgetResample.setVerticalHeaderLabels([ "Number of slices"])
+
+        
+        spinBox = QSpinBox()
+        spinBox.setMaximum(10000)
+        spinBox.setValue(119)
+        self.tableWidgetResample.setCellWidget(0, 0, spinBox)
+        
+        spinBox = QSpinBox()
+        spinBox.setMaximum(10000)
+        spinBox.setValue(443)
+        self.tableWidgetResample.setCellWidget(0, 1, spinBox)
+        
+        spinBox = QSpinBox()
+        spinBox.setMaximum(10000)
+        spinBox.setValue(443)
+        self.tableWidgetResample.setCellWidget(0, 2, spinBox)
+                
+        
+    def onCheckboxOrientClicked(self, row, col, state):
+        if col == 3:  # If the "Minus" column checkbox is clicked
+            if state == 2:  # Checkbox is checked
+                self.minus_checked_rows.add(row)
+                checkBox = self.tableWidgetOrient.cellWidget(row, col)
+                checkBox.setText('Yes')
+                for c in range(3):
+                    checkBox = self.tableWidgetOrient.cellWidget(row, c)
+                    if checkBox.text=="1":
+                        checkBox.setText('-1')
+            else:  # Checkbox is unchecked
+                self.minus_checked_rows.discard(row)
+                checkBox = self.tableWidgetOrient.cellWidget(row, col)
+                checkBox.setText('No')
+                for c in range(3):
+                    checkBox = self.tableWidgetOrient.cellWidget(row, c)
+                    if checkBox.text=="-1":
+                        checkBox.setText('1')
+        else :   
+            if state == 2:  # Checkbox is checked
+                # Set the clicked checkbox to '1' and uncheck all others in the same row
+                for c in range(3):
+                    checkBox = self.tableWidgetOrient.cellWidget(row, c)
+                    if checkBox:
+                        if c == col:
+                            if row in self.minus_checked_rows:
+                                checkBox.setText('-1')
+                            else :
+                                checkBox.setText('1')
+                            checkBox.setStyleSheet("color: black;")
+                            checkBox.setStyleSheet("font-weight: bold;")
+                            self.checked_cells.add((row, col))
+                        else:
+                            checkBox.setText('0')
+                            checkBox.setChecked(False)
+                            self.checked_cells.discard((row, c))
+
+                # Check for other '1' in the same column and set them to '0'
+                for r in range(3):
+                    if r != row:
+                        checkBox = self.tableWidgetOrient.cellWidget(r, col)
+                        if checkBox and (checkBox.text == '1' or checkBox.text == '-1'):
+                            checkBox.setText('0')
+                            checkBox.setChecked(False)
+                            checkBox.setStyleSheet("color: gray;")
+                            checkBox.setStyleSheet("font-weight: normal;")
+                            self.checked_cells.discard((r, col))
+                            
+                # Check if two checkboxes are checked in different rows, then check the third one
+                if len(self.checked_cells) == 2:
+                    all_rows = {0, 1, 2}
+                    all_cols = {0, 1, 2}
+                    checked_rows = {r for r, c in self.checked_cells}
+                    unchecked_row = list(all_rows - checked_rows)[0]
+                    
+                    # Find the unchecked column
+                    unchecked_cols = list(all_cols - {c for r, c in self.checked_cells})
+                    # print("unchecked_cols : ",unchecked_cols)
+                    for c in range(3):
+                        checkBox = self.tableWidgetOrient.cellWidget(unchecked_row, c)
+                        if c in unchecked_cols:
+                            checkBox.setStyleSheet("color: black;")
+                            checkBox.setStyleSheet("font-weight: bold;")
+                            checkBox.setChecked(True)
+                            if unchecked_row in self.minus_checked_rows:
+                                checkBox.setText('-1')
+                            else :
+                                checkBox.setText('1')
+                            self.checked_cells.add((unchecked_row, c))
+                        else : 
+                            checkBox.setText('0')
+                            checkBox.setChecked(False)
+                            self.checked_cells.discard((row, c))
+
+            else:  # Checkbox is unchecked
+                checkBox = self.tableWidgetOrient.cellWidget(row, col)
+                if checkBox:
+                    checkBox.setText('0')
+                    checkBox.setStyleSheet("color: black;")
+                    checkBox.setStyleSheet("font-weight: normal;")
+                    self.checked_cells.discard((row, col))
+                    
+                # Reset the style of all checkboxes in the same row
+                for c in range(3):
+                    checkBox = self.tableWidgetOrient.cellWidget(row, c)
+                    if checkBox:
+                        checkBox.setStyleSheet("color: black;")
+                        checkBox.setStyleSheet("font-weight: normal;")
+                        
+    def getCheckboxValuesOrient(self):
+        values = []
+        for row in range(3):
+            for col in range(3):
+                checkBox = self.tableWidgetOrient.cellWidget(row, col)
+                if checkBox:
+                    values.append(int(checkBox.text))
+        return tuple(values)
+    
+    def defaultOrientMRI(self):
+        initial_states = [
+            (0, 2, -1),
+            (1, 0, 1),
+            (2, 1, -1)
+        ]
+        for row, col, value in initial_states:
+            checkBox = self.tableWidgetOrient.cellWidget(row, col)
+            if checkBox:
+                if value == 1:
+                    checkBox.setChecked(True)
+                    checkBox.setText('1')
+                    checkBox.setStyleSheet("font-weight: bold;")
+                    self.checked_cells.add((row, col))
+                elif value == -1:
+                    checkBox.setChecked(True)
+                    checkBox.setText('-1')
+                    checkBox.setStyleSheet("font-weight: bold;")
+                    minus_checkBox = self.tableWidgetOrient.cellWidget(row, 3)
+                    if minus_checkBox:
+                        minus_checkBox.setChecked(True)
+                        minus_checkBox.setText("Yes")
+                    self.minus_checked_rows.add(row)
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -193,7 +430,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onSceneStartClose(self, caller, event) -> None:
         """Called just before the scene is closed."""
         # Parameter node will be reset, do not use it anymore
-        self.setParameterNode(None)
+        pass
 
     def onSceneEndClose(self, caller, event) -> None:
         """Called just after the scene is closed."""
@@ -206,51 +443,116 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Parameter node stores all user choices in parameter values, node selections, etc.
         # so that when the scene is saved and reloaded, these settings are restored.
 
-        self.setParameterNode(self.logic.getParameterNode())
+        # self.setParameterNode(self.logic.getParameterNode())
 
         # Select default input nodes if nothing is selected yet to save a few clicks for the user
-        if not self._parameterNode.inputVolume:
-            firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-            if firstVolumeNode:
-                self._parameterNode.inputVolume = firstVolumeNode
+        # if not self._parameterNode.inputVolume:
+        #     firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        #     if firstVolumeNode:
+        #         self._parameterNode.inputVolume = firstVolumeNode
+        pass
 
-    def setParameterNode(self, inputParameterNode: Optional[MRI2CBCTParameterNode]) -> None:
-        """
-        Set and observe parameter node.
-        Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
-        """
-
-        if self._parameterNode:
-            self._parameterNode.disconnectGui(self._parameterNodeGuiTag)
-            self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self._checkCanApply)
-        self._parameterNode = inputParameterNode
-        if self._parameterNode:
-            # Note: in the .ui file, a Qt dynamic property called "SlicerParameterName" is set on each
-            # ui element that needs connection.
-            self._parameterNodeGuiTag = self._parameterNode.connectGui(self.ui)
-            self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self._checkCanApply)
-            self._checkCanApply()
 
     def _checkCanApply(self, caller=None, event=None) -> None:
-        if self._parameterNode and self._parameterNode.inputVolume and self._parameterNode.thresholdedVolume:
-            self.ui.applyButton.toolTip = _("Compute output volume")
-            self.ui.applyButton.enabled = True
-        else:
-            self.ui.applyButton.toolTip = _("Select input and output volume nodes")
-            self.ui.applyButton.enabled = False
+        pass
+    
+    def getNormalization(self):
+        values = []
+        for row in range(self.tableWidgetNorm.rowCount):
+            rowData = []
+            for col in range(self.tableWidgetNorm.columnCount):
+                widget = self.tableWidgetNorm.cellWidget(row, col)
+                if isinstance(widget, QSpinBox):
+                    rowData.append(widget.value)
+            values.append(rowData)
+        return(values)
+    
+    def DefaultNorm(self,num : str,_)->None:
+        # Define the default values for each cell
+        if num=="1":
+            default_values = [
+                [0, 100, 0, 100],
+                [0, 75, 10, 95]
+            ]
+        else :
+            default_values = [
+                [0, 100, 10, 95],
+                [0, 100, 10, 95]
+            ]
+        
+        for row in range(self.tableWidgetNorm.rowCount):
+            for col in range(self.tableWidgetNorm.columnCount):
+                spinBox = QSpinBox()
+                spinBox.setMaximum(10000)
+                spinBox.setValue(default_values[row][col])
+                self.tableWidgetNorm.setCellWidget(row, col, spinBox)
+                
+    def openFinder(self,nom : str,_) -> None : 
+        """
+         Open finder to let the user choose is files or folder
+        """
+        if nom=="InputMRI":
+            print("self.ui.ComboBoxMRI.currentIndex : ",self.ui.ComboBoxMRI.currentIndex)
+            print("Type de self.ui.ComboBoxMRI.currentIndex : ", type(self.ui.ComboBoxMRI.currentIndex))
+            print("self.ui.ComboBoxMRI.currentIndex : ",self.ui.ComboBoxMRI.currentIndex==1)
+            if self.ui.ComboBoxMRI.currentIndex==1:
+                  print("oui")
+                  surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            else :
+                  surface_folder = QFileDialog.getOpenFileName(self.parent,'Open a file',)
+
+            self.ui.LineEditMRI.setText(surface_folder)
+
+        elif nom=="InputCBCT":
+            if self.ui.ComboBoxCBCT.currentIndex==1:
+                surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            else :
+                surface_folder = QFileDialog.getOpenFileName(self.parent,'Open a file',)
+            self.ui.LineEditCBCT.setText(surface_folder)
+            
+        elif nom=="InputRegCBCT":
+            if self.ui.comboBoxRegCBCT.currentIndex==1:
+                surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            else :
+                surface_folder = QFileDialog.getOpenFileName(self.parent,'Open a file',)
+            self.ui.lineEditRegCBCT.setText(surface_folder)
+            
+        elif nom=="InputRegMRI":
+            if self.ui.comboBoxRegMRI.currentIndex==1:
+                surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            else :
+                surface_folder = QFileDialog.getOpenFileName(self.parent,'Open a file',)
+            self.ui.lineEditRegMRI.setText(surface_folder)
+            
+        elif nom=="InputRegLabel":
+            if self.ui.comboBoxRegLabel.currentIndex==1:
+                surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            else :
+                surface_folder = QFileDialog.getOpenFileName(self.parent,'Open a file',)
+            self.ui.lineEditRegLabel.setText(surface_folder)
+ 
+
+        elif nom=="OutputOrientCBCT":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditOutputOrientCBCT.setText(surface_folder)
+            
+        elif nom=="OutputOrientMRI":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditOutputOrientMRI.setText(surface_folder)
+            
+        elif nom=="OutputOrientResample":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditOuputResample.setText(surface_folder)
+            
+        elif nom=="OutputReg":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.LineEditOutput.setText(surface_folder)
+
 
     def onApplyButton(self) -> None:
         """Run processing when user clicks "Apply" button."""
-        with slicer.util.tryWithErrorDisplay(_("Failed to compute results."), waitCursor=True):
-            # Compute output
-            self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(),
-                               self.ui.imageThresholdSliderWidget.value, self.ui.invertOutputCheckBox.checked)
-
-            # Compute inverted output (if needed)
-            if self.ui.invertedOutputSelector.currentNode():
-                # If additional output volume is selected then result with inverted threshold is written there
-                self.logic.process(self.ui.inputSelector.currentNode(), self.ui.invertedOutputSelector.currentNode(),
-                                   self.ui.imageThresholdSliderWidget.value, not self.ui.invertOutputCheckBox.checked, showResult=False)
+        print("get_normalization : ",self.getNormalization())
+        print("getCheckboxValuesOrient : ",self.getCheckboxValuesOrient())
 
 
 #
