@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>535</width>
+    <width>735</width>
     <height>1210</height>
    </rect>
   </property>
@@ -103,12 +103,25 @@
       </item>
       <item row="3" column="1">
        <layout class="QGridLayout" name="gridLayout">
+        <item row="1" column="2">
+         <widget class="QPushButton" name="pushButtonDownloadOrientCBCT">
+          <property name="text">
+           <string>Download</string>
+          </property>
+         </widget>
+        </item>
         <item row="0" column="0">
          <widget class="QLabel" name="label_7">
           <property name="text">
            <string>Output folder :</string>
           </property>
          </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLineEdit" name="lineEditOrientCBCT"/>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLineEdit" name="lineEditOutputOrientCBCT"/>
         </item>
         <item row="0" column="2">
          <widget class="QPushButton" name="SearchOutputFolderOrientCBCT">
@@ -117,8 +130,29 @@
           </property>
          </widget>
         </item>
-        <item row="0" column="1">
-         <widget class="QLineEdit" name="lineEditOutputOrientCBCT"/>
+        <item row="2" column="1">
+         <widget class="QLineEdit" name="lineEditSegCBCT"/>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="label_14">
+          <property name="text">
+           <string>Orientation Model : </string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="label_15">
+          <property name="text">
+           <string>Segmentation Model : </string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="2">
+         <widget class="QPushButton" name="pushButtonDownloadSegCBCT">
+          <property name="text">
+           <string>Download</string>
+          </property>
+         </widget>
         </item>
        </layout>
       </item>
