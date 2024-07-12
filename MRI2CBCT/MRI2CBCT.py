@@ -1,9 +1,17 @@
 import logging
 import os
 from typing import Annotated, Optional
-from qt import QApplication, QWidget, QTableWidget, QTableWidgetItem, QHeaderView,QSpinBox, QVBoxLayout, QLabel, QSizePolicy, QCheckBox, QFileDialog
+from qt import QApplication, QWidget, QTableWidget, QTableWidgetItem, QHeaderView,QSpinBox, QVBoxLayout, QLabel, QSizePolicy, QCheckBox, QFileDialog,QMessageBox, QApplication, QProgressDialog
+import qt
+from utils.Preprocess_CBCT import Process_CBCT
+from utils.Preprocess_MRI import Process_MRI
+from utils.Preprocess_CBCT_MRI import Preprocess_CBCT_MRI
+import time 
 
 import vtk
+import shutil 
+import urllib 
+import zipfile
 
 import slicer
 from functools import partial
@@ -145,6 +153,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.minus_checked_rows = set()
         self._parameterNode = None
         self._parameterNodeGuiTag = None
+        
+        
 
     def setup(self) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
@@ -164,6 +174,18 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
         self.logic = MRI2CBCTLogic()
+        
+        documentsLocation = qt.QStandardPaths.DocumentsLocation
+        self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        self.SlicerDownloadPath = os.path.join(
+            self.documents,
+            slicer.app.applicationName + "Downloads",
+            "MRI2CBCT",
+            "MRI2CBCT_" + "CBCT",
+        )
+        self.preprocess_cbct = Process_CBCT(self)
+        self.preprocess_mri = Process_MRI(self)
+        self.preprocess_mri_cbct = Preprocess_CBCT_MRI(self)
 
         # Connections
         #        LineEditOutputReg
@@ -182,6 +204,12 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SearchOutputFolderOrientMRI.connect("clicked(bool)",partial(self.openFinder,"OutputOrientMRI"))
         self.ui.SearchOutputFolderResample.connect("clicked(bool)",partial(self.openFinder,"OutputOrientResample"))
         self.ui.SearchButtonOutput.connect("clicked(bool)",partial(self.openFinder,"OutputReg"))
+        self.ui.pushButtonOrientCBCT.connect("clicked(bool)",self.orientCBCT)
+        self.ui.pushButtonResample.connect("clicked(bool)",self.resampleMRICBCT)
+        self.ui.pushButtonOrientMRI.connect("clicked(bool)",self.orientCenterMRI)
+        self.ui.pushButtonDownloadOrientCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditOrientCBCT, "Orientation", True))
+        self.ui.pushButtonDownloadSegCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditSegCBCT, "Segmentation", True))
+        
 
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
@@ -286,6 +314,19 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         spinBox.setMaximum(10000)
         spinBox.setValue(443)
         self.tableWidgetResample.setCellWidget(0, 2, spinBox)
+        
+    def get_resample_values(self):
+        """
+        Retrieves the resample values (X, Y, Z) from the QTableWidget.
+
+        :param tableWidgetResample: QTableWidget instance containing the resample values.
+        :return: A tuple of three integers representing the resample values (X, Y, Z).
+        """
+        x_value = self.tableWidgetResample.cellWidget(0, 0).value
+        y_value = self.tableWidgetResample.cellWidget(0, 1).value
+        z_value = self.tableWidgetResample.cellWidget(0, 2).value
+        
+        return [x_value, y_value, z_value]
                 
         
     def onCheckboxOrientClicked(self, row, col, state):
@@ -553,6 +594,325 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Run processing when user clicks "Apply" button."""
         print("get_normalization : ",self.getNormalization())
         print("getCheckboxValuesOrient : ",self.getCheckboxValuesOrient())
+        
+        
+    def downloadModel(self, lineEdit, name, test,_):
+        """Function to download the model files from the link in the getModelUrl function"""
+
+        # To select the reference files (CBCT Orientation and Registration mode only)
+        listmodel = self.preprocess_cbct.getModelUrl()
+        print("listmodel : ",listmodel)
+
+        urls = listmodel[name]
+        if isinstance(urls, str):
+            url = urls
+            _ = self.DownloadUnzip(
+                url=url,
+                directory=os.path.join(self.SlicerDownloadPath),
+                folder_name=os.path.join("Models", name),
+                num_downl=1,
+                total_downloads=1,
+            )
+            model_folder = os.path.join(self.SlicerDownloadPath, "Models", name)
+
+        elif isinstance(urls, dict):
+            for i, (name_bis, url) in enumerate(urls.items()):
+                _ = self.DownloadUnzip(
+                    url=url,
+                    directory=os.path.join(self.SlicerDownloadPath),
+                    folder_name=os.path.join("Models", name, name_bis),
+                    num_downl=i + 1,
+                    total_downloads=len(urls),
+                )
+            model_folder = os.path.join(self.SlicerDownloadPath, "Models", name)
+
+        if not model_folder == "":
+            error = self.preprocess_cbct.TestModel(model_folder, lineEdit.name)
+
+            if isinstance(error, str):
+                QMessageBox.warning(self.parent, "Warning", error)
+
+            else:
+                lineEdit.setText(model_folder)
+
+    def DownloadUnzip(
+        self, url, directory, folder_name=None, num_downl=1, total_downloads=1
+    ):
+        out_path = os.path.join(directory, folder_name)
+
+        if not os.path.exists(out_path):
+            # print("Downloading {}...".format(folder_name.split(os.sep)[0]))
+            os.makedirs(out_path)
+
+            temp_path = os.path.join(directory, "temp.zip")
+
+            # Download the zip file from the url
+            with urllib.request.urlopen(url) as response, open(
+                temp_path, "wb"
+            ) as out_file:
+                # Pop up a progress bar with a QProgressDialog
+                progress = QProgressDialog(
+                    "Downloading {} (File {}/{})".format(
+                        folder_name.split(os.sep)[0], num_downl, total_downloads
+                    ),
+                    "Cancel",
+                    0,
+                    100,
+                    self.parent,
+                )
+                progress.setCancelButton(None)
+                progress.setWindowModality(qt.Qt.WindowModal)
+                progress.setWindowTitle(
+                    "Downloading {}...".format(folder_name.split(os.sep)[0])
+                )
+                # progress.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
+                progress.show()
+                length = response.info().get("Content-Length")
+                if length:
+                    length = int(length)
+                    blocksize = max(4096, length // 100)
+                    read = 0
+                    while True:
+                        buffer = response.read(blocksize)
+                        if not buffer:
+                            break
+                        read += len(buffer)
+                        out_file.write(buffer)
+                        progress.setValue(read * 100.0 / length)
+                        QApplication.processEvents()
+                shutil.copyfileobj(response, out_file)
+
+            # Unzip the file
+            with zipfile.ZipFile(temp_path, "r") as zip:
+                zip.extractall(out_path)
+
+            # Delete the zip file
+            os.remove(temp_path)
+
+        return out_path
+    
+    def orientCBCT(self)->None:
+        self.list_Processes_Parameters = self.preprocess_cbct.Process(
+                input_t1_folder=self.ui.LineEditCBCT.text,
+                folder_output=self.ui.lineEditOutputOrientCBCT.text,
+                model_folder_1=self.ui.lineEditSegCBCT.text,
+                add_in_namefile="oui",
+                merge_seg=False,
+                isDCMInput=False,
+                slicerDownload=self.SlicerDownloadPath,
+            )
+        
+        self.onProcessStarted()
+        
+        # /!\ Launch of the first process /!\
+        print("module name : ",self.list_Processes_Parameters[0]["Module"])
+        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        
+        self.process = slicer.cli.run(
+                self.list_Processes_Parameters[0]["Process"],
+                None,
+                self.list_Processes_Parameters[0]["Parameter"],
+            )
+        
+        self.module_name = self.list_Processes_Parameters[0]["Module"]
+        self.processObserver = self.process.AddObserver(
+            "ModifiedEvent", self.onProcessUpdate
+        )
+
+        del self.list_Processes_Parameters[0]
+    
+    def orientCenterMRI(self):
+        self.list_Processes_Parameters = self.preprocess_mri.Process(
+                input_folder=self.ui.LineEditMRI.text,
+                direction=self.getCheckboxValuesOrient(),
+                output_folder=self.ui.lineEditOutputOrientMRI.text,
+            )
+        
+        self.onProcessStarted()
+        
+        # /!\ Launch of the first process /!\
+        print("module name : ",self.list_Processes_Parameters[0]["Module"])
+        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        
+        self.process = slicer.cli.run(
+                self.list_Processes_Parameters[0]["Process"],
+                None,
+                self.list_Processes_Parameters[0]["Parameter"],
+            )
+        
+        self.module_name = self.list_Processes_Parameters[0]["Module"]
+        self.processObserver = self.process.AddObserver(
+            "ModifiedEvent", self.onProcessUpdate
+        )
+
+        del self.list_Processes_Parameters[0]
+        
+    def resampleMRICBCT(self):
+        print("self.ui.lineEditOutputOrientMRI.text : ",self.ui.lineEditOuputResample.text)
+        self.list_Processes_Parameters = self.preprocess_mri_cbct.Process(
+                input_folder=self.ui.LineEditMRI.text,
+                output_folder=self.ui.lineEditOuputResample.text,
+                resample_size=self.get_resample_values()
+            )
+        
+        self.onProcessStarted()
+        
+        # /!\ Launch of the first process /!\
+        print("module name : ",self.list_Processes_Parameters[0]["Module"])
+        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        
+        self.process = slicer.cli.run(
+                self.list_Processes_Parameters[0]["Process"],
+                None,
+                self.list_Processes_Parameters[0]["Parameter"],
+            )
+        
+        self.module_name = self.list_Processes_Parameters[0]["Module"]
+        self.processObserver = self.process.AddObserver(
+            "ModifiedEvent", self.onProcessUpdate
+        )
+
+        del self.list_Processes_Parameters[0]
+        
+        
+    def onProcessStarted(self):
+        self.startTime = time.time()
+
+        # self.ui.progressBar.setMaximum(self.nb_patient)
+        self.ui.progressBar.setValue(0)
+        self.ui.progressBar.setTextVisible(True)
+        self.ui.progressBar.setFormat("0%")
+
+        self.ui.label_info.setText(f"Starting process")
+        
+        self.nb_extnesion_did = 0
+        self.nb_extension_launch = len(self.list_Processes_Parameters)
+
+        self.module_name_before = 0
+        self.nb_change_bystep = 0
+
+        self.RunningUI(True)
+
+    def onProcessUpdate(self, caller, event):
+        self.ui.progressBar.setVisible(False)
+        # timer = f"Time : {time.time()-self.startTime:.2f}s"
+        currentTime = time.time() - self.startTime
+        if currentTime < 60:
+            timer = f"Time : {int(currentTime)}s"
+        elif currentTime < 3600:
+            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+        else:
+            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+
+        self.ui.label_time.setText(timer)
+        # self.module_name = caller.GetModuleTitle() if self.module_name_bis is None else self.module_name_bis
+        self.ui.label_info.setText(f"Extension {self.module_name} is running. \n Number of extension runned : {self.nb_extnesion_did} / {self.nb_extension_launch}")
+        # self.displayModule = self.displayModule_bis if self.displayModule_bis is not None else self.display[self.module_name.split(' ')[0]]
+
+        if self.module_name_before != self.module_name:
+            print("Valeur progress barre : ",100*self.nb_extnesion_did/self.nb_extension_launch)
+            self.ui.progressBar.setValue(self.nb_extnesion_did/self.nb_extension_launch)
+            self.ui.progressBar.setFormat(f"{100*self.nb_extnesion_did/self.nb_extension_launch}%")
+            self.nb_extnesion_did += 1
+            self.ui.label_info.setText(
+                f"Extension {self.module_name} is running. \n Number of extension runned : {self.nb_extnesion_did} / {self.nb_extension_launch}"
+            )
+            
+
+            self.module_name_before = self.module_name
+            self.nb_change_bystep = 0
+
+
+        if caller.GetStatus() & caller.Completed:
+            if caller.GetStatus() & caller.ErrorsMask:
+                # error
+                print("\n\n ========= PROCESSED ========= \n")
+
+                print(self.process.GetOutputText())
+                print("\n\n ========= ERROR ========= \n")
+                errorText = self.process.GetErrorText()
+                print("CLI execution failed: \n \n" + errorText)
+                # error
+                # errorText = caller.GetErrorText()
+                # print("\n"+ 70*"=" + "\n\n" + errorText)
+                # print(70*"=")
+                self.onCancel()
+
+            else:
+                print("\n\n ========= PROCESSED ========= \n")
+                # print("PROGRESS :",self.displayModule.progress)
+
+                print(self.process.GetOutputText())
+                try:
+                    print("name process : ",self.list_Processes_Parameters[0]["Process"])
+                    self.process = slicer.cli.run(
+                        self.list_Processes_Parameters[0]["Process"],
+                        None,
+                        self.list_Processes_Parameters[0]["Parameter"],
+                    )
+                    self.module_name = self.list_Processes_Parameters[0]["Module"]
+                    self.processObserver = self.process.AddObserver(
+                        "ModifiedEvent", self.onProcessUpdate
+                    )
+                    del self.list_Processes_Parameters[0]
+                    # self.displayModule.progress = 0
+                except IndexError:
+                    self.OnEndProcess()
+
+    def OnEndProcess(self):
+        self.nb_extnesion_did += 1
+        self.ui.label_info.setText(
+            f"Process end"
+        )
+        self.ui.progressBar.setValue(0)
+
+        # if self.nb_change_bystep == 0:
+        #     print(f'Erreur this module didnt work {self.module_name_before}')
+
+        self.module_name_before = self.module_name
+        self.nb_change_bystep = 0
+        total_time = time.time() - self.startTime
+        
+
+        print("PROCESS DONE.")
+        print(
+            "Done in {} min and {} sec".format(
+                int(total_time / 60), int(total_time % 60)
+            )
+        )
+
+        self.RunningUI(False)
+
+        stopTime = time.time()
+
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Information)
+
+        # setting message for Message Box
+        msg.setText(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+
+        # setting Message box window title
+        msg.setWindowTitle("Information")
+
+        # declaring buttons on Message Box
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.exec_()
+       
+        
+    def onCancel(self):
+        self.process.Cancel()
+
+        self.RunningUI(False)
+        
+    def RunningUI(self, run=False):
+
+        self.ui.progressBar.setVisible(run)
+        self.ui.label_time.setVisible(run)
+        self.ui.label_info.setVisible(run)
+
+
+    
+    
 
 
 #
