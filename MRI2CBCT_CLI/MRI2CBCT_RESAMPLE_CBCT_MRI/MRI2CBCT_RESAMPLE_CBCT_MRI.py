@@ -1,15 +1,9 @@
 #!/usr/bin/env python-real
 
-import subprocess
 import csv
 import argparse
 import os
-# from MRI2CBCT_CLI import MRI2CBCT_CLI_utils
-# from MRI2CBCT_CLI_utils import (
-#     create_csv,
-#     resample_images,
-    
-# )
+
 import sys
 fpath = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(fpath)
@@ -17,85 +11,40 @@ sys.path.append(fpath)
 from MRI2CBCT_CLI_utils import create_csv, resample_images
 import csv
 
-# THE PACING IS CHOOSEN RUNING CALCUL_SPACING_MEAN.PY DONC LA MOYENNE DES SPACING QUE ON A
 
-def run_resample(args):
-    # Remplacez ceci par le chemin vers votre fichier CSV
-    csv_file_path = args.csv
-    # Ouvrir le fichier CSV en lecture
-    #RESAMPLE
-    with open(csv_file_path, mode='r') as csv_file:
-        csv_reader = csv.DictReader(csv_file)
-        
-        # Boucle sur chaque ligne du fichier CSV
-        for row in csv_reader:
-            # Afficher les informations de chaque ligne
-            size = tuple(map(int, row["size"].strip("()").split(",")))
-            input_path = row["in"]
-            out_path = row["out"]
-            print(size[1])
-            print(f'Image d\'entrée: {row["in"]}, Image de sortie: {row["out"]}, Taille: {size}')
-            # command = [f"python3 {args.python_file} --img \"{input_path}\" --out \"{out_path}\" --size 768 576 768 --spacing 0.3 0.3 0.3 --center False --linear False --fit_spacing True --image_dimension 3 --pixel_dimension 1 --rgb False --ow 0"]
-            # command = [f"python3 {args.python_file} --img \"{input_path}\" --out \"{out_path}\" --size 443 443 119 --spacing 0.3 0.3 0.3 --center False --linear False --fit_spacing True --image_dimension 3 --pixel_dimension 1 --rgb False --ow 0"]
-            command = [f"python3 {args.python_file} --img \"{input_path}\" --out \"{out_path}\" --size 443 443 443  --fit_spacing True --center 0 --iso_spacing 1 --linear False --image_dimension 3 --pixel_dimension 1 --rgb False --ow 0"]
-            subprocess.run(command,shell=True)
-            
-def create_args(img=None, dir=None, csv=None, csv_column='image', csv_root_path=None, csv_use_spc=0,
-                csv_column_spcx=None, csv_column_spcy=None, csv_column_spcz=None, ref=None, size=None,
-                img_spacing=None, spacing=None, origin=None, linear=False, center=0, fit_spacing=False,
-                iso_spacing=False, image_dimension=2, pixel_dimension=1, rgb=False, ow=1, out="./out.nrrd",
-                out_ext=None):
-    parser = argparse.ArgumentParser(description='Resample an image', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    in_group = parser.add_mutually_exclusive_group(required=True)
-    in_group.add_argument('--img', type=str, help='image to resample')
-    in_group.add_argument('--dir', type=str, help='Directory with image to resample')
-    in_group.add_argument('--csv', type=str, help='CSV file with column img with paths to images to resample')
-
-    csv_group = parser.add_argument_group('CSV extra parameters')
-    csv_group.add_argument('--csv_column', type=str, default='image', help='CSV column name (Only used if flag csv is used)')
-    csv_group.add_argument('--csv_root_path', type=str, default=None, help='Replaces a root path directory to empty, this is use to recreate a directory structure in the output directory, otherwise, the output name will be the name in the csv (only if csv flag is used)')
-    csv_group.add_argument('--csv_use_spc', type=int, default=0, help='Use the spacing information in the csv instead of the image')
-    csv_group.add_argument('--csv_column_spcx', type=str, default=None, help='Column name in csv')
-    csv_group.add_argument('--csv_column_spcy', type=str, default=None, help='Column name in csv')
-    csv_group.add_argument('--csv_column_spcz', type=str, default=None, help='Column name in csv')
-
-    transform_group = parser.add_argument_group('Transform parameters')
-    transform_group.add_argument('--ref', type=str, help='Reference image. Use an image as reference for the resampling', default=None)
-    transform_group.add_argument('--size', nargs="+", type=int, help='Output size, -1 to leave unchanged', default=None)
-    transform_group.add_argument('--img_spacing', nargs="+", type=float, default=None, help='Use this spacing information instead of the one in the image')
-    transform_group.add_argument('--spacing', nargs="+", type=float, default=None, help='Output spacing')
-    transform_group.add_argument('--origin', nargs="+", type=float, default=None, help='Output origin')
-    transform_group.add_argument('--linear', type=bool, help='Use linear interpolation.', default=False)
-    transform_group.add_argument('--center', type=int, help='Center the image in the space', default=0)
-    transform_group.add_argument('--fit_spacing', type=bool, help='Fit spacing to output', default=False)
-    transform_group.add_argument('--iso_spacing', type=bool, help='Same spacing for resampled output', default=False)
-
-    img_group = parser.add_argument_group('Image parameters')
-    img_group.add_argument('--image_dimension', type=int, help='Image dimension', default=2)
-    img_group.add_argument('--pixel_dimension', type=int, help='Pixel dimension', default=1)
-    img_group.add_argument('--rgb', type=bool, help='Use RGB type pixel', default=False)
-
-    out_group = parser.add_argument_group('Output parameters')
-    out_group.add_argument('--ow', type=int, help='Overwrite', default=1)
-    out_group.add_argument('--out', type=str, help='Output image/directory', default="./out.nrrd")
-    out_group.add_argument('--out_ext', type=str, help='Output extension type', default=None)
-
-    # Manually set the args
-    print(transform_size(size))
-    args = parser.parse_args(args=[
-        '--img', img,
-        '--size', "119 443 443",
-        '--linear', str(linear),
-        '--center', str(center),
-        '--fit_spacing', str(fit_spacing),
-        '--iso_spacing', str(iso_spacing),
-        '--image_dimension', str(image_dimension),
-        '--pixel_dimension', str(pixel_dimension),
-        '--rgb', str(rgb),
-        '--ow', str(ow),
-        '--out', out,
-    ])
-    return args
+def run_resample(img=None, dir=None, csv=None, csv_column='image', csv_root_path=None, csv_use_spc=0,
+                     csv_column_spcx=None, csv_column_spcy=None, csv_column_spcz=None, ref=None, size=None,
+                     img_spacing=None, spacing=None, origin=None, linear=False, center=0, fit_spacing=False,
+                     iso_spacing=False, image_dimension=2, pixel_dimension=1, rgb=False, ow=1, out="./out.nrrd",
+                     out_ext=None):
+    args = {
+        'img': img,
+        'dir': dir,
+        'csv': csv,
+        'csv_column': csv_column,
+        'csv_root_path': csv_root_path,
+        'csv_use_spc': csv_use_spc,
+        'csv_column_spcx': csv_column_spcx,
+        'csv_column_spcy': csv_column_spcy,
+        'csv_column_spcz': csv_column_spcz,
+        'ref': ref,
+        'size': size,
+        'img_spacing': img_spacing,
+        'spacing': spacing,
+        'origin': origin,
+        'linear': linear,
+        'center': center,
+        'fit_spacing': fit_spacing,
+        'iso_spacing': iso_spacing,
+        'image_dimension': image_dimension,
+        'pixel_dimension': pixel_dimension,
+        'rgb': rgb,
+        'ow': ow,
+        'out': out,
+        'out_ext': out_ext,
+    }
+    print("args : ",args)
+    resample_images(args)
 
 def transform_size(size_str):
     """
@@ -112,30 +61,26 @@ def transform_size(size_str):
     
     return size_transformed
             
-def main(args):
-    csv_path = create_csv(args.input_folder,args.output_folder,output_csv=args.output_folder,name_csv="resample_csv.csv")
+def main(input_folder,output_folder,resample_size,spacing,iso_spacing):
+    csv_path = create_csv(input_folder,output_folder,output_csv=output_folder,name_csv="resample_csv.csv")
     
     with open(csv_path, mode='r') as csv_file:
         csv_reader = csv.DictReader(csv_file)
-        
-        # Boucle sur chaque ligne du fichier CSV
         for row in csv_reader:
-            # Afficher les informations de chaque ligne
-            size = tuple(map(int, row["size"].strip("()").split(",")))
+            size_file = tuple(map(int, row["size"].strip("()").split(",")))
             input_path = row["in"]
             out_path = row["out"]
-            print(size[1])
-            print(f'Image d\'entrée: {row["in"]}, Image de sortie: {row["out"]}, Taille: {size}')
-            # command = [f"python3 {args.python_file} --img \"{input_path}\" --out \"{out_path}\" --size 768 576 768 --spacing 0.3 0.3 0.3 --center False --linear False --fit_spacing True --image_dimension 3 --pixel_dimension 1 --rgb False --ow 0"]
-            # command = [f"python3 {args.python_file} --img \"{input_path}\" --out \"{out_path}\" --size 443 443 119 --spacing 0.3 0.3 0.3 --center False --linear False --fit_spacing True --image_dimension 3 --pixel_dimension 1 --rgb False --ow 0"]
-            # command = [f"python3 {args.python_file} --img \"{input_path}\" --out \"{out_path}\" --size 443 443 443  --fit_spacing True --center 0 --iso_spacing 1 --linear False --image_dimension 3 --pixel_dimension 1 --rgb False --ow 0"]
-            args_resample = create_args(img=input_path,out=out_path,size=args.resample_size,fit_spacing=True,center=0,iso_spacing=1,linear=False,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
-            print("args resample : ",args_resample)
-            break
-            # subprocess.run(command,shell=True)
-            resample_images(args_resample)
+            if resample_size != "None" and spacing=="None" :
+                print("1"*100)
+                run_resample(img=input_path,out=out_path,size=list(map(int, resample_size.split(','))),fit_spacing=True,center=0,iso_spacing=iso_spacing,linear=False,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+            elif resample_size == "None" and spacing!="None" :
+                print("2"*100)
+                run_resample(img=input_path,out=out_path,img_spacing=list(map(float, spacing.split(','))),size=[size_file[0],size_file[1],size_file[2]],fit_spacing=True,center=0,iso_spacing=True,linear=False,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+            elif resample_size != "None" and spacing!="None" :
+                print("3"*100)
+                run_resample(img=input_path,out=out_path,img_spacing=list(map(float, spacing.split(','))),size=list(map(int, resample_size.split(','))),fit_spacing=True,center=0,iso_spacing=True,linear=False,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
             
-    delete_csv(csv_path)
+    # delete_csv(csv_path)
     
 def delete_csv(file_path):
     """Delete a CSV file if it exists."""
@@ -152,13 +97,16 @@ def delete_csv(file_path):
 
 
 if __name__=="__main__":
-    # SIZE AND SPACING TO RESAMPLE ARE HARD WRITTEN IN THE LINE 24
     parser = argparse.ArgumentParser(description='Get nifti info')
-    parser.add_argument('input_folder', type=str, help='Input path')
+    parser.add_argument('input_folder_MRI', type=str, help='Input path')
+    parser.add_argument('input_folder_CBCT', type=str, help='Input path')
     parser.add_argument('output_folder', type=str, help='Output path')
     parser.add_argument('resample_size', type=str, help='size_resample')
-    # /home/luciacev/Documents/Gaelle/MultimodelRegistration/resample/resample.py
+    parser.add_argument('spacing', type=str, help='size_resample')
     args = parser.parse_args()
 
 
-    main(args)
+    if os.path.isdir(args.input_folder_MRI):
+        main(args.input_folder_MRI,args.output_folder,args.resample_size,args.spacing,iso_spacing=True)
+    if os.path.isdir(args.input_folder_CBCT):
+        main(args.input_folder_CBCT,args.output_folder,args.resample_size,args.spacing,iso_spacing=False)
