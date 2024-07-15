@@ -1,133 +1,146 @@
 #!/usr/bin/env python-real
 
+import subprocess
 import argparse
-import SimpleITK as sitk
-import sys, os, time
-import numpy as np
+import os
+import re
 
-fpath = os.path.join(os.path.dirname(__file__), "..")
-sys.path.append(fpath)
+def create_folder(folder):
+    if not os.path.exists(folder):
+        os.makedirs(folder)
 
-from ASO_CBCT_utils import (
-    ExtractFilesFromFolder,
-    AngleAndAxisVectors,
-    RotationMatrix,
-    PreASOResample,
-    convertdicom2nifti,
-)
+def run_script(script_name, args):
+    command = ['python', script_name] + args
+    result = subprocess.run(command, capture_output=True, text=True)
+    print(f"Running {script_name} with arguments {args}")
+    print("Output:\n", result.stdout)
+    if result.stderr:
+        print("Errors:\n", result.stderr)
 
+def run_script_inverse_mri(mri_folder, folder_general):
+    folder_mri_inverse = os.path.join(folder_general,"a01_MRI_inv")
+    create_folder(folder_mri_inverse)
+    script_name = 'mri_inverse.py'
+    args = [
+        f"--path_folder={mri_folder}",
+        f"--folder_output={folder_mri_inverse}",
+        f"--suffix=inv",
+    ]
+    run_script(script_name, args)
+    return folder_mri_inverse
 
-def ResampleImage(image, transform):
-    """
-    Resample image using SimpleITK
-
-    Parameters
-    ----------
-    image : SimpleITK.Image
-        Image to be resampled
-    target : SimpleITK.Image
-        Target image
-    transform : SimpleITK transform
-        Transform to be applied to the image.
-
-    Returns
-    -------
-    SimpleITK image
-        Resampled image.
-    """
-    resample = sitk.ResampleImageFilter()
-    resample.SetReferenceImage(image)
-    resample.SetTransform(transform)
-    resample.SetInterpolator(sitk.sitkLinear)
-    orig_size = np.array(image.GetSize(), dtype=int)
-    ratio = 1
-    new_size = orig_size * ratio
-    new_size = np.ceil(new_size).astype(int)  #  Image dimensions are in integers
-    new_size = [int(s) for s in new_size]
-    resample.SetSize(new_size)
-    resample.SetDefaultPixelValue(0)
-
-    # Set New Origin
-    orig_origin = np.array(image.GetOrigin())
-    # apply transform to the origin
-    orig_center = np.array(
-        image.TransformContinuousIndexToPhysicalPoint(np.array(image.GetSize()) / 2.0)
-    )
-    # new_center = np.array(target.TransformContinuousIndexToPhysicalPoint(np.array(target.GetSize())/2.0))
-    new_origin = orig_origin - orig_center
-    resample.SetOutputOrigin(new_origin)
-
-    return resample.Execute(image)
+def run_script_normalize_percentile(file_type,input_folder, folder_general, upper_percentile, lower_percentile, max_norm, min_norm):
+    script_name = 'normalize_percentile.py'
+    if file_type=="MRI":
+        output_folder_norm = os.path.join(folder_general,"a2_MRI_inv_norm")
+    else :
+        output_folder_norm = os.path.join(folder_general,"b2_CBCT_norm")
+    create_folder(output_folder_norm)
+    args = [
+        f"--input_folder={input_folder}",
+        f"--output_folder={output_folder_norm}",
+        f"--upper_percentile={upper_percentile}",
+        f"--lower_percentile={lower_percentile}",
+        f"--max_norm={max_norm}",
+        f"--min_norm={min_norm}"
+    ]
+    run_script(script_name, args)
+    output_path_norm = os.path.join(output_folder_norm,f"test_percentile=[{lower_percentile},{upper_percentile}]_norm=[{min_norm},{max_norm}]")
+    return output_path_norm
 
 
-def main(args):
+def run_script_apply_mask(cbct_folder, cbct_label2,folder_general, suffix,upper_percentile, lower_percentile, max_norm, min_norm):
+    script_name = 'apply_mask_folder.py'
+    cbct_mask_folder = os.path.join(folder_general,"b3_CBCT_norm_mask:l2",f"test_percentile=[{lower_percentile},{upper_percentile}]_norm=[{min_norm},{max_norm}]")
+    create_folder(cbct_mask_folder)
+    args = [
+        f"--folder_path={cbct_folder}",
+        f"--seg_folder={cbct_label2}",
+        f"--folder_output={cbct_mask_folder}",
+        f"--suffix={suffix}",
+        f"--seg_label={1}"
+    ]
+    run_script(script_name, args)
+    return cbct_mask_folder
 
-    input_dir, out_dir, smallFOV, isDCMInput = (
-        os.path.normpath(args.input[0]),
-        os.path.normpath(args.output_folder[0]),
-        args.SmallFOV[0] == "true",
-        args.DCMInput[0] == "true",
-    )
+def run_script_AREG_MRI_folder(cbct_folder, cbct_mask_folder,mri_folder,mri_original_folder,folder_general,mri_lower_p,mri_upper_p,mri_min_norm,mri_max_norm,cbct_lower_p,cbct_upper_p,cbct_min_norm,cbct_max_norm):
+    script_name = 'AREG_MRI_folder.py'
+    output_folder = os.path.join(folder_general,"z01_output",f"a01_mri:inv+norm[{mri_min_norm},{mri_max_norm}]+p[{mri_lower_p},{mri_upper_p}]_cbct:norm[{cbct_min_norm},{cbct_max_norm}]+p[{cbct_lower_p},{cbct_upper_p}]+mask")
+    create_folder(output_folder)
+    args = [
+        f"--cbct_folder={cbct_folder}",
+        f"--cbct_original_folder=None",
+        f"--cbct_mask_folder={cbct_mask_folder}",
+        f"--cbct_seg_folder=None",
+        f"--mri_folder={mri_folder}",
+        f"--mri_original_folder={mri_original_folder}",
+        f"--mri_mask_folder=None",
+        f"--mri_seg_folder=None",
+        f"--output_folder={output_folder}"
+    ]
+    run_script(script_name, args)
+    return cbct_mask_folder
 
-    if isDCMInput:
-        convertdicom2nifti(input_dir)
+def extract_values(input_string):
+    # Utiliser une expression régulière pour extraire tous les chiffres
+    numbers = re.findall(r'\d+', input_string)
+    
+    # Convertir les nombres extraits en entiers
+    numbers = list(map(int, numbers))
+    
+    # Vérifier qu'il y a exactement 8 nombres
+    if len(numbers) != 8:
+        raise ValueError("L'entrée doit contenir exactement 8 chiffres.")
+    
+    # Assigner les nombres à des variables séparées
+    a, b, c, d, e, f, g, h = numbers
+    
+    return a, b, c, d, e, f, g, h
 
-    scan_extension = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]
+def main():
+    parser = argparse.ArgumentParser(description="Run multiple Python scripts with arguments")
+    parser.add_argument('folder_general', type=str, help="Folder general where to make all the output")
+    parser.add_argument('mri_folder', type=str, help="Folder containing original MRI images.")
+    parser.add_argument('cbct_folder', type=str, help="Folder containing original CBCT images.")
+    parser.add_argument('cbct_label2', type=str, help="Folder containing CBCT masks.")
+    parser.add_argument('normalization', type=str, help="Folder containing CBCT masks.")
+    args = parser.parse_args()
+    print("normalization : ",args.normalization)
+    print("type normalization : ",type(args.normalization))
+    
+    mri_min_norm, mri_max_norm, mri_lower_p, mri_upper_p, cbct_min_norm, cbct_max_norm, cbct_lower_p, cbct_upper_p = extract_values(args.normalization)
+    print(f"mri_lower_p: {mri_lower_p}")
+    print(f"mri_upper_p: {mri_upper_p}")
+    print(f"mri_min_norm: {mri_min_norm}")
+    print(f"mri_max_norm: {mri_max_norm}")
+    
+    print(f"cbct_lower_p: {cbct_lower_p}")
+    print(f"cbct_upper_p: {cbct_upper_p}")
+    print(f"cbct_min_norm: {cbct_min_norm}")
+    print(f"cbct_max_norm: {cbct_max_norm}")
+    
+    # Appel des fonctions une par une
+    # mri_lower_p = 10
+    # mri_upper_p = 95
+    # mri_min_norm = 0
+    # mri_max_norm = 100
 
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
+    # cbct_lower_p = 10
+    # cbct_upper_p = 95
+    # cbct_min_norm = 0
+    # cbct_max_norm = 150
+    # # MRI
+    # folder_mri_inverse = run_script_inverse_mri(args.mri_folder, args.folder_general)
+    # input_path_norm_mri = run_script_normalize_percentile("MRI",folder_mri_inverse, args.folder_general, upper_percentile=mri_upper_p, lower_percentile=mri_lower_p, max_norm=mri_max_norm, min_norm=mri_min_norm)
 
-    input_files, _ = ExtractFilesFromFolder(input_dir, scan_extension)
-
-    for i in range(len(input_files)):
-
-        input_file = input_files[i]
-
-        img = sitk.ReadImage(input_file)
-
-        # Translation to center volume
-        T = -np.array(
-            img.TransformContinuousIndexToPhysicalPoint(np.array(img.GetSize()) / 2.0)
-        )
-        translation = sitk.TranslationTransform(3)
-        translation.SetOffset(T.tolist())
-
-        img_trans = ResampleImage(img, translation.GetInverse())
-        img_out = img_trans
-
-        # Write Scan
-        dir_scan = os.path.dirname(input_file.replace(input_dir, out_dir))
-        if not os.path.exists(dir_scan):
-            os.makedirs(dir_scan)
-
-        file_outpath = os.path.join(dir_scan, os.path.basename(input_file))
-        if not os.path.exists(file_outpath):
-            sitk.WriteImage(img_out, file_outpath)
-
-        print(f"""<filter-progress>{0}</filter-progress>""")
-        sys.stdout.flush()
-        time.sleep(0.2)
-        print(f"""<filter-progress>{2}</filter-progress>""")
-        sys.stdout.flush()
-        time.sleep(0.2)
-        print(f"""<filter-progress>{0}</filter-progress>""")
-        sys.stdout.flush()
-        time.sleep(0.2)
-
+    # # CBCT
+    # output_path_norm_cbct = run_script_normalize_percentile("CBCT",args.cbct_folder, args.folder_general, upper_percentile=cbct_upper_p, lower_percentile=cbct_lower_p, max_norm=cbct_max_norm, min_norm=cbct_min_norm)
+    # input_path_cbct_norm_mask = run_script_apply_mask(output_path_norm_cbct,args.cbct_label2,args.folder_general,"mask",upper_percentile=cbct_upper_p, lower_percentile=cbct_lower_p, max_norm=cbct_max_norm, min_norm=cbct_min_norm)
+    
+    # # REG
+    # run_script_AREG_MRI_folder(cbct_folder=args.cbct_folder,cbct_mask_folder=input_path_cbct_norm_mask,mri_folder=input_path_norm_mri,mri_original_folder=args.mri_folder,folder_general=args.folder_general,mri_lower_p=mri_lower_p,mri_upper_p=mri_upper_p,mri_min_norm=mri_min_norm,mri_max_norm=mri_max_norm,cbct_lower_p=cbct_lower_p,cbct_upper_p=cbct_upper_p,cbct_min_norm=cbct_min_norm,cbct_max_norm=cbct_max_norm)
+    
+    
 
 if __name__ == "__main__":
-
-    print("PRE ASO")
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("input", nargs=1)
-    parser.add_argument("output_folder", nargs=1)
-    parser.add_argument("model_folder", nargs=1)
-    parser.add_argument("SmallFOV", nargs=1)
-    parser.add_argument("temp_folder", nargs=1)
-    parser.add_argument("DCMInput", nargs=1)
-
-    args = parser.parse_args()
-
-    main(args)
+    main()

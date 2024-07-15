@@ -16,25 +16,40 @@
     <description><![CDATA[Input/output parameters]]></description>
 
     <string>
-      <name>input_folder</name>
-      <label>input_folder</label>
+      <name>input_folder_MRI</name>
+      <label>input_folder_MRI</label>
       <index>0</index>
-      <description>Path for the input.</description>
+      <description>Path for the input MRI.</description>
+    </string>
+
+    <string>
+      <name>input_folder_CBCT</name>
+      <label>input_folder_CBCT</label>
+      <index>1</index>
+      <description>Path for the input CBCT.</description>
     </string>
 
     <string>
       <name>output_folder</name>
       <label>output_folder</label>
-      <index>1</index>
+      <index>2</index>
       <description>output folder</description>
     </string>
 
     <string>
       <name>resample_size</name>
       <label>resample_size</label>
-      <index>2</index>
+      <index>3</index>
       <description>size </description>
     </string>
+
+    <string>
+      <name>spacing</name>
+      <label>spacing</label>
+      <index>4</index>
+      <description>spacing</description>
+    </string>
+
 
   </parameters>
 </executable>
