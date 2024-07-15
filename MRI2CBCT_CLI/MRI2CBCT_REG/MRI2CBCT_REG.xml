@@ -16,45 +16,38 @@
     <description><![CDATA[Input/output parameters]]></description>
 
     <string>
-      <name>input</name>
-      <label>input</label>
+      <name>folder_general</name>
+      <label>folder_general</label>
       <index>0</index>
-      <description>Path for the input.</description>
+      <description>output_folder</description>
     </string>
 
     <string>
-      <name>output_folder</name>
-      <label>output_folder</label>
+      <name>mri_folder</name>
+      <label>mri_folder</label>
       <index>1</index>
-      <description>Output Path</description>
+      <description>Input Path MRI folder</description>
     </string>
 
     <string>
-      <name>model_folder</name>
-      <label>model_folder</label>
+      <name>cbct_folder</name>
+      <label>cbct_folder</label>
       <index>2</index>
-      <description>Folder with model files</description>
+      <description>Input Path CBCT folder</description>
     </string>
 
     <string>
-      <name>SmallFOV</name>
-      <label>SmallFOV</label>
+      <name>cbct_label2</name>
+      <label>cbct_label2</label>
+      <index>3</index>
+      <description>Input path CB CBCT label</description>
+    </string>
+
+    <string>
+      <name>normalization</name>
+      <label>normalization</label>
       <index>4</index>
-      <description>Boolean to say whether or not the input file is a Small FOV</description>
-    </string>
-
-    <string>
-      <name>temp_folder</name>
-      <label>temp_folder</label>
-      <index>5</index>
-      <description>Temp folder for pre aso resample for lightning models</description>
-    </string>
-
-    <string>
-      <name>DCMInput</name>
-      <label>DCMInput</label>
-      <index>6</index>
-      <description>Is Dicom as Input</description>
+      <description>Normalization to use for MRI and CBCT</description>
     </string>
 
   </parameters>

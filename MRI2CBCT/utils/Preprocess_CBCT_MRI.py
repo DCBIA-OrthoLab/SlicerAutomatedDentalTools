@@ -112,9 +112,11 @@ class Preprocess_CBCT_MRI(Method):
         # MRI2CBCT_ORIENT_CENTER_MRI
         MRI2CBCT_RESAMPLE_CBCT_MRI = slicer.modules.mri2cbct_resample_cbct_mri
         parameter_mri2cbct_resample_cbct_mri = {
-            "input_folder": kwargs["input_folder"],
+            "input_folder_MRI": kwargs["input_folder_MRI"],
+            "input_folder_CBCT": kwargs["input_folder_CBCT"],
             "output_folder": kwargs["output_folder"],
-            "resample_size": kwargs["resample_size"]
+            "resample_size": kwargs["resample_size"],
+            "spacing" : kwargs["spacing"]
         }
         
         list_process.append(

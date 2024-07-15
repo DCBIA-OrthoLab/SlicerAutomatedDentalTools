@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import Annotated, Optional
-from qt import QApplication, QWidget, QTableWidget, QTableWidgetItem, QHeaderView,QSpinBox, QVBoxLayout, QLabel, QSizePolicy, QCheckBox, QFileDialog,QMessageBox, QApplication, QProgressDialog
+from qt import QApplication, QWidget, QTableWidget, QDoubleSpinBox, QTableWidgetItem, QHeaderView,QSpinBox, QVBoxLayout, QLabel, QSizePolicy, QCheckBox, QFileDialog,QMessageBox, QApplication, QProgressDialog
 import qt
 from utils.Preprocess_CBCT import Process_CBCT
 from utils.Preprocess_MRI import Process_MRI
@@ -281,52 +281,108 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ButtonCheckBoxDefaultNorm2.connect("clicked(bool)",partial(self.DefaultNorm,"2"))
                 
         ##################################################################################################
-        ### Resample Table
         self.tableWidgetResample = self.ui.tableWidgetResample
-
-        self.tableWidgetResample.setRowCount(1)  # MRI and CBCT rows + header row
-        self.tableWidgetResample.setColumnCount(3)  # Min, Max for Normalization and Percentile
         
+        # Increase the row and column count
+        self.tableWidgetResample.setRowCount(2)  # Adding a second row
+        self.tableWidgetResample.setColumnCount(4)  # Adding a new column
+
         # Set the horizontal header to stretch and fill the available space
         header = self.tableWidgetResample.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Stretch)
-        
+
         # Set a fixed height for the table to avoid stretching
-        self.tableWidgetResample.setFixedHeight(self.tableWidgetResample.horizontalHeader().height + 
-                                            self.tableWidgetResample.verticalHeader().sectionSize(0) * self.tableWidgetResample.rowCount)
+        self.tableWidgetResample.setFixedHeight(
+            self.tableWidgetResample.horizontalHeader().height + 
+            self.tableWidgetResample.verticalHeader().sectionSize(0) * self.tableWidgetResample.rowCount
+        )
 
         # Set the headers
-        self.tableWidgetResample.setHorizontalHeaderLabels(["X", "Y", "Z"])
-        self.tableWidgetResample.setVerticalHeaderLabels([ "Number of slices"])
+        self.tableWidgetResample.setHorizontalHeaderLabels(["X", "Y", "Z", "Keep File"])
+        self.tableWidgetResample.setVerticalHeaderLabels(["Number of slices", "Spacing"])
 
+        # Add QSpinBoxes for the first row
+        spinBox1 = QSpinBox()
+        spinBox1.setMaximum(10000)
+        spinBox1.setValue(119)
+        self.tableWidgetResample.setCellWidget(0, 0, spinBox1)
+
+        spinBox2 = QSpinBox()
+        spinBox2.setMaximum(10000)
+        spinBox2.setValue(443)
+        self.tableWidgetResample.setCellWidget(0, 1, spinBox2)
+
+        spinBox3 = QSpinBox()
+        spinBox3.setMaximum(10000)
+        spinBox3.setValue(443)
+        self.tableWidgetResample.setCellWidget(0, 2, spinBox3)
+
+        # Add QSpinBoxes for the new row
+        spinBox4 = QDoubleSpinBox()
+        spinBox4.setMaximum(10000)
+        spinBox4.setSingleStep(0.1)
+        self.tableWidgetResample.setCellWidget(1, 0, spinBox4)
+
+        spinBox5 = QDoubleSpinBox()
+        spinBox5.setMaximum(10000)
+        spinBox5.setSingleStep(0.1)
+        self.tableWidgetResample.setCellWidget(1, 1, spinBox5)
+
+        spinBox6 = QDoubleSpinBox()
+        spinBox6.setMaximum(10000)
+        spinBox6.setSingleStep(0.1)
+        self.tableWidgetResample.setCellWidget(1, 2, spinBox6)
+        # Add QCheckBox for the "Keep File" column
+        checkBox1 = QCheckBox()
+        checkBox1.stateChanged.connect(lambda state: self.toggleSpinBoxes(state, [spinBox1, spinBox2, spinBox3]))
+        self.tableWidgetResample.setCellWidget(0, 3, checkBox1)
+
+        checkBox2 = QCheckBox()
+        checkBox2.stateChanged.connect(lambda state: self.toggleSpinBoxes(state, [spinBox4, spinBox5, spinBox6]))
+        self.tableWidgetResample.setCellWidget(1, 3, checkBox2)
         
-        spinBox = QSpinBox()
-        spinBox.setMaximum(10000)
-        spinBox.setValue(119)
-        self.tableWidgetResample.setCellWidget(0, 0, spinBox)
-        
-        spinBox = QSpinBox()
-        spinBox.setMaximum(10000)
-        spinBox.setValue(443)
-        self.tableWidgetResample.setCellWidget(0, 1, spinBox)
-        
-        spinBox = QSpinBox()
-        spinBox.setMaximum(10000)
-        spinBox.setValue(443)
-        self.tableWidgetResample.setCellWidget(0, 2, spinBox)
+    def toggleSpinBoxes(self, state, spinBoxes):
+        for spinBox in spinBoxes:
+            if state == 2:
+                spinBox.setEnabled(False)
+                spinBox.setStyleSheet("color: gray;")
+            else:
+                spinBox.setEnabled(True)
+                spinBox.setStyleSheet("")
+
         
     def get_resample_values(self):
         """
         Retrieves the resample values (X, Y, Z) from the QTableWidget.
 
-        :param tableWidgetResample: QTableWidget instance containing the resample values.
-        :return: A tuple of three integers representing the resample values (X, Y, Z).
+        :return: A tuple of two lists representing the resample values for the two rows. 
+                Each list contains three values (X, Y, Z) or None if the "Keep File" checkbox is checked.
         """
-        x_value = self.tableWidgetResample.cellWidget(0, 0).value
-        y_value = self.tableWidgetResample.cellWidget(0, 1).value
-        z_value = self.tableWidgetResample.cellWidget(0, 2).value
-        
-        return [x_value, y_value, z_value]
+        resample_values_row1 = []
+        resample_values_row2 = []
+
+        # Check the "Keep File" checkbox for the first row
+        if self.tableWidgetResample.cellWidget(0, 3).isChecked():
+            resample_values_row1 = "None"
+        else:
+            resample_values_row1 = [
+                self.tableWidgetResample.cellWidget(0, 0).value,
+                self.tableWidgetResample.cellWidget(0, 1).value,
+                self.tableWidgetResample.cellWidget(0, 2).value
+            ]
+
+        # Check the "Keep File" checkbox for the second row
+        if self.tableWidgetResample.cellWidget(1, 3).isChecked():
+            resample_values_row2 = "None"
+        else:
+            resample_values_row2 = [
+                self.tableWidgetResample.cellWidget(1, 0).value,
+                self.tableWidgetResample.cellWidget(1, 1).value,
+                self.tableWidgetResample.cellWidget(1, 2).value
+            ]
+
+        return resample_values_row1, resample_values_row2
+
                 
         
     def onCheckboxOrientClicked(self, row, col, state):
@@ -591,9 +647,46 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     def onApplyButton(self) -> None:
+        self.list_Processes_Parameters=[]
+        # MRI2CBCT_ORIENT_CENTER_MRI
+        MRI2CBCT_RESAMPLE_REG = slicer.modules.mri2cbct_reg
+        parameter_mri2cbct_reg = {
+            "folder_general": self.ui.LineEditOutput.text,
+            "mri_folder": self.ui.lineEditRegMRI.text,
+            "cbct_folder": self.ui.lineEditRegCBCT.text,
+            "cbct_label2": self.ui.lineEditRegLabel.text,
+            "normalization" : [self.getNormalization()]
+        }
+        
+        self.list_Processes_Parameters.append(
+            {
+                "Process": MRI2CBCT_RESAMPLE_REG,
+                "Parameter": parameter_mri2cbct_reg,
+                "Module": "Resample files",
+            }
+        )
         """Run processing when user clicks "Apply" button."""
         print("get_normalization : ",self.getNormalization())
-        print("getCheckboxValuesOrient : ",self.getCheckboxValuesOrient())
+        
+        self.onProcessStarted()
+        
+        # /!\ Launch of the first process /!\
+        print("module name : ",self.list_Processes_Parameters[0]["Module"])
+        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        
+        self.process = slicer.cli.run(
+                self.list_Processes_Parameters[0]["Process"],
+                None,
+                self.list_Processes_Parameters[0]["Parameter"],
+            )
+        
+        self.module_name = self.list_Processes_Parameters[0]["Module"]
+        self.processObserver = self.process.AddObserver(
+            "ModifiedEvent", self.onProcessUpdate
+        )
+
+        del self.list_Processes_Parameters[0]
+        # print("getCheckboxValuesOrient : ",self.getCheckboxValuesOrient())
         
         
     def downloadModel(self, lineEdit, name, test,_):
@@ -749,10 +842,24 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
     def resampleMRICBCT(self):
         print("self.ui.lineEditOutputOrientMRI.text : ",self.ui.lineEditOuputResample.text)
+        if self.ui.comboBoxResample.currentText=="CBCT":
+            LineEditMRI = "None"
+            LineEditCBCT = self.ui.LineEditCBCT.text
+        elif self.ui.comboBoxResample.currentText=="MRI":
+            LineEditMRI = self.ui.LineEditMRI.text
+            LineEditCBCT = "None"
+        else : 
+            LineEditMRI = self.ui.LineEditMRI.text
+            LineEditCBCT = self.ui.LineEditCBCT.text
+            
+        print("self.get_resample_values() : ",self.get_resample_values())
+            
         self.list_Processes_Parameters = self.preprocess_mri_cbct.Process(
-                input_folder=self.ui.LineEditMRI.text,
+                input_folder_MRI=LineEditMRI,
+                input_folder_CBCT=LineEditCBCT,
                 output_folder=self.ui.lineEditOuputResample.text,
-                resample_size=self.get_resample_values()
+                resample_size=self.get_resample_values()[0],
+                spacing=self.get_resample_values()[1]
             )
         
         self.onProcessStarted()
