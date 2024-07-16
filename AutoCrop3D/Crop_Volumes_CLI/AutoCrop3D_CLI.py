@@ -30,7 +30,7 @@ def main(args)-> None:
         # clear log file
         log_f.truncate(0)
     index =0
-    ScanList = Search(path_input, ".nii.gz",".nrrd.gz",".gipl.gz")
+    ScanList = Search(path_input, ".nii.gz",".nii",".nrrd.gz",".nrrd",".gipl.gz",".gipl")
 
     # Include case with a folder of ROI corresponding to a folder of scans
     ROIList = Search(ROI_Path,".mrk.json")
@@ -41,7 +41,7 @@ def main(args)-> None:
     for key,data in ScanList.items():
 
         for patient_path in data:
-            patient = os.path.basename(patient_path).split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0]
+            patient = os.path.basename(patient_path).split('_Scan')[0].split('_scan')[0].split('_Seg')[0].split('_seg')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0]
 
             img = sitk.ReadImage(patient_path)
 
