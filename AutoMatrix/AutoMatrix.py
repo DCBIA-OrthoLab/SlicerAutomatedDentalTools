@@ -456,6 +456,8 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         '''
 
         patients,nb_files = GetPatients(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
+        volume_storage = slicer.vtkMRMLVolumeStorageNode()
+        model_storage = slicer.vtkMRMLVolumeStorageNode()
 
         if nb_files!=0:
             for key,values in patients.items():
@@ -468,10 +470,14 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         print("not a .nii.gz")
 
                     self.UpdateTime()
-                    if extension_scan!=".nii.gz" and extension_scan!=".nrrd":
+                    if volume_storage.GetSupportedFileExtension(scan):
                         model = slicer.util.loadModel(scan)
-                    else :
-                        model = slicer.util.loadVolume(scan)
+                    elif model_storage.GetSupportedFileExtension(scan):
+                        model = slicer.util.loadModel(scan)
+                    else:
+                        print(f"The scan : {scan} failed to be load ")
+                        continue  
+                    
                     self.UpdateTime()
                     for matrix in values['matrix']:
                         try:
