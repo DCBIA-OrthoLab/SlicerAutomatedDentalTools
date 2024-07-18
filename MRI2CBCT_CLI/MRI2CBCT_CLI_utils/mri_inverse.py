@@ -3,6 +3,15 @@ import os
 import argparse
 
 def invert_mri_intensity(path_folder, folder_output, suffix):
+    """
+    Inverts the intensity values of MRI images in the specified folder and saves the results.
+
+    Arguments:
+    path_folder (str): Path to the folder containing MRI files.
+    folder_output (str): Folder to save the inverted images.
+    suffix (str): Suffix to add to the output file names.
+    """
+    
     # Check if the output folder exists, if not create it
     if not os.path.exists(folder_output):
         os.makedirs(folder_output)

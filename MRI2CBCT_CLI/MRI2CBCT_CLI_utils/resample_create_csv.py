@@ -4,6 +4,14 @@ import pandas as pd
 import argparse
 
 def get_nifti_info(file_path,output_resample):
+    """
+    Retrieves information about a nifti file and prepares the output path for resampling.
+
+    Arguments:
+    file_path (str): Path to the input nifti file.
+    output_resample (str): Path to the folder to save resampled nifti files.
+    """
+    
     # Read the NIfTI file
     image = sitk.ReadImage(file_path)
 
@@ -18,6 +26,16 @@ def get_nifti_info(file_path,output_resample):
     return info
 
 def create_csv(input:str,output_resample:str,output_csv:str,name_csv:str):
+    """
+    Creates a CSV file with information about nifti files in the input folder, resampling them if needed.
+
+    Arguments:
+    input (str): Path to the input folder containing nifti files.
+    output_resample (str): Path to the folder to save resampled nifti files.
+    output_csv (str): Path to the folder to save the output CSV file.
+    name_csv (str): Name of the output CSV file.
+    """
+
     if not os.path.exists(output_resample):
         os.makedirs(output_resample)
         

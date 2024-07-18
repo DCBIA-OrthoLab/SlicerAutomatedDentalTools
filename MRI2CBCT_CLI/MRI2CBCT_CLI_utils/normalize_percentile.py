@@ -4,14 +4,30 @@ import SimpleITK as sitk
 import numpy as np
 
 def compute_thresholds(image, lower_percentile=10, upper_percentile=90):
-    """Compute thresholds based on percentiles of the image histogram."""
+    """
+    Computes intensity thresholds for an image based on specified percentiles.
+
+    Arguments:
+    image (SimpleITK.Image): The input image.
+    lower_percentile (float): The lower percentile for threshold computation (default is 10).
+    upper_percentile (float): The upper percentile for threshold computation (default is 90).
+    """
     array = sitk.GetArrayFromImage(image)
     lower_threshold = np.percentile(array, lower_percentile)
     upper_threshold = np.percentile(array, upper_percentile)
     return lower_threshold, upper_threshold
 
 def enhance_contrast(image,upper_percentile,lower_percentile, min_norm, max_norm):
-    """Enhance the contrast of the image while keeping normalization between 0 and 1."""
+    """
+    Enhances the contrast of the image while normalizing its intensity values.
+
+    Arguments:
+    image (SimpleITK.Image): The input image.
+    upper_percentile (float): The upper percentile for threshold computation.
+    lower_percentile (float): The lower percentile for threshold computation.
+    min_norm (float): The minimum normalization value.
+    max_norm (float): The maximum normalization value.
+    """
     # Compute thresholds
     lower_threshold, upper_threshold = compute_thresholds(image,lower_percentile,upper_percentile)
     # print(f"Computed thresholds - Lower: {lower_threshold}, Upper: {upper_threshold}")
@@ -24,8 +40,18 @@ def enhance_contrast(image,upper_percentile,lower_percentile, min_norm, max_norm
     
     return sitk.GetImageFromArray(scaled_array)
 
-def process_images(input_folder, output_folder,upper_percentile,lower_percentile,min_norm, max_norm):
-    """Process all .nii.gz images in the input folder."""
+def normalize(input_folder, output_folder,upper_percentile,lower_percentile,min_norm, max_norm):
+    """
+    Processes and normalizes all .nii.gz images in the input folder, enhancing their contrast.
+
+    Arguments:
+    input_folder (str): Path to the folder containing the input images.
+    output_folder (str): Path to the folder to save the normalized images.
+    upper_percentile (float): Upper percentile for threshold computation.
+    lower_percentile (float): Lower percentile for threshold computation.
+    min_norm (float): Minimum normalization value.
+    max_norm (float): Maximum normalization value.
+    """
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     
@@ -62,7 +88,7 @@ def main():
     if not os.path.exists(output_path):
         os.makedirs(output_path)
         
-    process_images(args.input_folder, output_path, args.upper_percentile,args.lower_percentile,args.min_norm, args.max_norm)
+    normalize(args.input_folder, output_path, args.upper_percentile,args.lower_percentile,args.min_norm, args.max_norm)
 
 if __name__ == '__main__':
     main()
