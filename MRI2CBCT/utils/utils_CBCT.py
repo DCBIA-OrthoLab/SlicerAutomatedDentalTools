@@ -1,15 +1,6 @@
 import os
 from glob import iglob
 
-def GetListNamesSegType(segmentationType):
-    dic = {
-        "CB": ["cb"],
-        "MAND": ["mand", "md"],
-        "MAX": ["max", "mx"],
-    }
-    return dic[segmentationType]
-
-
 def GetListFiles(folder_path, file_extension):
     """Return a list of files in folder_path finishing by file_extension"""
     file_list = []

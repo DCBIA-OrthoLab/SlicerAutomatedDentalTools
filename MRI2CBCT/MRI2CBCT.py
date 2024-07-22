@@ -6,6 +6,7 @@ import qt
 from utils.Preprocess_CBCT import Process_CBCT
 from utils.Preprocess_MRI import Process_MRI
 from utils.Preprocess_CBCT_MRI import Preprocess_CBCT_MRI
+from utils.Reg_MRI2CBCT import Registration_MRI2CBCT
 import time 
 
 import vtk
@@ -41,7 +42,7 @@ class MRI2CBCT(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("MRI2CBCT")  # TODO: make this more human readable by adding spaces
         # TODO: set categories (folders where the module shows up in the module selector)
-        self.parent.categories = [translate("qSlicerAbstractCoreModule", "Examples")]
+        self.parent.categories = ["Automated Dental Tools"]
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
         self.parent.contributors = ["John Doe (AnyWare Corp.)"]  # TODO: replace with "Firstname Lastname (Organization)"
         # TODO: update with short description of the module and a link to online module documentation
@@ -186,6 +187,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.preprocess_cbct = Process_CBCT(self)
         self.preprocess_mri = Process_MRI(self)
         self.preprocess_mri_cbct = Preprocess_CBCT_MRI(self)
+        self.registration_mri2cbct = Registration_MRI2CBCT(self)
 
         # Connections
         #        LineEditOutputReg
@@ -194,7 +196,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
 
         # Buttons
-        self.ui.applyButton.connect("clicked(bool)", self.onApplyButton)
+        self.ui.registrationButton.connect("clicked(bool)", self.registration_MR2CBCT)
         self.ui.SearchButtonCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCT"))
         self.ui.SearchButtonMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRI"))
         self.ui.SearchButtonRegMRI.connect("clicked(bool)",partial(self.openFinder,"InputRegMRI"))
@@ -211,8 +213,22 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.pushButtonDownloadSegCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditSegCBCT, "Segmentation", True))
         
 
-        # Make sure parameter node is initialized (needed for module reload)
+        # Make sure parameter node is initialized (needed for module reload) 
         self.initializeParameterNode()
+        self.ui.ComboBoxCBCT.setCurrentIndex(1)
+        self.ui.ComboBoxCBCT.setEnabled(False)
+        self.ui.ComboBoxMRI.setCurrentIndex(1)
+        self.ui.ComboBoxMRI.setEnabled(False)
+        self.ui.comboBoxRegMRI.setCurrentIndex(1)
+        self.ui.comboBoxRegMRI.setEnabled(False)
+        self.ui.comboBoxRegCBCT.setCurrentIndex(1)
+        self.ui.comboBoxRegCBCT.setEnabled(False)
+        self.ui.comboBoxRegLabel.setCurrentIndex(1)
+        self.ui.comboBoxRegLabel.setEnabled(False)
+        
+        self.ui.label_time.setHidden(True)
+        self.ui.label_info.setHidden(True)
+        self.ui.progressBar.setHidden(True)
         
         self.ui.outputCollapsibleButton.setText("Registration")
         self.ui.inputsCollapsibleButton.setText("Preprocess")
@@ -250,6 +266,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     self.tableWidgetOrient.setCellWidget(row, col, checkBox)
 
         self.ui.ButtonDefaultOrientMRI.connect("clicked(bool)",self.defaultOrientMRI)
+        self.defaultOrientMRI()
         
         ##################################################################################################
         ### Normalization Table
@@ -274,13 +291,19 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for row in range(2):
             for col in range(4):
                 spinBox = QSpinBox()
-                spinBox.setMaximum(10000)
+                if col in [2, 3]:  # Columns for Percentile Min and Percentile Max
+                    spinBox.setMaximum(100)
+                else:
+                    spinBox.setMaximum(10000)
                 self.tableWidgetNorm.setCellWidget(row, col, spinBox)
                 
         self.ui.ButtonCheckBoxDefaultNorm1.connect("clicked(bool)",partial(self.DefaultNorm,"1"))
         self.ui.ButtonCheckBoxDefaultNorm2.connect("clicked(bool)",partial(self.DefaultNorm,"2"))
+        
+        self.DefaultNorm("1",_)
                 
         ##################################################################################################
+        # RESAMPLE TABLE
         self.tableWidgetResample = self.ui.tableWidgetResample
         
         # Increase the row and column count
@@ -298,7 +321,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
 
         # Set the headers
-        self.tableWidgetResample.setHorizontalHeaderLabels(["X", "Y", "Z", "Keep File"])
+        self.tableWidgetResample.setHorizontalHeaderLabels(["X", "Y", "Z", "Keep File "])
         self.tableWidgetResample.setVerticalHeaderLabels(["Number of slices", "Spacing"])
 
         # Add QSpinBoxes for the first row
@@ -321,27 +344,45 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         spinBox4 = QDoubleSpinBox()
         spinBox4.setMaximum(10000)
         spinBox4.setSingleStep(0.1)
+        spinBox4.setValue(0.3)
         self.tableWidgetResample.setCellWidget(1, 0, spinBox4)
 
         spinBox5 = QDoubleSpinBox()
         spinBox5.setMaximum(10000)
         spinBox5.setSingleStep(0.1)
+        spinBox5.setValue(0.3)
         self.tableWidgetResample.setCellWidget(1, 1, spinBox5)
 
         spinBox6 = QDoubleSpinBox()
         spinBox6.setMaximum(10000)
         spinBox6.setSingleStep(0.1)
+        spinBox6.setValue(0.3)
         self.tableWidgetResample.setCellWidget(1, 2, spinBox6)
         # Add QCheckBox for the "Keep File" column
-        checkBox1 = QCheckBox()
+        checkBox1 = QCheckBox("Keep the same size as the input scan")
         checkBox1.stateChanged.connect(lambda state: self.toggleSpinBoxes(state, [spinBox1, spinBox2, spinBox3]))
         self.tableWidgetResample.setCellWidget(0, 3, checkBox1)
 
-        checkBox2 = QCheckBox()
+        checkBox2 = QCheckBox("Keep the same spacing as the input scan")
         checkBox2.stateChanged.connect(lambda state: self.toggleSpinBoxes(state, [spinBox4, spinBox5, spinBox6]))
         self.tableWidgetResample.setCellWidget(1, 3, checkBox2)
         
     def toggleSpinBoxes(self, state, spinBoxes):
+        """
+        Enable or disable a list of QSpinBox widgets based on the provided state.
+
+        Parameters:
+        - state: An integer representing the state (2 for disabled, any other value for enabled).
+        - spinBoxes: A list of QSpinBox widgets to be toggled.
+
+        The function iterates through each QSpinBox in the provided list. If the state is 2,
+        the QSpinBox is disabled and its text color is set to gray. Otherwise, the QSpinBox
+        is enabled and its default stylesheet is restored.
+
+        This function is connected to the "keep file" checkbox. When the checkbox is checked
+        (state == 2), the spin boxes are disabled and shown in gray. If the checkbox is unchecked,
+        the spin boxes are enabled and restored to their default style.
+        """
         for spinBox in spinBoxes:
             if state == 2:
                 spinBox.setEnabled(False)
@@ -357,6 +398,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         :return: A tuple of two lists representing the resample values for the two rows. 
                 Each list contains three values (X, Y, Z) or None if the "Keep File" checkbox is checked.
+                First output : number of slices.
+                Second output : spacing 
         """
         resample_values_row1 = []
         resample_values_row2 = []
@@ -386,6 +429,23 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 
         
     def onCheckboxOrientClicked(self, row, col, state):
+        """
+        Handle the click event of the orientation checkboxes in the table.
+
+        Parameters:
+        - row: The row index of the clicked checkbox.
+        - col: The column index of the clicked checkbox.
+        - state: The state of the clicked checkbox (2 for checked, 0 for unchecked).
+
+        This function updates the orientation checkboxes in the table based on the user's selection.
+        It ensures that only one checkbox per row can be set to '1' (or '-1' if the "Minus" column is checked)
+        and that the rest are set to '0'. Additionally, if the "Minus" column checkbox is checked, it sets
+        the text to 'Yes' and updates related checkboxes in the same row accordingly. The function also handles
+        unchecking a checkbox and updating the styles and texts of other checkboxes in the same row and column.
+
+        This function is connected to the checkboxes for the orientation of the MRI. When a checkbox is clicked,
+        it ensures the correct orientation is set, following the specified rules.
+        """
         if col == 3:  # If the "Minus" column checkbox is clicked
             if state == 2:  # Checkbox is checked
                 self.minus_checked_rows.add(row)
@@ -475,6 +535,16 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         checkBox.setStyleSheet("font-weight: normal;")
                         
     def getCheckboxValuesOrient(self):
+        """
+        Retrieve the values of the orientation checkboxes in the table.
+
+        This function iterates through each checkbox in a 3x3 grid within the tableWidgetOrient.
+        It collects the integer value (text) of each checkbox and stores them in a list, which is
+        then converted to a tuple and returned.
+
+        Returns:
+        - A tuple containing the integer values of the checkboxes, representing the orientation of the MRI.
+        """
         values = []
         for row in range(3):
             for col in range(3):
@@ -484,6 +554,21 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return tuple(values)
     
     def defaultOrientMRI(self):
+        """
+        Set the default orientation values for the MRI checkboxes in the table.
+
+        This function initializes the orientation of the MRI by setting specific checkboxes
+        to predefined values. It iterates through a list of initial states, where each state
+        is a tuple containing the row, column, and value to set. The value can be 1, -1, or 0.
+        The corresponding checkbox is checked and its text is set accordingly. Additionally,
+        the checkbox style is updated to make the checked state bold, and the respective sets
+        (checked_cells and minus_checked_rows) are updated.
+
+        The initial states are:
+        - Row 0, Column 2: Set to -1
+        - Row 1, Column 0: Set to 1
+        - Row 2, Column 1: Set to -1
+        """
         initial_states = [
             (0, 2, -1),
             (1, 0, 1),
@@ -526,27 +611,15 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onSceneStartClose(self, caller, event) -> None:
         """Called just before the scene is closed."""
-        # Parameter node will be reset, do not use it anymore
         pass
 
     def onSceneEndClose(self, caller, event) -> None:
         """Called just after the scene is closed."""
-        # If this module is shown while the scene is closed then recreate a new parameter node immediately
         if self.parent.isEntered:
             self.initializeParameterNode()
 
     def initializeParameterNode(self) -> None:
         """Ensure parameter node exists and observed."""
-        # Parameter node stores all user choices in parameter values, node selections, etc.
-        # so that when the scene is saved and reloaded, these settings are restored.
-
-        # self.setParameterNode(self.logic.getParameterNode())
-
-        # Select default input nodes if nothing is selected yet to save a few clicks for the user
-        # if not self._parameterNode.inputVolume:
-        #     firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-        #     if firstVolumeNode:
-        #         self._parameterNode.inputVolume = firstVolumeNode
         pass
 
 
@@ -554,6 +627,16 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         pass
     
     def getNormalization(self):
+        """
+        Retrieve the normalization values from the table.
+
+        This function iterates through each cell in the tableWidgetNorm, collecting the values
+        of QSpinBox widgets. It stores these values in a nested list, where each sublist represents
+        a row of values. The collected values are then returned as a list of lists.
+
+        Returns:
+        - A list of lists containing the values of the QSpinBox widgets in the tableWidgetNorm.
+        """
         values = []
         for row in range(self.tableWidgetNorm.rowCount):
             rowData = []
@@ -565,6 +648,15 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return(values)
     
     def DefaultNorm(self,num : str,_)->None:
+        """
+        Set default normalization values in the tableWidgetNorm based on the identifier 'num'.
+        
+        If 'num' is "1", set specific default values; otherwise, use another set of values.
+        
+        Parameters:
+        - num: Identifier to select the set of default values.
+        - _: Unused parameter.
+        """
         # Define the default values for each cell
         if num=="1":
             default_values = [
@@ -589,9 +681,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
          Open finder to let the user choose is files or folder
         """
         if nom=="InputMRI":
-            print("self.ui.ComboBoxMRI.currentIndex : ",self.ui.ComboBoxMRI.currentIndex)
-            print("Type de self.ui.ComboBoxMRI.currentIndex : ", type(self.ui.ComboBoxMRI.currentIndex))
-            print("self.ui.ComboBoxMRI.currentIndex : ",self.ui.ComboBoxMRI.currentIndex==1)
             if self.ui.ComboBoxMRI.currentIndex==1:
                   print("oui")
                   surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
@@ -645,52 +734,23 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
             self.ui.LineEditOutput.setText(surface_folder)
 
-
-    def onApplyButton(self) -> None:
-        self.list_Processes_Parameters=[]
-        # MRI2CBCT_ORIENT_CENTER_MRI
-        MRI2CBCT_RESAMPLE_REG = slicer.modules.mri2cbct_reg
-        parameter_mri2cbct_reg = {
-            "folder_general": self.ui.LineEditOutput.text,
-            "mri_folder": self.ui.lineEditRegMRI.text,
-            "cbct_folder": self.ui.lineEditRegCBCT.text,
-            "cbct_label2": self.ui.lineEditRegLabel.text,
-            "normalization" : [self.getNormalization()]
-        }
-        
-        self.list_Processes_Parameters.append(
-            {
-                "Process": MRI2CBCT_RESAMPLE_REG,
-                "Parameter": parameter_mri2cbct_reg,
-                "Module": "Resample files",
-            }
-        )
-        """Run processing when user clicks "Apply" button."""
-        print("get_normalization : ",self.getNormalization())
-        
-        self.onProcessStarted()
-        
-        # /!\ Launch of the first process /!\
-        print("module name : ",self.list_Processes_Parameters[0]["Module"])
-        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
-        
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-
-        del self.list_Processes_Parameters[0]
-        # print("getCheckboxValuesOrient : ",self.getCheckboxValuesOrient())
         
         
     def downloadModel(self, lineEdit, name, test,_):
-        """Function to download the model files from the link in the getModelUrl function"""
+        """
+        Download model files from the URL(s) provided by the getModelUrl function.
+
+        Parameters:
+        - lineEdit: The QLineEdit widget to update with the model folder path.
+        - name: The name of the model to download.
+        - test: A flag for testing purposes (unused in this function).
+        - _: Unused parameter for compatibility.
+
+        This function fetches the model URL(s) using getModelUrl, downloads the files,
+        unzips them to the appropriate directory, and updates the lineEdit with the model
+        folder path. It also runs a test on the downloaded model and shows a warning message
+        if any errors occur.
+        """
 
         # To select the reference files (CBCT Orientation and Registration mode only)
         listmodel = self.preprocess_cbct.getModelUrl()
@@ -731,6 +791,20 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def DownloadUnzip(
         self, url, directory, folder_name=None, num_downl=1, total_downloads=1
     ):
+        """
+        Download and unzip a file from a given URL to a specified directory.
+
+        Parameters:
+        - url: The URL of the zip file to download.
+        - directory: The directory where the file should be downloaded and unzipped.
+        - folder_name: The name of the folder to create and unzip the contents into.
+        - num_downl: The current download number (for progress display).
+        - total_downloads: The total number of downloads (for progress display).
+
+        Returns:
+        - out_path: The path to the unzipped folder.
+        """
+        
         out_path = os.path.join(directory, folder_name)
 
         if not os.path.exists(out_path):
@@ -785,15 +859,32 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return out_path
     
     def orientCBCT(self)->None:
-        self.list_Processes_Parameters = self.preprocess_cbct.Process(
-                input_t1_folder=self.ui.LineEditCBCT.text,
-                folder_output=self.ui.lineEditOutputOrientCBCT.text,
-                model_folder_1=self.ui.lineEditSegCBCT.text,
-                add_in_namefile="oui",
-                merge_seg=False,
-                isDCMInput=False,
-                slicerDownload=self.SlicerDownloadPath,
-            )
+        """
+        This function is called when the button "pushButtonOrientCBCT" is click.
+        Orient CBCT images using specified parameters and initiate the processing pipeline.
+
+        This function sets up the parameters for CBCT image orientation, tests the process and scan,
+        and starts the processing pipeline if all checks pass. It handles the initial setup,
+        parameter passing, and process initiation, including setting up observers for process updates.
+        """
+        
+        param = {"input_t1_folder":self.ui.LineEditCBCT.text,
+                "folder_output":self.ui.lineEditOutputOrientCBCT.text,
+                "model_folder_1":self.ui.lineEditSegCBCT.text,
+                "merge_seg":False,
+                "isDCMInput":False,
+                "slicerDownload":self.SlicerDownloadPath}
+        
+        ok,mess = self.preprocess_cbct.TestProcess(**param) 
+        if not ok : 
+            self.showMessage(mess)
+            return
+        ok,mess = self.preprocess_cbct.TestScan(param["input_t1_folder"])
+        if not ok : 
+            self.showMessage(mess)
+            return
+        
+        self.list_Processes_Parameters = self.preprocess_cbct.Process(**param)
         
         self.onProcessStarted()
         
@@ -815,11 +906,29 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         del self.list_Processes_Parameters[0]
     
     def orientCenterMRI(self):
-        self.list_Processes_Parameters = self.preprocess_mri.Process(
-                input_folder=self.ui.LineEditMRI.text,
-                direction=self.getCheckboxValuesOrient(),
-                output_folder=self.ui.lineEditOutputOrientMRI.text,
-            )
+        """
+        This function is called when the button "pushButtonOrientMRI" is click.
+        Orient and center MRI images using specified parameters and initiate the processing pipeline.
+
+        This function sets up the parameters for MRI image orientation and centering, tests the process and scan,
+        and starts the processing pipeline if all checks pass. It handles the initial setup, parameter passing,
+        and process initiation, including setting up observers for process updates.
+        """
+        
+        param = {"input_folder":self.ui.LineEditMRI.text,
+                "direction":self.getCheckboxValuesOrient(),
+                "output_folder":self.ui.lineEditOutputOrientMRI.text}
+        
+        ok,mess = self.preprocess_mri.TestProcess(**param) 
+        if not ok : 
+            self.showMessage(mess)
+            return
+        ok,mess = self.preprocess_mri.TestScan(param["input_folder"])
+        if not ok : 
+            self.showMessage(mess)
+            return
+        
+        self.list_Processes_Parameters = self.preprocess_mri.Process(**param)
         
         self.onProcessStarted()
         
@@ -841,7 +950,15 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         del self.list_Processes_Parameters[0]
         
     def resampleMRICBCT(self):
-        print("self.ui.lineEditOutputOrientMRI.text : ",self.ui.lineEditOuputResample.text)
+        """
+        Resample MRI and/or CBCT images based on the selected options and initiate the processing pipeline.
+
+        This function determines which input folders (MRI, CBCT, or both) to use based on the user's selection
+        in the comboBoxResample widget. It sets up the resampling parameters, tests the process and scans,
+        and starts the processing pipeline if all checks pass. The function handles the initial setup, parameter
+        passing, and process initiation, including setting up observers for process updates.
+        """
+    
         if self.ui.comboBoxResample.currentText=="CBCT":
             LineEditMRI = "None"
             LineEditCBCT = self.ui.LineEditCBCT.text
@@ -852,15 +969,33 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             LineEditMRI = self.ui.LineEditMRI.text
             LineEditCBCT = self.ui.LineEditCBCT.text
             
-        print("self.get_resample_values() : ",self.get_resample_values())
+        param = {"input_folder_MRI": LineEditMRI,
+            "input_folder_CBCT": LineEditCBCT,
+            "output_folder": self.ui.lineEditOuputResample.text,
+            "resample_size": self.get_resample_values()[0],
+            "spacing" : self.get_resample_values()[1]
+        }
             
-        self.list_Processes_Parameters = self.preprocess_mri_cbct.Process(
-                input_folder_MRI=LineEditMRI,
-                input_folder_CBCT=LineEditCBCT,
-                output_folder=self.ui.lineEditOuputResample.text,
-                resample_size=self.get_resample_values()[0],
-                spacing=self.get_resample_values()[1]
-            )
+        ok,mess = self.preprocess_mri_cbct.TestProcess(**param) 
+        if not ok : 
+            self.showMessage(mess)
+            return
+        
+        ok,mess = self.preprocess_mri_cbct.TestScan(param["input_folder_MRI"])
+
+        if not ok : 
+            mess = mess + "MRI folder"
+            self.showMessage(mess)
+            return
+        
+        ok,mess = self.preprocess_mri_cbct.TestScan(param["input_folder_CBCT"])
+        if not ok : 
+            mess = mess + "CBCT folder"
+            self.showMessage(mess)
+            return
+            
+            
+        self.list_Processes_Parameters = self.preprocess_mri_cbct.Process(**param)
         
         self.onProcessStarted()
         
@@ -882,7 +1017,82 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         del self.list_Processes_Parameters[0]
         
         
+    def registration_MR2CBCT(self) -> None:
+        """
+        Register MRI images to CBCT images using specified parameters and initiate the processing pipeline.
+
+        This function sets up the parameters for MRI to CBCT registration, tests the process and scans,
+        and starts the processing pipeline if all checks pass. It handles the initial setup, parameter passing,
+        and process initiation, including setting up observers for process updates. The function also checks
+        for normalization parameters and validates input folders for the presence of necessary files.
+        """
+        
+        param = {"folder_general": self.ui.LineEditOutput.text,
+            "mri_folder": self.ui.lineEditRegMRI.text,
+            "cbct_folder": self.ui.lineEditRegCBCT.text,
+            "cbct_label2": self.ui.lineEditRegLabel.text,
+            "normalization" : [self.getNormalization()],
+            "tempo_fold" : self.ui.checkBoxTompraryFold.isChecked()}
+        
+        ok,mess = self.registration_mri2cbct.TestProcess(**param) 
+        if not ok : 
+            self.showMessage(mess)
+            return
+        
+        ok1,mess = self.registration_mri2cbct.TestScan(param["mri_folder"])
+        ok2,mess2 = self.registration_mri2cbct.TestScan(param["cbct_folder"])
+        ok3,mess3 = self.registration_mri2cbct.TestScan(param["cbct_label2"])
+        
+        error_messages = []
+
+        if not ok1:
+            error_messages.append("MRI folder")
+        if not ok2:
+            error_messages.append("CBCT folder")
+        if not ok3:
+            error_messages.append("CBCT label2 folder")
+
+        if error_messages:
+            error_message = "No files to run has been found in the following folders: " + ", ".join(error_messages)
+            self.showMessage(error_message)
+            return
+        
+        ok,mess = self.registration_mri2cbct.CheckNormalization(param["normalization"])
+        if not ok : 
+            self.showMessage(mess)
+            return 
+        
+        self.list_Processes_Parameters = self.registration_mri2cbct.Process(**param)
+        
+        self.onProcessStarted()
+        
+        # /!\ Launch of the first process /!\
+        print("module name : ",self.list_Processes_Parameters[0]["Module"])
+        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        
+        self.process = slicer.cli.run(
+                self.list_Processes_Parameters[0]["Process"],
+                None,
+                self.list_Processes_Parameters[0]["Parameter"],
+            )
+        
+        self.module_name = self.list_Processes_Parameters[0]["Module"]
+        self.processObserver = self.process.AddObserver(
+            "ModifiedEvent", self.onProcessUpdate
+        )
+
+        del self.list_Processes_Parameters[0]
+        
+        
+        
     def onProcessStarted(self):
+        """
+        Initialize and update the UI components when a process starts.
+
+        This function sets the start time, initializes the progress bar and related UI elements,
+        and updates the process-related attributes such as the number of extensions and modules.
+        It also enables the running state UI to reflect that a process is in progress.
+        """
         self.startTime = time.time()
 
         # self.ui.progressBar.setMaximum(self.nb_patient)
@@ -901,6 +1111,17 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.RunningUI(True)
 
     def onProcessUpdate(self, caller, event):
+        """
+        Update the UI components during the process execution and handle process completion.
+
+        This function updates the progress bar, time label, and information label during the process execution.
+        It handles the completion of each process step, manages errors, and initiates the next process if available.
+        
+        Parameters:
+        - caller: The process that triggered the update.
+        - event: The event that triggered the update.
+        """
+        
         self.ui.progressBar.setVisible(False)
         # timer = f"Time : {time.time()-self.startTime:.2f}s"
         currentTime = time.time() - self.startTime
@@ -913,7 +1134,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.label_time.setText(timer)
         # self.module_name = caller.GetModuleTitle() if self.module_name_bis is None else self.module_name_bis
-        self.ui.label_info.setText(f"Extension {self.module_name} is running. \n Number of extension runned : {self.nb_extnesion_did} / {self.nb_extension_launch}")
+        self.ui.label_info.setText(f"Extension {self.module_name} is running. \nNumber of extension runned : {self.nb_extnesion_did} / {self.nb_extension_launch}")
         # self.displayModule = self.displayModule_bis if self.displayModule_bis is not None else self.display[self.module_name.split(' ')[0]]
 
         if self.module_name_before != self.module_name:
@@ -922,7 +1143,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.progressBar.setFormat(f"{100*self.nb_extnesion_did/self.nb_extension_launch}%")
             self.nb_extnesion_did += 1
             self.ui.label_info.setText(
-                f"Extension {self.module_name} is running. \n Number of extension runned : {self.nb_extnesion_did} / {self.nb_extension_launch}"
+                f"Extension {self.module_name} is running. \nNumber of extension runned : {self.nb_extnesion_did} / {self.nb_extension_launch}"
             )
             
 
@@ -967,14 +1188,19 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     self.OnEndProcess()
 
     def OnEndProcess(self):
+        """
+        Finalize the process execution and update the UI components accordingly.
+
+        This function increments the number of completed extensions, updates the information label,
+        resets the progress bar, calculates the total time taken, and displays a message box indicating
+        the completion of the process. It also disables the running state UI.
+        """
+        
         self.nb_extnesion_did += 1
         self.ui.label_info.setText(
             f"Process end"
         )
         self.ui.progressBar.setValue(0)
-
-        # if self.nb_change_bystep == 0:
-        #     print(f'Erreur this module didnt work {self.module_name_before}')
 
         self.module_name_before = self.module_name
         self.nb_change_bystep = 0
@@ -996,7 +1222,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         msg.setIcon(QMessageBox.Information)
 
         # setting message for Message Box
-        msg.setText(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+        msg.setText(f"Processing completed in {int(total_time / 60)} min and {int(total_time % 60)} sec")
 
         # setting Message box window title
         msg.setWindowTitle("Information")
@@ -1016,6 +1242,20 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setVisible(run)
         self.ui.label_time.setVisible(run)
         self.ui.label_info.setVisible(run)
+        
+    def showMessage(self,mess):
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Information)
+
+        # setting message for Message Box
+        msg.setText(mess)
+
+        # setting Message box window title
+        msg.setWindowTitle("Information")
+
+        # declaring buttons on Message Box
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.exec_()
 
 
     

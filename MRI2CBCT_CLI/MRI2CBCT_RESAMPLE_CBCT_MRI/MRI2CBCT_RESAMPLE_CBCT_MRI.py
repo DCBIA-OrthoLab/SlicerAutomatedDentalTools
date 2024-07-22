@@ -43,7 +43,6 @@ def run_resample(img=None, dir=None, csv=None, csv_column='image', csv_root_path
         'out': out,
         'out_ext': out_ext,
     }
-    print("args : ",args)
     resample_images(args)
 
 def transform_size(size_str):
@@ -68,19 +67,17 @@ def main(input_folder,output_folder,resample_size,spacing,iso_spacing):
         csv_reader = csv.DictReader(csv_file)
         for row in csv_reader:
             size_file = tuple(map(int, row["size"].strip("()").split(",")))
+            spacing_file = tuple(map(float, row["Spacing"].strip("()").split(",")))
             input_path = row["in"]
             out_path = row["out"]
             if resample_size != "None" and spacing=="None" :
-                print("1"*100)
-                run_resample(img=input_path,out=out_path,size=list(map(int, resample_size.split(','))),fit_spacing=True,center=0,iso_spacing=iso_spacing,linear=False,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+                run_resample(img=input_path,out=out_path,size=list(map(int, resample_size.split(','))),fit_spacing=True,center=0,iso_spacing=False,linear=False,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
             elif resample_size == "None" and spacing!="None" :
-                print("2"*100)
-                run_resample(img=input_path,out=out_path,img_spacing=list(map(float, spacing.split(','))),size=[size_file[0],size_file[1],size_file[2]],fit_spacing=True,center=0,iso_spacing=True,linear=False,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+                run_resample(img=input_path,out=out_path,spacing=list(map(float, spacing.split(','))),size=[size_file[0],size_file[1],size_file[2]],fit_spacing=False,center=0,iso_spacing=False,linear=False,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
             elif resample_size != "None" and spacing!="None" :
-                print("3"*100)
-                run_resample(img=input_path,out=out_path,img_spacing=list(map(float, spacing.split(','))),size=list(map(int, resample_size.split(','))),fit_spacing=True,center=0,iso_spacing=True,linear=False,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+                run_resample(img=input_path,out=out_path,spacing=list(map(float, spacing.split(','))),size=list(map(int, resample_size.split(','))),fit_spacing=True,center=0,iso_spacing=False,linear=False,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
             
-    # delete_csv(csv_path)
+    delete_csv(csv_path)
     
 def delete_csv(file_path):
     """Delete a CSV file if it exists."""

@@ -30,7 +30,6 @@ def enhance_contrast(image,upper_percentile,lower_percentile, min_norm, max_norm
     """
     # Compute thresholds
     lower_threshold, upper_threshold = compute_thresholds(image,lower_percentile,upper_percentile)
-    # print(f"Computed thresholds - Lower: {lower_threshold}, Upper: {upper_threshold}")
 
 
     # Normalize the image using the computed thresholds
@@ -58,7 +57,6 @@ def normalize(input_folder, output_folder,upper_percentile,lower_percentile,min_
     for filename in os.listdir(input_folder):
         if filename.endswith('.nii.gz'):
             input_path = os.path.join(input_folder, filename)
-            print("filename : ",filename)
             img = sitk.ReadImage(input_path)
             
             # Enhance the contrast of the image
