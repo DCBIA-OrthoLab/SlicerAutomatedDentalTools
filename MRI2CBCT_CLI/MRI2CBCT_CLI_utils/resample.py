@@ -25,7 +25,6 @@ def resample_fn(img, args):
     output_size = args['size'] 
     fit_spacing = args['fit_spacing']
     iso_spacing = args['iso_spacing']
-    print("iso_spacing : ",iso_spacing)
     pixel_dimension = args['pixel_dimension']
     center = args['center']
 
@@ -50,10 +49,8 @@ def resample_fn(img, args):
 
     if(iso_spacing=="True"):
         output_spacing_filtered = [sp for si, sp in zip(args['size'], output_spacing) if si != -1]
-        # print(output_spacing_filtered)
         max_spacing = np.max(output_spacing_filtered)
         output_spacing = [sp if si == -1 else max_spacing for si, sp in zip(args['size'], output_spacing)]
-        # print(output_spacing)
 
     
     if(args['spacing'] is not None):
@@ -67,11 +64,6 @@ def resample_fn(img, args):
         input_physical_size = np.array(size)*np.array(spacing)
         output_origin = np.array(output_origin) - (output_physical_size - input_physical_size)/2.0
 
-    print("Input size:", size)
-    print("Input spacing:", spacing)
-    print("Output size:", output_size)
-    print("Output spacing:", output_spacing)
-    print("Output origin:", output_origin)
 
     resampleImageFilter = sitk.ResampleImageFilter()
     resampleImageFilter.SetInterpolator(InterpolatorType)   
@@ -106,7 +98,6 @@ def Resample(img_filename, args):
     - Returns the resampled image.
     """
 
-    print("Reading:", img_filename) 
     img = sitk.ReadImage(img_filename)
 
     if(args['img_spacing']):
@@ -175,7 +166,6 @@ def resample_images(args):
             print("WARNING: Pixel size not supported!")
 
     if args['ref'] is not None:
-        print(args['ref'])
         ref = sitk.ReadImage(args['ref'])
         args['size'] = ref.GetSize()
         args['spacing'] = ref.GetSpacing()

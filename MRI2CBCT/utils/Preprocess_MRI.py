@@ -17,7 +17,6 @@ class Process_MRI(Method):
         super().__init__(widget)
         documentsLocation = qt.QStandardPaths.DocumentsLocation
         documents = qt.QStandardPaths.writableLocation(documentsLocation)
-        
 
     def getGPUUsage(self):
         if platform.system() == "Darwin":
@@ -26,87 +25,40 @@ class Process_MRI(Method):
             return 5
 
     def NumberScan(self, scan_folder_t1: str, scan_folder_t2: str):
-        # return len(GetDictPatients(scan_folder_t1, scan_folder_t2))
-        return 0
+        return len(GetDictPatients(scan_folder_t1, scan_folder_t2))
 
-    def getReferenceList(self):
-        pass
 
-    def TestReference(self, ref_folder: str):
-        out = None
-        scan_extension = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]
-        lm_extension = [".json"]
 
-        if self.NumberScan(ref_folder) == 0:
-            out = "The selected folder must contain scans"
-
-        if self.NumberScan(ref_folder) > 1:
-            out = "The selected folder must contain only 1 case"
-
-        return None
-
-    def TestCheckbox(self, dic_checkbox):
-        pass
-
+    def TestScan(self, scan_folder: str):
+        extensions = ['.nii', '.nii.gz', '.nrrd']
+        found_files = self.search(scan_folder, extensions)
+        if any(found_files[ext] for ext in extensions):
+            return True, ""
+        else:
+            return False, "No files to run has been found in the input folder"
+        
+        
     def TestProcess(self, **kwargs) -> str:
         out = ""
-
-        testcheckbox = self.TestCheckbox(kwargs["dic_checkbox"])
-        if testcheckbox is not None:
-            out += testcheckbox
+        ok = True
 
         if kwargs["input_folder"] == "":
-            out += "Please select an input folder for MRI scans\n"
-
-        if kwargs["direction"] == "":
-            out += "Please select a direction for every axe\n"
+            out += "Please select an input folder for CBCT scans\n"
+            ok = False
 
         if kwargs["output_folder"] == "":
             out += "Please select an output folder\n"
+            ok = False
 
+        if kwargs["direction"] == "":
+            out += "Please select a new direction for X,Y and Z\n"
+            ok = False
+            
         if out == "":
             out = None
 
-        return out
-
-    def getModelUrl(self):
-        pass
-
-    def getALIModelList(self):
-        pass
+        return ok,out
     
-    def TestModel(self, model_folder: str, lineEditName):
-        pass
-    
-    def ProperPrint(self, notfound_list):
-        pass
-
-    def TestScan(
-        self,
-        scan_folder_t1: str,
-        scan_folder_t2: str,
-        liste_keys=["scanT1", "scanT2", "segT1"],
-    ):
-       pass
-
-    def GetSegmentationLabel(self, seg_folder):
-       pass
-
-    def CheckboxisChecked(self, diccheckbox: dict, in_str=False):
-        pass
-
-    def DicLandmark(self):
-       pass
-
-    def TranslateModels(self, listeModels, mask=False):
-        pass
-
-    def existsLandmark(self, input_dir, reference_dir, model_dir):
-        return None
-
-    def getTestFileList(self):
-        pass
-
     def Process(self, **kwargs):
         list_process=[]
         # MRI2CBCT_ORIENT_CENTER_MRI

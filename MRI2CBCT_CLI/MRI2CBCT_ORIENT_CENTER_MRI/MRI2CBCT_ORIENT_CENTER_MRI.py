@@ -4,8 +4,6 @@ import os
 import SimpleITK as sitk
 import argparse
 
-# THIS FILE IS WORKING WELL
-
 def extract_id(filename):
     """
     Extracts and returns the ID from a filename, removing common NIfTI extensions.
@@ -45,18 +43,12 @@ def modify_image_properties(nifti_file_path, new_direction, output_file_path=Non
     Read a NIfTI file, change its Direction and optionally center and save the modified image.
     """
     image = sitk.ReadImage(nifti_file_path)
-    print("Original Direction:", image.GetDirection())
-    print("Original Origin:", image.GetOrigin())
-
     # Set the new direction
     image.SetDirection(new_direction)
 
     # Calculate and set the new origin
     new_origin = calculate_new_origin(image)
     image.SetOrigin(new_origin)
-
-    print("New Direction:", image.GetDirection())
-    print("New Origin:", image.GetOrigin())
 
     if output_file_path:
         sitk.WriteImage(image, output_file_path)
@@ -87,7 +79,7 @@ def main(args):
         if type_file==0:
             output_file_path = os.path.join(output_folder, f"{file_id}_OR.nii")
         else :
-            output_file_path = os.path.join(output_folder, f"{file_id}_OR.nii")
+            output_file_path = os.path.join(output_folder, f"{file_id}_OR.nii.gz")
         modify_image_properties(file_path, new_direction, output_file_path)
 
 if __name__ == "__main__":

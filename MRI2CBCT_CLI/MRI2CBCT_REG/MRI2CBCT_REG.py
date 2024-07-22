@@ -1,10 +1,9 @@
 #!/usr/bin/env python-real
 
-import subprocess
 import argparse
 import os
 import re
-
+import shutil
 
 import sys
 fpath = os.path.join(os.path.dirname(__file__), "..")
@@ -102,7 +101,7 @@ def run_script_AREG_MRI_folder(cbct_folder, cbct_mask_folder,mri_folder,mri_orig
     cbct_max_norm (float): Maximum value for CBCT normalization.
     """
     
-    output_folder = os.path.join(folder_general,"z01_output",f"a01_mri:inv+norm[{mri_min_norm},{mri_max_norm}]+p[{mri_lower_p},{mri_upper_p}]_cbct:norm[{cbct_min_norm},{cbct_max_norm}]+p[{cbct_lower_p},{cbct_upper_p}]+mask")
+    output_folder = os.path.join(folder_general,f"mri:inv+norm[{mri_min_norm},{mri_max_norm}]+p[{mri_lower_p},{mri_upper_p}]_cbct:norm[{cbct_min_norm},{cbct_max_norm}]+p[{cbct_lower_p},{cbct_upper_p}]+mask")
     create_folder(output_folder)
     registration(cbct_folder,mri_folder,cbct_mask_folder,output_folder,mri_original_folder)
     return cbct_mask_folder
@@ -126,6 +125,13 @@ def extract_values(input_string):
     
     return a, b, c, d, e, f, g, h
 
+def delete_folder(folder_path):
+    if os.path.exists(folder_path):
+        shutil.rmtree(folder_path)
+        print(f"The folder '{folder_path}' has been deleted successfully.")
+    else:
+        print(f"The folder '{folder_path}' does not exist.")
+
 def main():
     parser = argparse.ArgumentParser(description="Run multiple Python scripts with arguments")
     parser.add_argument('folder_general', type=str, help="Folder general where to make all the output")
@@ -133,6 +139,7 @@ def main():
     parser.add_argument('cbct_folder', type=str, help="Folder containing original CBCT images.")
     parser.add_argument('cbct_label2', type=str, help="Folder containing CBCT masks.")
     parser.add_argument('normalization', type=str, help="Folder containing CBCT masks.")
+    parser.add_argument('tempo_fold', type=str, help="Indicate to keep the temporary fold or not")
     args = parser.parse_args()
     
     mri_min_norm, mri_max_norm, mri_lower_p, mri_upper_p, cbct_min_norm, cbct_max_norm, cbct_lower_p, cbct_upper_p = extract_values(args.normalization)
@@ -144,12 +151,19 @@ def main():
     # CBCT
     output_path_norm_cbct = run_script_normalize_percentile("CBCT",args.cbct_folder, args.folder_general, upper_percentile=cbct_upper_p, lower_percentile=cbct_lower_p, max_norm=cbct_max_norm, min_norm=cbct_min_norm)
     input_path_cbct_norm_mask = run_script_apply_mask(output_path_norm_cbct,args.cbct_label2,args.folder_general,"mask",upper_percentile=cbct_upper_p, lower_percentile=cbct_lower_p, max_norm=cbct_max_norm, min_norm=cbct_min_norm)
-    print('input_path_cbct_norm_mask : ',input_path_cbct_norm_mask)
     
     # REG
-    print("*"*100)
     run_script_AREG_MRI_folder(cbct_folder=args.cbct_folder,cbct_mask_folder=input_path_cbct_norm_mask,mri_folder=input_path_norm_mri,mri_original_folder=args.mri_folder,folder_general=args.folder_general,mri_lower_p=mri_lower_p,mri_upper_p=mri_upper_p,mri_min_norm=mri_min_norm,mri_max_norm=mri_max_norm,cbct_lower_p=cbct_lower_p,cbct_upper_p=cbct_upper_p,cbct_min_norm=cbct_min_norm,cbct_max_norm=cbct_max_norm)
-    print("EENNNDDD")
+    
+    
+    if args.tempo_fold=="false":
+        delete_folder(folder_mri_inverse)
+        delete_folder(input_path_norm_mri)
+        delete_folder(os.path.dirname(input_path_norm_mri))
+        delete_folder(output_path_norm_cbct)
+        delete_folder(os.path.dirname(output_path_norm_cbct))
+        delete_folder(input_path_cbct_norm_mask)
+        delete_folder(os.path.dirname(input_path_cbct_norm_mask))
     
     
 
