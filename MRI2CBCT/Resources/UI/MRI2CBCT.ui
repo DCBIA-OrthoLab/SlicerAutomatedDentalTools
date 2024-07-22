@@ -12,8 +12,8 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text">
       <string>Inputs</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
@@ -90,7 +90,7 @@
       <item row="1" column="1">
        <widget class="QLabel" name="label_24">
         <property name="text">
-         <string>_________________________________________________________</string>
+         <string>__________________________________________________________________________________________________________________________________</string>
         </property>
        </widget>
       </item>
@@ -172,7 +172,7 @@
       <item row="5" column="1">
        <widget class="QLabel" name="label_26">
         <property name="text">
-         <string>______________________________________________________________________________________________</string>
+         <string>__________________________________________________________________________________________________________________________________</string>
         </property>
        </widget>
       </item>
@@ -245,7 +245,7 @@
       <item row="12" column="1">
        <widget class="QLabel" name="label">
         <property name="text">
-         <string>______________________________________________________________________________________________</string>
+         <string>__________________________________________________________________________________________________________________________________</string>
         </property>
        </widget>
       </item>
@@ -314,8 +314,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton">
+     <property name="text">
       <string>Output</string>
      </property>
      <layout class="QFormLayout" name="formLayout_21">
@@ -326,13 +326,6 @@
        <layout class="QVBoxLayout" name="verticalLayout_21">
         <item>
          <layout class="QGridLayout" name="gridLayout_21">
-          <item row="1" column="2">
-           <widget class="QPushButton" name="SearchButtonOutput">
-            <property name="text">
-             <string>Search</string>
-            </property>
-           </widget>
-          </item>
           <item row="1" column="1">
            <widget class="QLineEdit" name="LineEditOutput"/>
           </item>
@@ -343,6 +336,20 @@
             </property>
            </widget>
           </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_5">
+            <property name="text">
+             <string>Suffix :</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="SearchButtonOutput">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
           <item row="2" column="1">
            <widget class="QLineEdit" name="LineEditSuffix">
             <property name="text">
@@ -350,10 +357,10 @@
             </property>
            </widget>
           </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="label_5">
+          <item row="3" column="0">
+           <widget class="QCheckBox" name="checkBoxTompraryFold">
             <property name="text">
-             <string>Suffix :</string>
+             <string>Keep the temporary folder</string>
             </property>
            </widget>
           </item>
@@ -490,7 +497,7 @@
        </layout>
       </item>
       <item row="5" column="1">
-       <widget class="QPushButton" name="applyButton">
+       <widget class="QPushButton" name="registrationButton">
         <property name="enabled">
          <bool>true</bool>
         </property>
@@ -557,15 +564,15 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>qMRMLWidget</class>
-   <extends>QWidget</extends>
-   <header>qMRMLWidget.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
    <class>ctkCollapsibleButton</class>
    <extends>QWidget</extends>
    <header>ctkCollapsibleButton.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>qMRMLWidget</class>
+   <extends>QWidget</extends>
+   <header>qMRMLWidget.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

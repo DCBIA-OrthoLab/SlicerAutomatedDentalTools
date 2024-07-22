@@ -50,5 +50,12 @@
       <description>Normalization to use for MRI and CBCT</description>
     </string>
 
+    <string>
+      <name>tempo_fold</name>
+      <label>tempo_fold</label>
+      <index>5</index>
+      <description>If keeping temporary fold or not</description>
+    </string>
+
   </parameters>
 </executable>
