@@ -4,6 +4,12 @@ set(MODULE_NAME MRI2CBCT)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
+  utils/Method.py
+  utils/Preprocess_CBCT_MRI.py
+  utils/Preprocess_CBCT.py
+  utils/Preprocess_MRI.py
+  utils/Reg_MRI2CBCT.py
+  utils/utils_CBCT.py
   )
 
 set(MODULE_PYTHON_RESOURCES
