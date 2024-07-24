@@ -1,6 +1,6 @@
 import os
 import sys
-from slicer.util import pip_install
+from slicer.util import pip_install, pip_uninstall
 import platform
 
 try : 
@@ -13,13 +13,6 @@ import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
-try : 
-    import torch
-except ImportError :
-    # pip_install('torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
-    # pip_install('--no-cache-dir torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
-    pip_install('torch torchvision torchaudio')
-    import torch
 
 import subprocess
 
@@ -61,19 +54,53 @@ def func_import(install=False):
       return True
     return False
 
-def func_import_windows(install=False): 
-  try : 
-    import pkg_resources
-    shapeaxi_version = pkg_resources.get_distribution("torch").version 
-    print("Distribution    Found for torch")
-    return True
-  except : 
-    print("Distribution not found for torch")
-    if install :
-      pip_install(f'torch torchaudio torchvision')
-      import torch 
-      return True
-    return False
+def func_import_windows(install=False):
+    try:
+        if not install : 
+            import numpy as np
+            numpy_version = np.__version__
+            if int(numpy_version.split('.')[0]) >= 2:
+                print("NumPy version is 2.0.0 or higher, downgrading...")
+                return False
+                    
+            import numpy as np
+            numpy_version = np.__version__
+
+            print(f"NumPy version is {numpy_version}")
+
+            import pkg_resources
+            shapeaxi_version = pkg_resources.get_distribution("torch").version
+
+            try:
+                import torch
+                if not torch.cuda.is_available():
+                    print("torch.cuda is not available")
+                    return False
+            except Exception as e:
+                print(f"Error importing torch: {e}")
+                return False
+
+            print("Distribution found for torch")
+            return True
+        else : 
+            pip_uninstall('torch')
+            pip_uninstall('numpy')
+            pip_install('--force-reinstall torch==1.12.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
+            pip_install('numpy<2')
+            
+            import torch
+            print("torch version : ",torch.__version__)
+            import numpy as np
+            numpy_version = np.__version__
+            print(f"NumPy version is {numpy_version}")
+            return True
+
+    except Exception as e:
+        print(f"Error: {e}")
+        print("Distribution not found for torch")
+        return False
+
+
 # try:
 #     import pytorch3d
 #     if pytorch3d.__version__ != '0.6.2':
@@ -2133,6 +2160,7 @@ class WidgetParameter:
         '''
         Check if a Butterfly1 exist, if no disable the display of the combobox
         '''
+        import torch
         index = 1
         final_array = None
 
