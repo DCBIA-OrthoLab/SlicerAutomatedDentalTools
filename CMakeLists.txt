@@ -35,6 +35,8 @@ add_subdirectory(AREG)
 add_subdirectory(AutoMatrix)
 add_subdirectory(AutoCrop3D)
 
+add_subdirectory(MRI2CBCT)
+add_subdirectory(MRI2CBCT_CLI)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
