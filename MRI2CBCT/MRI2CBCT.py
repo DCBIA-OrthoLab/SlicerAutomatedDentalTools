@@ -211,6 +211,11 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.pushButtonOrientMRI.connect("clicked(bool)",self.orientCenterMRI)
         self.ui.pushButtonDownloadOrientCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditOrientCBCT, "Orientation", True))
         self.ui.pushButtonDownloadSegCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditSegCBCT, "Segmentation", True))
+        self.ui.pushButtonTestFilePreCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.LineEditCBCT, "MRI2CBCT/TestFile", True))
+        self.ui.pushButtonTestFilePreMRI.connect("clicked(bool)",partial(self.downloadModel,self.ui.LineEditMRI, "MRI2CBCT/TestFile", True))
+        self.ui.pushButtonTestFileRegMRI.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegMRI, "MRI2CBCT/TestFile", True))
+        self.ui.pushButtonTestFileRegCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegCBCT, "MRI2CBCT/TestFile", True))
+        self.ui.pushButtonTestFileRegSeg.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegLabel, "MRI2CBCT/TestFile", True))
         
 
         # Make sure parameter node is initialized (needed for module reload) 
@@ -753,40 +758,74 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
 
         # To select the reference files (CBCT Orientation and Registration mode only)
-        listmodel = self.preprocess_cbct.getModelUrl()
-        print("listmodel : ",listmodel)
+        if name=="Segmentation" or name=="Orientation" :
+            listmodel = self.preprocess_cbct.getModelUrl()
+            print("listmodel : ",listmodel)
 
-        urls = listmodel[name]
-        if isinstance(urls, str):
-            url = urls
-            _ = self.DownloadUnzip(
-                url=url,
-                directory=os.path.join(self.SlicerDownloadPath),
-                folder_name=os.path.join("Models", name),
-                num_downl=1,
-                total_downloads=1,
-            )
-            model_folder = os.path.join(self.SlicerDownloadPath, "Models", name)
-
-        elif isinstance(urls, dict):
-            for i, (name_bis, url) in enumerate(urls.items()):
+            urls = listmodel[name]
+            if isinstance(urls, str):
+                url = urls
                 _ = self.DownloadUnzip(
                     url=url,
                     directory=os.path.join(self.SlicerDownloadPath),
-                    folder_name=os.path.join("Models", name, name_bis),
-                    num_downl=i + 1,
-                    total_downloads=len(urls),
+                    folder_name=os.path.join("Models", name),
+                    num_downl=1,
+                    total_downloads=1,
                 )
-            model_folder = os.path.join(self.SlicerDownloadPath, "Models", name)
+                model_folder = os.path.join(self.SlicerDownloadPath, "Models", name)
 
-        if not model_folder == "":
-            error = self.preprocess_cbct.TestModel(model_folder, lineEdit.name)
+            elif isinstance(urls, dict):
+                for i, (name_bis, url) in enumerate(urls.items()):
+                    _ = self.DownloadUnzip(
+                        url=url,
+                        directory=os.path.join(self.SlicerDownloadPath),
+                        folder_name=os.path.join("Models", name, name_bis),
+                        num_downl=i + 1,
+                        total_downloads=len(urls),
+                    )
+                model_folder = os.path.join(self.SlicerDownloadPath, "Models", name)
 
-            if isinstance(error, str):
-                QMessageBox.warning(self.parent, "Warning", error)
+            if not model_folder == "":
+                error = self.preprocess_cbct.TestModel(model_folder, lineEdit.name)
 
-            else:
-                lineEdit.setText(model_folder)
+                if isinstance(error, str):
+                    QMessageBox.warning(self.parent, "Warning", error)
+
+                else:
+                    lineEdit.setText(model_folder)
+        else :
+            url = "https://github.com/GaelleLeroux/SlicerAutomatedDentalTools/releases/download/testfile/TestFile.zip"
+
+            documentsLocation = qt.QStandardPaths.DocumentsLocation
+            self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
+            self.SlicerDownloadPath = os.path.join(
+                self.documents,
+                slicer.app.applicationName + "Downloads",
+            )
+            self.isDCMInput = False
+            if not os.path.exists(self.SlicerDownloadPath):
+                os.makedirs(self.SlicerDownloadPath)
+
+            scan_folder = self.DownloadUnzip(
+                    url=url,
+                    directory=os.path.join(self.SlicerDownloadPath),
+                    folder_name=os.path.join(name)
+                    if not self.isDCMInput
+                    else os.path.join(name),
+                )
+            
+            scan_folder = os.path.join(scan_folder,"release")
+            print("scan folder : ",scan_folder)
+            if lineEdit.objectName=="LineEditCBCT":
+                lineEdit.setText(os.path.join(scan_folder,"CBCT_ori"))
+            elif lineEdit.objectName=="LineEditMRI":
+                lineEdit.setText(os.path.join(scan_folder,"MRI_ori"))
+            elif lineEdit.objectName=="lineEditRegMRI":
+                lineEdit.setText(os.path.join(scan_folder,"REG","MRI"))
+            elif lineEdit.objectName=="lineEditRegCBCT":
+                lineEdit.setText(os.path.join(scan_folder,"REG","CBCT"))
+            elif lineEdit.objectName=="lineEditRegLabel":
+                lineEdit.setText(os.path.join(scan_folder,"REG","Seg"))
 
     def DownloadUnzip(
         self, url, directory, folder_name=None, num_downl=1, total_downloads=1
