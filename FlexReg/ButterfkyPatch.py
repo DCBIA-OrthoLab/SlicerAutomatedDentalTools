@@ -1591,7 +1591,9 @@ class WidgetParameter:
                 print("command : ",command)
 
                 # running in // to not block Slicer
+                print("1"*100)
                 process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command,))
+                print("2"*100)
                 process.start()
                 self.label_time.setVisible(True)
                 self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: 0.0s")
@@ -1605,6 +1607,7 @@ class WidgetParameter:
                         previous_time = current_time
                         elapsed_time = current_time - start_time
                         self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
+                print("HELLLOOOO")
                 
                 self.viewScan()
 
@@ -1755,6 +1758,7 @@ class WidgetParameter:
         '''
         if self.checkSurfExist() :
             seg = self.checkSegmentation()
+            print("seg : ",seg)
             env_ok = True
             if platform.system()=="Windows" :
                 env_ok = func_import_windows(False)
