@@ -38,6 +38,7 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [AReg](#areg-module) | Perform automatic registration on IOS or CBCT files. |
 | [AutoCrop3D](#autocrop3d-module) | Automatically crop a folder of CBCT scans with the same region of interest. |
 | [AutoMatrix](#automatrix-module)| Automatically apply one or different matrix to a folder of IOS or CBCT scans. |
+| [MRI2CBCT](#mri2cbct-module) | Contains the steps to perform the registration of MRI and CBCT scans.|
 
 These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
 
@@ -62,6 +63,9 @@ Additionally, the following modules are implemented as python scripted command-l
 | [ASO-IOS](ASO_IOS) | Perform automatic orientation of IOS scans |
 | [AReg-CBCT](AREG_CBCT) | Perform automatic registration of CBCT scans |
 | [AReg-IOS](AREG_IOS) | Perform automatic registration of IOS scans |
+| [MRI2CBCT_ORIENT_CENTER_MRI](MRI2CBCT_ORIENT_CENTER_MR) | Perform orientation and centering of MRI scans |
+| [MRI2CBCT_RESAMPLE_CBCT_MRI](MRI2CBCT_RESAMPLE_CBCT_MRI) | Perform resample of MRI and CBCT scans |
+| [MRI2CBCT_REG](MRI2CBCT_REG) | Perform registration of MRI-CBCT scans |
 
 
 ## Requirements
@@ -390,6 +394,36 @@ There is button "Mirror" that will automatically download the matrix mirror and 
 | ----------- | ----------- | ----------- |
 | **CBCT** | .nii.gz | .tfm .npy .h5 .mat .txt |
 | **IOS** | .vtk .stl .vtp .off .obj | .tfm .npy .h5 .mat .txt|
+
+## MRI2CBCT Module
+
+The MRI2CBCT module provides a user interface to perform the registration between MRI and CBCT scans.
+
+### How does the module work?
+
+#### Preprocessing Step:
+
+1. **Orient and Center CBCT:**
+   - **Input:** CBCT folder path
+   - **Download Models:** You can download the models required for segmentation and orientation by clicking on "Download."
+
+2. **Orient and Center MRI:**
+   - **Input:** MRI folder path
+   - **Axis Direction:** You need to choose the new direction for each axis.
+
+3. **Resample:**
+   - **Options:** You can choose to resample both MRI and CBCT, just MRI, or just CBCT.
+   - **Slice/Number of Slices:** Decide the new slices/number of slices or retain the same size as before running it.
+   - **Spacing:** Choose the new spacing or keep the same spacing as in the input.
+
+#### Manual Approximation and Cropping:
+Before running the normalization, the user needs to perform a manual approximation and cropping on the same region for the MRI, CBCT, and CBCT segmentation.
+For the cropping, the user can use AutoCrop3D available in this extension.
+
+#### Registration:
+- **Inputs:** CBCT, CBCT segmentation, and MRI scans after completing the preprocessing steps, including manual approximation and cropping.
+- **Normalization Options:** Select the normalization method and specify the percentile to apply to both MRI and CBCT scans. Default values are provided for convenience.
+
 
 
 
