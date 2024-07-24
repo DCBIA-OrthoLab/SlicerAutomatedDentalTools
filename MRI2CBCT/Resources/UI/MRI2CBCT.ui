@@ -6,14 +6,14 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>735</width>
+    <width>1002</width>
     <height>1210</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
-     <property name="text">
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
+     <property name="text" stdset="0">
       <string>Inputs</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
@@ -21,50 +21,8 @@
        <layout class="QVBoxLayout" name="verticalLayout_2">
         <item>
          <layout class="QGridLayout" name="gridLayout_2">
-          <item row="1" column="3">
-           <widget class="QPushButton" name="SearchButtonMRI">
-            <property name="text">
-             <string>Search</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="3">
-           <widget class="QPushButton" name="SearchButtonCBCT">
-            <property name="text">
-             <string>Search</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="2">
-           <widget class="QComboBox" name="ComboBoxMRI">
-            <item>
-             <property name="text">
-              <string>File</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>Folder</string>
-             </property>
-            </item>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="label_4">
-            <property name="text">
-             <string>Input MRI files(s):</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLineEdit" name="LineEditCBCT"/>
-          </item>
-          <item row="0" column="0">
-           <widget class="QLabel" name="label_3">
-            <property name="text">
-             <string>Input CBCT file(s) :</string>
-            </property>
-           </widget>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="LineEditMRI"/>
           </item>
           <item row="0" column="2">
            <widget class="QComboBox" name="ComboBoxCBCT">
@@ -80,8 +38,64 @@
             </item>
            </widget>
           </item>
-          <item row="1" column="1">
-           <widget class="QLineEdit" name="LineEditMRI"/>
+          <item row="0" column="3">
+           <widget class="QPushButton" name="SearchButtonCBCT">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="LineEditCBCT"/>
+          </item>
+          <item row="1" column="2">
+           <widget class="QComboBox" name="ComboBoxMRI">
+            <item>
+             <property name="text">
+              <string>File</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Folder</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="1" column="3">
+           <widget class="QPushButton" name="SearchButtonMRI">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_4">
+            <property name="text">
+             <string>Input MRI files(s):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_3">
+            <property name="text">
+             <string>Input CBCT file(s) :</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="4">
+           <widget class="QPushButton" name="pushButtonTestFilePreCBCT">
+            <property name="text">
+             <string>TestFile</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="4">
+           <widget class="QPushButton" name="pushButtonTestFilePreMRI">
+            <property name="text">
+             <string>TestFile</string>
+            </property>
+           </widget>
           </item>
          </layout>
         </item>
@@ -314,8 +328,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton">
-     <property name="text">
+    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton" native="true">
+     <property name="text" stdset="0">
       <string>Output</string>
      </property>
      <layout class="QFormLayout" name="formLayout_21">
@@ -401,56 +415,8 @@
       </item>
       <item row="0" column="1">
        <layout class="QGridLayout" name="gridLayout_3">
-        <item row="1" column="0">
-         <widget class="QLabel" name="label_12">
-          <property name="text">
-           <string>Input CBCT :</string>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="1">
-         <widget class="QLineEdit" name="lineEditRegMRI"/>
-        </item>
         <item row="2" column="1">
          <widget class="QLineEdit" name="lineEditRegLabel"/>
-        </item>
-        <item row="0" column="0">
-         <widget class="QLabel" name="label_11">
-          <property name="text">
-           <string>Input MRI :</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="3">
-         <widget class="QPushButton" name="SearchButtonRegLabel">
-          <property name="text">
-           <string>Search</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="1">
-         <widget class="QLineEdit" name="lineEditRegCBCT"/>
-        </item>
-        <item row="0" column="3">
-         <widget class="QPushButton" name="SearchButtonRegMRI">
-          <property name="text">
-           <string>Search</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="0">
-         <widget class="QLabel" name="label_13">
-          <property name="text">
-           <string>Input Seg CBCT :</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="3">
-         <widget class="QPushButton" name="SearchButtonRegCBCT">
-          <property name="text">
-           <string>Search</string>
-          </property>
-         </widget>
         </item>
         <item row="0" column="2">
          <widget class="QComboBox" name="comboBoxRegMRI">
@@ -464,6 +430,68 @@
             <string>Folder</string>
            </property>
           </item>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="label_12">
+          <property name="text">
+           <string>Input CBCT :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="3">
+         <widget class="QPushButton" name="SearchButtonRegMRI">
+          <property name="text">
+           <string>Search</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLineEdit" name="lineEditRegMRI"/>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLineEdit" name="lineEditRegCBCT"/>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="label_13">
+          <property name="text">
+           <string>Input Seg CBCT :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="2">
+         <widget class="QComboBox" name="comboBoxRegLabel">
+          <item>
+           <property name="text">
+            <string>File</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Folder</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_11">
+          <property name="text">
+           <string>Input MRI :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="3">
+         <widget class="QPushButton" name="SearchButtonRegCBCT">
+          <property name="text">
+           <string>Search</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="3">
+         <widget class="QPushButton" name="SearchButtonRegLabel">
+          <property name="text">
+           <string>Search</string>
+          </property>
          </widget>
         </item>
         <item row="1" column="2">
@@ -480,18 +508,25 @@
           </item>
          </widget>
         </item>
-        <item row="2" column="2">
-         <widget class="QComboBox" name="comboBoxRegLabel">
-          <item>
-           <property name="text">
-            <string>File</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>Folder</string>
-           </property>
-          </item>
+        <item row="0" column="4">
+         <widget class="QPushButton" name="pushButtonTestFileRegMRI">
+          <property name="text">
+           <string>TestFile</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="4">
+         <widget class="QPushButton" name="pushButtonTestFileRegCBCT">
+          <property name="text">
+           <string>TestFile</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="4">
+         <widget class="QPushButton" name="pushButtonTestFileRegSeg">
+          <property name="text">
+           <string>TestFile</string>
+          </property>
          </widget>
         </item>
        </layout>
