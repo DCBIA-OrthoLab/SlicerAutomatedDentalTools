@@ -1,0 +1,581 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Matrix_bis</class>
+ <widget class="qMRMLWidget" name="Matrix_bis">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>735</width>
+    <height>1210</height>
+   </rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text">
+      <string>Inputs</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_2">
+      <item row="0" column="1">
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <layout class="QGridLayout" name="gridLayout_2">
+          <item row="1" column="3">
+           <widget class="QPushButton" name="SearchButtonMRI">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="3">
+           <widget class="QPushButton" name="SearchButtonCBCT">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QComboBox" name="ComboBoxMRI">
+            <item>
+             <property name="text">
+              <string>File</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Folder</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_4">
+            <property name="text">
+             <string>Input MRI files(s):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="LineEditCBCT"/>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_3">
+            <property name="text">
+             <string>Input CBCT file(s) :</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QComboBox" name="ComboBoxCBCT">
+            <item>
+             <property name="text">
+              <string>File</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Folder</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="LineEditMRI"/>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="label_24">
+        <property name="text">
+         <string>__________________________________________________________________________________________________________________________________</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLabel" name="label_6">
+        <property name="text">
+         <string>Orientation +  Segmentation of the CBCT</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <layout class="QGridLayout" name="gridLayout">
+        <item row="1" column="2">
+         <widget class="QPushButton" name="pushButtonDownloadOrientCBCT">
+          <property name="text">
+           <string>Download</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_7">
+          <property name="text">
+           <string>Output folder :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLineEdit" name="lineEditOrientCBCT"/>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLineEdit" name="lineEditOutputOrientCBCT"/>
+        </item>
+        <item row="0" column="2">
+         <widget class="QPushButton" name="SearchOutputFolderOrientCBCT">
+          <property name="text">
+           <string>Search</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QLineEdit" name="lineEditSegCBCT"/>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="label_14">
+          <property name="text">
+           <string>Orientation Model : </string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="label_15">
+          <property name="text">
+           <string>Segmentation Model : </string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="2">
+         <widget class="QPushButton" name="pushButtonDownloadSegCBCT">
+          <property name="text">
+           <string>Download</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="4" column="1">
+       <widget class="QPushButton" name="pushButtonOrientCBCT">
+        <property name="toolTip">
+         <string/>
+        </property>
+        <property name="whatsThis">
+         <string/>
+        </property>
+        <property name="text">
+         <string>Orient and Segment CBCT</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QLabel" name="label_26">
+        <property name="text">
+         <string>__________________________________________________________________________________________________________________________________</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <widget class="QLabel" name="label_8">
+        <property name="text">
+         <string>Orientation + centering of MRI</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <widget class="QTableWidget" name="tableWidgetOrient">
+        <property name="whatsThis">
+         <string/>
+        </property>
+       </widget>
+      </item>
+      <item row="9" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <item>
+         <widget class="QPushButton" name="ButtonDefaultOrientMRI">
+          <property name="text">
+           <string>Default</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer_2">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item row="10" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_13">
+        <item>
+         <widget class="QLabel" name="label_25">
+          <property name="text">
+           <string>Output folder : </string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="lineEditOutputOrientMRI"/>
+        </item>
+        <item>
+         <widget class="QPushButton" name="SearchOutputFolderOrientMRI">
+          <property name="text">
+           <string>Search</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="11" column="1">
+       <widget class="QPushButton" name="pushButtonOrientMRI">
+        <property name="text">
+         <string>Orient and centering MRI</string>
+        </property>
+       </widget>
+      </item>
+      <item row="12" column="1">
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>__________________________________________________________________________________________________________________________________</string>
+        </property>
+       </widget>
+      </item>
+      <item row="13" column="1">
+       <widget class="QLabel" name="label_9">
+        <property name="text">
+         <string>Resample</string>
+        </property>
+       </widget>
+      </item>
+      <item row="14" column="1">
+       <widget class="QTableWidget" name="tableWidgetResample"/>
+      </item>
+      <item row="15" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_3">
+        <item>
+         <widget class="QLabel" name="label_10">
+          <property name="text">
+           <string>Output folder : </string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="lineEditOuputResample"/>
+        </item>
+        <item>
+         <widget class="QPushButton" name="SearchOutputFolderResample">
+          <property name="text">
+           <string>Search</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="19" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_4">
+        <item>
+         <widget class="QComboBox" name="comboBoxResample">
+          <item>
+           <property name="text">
+            <string>MRI &amp; CBCT</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>MRI</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>CBCT</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButtonResample">
+          <property name="text">
+           <string>Run resample</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton">
+     <property name="text">
+      <string>Output</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_21">
+      <item row="1" column="1">
+       <widget class="QTableWidget" name="tableWidgetNorm"/>
+      </item>
+      <item row="4" column="1">
+       <layout class="QVBoxLayout" name="verticalLayout_21">
+        <item>
+         <layout class="QGridLayout" name="gridLayout_21">
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="LineEditOutput"/>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_2">
+            <property name="text">
+             <string>Output folder :</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_5">
+            <property name="text">
+             <string>Suffix :</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="SearchButtonOutput">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QLineEdit" name="LineEditSuffix">
+            <property name="text">
+             <string>_reg</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QCheckBox" name="checkBoxTompraryFold">
+            <property name="text">
+             <string>Keep the temporary folder</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QPushButton" name="ButtonCheckBoxDefaultNorm1">
+          <property name="text">
+           <string>Default 1</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="ButtonCheckBoxDefaultNorm2">
+          <property name="text">
+           <string>Default 2</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item row="0" column="1">
+       <layout class="QGridLayout" name="gridLayout_3">
+        <item row="1" column="0">
+         <widget class="QLabel" name="label_12">
+          <property name="text">
+           <string>Input CBCT :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLineEdit" name="lineEditRegMRI"/>
+        </item>
+        <item row="2" column="1">
+         <widget class="QLineEdit" name="lineEditRegLabel"/>
+        </item>
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_11">
+          <property name="text">
+           <string>Input MRI :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="3">
+         <widget class="QPushButton" name="SearchButtonRegLabel">
+          <property name="text">
+           <string>Search</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLineEdit" name="lineEditRegCBCT"/>
+        </item>
+        <item row="0" column="3">
+         <widget class="QPushButton" name="SearchButtonRegMRI">
+          <property name="text">
+           <string>Search</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="label_13">
+          <property name="text">
+           <string>Input Seg CBCT :</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="3">
+         <widget class="QPushButton" name="SearchButtonRegCBCT">
+          <property name="text">
+           <string>Search</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="2">
+         <widget class="QComboBox" name="comboBoxRegMRI">
+          <item>
+           <property name="text">
+            <string>File</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Folder</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item row="1" column="2">
+         <widget class="QComboBox" name="comboBoxRegCBCT">
+          <item>
+           <property name="text">
+            <string>File</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Folder</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item row="2" column="2">
+         <widget class="QComboBox" name="comboBoxRegLabel">
+          <item>
+           <property name="text">
+            <string>File</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Folder</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="5" column="1">
+       <widget class="QPushButton" name="registrationButton">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="toolTip">
+         <string>Run the algorithm.</string>
+        </property>
+        <property name="text">
+         <string>Registration</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QVBoxLayout" name="verticalLayout_3">
+     <item>
+      <layout class="QGridLayout" name="gridLayout_6">
+       <item row="1" column="0">
+        <widget class="QProgressBar" name="progressBar">
+         <property name="enabled">
+          <bool>true</bool>
+         </property>
+         <property name="value">
+          <number>0</number>
+         </property>
+         <property name="format">
+          <string/>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="0">
+        <widget class="QLabel" name="label_info">
+         <property name="text">
+          <string>Number of processed files : </string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="label_time">
+         <property name="text">
+          <string>time : </string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ctkCollapsibleButton</class>
+   <extends>QWidget</extends>
+   <header>ctkCollapsibleButton.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>qMRMLWidget</class>
+   <extends>QWidget</extends>
+   <header>qMRMLWidget.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>
