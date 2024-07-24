@@ -710,6 +710,7 @@ class TimerDialog(QDialog):
         super(TimerDialog, self).__init__(parent)
         
         self.setLayout(QVBoxLayout())
+        self.setWindowTitle("Registration")
         
         self.timeLabel = QLabel("Starting timer...", self)
         self.layout().addWidget(self.timeLabel)
