@@ -794,7 +794,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 else:
                     lineEdit.setText(model_folder)
         else :
-            url = "https://github.com/GaelleLeroux/SlicerAutomatedDentalTools/releases/download/testfile/TestFile.zip"
+            url = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/test_files/TestFile.zip"
 
             documentsLocation = qt.QStandardPaths.DocumentsLocation
             self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
