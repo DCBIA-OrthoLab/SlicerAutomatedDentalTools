@@ -2,6 +2,9 @@ import os
 import sys
 from slicer.util import pip_install, pip_uninstall
 import platform
+import shutil
+import zipfile
+import urllib
 
 try : 
     import vtk
@@ -129,8 +132,8 @@ from vtk.util.numpy_support import vtk_to_numpy,numpy_to_vtk
 
 import time
 
-from Flex_Reg_CLI.Method.util import vtkMeanTeeth, ToothNoExist, NoSegmentationSurf
-from Flex_Reg_CLI.Method.orientation import orientation
+from FlexReg_utils.util import ToothNoExist, NoSegmentationSurf
+from FlexReg_utils.orientation import orientation_f
 
 
 
@@ -156,14 +159,17 @@ from qt import (QGridLayout,
                 QStandardPaths,
                 QDialog,
                 QSizePolicy,
-                QSpacerItem)
+                QSpacerItem,
+                QProgressDialog,
+                Qt,
+                QStandardPaths)
 
 
 #
-# ButterfkyPatch
+# FlexReg
 #
 
-class ButterfkyPatch(ScriptedLoadableModule):
+class FlexReg(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -177,7 +183,7 @@ class ButterfkyPatch(ScriptedLoadableModule):
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#ButterfkyPatch">module documentation</a>.
+See more information in <a href="https://github.com/organization/projectname#FlexReg">module documentation</a>.
 """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
@@ -206,44 +212,44 @@ def registerSampleData():
     # To ensure that the source code repository remains small (can be downloaded and installed quickly)
     # it is recommended to store data sets that are larger than a few MB in a Github release.
 
-    # ButterfkyPatch1
+    # FlexReg1
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
-        category='ButterfkyPatch',
-        sampleName='ButterfkyPatch1',
+        category='FlexReg',
+        sampleName='FlexReg1',
         # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
         # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, 'ButterfkyPatch1.png'),
+        thumbnailFileName=os.path.join(iconsPath, 'FlexReg1.png'),
         # Download URL and target file name
         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        fileNames='ButterfkyPatch1.nrrd',
+        fileNames='FlexReg1.nrrd',
         # Checksum to ensure file integrity. Can be computed by this command:
         #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
         checksums='SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
         # This node name will be used when the data set is loaded
-        nodeNames='ButterfkyPatch1'
+        nodeNames='FlexReg1'
     )
 
-    # ButterfkyPatch2
+    # FlexReg2
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
-        category='ButterfkyPatch',
-        sampleName='ButterfkyPatch2',
-        thumbnailFileName=os.path.join(iconsPath, 'ButterfkyPatch2.png'),
+        category='FlexReg',
+        sampleName='FlexReg2',
+        thumbnailFileName=os.path.join(iconsPath, 'FlexReg2.png'),
         # Download URL and target file name
         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        fileNames='ButterfkyPatch2.nrrd',
+        fileNames='FlexReg2.nrrd',
         checksums='SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
         # This node name will be used when the data set is loaded
-        nodeNames='ButterfkyPatch2'
+        nodeNames='FlexReg2'
     )
 
 
 #
-# ButterfkyPatchWidget
+# FlexRegWidget
 #
 
-class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
+class FlexRegWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -267,7 +273,7 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath('UI/ButterfkyPatch.ui'))
+        uiWidget = slicer.util.loadUI(self.resourcePath('UI/FlexReg.ui'))
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
@@ -278,7 +284,7 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
-        self.logic = ButterfkyPatchLogic()
+        self.logic = FlexRegLogic()
 
         # Connections
 
@@ -343,8 +349,7 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         output_text = self.ui.lineEditOutput.text
         suffix_text = self.ui.lineEditSuffix.text
         lower_arch = self.ui.lineEditLowerArch.text
-        # print("lower_arch : ",lower_arch)
-        # print(Path(lower_arch).is_file())
+        
         if Path(lower_arch).is_file():
             self.reg.run(output_text, suffix_text, lower_arch)
         else :
@@ -515,10 +520,10 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 #
-# ButterfkyPatchLogic
+# FlexRegLogic
 #
 
-class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
+class FlexRegLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -637,10 +642,10 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
 
 
 #
-# ButterfkyPatchTest
+# FlexRegTest
 #
 
-class ButterfkyPatchTest(ScriptedLoadableModuleTest):
+class FlexRegTest(ScriptedLoadableModuleTest):
     """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -656,9 +661,9 @@ class ButterfkyPatchTest(ScriptedLoadableModuleTest):
         """Run as few or as many tests as needed here.
         """
         self.setUp()
-        self.test_ButterfkyPatch1()
+        self.test_FlexReg1()
 
-    def test_ButterfkyPatch1(self):
+    def test_FlexReg1(self):
         """ Ideally you should have several levels of tests.  At the lowest level
         tests should exercise the functionality of the logic with different inputs
         (both valid and invalid).  At higher levels your tests should emulate the
@@ -676,7 +681,7 @@ class ButterfkyPatchTest(ScriptedLoadableModuleTest):
 
         import SampleData
         registerSampleData()
-        inputVolume = SampleData.downloadSample('ButterfkyPatch1')
+        inputVolume = SampleData.downloadSample('FlexReg1')
         self.delayDisplay('Loaded test data set')
 
         inputScalarRange = inputVolume.GetImageData().GetScalarRange()
@@ -688,7 +693,7 @@ class ButterfkyPatchTest(ScriptedLoadableModuleTest):
 
         # Test the module logic
 
-        logic = ButterfkyPatchLogic()
+        logic = FlexRegLogic()
 
         # Test algorithm with non-inverted threshold
         logic.process(inputVolume, outputVolume, threshold, True)
@@ -763,7 +768,7 @@ class Reg:
                 self.lower_arch=lower_arch
                 self._processed = False # To allow onProcessUpdateICP to display the time and launch endProcess
                 # CLI 
-                self.logic = ButterfkyPatchLogic(self.T2.getPath(),
+                self.logic = FlexRegLogic(self.T2.getPath(),
                                 int(0),
                             int(0),
                             int(0),
@@ -938,6 +943,12 @@ class WidgetParameter:
         self.setup(self.maint_layout,title)
         self.timer = QTimer()
         self.start_time = None
+        self.documentsLocation = QStandardPaths.DocumentsLocation
+        self.documents = QStandardPaths.writableLocation(self.documentsLocation)
+        self.SlicerDownloadPath = os.path.join(
+                self.documents,
+                slicer.app.applicationName + "Downloads",
+            )
 
     def setup(self,layout,title):
         '''
@@ -954,10 +965,14 @@ class WidgetParameter:
         self.button_select_scan = QPushButton('Select')
         self.button_select_scan.pressed.connect(self.selectFile)
         
+        self.button_test_file = QPushButton('TestFile')
+        self.button_test_file.pressed.connect(self.testFile)
+        
 
         self.layout_file.addWidget(self.label_1)
         self.layout_file.addWidget(self.lineedit)
         self.layout_file.addWidget(self.button_select_scan)
+        self.layout_file.addWidget(self.button_test_file)
 
         widgetView = QWidget()
         self.layoutView = QGridLayout(widgetView)
@@ -1161,7 +1176,7 @@ class WidgetParameter:
 
         index = int(self.combobox_patch.currentText)
         self._processed3 = False
-        self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
+        self.logic = FlexRegLogic(str(self.lineedit.text),
                             int(self.lineedit_teeth_left_top.text),
                         int(self.lineedit_teeth_right_top.text),
                         int(self.lineedit_teeth_left_bot.text),
@@ -1186,7 +1201,91 @@ class WidgetParameter:
         self.timer.timeout.connect(self.onProcessUpdateDelete)
         self.timer.start(500)
         
+    def DownloadUnzip(
+        self, url, directory, folder_name=None, num_downl=1, total_downloads=1
+    ):
+        """
+        Download and unzip a file from a given URL to a specified directory.
 
+        Parameters:
+        - url: The URL of the zip file to download.
+        - directory: The directory where the file should be downloaded and unzipped.
+        - folder_name: The name of the folder to create and unzip the contents into.
+        - num_downl: The current download number (for progress display).
+        - total_downloads: The total number of downloads (for progress display).
+
+        Returns:
+        - out_path: The path to the unzipped folder.
+        """
+        
+        out_path = os.path.join(directory, folder_name)
+
+        if not os.path.exists(out_path):
+            # print("Downloading {}...".format(folder_name.split(os.sep)[0]))
+            os.makedirs(out_path)
+
+            temp_path = os.path.join(directory, "temp.zip")
+
+            # Download the zip file from the url
+            with urllib.request.urlopen(url) as response, open(
+                temp_path, "wb"
+            ) as out_file:
+                # Pop up a progress bar with a QProgressDialog
+                progress = QProgressDialog(
+                    "Downloading {} (File {}/{})".format(
+                        folder_name.split(os.sep)[0], num_downl, total_downloads
+                    ),
+                    "Cancel",
+                    0,
+                    100,
+                    self.parent,
+                )
+                progress.setCancelButton(None)
+                progress.setWindowModality(Qt.WindowModal)
+                progress.setWindowTitle(
+                    "Downloading {}...".format(folder_name.split(os.sep)[0])
+                )
+                # progress.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
+                progress.show()
+                length = response.info().get("Content-Length")
+                if length:
+                    length = int(length)
+                    blocksize = max(4096, length // 100)
+                    read = 0
+                    while True:
+                        buffer = response.read(blocksize)
+                        if not buffer:
+                            break
+                        read += len(buffer)
+                        out_file.write(buffer)
+                        progress.setValue(read * 100.0 / length)
+                        QApplication.processEvents()
+                shutil.copyfileobj(response, out_file) 
+
+            # Unzip the file
+            with zipfile.ZipFile(temp_path, "r") as zip:
+                zip.extractall(out_path)
+
+            # Delete the zip file
+            os.remove(temp_path)
+
+        return out_path
+        
+    def testFile(self):
+        url = "https://github.com/GaelleLeroux/SlicerAutomatedDentalTools/releases/download/testfileFlexReg/TestFiles.zip"
+        
+
+        _ = self.DownloadUnzip(
+            url=url,
+            directory=os.path.join(self.SlicerDownloadPath),
+            folder_name=os.path.join("FlexReg"),
+            num_downl=1,
+            total_downloads=1,
+        )
+        model_folder = os.path.join(self.SlicerDownloadPath,"FlexReg", "TestFiles")
+        path_file = os.path.join(model_folder,f"T{self.title}_test_file.vtk")
+        self.lineedit.setText(path_file)
+        self.viewScan()
 
     def onProcessUpdateDelete(self):
         '''
@@ -1434,7 +1533,7 @@ class WidgetParameter:
         surf_tmp.DeepCopy(modelNode)
 
         try :
-            surf_tmp = orientation(surf_tmp,[[-0.5,-0.5,0],[0,0,0],[0.5,-0.5,0]],
+            surf_tmp = orientation_f(surf_tmp,[[-0.5,-0.5,0],[0,0,0],[0.5,-0.5,0]],
                                     ['3','5','12','14'])
             return True
 
@@ -1444,7 +1543,6 @@ class WidgetParameter:
         
         except NoSegmentationSurf as error :
             if platform.system()!="Windows":
-                print("on appel shapeaxi")
                 sucess_segmentation = self.shapeaxi()
             else :
                 sucess_segmentation = self.shapeaxi_windows()
@@ -1537,7 +1635,6 @@ class WidgetParameter:
                         path_pip = self.conda_wsl.getCondaPath()+f"/envs/{name_env}/bin/pip"
                         # command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"ALI_IOS_utils.requirement",path_pip] # THIS LINE IS WORKING
                         command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"CrownSegmentation_utils.install_pytorch",path_pip]
-                        print("command : ",command)
                     
                         process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command,)) # launch install_pythorch.py with the environnement ali_ios to install pytorch3d on it
                         process.start()
@@ -1583,18 +1680,14 @@ class WidgetParameter:
                         os.path.dirname(self.lineedit.text),#vtk_folder
                         dentalmodelseg_path_clean]          #dentalmodelseg_path
         
-                print("args : ",args)
                 
                 conda_exe = self.conda_wsl.getCondaExecutable()
                 command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"CrownSegmentationcli"]
                 for arg in args :
                     command.append("\""+arg+"\"")
-                print("command : ",command)
 
                 # running in // to not block Slicer
-                print("1"*100)
                 process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command,))
-                print("2"*100)
                 process.start()
                 self.label_time.setVisible(True)
                 self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: 0.0s")
@@ -1608,7 +1701,6 @@ class WidgetParameter:
                         previous_time = current_time
                         elapsed_time = current_time - start_time
                         self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
-                print("HELLLOOOO")
                 
                 self.viewScan()
 
@@ -1622,9 +1714,7 @@ class WidgetParameter:
         '''
         conda_exe = self.conda_wsl.getCondaExecutable()
         command = [conda_exe, "run", "-n", name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
-        print("command : ",command)
         result = self.conda_wsl.condaRunCommand(command)
-        print("result = ",result)
         if "True" in result :
             return True
         return False
@@ -1642,7 +1732,6 @@ class WidgetParameter:
         conda_exe = self.conda_wsl.getCondaExecutable()
         # print("Conda_exe : ",conda_exe)
         argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', name_env, pythonpath_arg]
-        print("arguments : ",argument)
         self.conda_wsl.condaRunCommand(argument)
     
 
@@ -1685,7 +1774,6 @@ class WidgetParameter:
         '''
                         
         env_ok = func_import(False)
-        print("env_ok : ",env_ok)
         if not env_ok : 
             userResponse = slicer.util.confirmYesNoDisplay("Some of the required libraries are not installed in Slicer. Would you like to install them?\nThis operation takes a few minutes and may affect other modules.", windowTitle="Env doesn't exist")
             if userResponse : 
@@ -1713,7 +1801,6 @@ class WidgetParameter:
                     "vtk_folder":os.path.dirname(self.lineedit.text),
                     "dentalmodelseg_path":dentalmodelseg_path
                 }
-                print("parameters : ",parameters)
                 self.start_time = time.time()
                 flybyProcess = slicer.modules.crownsegmentationcli
                 self.start_time = time.time()
@@ -1759,11 +1846,9 @@ class WidgetParameter:
         '''
         if self.checkSurfExist() :
             seg = self.checkSegmentation()
-            print("seg : ",seg)
             env_ok = True
             if platform.system()=="Windows" :
                 env_ok = func_import_windows(False)
-                print("env_ok : ",env_ok)
                 if not env_ok :
                     userResponse = slicer.util.confirmYesNoDisplay("Some of the required libraries are not installed in Slicer. Would you like to install them?\nThis operation takes a few minutes and may affect other modules.", windowTitle="Env doesn't exist")
                     if userResponse : 
@@ -1776,7 +1861,7 @@ class WidgetParameter:
                 else:
                     index=int(self.combobox_patch.currentText)
 
-                self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
+                self.logic = FlexRegLogic(str(self.lineedit.text),
                                 int(self.lineedit_teeth_left_top.text),
                             int(self.lineedit_teeth_right_top.text),
                             int(self.lineedit_teeth_left_bot.text),
@@ -2033,7 +2118,7 @@ class WidgetParameter:
                 index=int(self.combobox_patch.currentText)
 
             # CLI 
-            self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
+            self.logic = FlexRegLogic(str(self.lineedit.text),
                             int(self.lineedit_teeth_left_top.text),
                         int(self.lineedit_teeth_right_top.text),
                         int(self.lineedit_teeth_left_bot.text),

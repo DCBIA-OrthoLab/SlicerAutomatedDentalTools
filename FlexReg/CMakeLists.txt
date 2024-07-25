@@ -1,15 +1,22 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME ButterfkyPatch)
+set(MODULE_NAME FlexReg)
 
 #-----------------------------------------------------------------------------
-set(MODULE_PYTHON_SCRIPTS
-  ${MODULE_NAME}.py
-  )
+
+set(FOLDER_LIBRARY FlexReg_utils)
 
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
   Resources/UI/${MODULE_NAME}.ui
   )
+
+set(MODULE_PYTHON_SCRIPTS
+  ${MODULE_NAME}.py
+  FlexReg_utils/__init__.py
+  FlexReg_utils/orientation.py
+  FlexReg_utils/transform.py
+  FlexReg_utils/util.py
+)
 
 #-----------------------------------------------------------------------------
 slicerMacroBuildScriptedModule(

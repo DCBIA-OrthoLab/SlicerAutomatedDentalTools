@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <executable>
-  <category>Segmentation.Advanced</category>
+  <category>Automated Dental Tools.Advanced</category>
   <index>0</index>
   <title>Flex_Reg_CLI</title>
   <description><![CDATA[CLI module that can be built into an extension]]></description>
