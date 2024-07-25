@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <index>2</index>
+  <title>MRI2CBCT_ORIENT_CENTER_MRI</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/username/project</documentation-url>
+  <license>Slicer</license>
+  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>input_folder</name>
+      <label>input_folder</label>
+      <index>0</index>
+      <description>Path for the input folder.</description>
+    </string>
+
+    <string>
+      <name>direction</name>
+      <label>direction</label>
+      <index>1</index>
+      <description>Direction for the new orientation of the scan</description>
+    </string>
+
+    <string>
+      <name>output_folder</name>
+      <label>output_folder</label>
+      <index>2</index>
+      <description>Output Path</description>
+    </string>
+
+  </parameters>
+</executable>
