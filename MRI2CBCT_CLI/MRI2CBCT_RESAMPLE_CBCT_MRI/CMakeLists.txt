@@ -1,0 +1,7 @@
+set(MODULE_NAME MRI2CBCT_RESAMPLE_CBCT_MRI)
+
+
+SlicerMacroBuildScriptedCLI(
+  NAME ${MODULE_NAME}
+)
+
