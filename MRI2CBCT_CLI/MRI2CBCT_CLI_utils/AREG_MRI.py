@@ -111,8 +111,13 @@ def registration(cbct_folder,mri_folder,cbct_mask_folder,output_folder,mri_origi
             patient_id = cbct_file.split("_CBCT_")[0]
         
             mri_path = get_corresponding_file(mri_folder, patient_id, "_MR_")
+            if mri_path is None :
+                    mri_path = get_corresponding_file(mri_folder, patient_id, "_MRI_")
+                    
             if mri_original_folder!="None":
                 mri_path_original = get_corresponding_file(mri_original_folder, patient_id, "_MR_")
+                if mri_path_original is None :
+                    mri_path_original = get_corresponding_file(mri_original_folder, patient_id, "_MRI_")
             
 
             cbct_mask_path = get_corresponding_file(cbct_mask_folder, patient_id, "_CBCT_")

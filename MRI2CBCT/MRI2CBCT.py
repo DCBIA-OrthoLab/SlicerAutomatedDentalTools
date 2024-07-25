@@ -9,25 +9,61 @@ from MRI2CBCT_utils.Preprocess_CBCT_MRI import Preprocess_CBCT_MRI
 from MRI2CBCT_utils.Reg_MRI2CBCT import Registration_MRI2CBCT
 import time 
 
-import vtk
-import shutil 
-import urllib 
-import zipfile
+
 
 import slicer
 from functools import partial
 from slicer.i18n import tr as _
 from slicer.i18n import translate
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin
+from slicer.util import VTKObservationMixin, pip_install
 from slicer.parameterNodeWrapper import (
     parameterNodeWrapper,
     WithinRange,
 )
 
+import pkg_resources
+import shutil
+import urllib
+import zipfile
+
 from slicer import vtkMRMLScalarVolumeNode
 
+def check_lib_installed(lib_name, required_version=None):
+    try:
+        installed_version = pkg_resources.get_distribution(lib_name).version
+        if required_version and installed_version != required_version:
+            return False
+        return True
+    except pkg_resources.DistributionNotFound:
+        return False
 
+# import csv
+    
+def install_function():
+    libs = [('vtk', None),('dicom2nifti',None),('itk',None),('monai','0.7.0'),('einops',None),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1')]
+    libs_to_install = []
+    for lib, version in libs:
+        if not check_lib_installed(lib, version):
+            libs_to_install.append((lib, version))
+
+    if libs_to_install:
+        message = "The following libraries are not installed or need updating:\n"
+        message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
+        message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
+        user_choice = slicer.util.confirmYesNoDisplay(message)
+
+        if user_choice:
+            for lib, version in libs_to_install:
+                lib_version = f'{lib}=={version}' if version else lib
+                pip_install(lib_version)
+        else :
+          return False
+    import vtk
+    import dicom2nifti
+    import itk
+    import cc3d
+    return True
 #
 # MRI2CBCT
 #
@@ -211,11 +247,11 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.pushButtonOrientMRI.connect("clicked(bool)",self.orientCenterMRI)
         self.ui.pushButtonDownloadOrientCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditOrientCBCT, "Orientation", True))
         self.ui.pushButtonDownloadSegCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditSegCBCT, "Segmentation", True))
-        self.ui.pushButtonTestFilePreCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.LineEditCBCT, "MRI2CBCT/TestFile", True))
-        self.ui.pushButtonTestFilePreMRI.connect("clicked(bool)",partial(self.downloadModel,self.ui.LineEditMRI, "MRI2CBCT/TestFile", True))
-        self.ui.pushButtonTestFileRegMRI.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegMRI, "MRI2CBCT/TestFile", True))
-        self.ui.pushButtonTestFileRegCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegCBCT, "MRI2CBCT/TestFile", True))
-        self.ui.pushButtonTestFileRegSeg.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegLabel, "MRI2CBCT/TestFile", True))
+        self.ui.pushButtonTestFilePreCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.LineEditCBCT, "MRI2CBCT", True))
+        self.ui.pushButtonTestFilePreMRI.connect("clicked(bool)",partial(self.downloadModel,self.ui.LineEditMRI, "MRI2CBCT", True))
+        self.ui.pushButtonTestFileRegMRI.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegMRI, "MRI2CBCT", True))
+        self.ui.pushButtonTestFileRegCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegCBCT, "MRI2CBCT", True))
+        self.ui.pushButtonTestFileRegSeg.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegLabel, "MRI2CBCT", True))
         
 
         # Make sure parameter node is initialized (needed for module reload) 
@@ -756,6 +792,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         folder path. It also runs a test on the downloaded model and shows a warning message
         if any errors occur.
         """
+        install_function()
 
         # To select the reference files (CBCT Orientation and Registration mode only)
         if name=="Segmentation" or name=="Orientation" :
@@ -814,8 +851,9 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     else os.path.join(name),
                 )
             
-            scan_folder = os.path.join(scan_folder,"release")
+            scan_folder = os.path.join(scan_folder,"TestFile")
             print("scan folder : ",scan_folder)
+            print("name : ",name)
             if lineEdit.objectName=="LineEditCBCT":
                 lineEdit.setText(os.path.join(scan_folder,"CBCT_ori"))
             elif lineEdit.objectName=="LineEditMRI":
@@ -906,6 +944,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         and starts the processing pipeline if all checks pass. It handles the initial setup,
         parameter passing, and process initiation, including setting up observers for process updates.
         """
+        install_function()
         
         param = {"input_t1_folder":self.ui.LineEditCBCT.text,
                 "folder_output":self.ui.lineEditOutputOrientCBCT.text,
@@ -953,7 +992,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         and starts the processing pipeline if all checks pass. It handles the initial setup, parameter passing,
         and process initiation, including setting up observers for process updates.
         """
-        
+        install_function()
         param = {"input_folder":self.ui.LineEditMRI.text,
                 "direction":self.getCheckboxValuesOrient(),
                 "output_folder":self.ui.lineEditOutputOrientMRI.text}
@@ -997,7 +1036,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         and starts the processing pipeline if all checks pass. The function handles the initial setup, parameter
         passing, and process initiation, including setting up observers for process updates.
         """
-    
+        install_function()
         if self.ui.comboBoxResample.currentText=="CBCT":
             LineEditMRI = "None"
             LineEditCBCT = self.ui.LineEditCBCT.text
@@ -1065,7 +1104,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         and process initiation, including setting up observers for process updates. The function also checks
         for normalization parameters and validates input folders for the presence of necessary files.
         """
-        
+        install_function()
         param = {"folder_general": self.ui.LineEditOutput.text,
             "mri_folder": self.ui.lineEditRegMRI.text,
             "cbct_folder": self.ui.lineEditRegCBCT.text,
