@@ -37,6 +37,8 @@ add_subdirectory(AutoCrop3D)
 add_subdirectory(FlexReg)
 add_subdirectory(Flex_Reg_CLI)
 
+add_subdirectory(MRI2CBCT)
+add_subdirectory(MRI2CBCT_CLI)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
