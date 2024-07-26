@@ -468,7 +468,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         print("not a .nii.gz")
 
                     self.UpdateTime()
-                    if extension_scan!=".nii.gz":
+                    if extension_scan!=".nii.gz" and extension_scan!=".nrrd":
                         model = slicer.util.loadModel(scan)
                     else :
                         model = slicer.util.loadVolume(scan)
@@ -616,7 +616,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Initialize the variables and progress bar.
         """
         if os.path.isdir(self.ui.LineEditPatient.text):
-            self.nbFiles = len(self.dico_patient[".vtk"]) + len(self.dico_patient['.vtp']) + len(self.dico_patient['.stl']) + len(self.dico_patient['.off']) + len(self.dico_patient['.obj']) + len(self.dico_patient['.nii.gz'])
+            self.nbFiles = len(self.dico_patient[".vtk"]) + len(self.dico_patient['.vtp']) + len(self.dico_patient['.stl']) + len(self.dico_patient['.off']) + len(self.dico_patient['.obj']) + len(self.dico_patient['.nii.gz']) + len(self.dico_patient['nrrd'])
         else:
             self.nbFiles = 1
         self.ui.progressBar.setValue(0)
@@ -645,10 +645,10 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 warning_text = warning_text + "Enter file patient" + "\n"
         else :
             if self.ui.ComboBoxPatient.currentIndex==1 : #folder option
-                self.dico_patient=search(self.ui.LineEditPatient.text,'.vtk','.vtp','.stl','.off','.obj','.nii.gz')
-                if len(self.dico_patient['.vtk'])==0 and len(self.dico_patient['.vtp']) and len(self.dico_patient['.stl']) and len(self.dico_patient['.off']) and len(self.dico_patient['.obj']) and len(self.dico_patient['.nii.gz']) :
+                self.dico_patient=search(self.ui.LineEditPatient.text,'.vtk','.vtp','.stl','.off','.obj','.nii.gz','nrrd')
+                if len(self.dico_patient['.vtk'])==0 and len(self.dico_patient['.vtp']) and len(self.dico_patient['.stl']) and len(self.dico_patient['.off']) and len(self.dico_patient['.obj']) and len(self.dico_patient['.nii.gz']) and len(self.dico_patient['.nrrd']) :
                     warning_text = warning_text + "Folder empty or wrong type of file patient" + "\n"
-                    warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz" + "\n"
+                    warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz / .nrrd" + "\n"
             elif self.ui.ComboBoxPatient.currentIndex==0 : # file option
                 fname, extension = os.path.splitext(os.path.basename(self.ui.LineEditPatient.text))
                 try :
@@ -656,9 +656,9 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     extension = extension2+extension
                 except :
                     print("not a .nii.gz")
-                if extension != ".vtk" and extension != ".vtp" and extension != ".stl" and extension != ".off" and extension != ".obj" and extension != ".nii.gz" :
+                if extension != ".vtk" and extension != ".vtp" and extension != ".stl" and extension != ".off" and extension != ".obj" and extension != ".nii.gz" and extension != ".nrrd":
                         warning_text = warning_text + "Wrong type of file patient detected" + "\n"
-                        warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz" + "\n"
+                        warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz / .nrrd" + "\n"
 
 
         if self.ui.LineEditMatrix.text=="":

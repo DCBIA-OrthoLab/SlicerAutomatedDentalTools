@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16.3...3.19.7 FATAL_ERROR)
 
-project(SlicerAutomatedDentalTools)
+project(AutomatedDentalTools)
 
 #-----------------------------------------------------------------------------
 # Extension meta-information
@@ -12,7 +12,7 @@ set(EXTENSION_ICONURL "https://raw.githubusercontent.com/DCBIA-OrthoLab/SlicerAu
 set(EXTENSION_SCREENSHOTURLS "https://raw.githubusercontent.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/main/ADT-exemple.png")
 set(EXTENSION_DEPENDS 
     SlicerDentalModelSeg
-    Conda)# Specified as a list or "NA" if no dependencies
+    SlicerConda)# Specified as a list or "NA" if no dependencies
 
 #-----------------------------------------------------------------------------
 # Extension dependencies
@@ -35,6 +35,8 @@ add_subdirectory(AREG)
 add_subdirectory(AutoMatrix)
 add_subdirectory(AutoCrop3D)
 
+add_subdirectory(MRI2CBCT)
+add_subdirectory(MRI2CBCT_CLI)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
