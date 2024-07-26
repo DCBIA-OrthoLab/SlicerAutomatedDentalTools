@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <index>1</index>
+  <title>MRI2CBCT_REG</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/username/project</documentation-url>
+  <license>Slicer</license>
+  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>folder_general</name>
+      <label>folder_general</label>
+      <index>0</index>
+      <description>output_folder</description>
+    </string>
+
+    <string>
+      <name>mri_folder</name>
+      <label>mri_folder</label>
+      <index>1</index>
+      <description>Input Path MRI folder</description>
+    </string>
+
+    <string>
+      <name>cbct_folder</name>
+      <label>cbct_folder</label>
+      <index>2</index>
+      <description>Input Path CBCT folder</description>
+    </string>
+
+    <string>
+      <name>cbct_label2</name>
+      <label>cbct_label2</label>
+      <index>3</index>
+      <description>Input path CB CBCT label</description>
+    </string>
+
+    <string>
+      <name>normalization</name>
+      <label>normalization</label>
+      <index>4</index>
+      <description>Normalization to use for MRI and CBCT</description>
+    </string>
+
+    <string>
+      <name>tempo_fold</name>
+      <label>tempo_fold</label>
+      <index>5</index>
+      <description>If keeping temporary fold or not</description>
+    </string>
+
+  </parameters>
+</executable>

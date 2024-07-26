@@ -111,6 +111,13 @@
          </widget>
         </item>
         <item>
+         <widget class="QCheckBox" name="checkBoxCV">
+          <property name="text">
+           <string>Use module &quot;Crop Volume&quot; for tilted images</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <layout class="QHBoxLayout" name="horizontalLayout_11"/>
         </item>
        </layout>
