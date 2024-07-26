@@ -1,12 +1,6 @@
 import SimpleITK as sitk
 import os
-
-try : 
-    import pandas as pd
-except ImportError:
-    from slicer.util import pip_install
-    pip_install("pandas")
-    import pandas as pd
+import pandas as pd
 import argparse
 
 def get_nifti_info(file_path,output_resample):

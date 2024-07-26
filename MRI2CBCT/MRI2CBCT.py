@@ -22,26 +22,26 @@ from slicer.parameterNodeWrapper import (
     WithinRange,
 )
 
-import pkg_resources
 import shutil
 import urllib
 import zipfile
+import importlib.metadata
 
 from slicer import vtkMRMLScalarVolumeNode
 
 def check_lib_installed(lib_name, required_version=None):
     try:
-        installed_version = pkg_resources.get_distribution(lib_name).version
+        installed_version = importlib.metadata.version(lib_name)
         if required_version and installed_version != required_version:
             return False
         return True
-    except pkg_resources.DistributionNotFound:
+    except importlib.metadata.PackageNotFoundError:
         return False
 
 # import csv
     
 def install_function():
-    libs = [('vtk', None),('dicom2nifti',None),('itk',None),('monai','0.7.0'),('einops',None),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1')]
+    libs = [('vtk', None),('dicom2nifti',None),('itk',None),('monai','0.7.0'),('einops',None),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1'),("pandas",None)]
     libs_to_install = []
     for lib, version in libs:
         if not check_lib_installed(lib, version):
