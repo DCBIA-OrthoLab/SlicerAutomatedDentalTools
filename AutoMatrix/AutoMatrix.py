@@ -454,25 +454,26 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         '''
         Function that will apply the matrix to all the files
         '''
-
+        volume_storage_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLVolumeArchetypeStorageNode")
+        model_storage_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelStorageNode")
         patients,nb_files = GetPatients(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
 
 
         if nb_files!=0:
             for key,values in patients.items():
                 for scan in values['scan']:
-                    fname, extension_scan = os.path.splitext(scan)
-                    try :
-                        fname, extension2 = os.path.splitext(os.path.basename(fname))
-                        extension_scan = extension2+extension_scan
-                    except :
-                        print("not a .nii.gz")
-
+                    
+                    extension_scan = volume_storage_node.GetSupportedFileExtension(scan)
+                    print("extension_scan : ",extension_scan)
                     self.UpdateTime()
-                    if extension_scan!=".nii.gz" and extension_scan!=".nrrd":
+
+                    if bool(model_storage_node.GetSupportedFileExtension(scan)) :
                         model = slicer.util.loadModel(scan)
-                    else :
+                    elif  bool(volume_storage_node.GetSupportedFileExtension(scan)):
                         model = slicer.util.loadVolume(scan)
+                    else : 
+                        print("Can't load the scan : ",scan)
+                        continue
                     
                     self.UpdateTime()
                     for matrix in values['matrix']:
