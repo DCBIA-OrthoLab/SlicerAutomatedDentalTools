@@ -271,6 +271,12 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.label_info.setHidden(True)
         self.ui.progressBar.setHidden(True)
         
+        self.ui.ComboBoxCBCT.setHidden(True)
+        self.ui.ComboBoxMRI.setHidden(True)
+        self.ui.comboBoxRegMRI.setHidden(True)
+        self.ui.comboBoxRegCBCT.setHidden(True)
+        self.ui.comboBoxRegLabel.setHidden(True)
+        
         self.ui.outputCollapsibleButton.setText("Registration")
         self.ui.inputsCollapsibleButton.setText("Preprocess")
         
@@ -1201,27 +1207,25 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         
         self.ui.progressBar.setVisible(False)
-        # timer = f"Time : {time.time()-self.startTime:.2f}s"
         currentTime = time.time() - self.startTime
         if currentTime < 60:
-            timer = f"Time : {int(currentTime)}s"
+            timer = f"Time: {int(currentTime)}s"
         elif currentTime < 3600:
-            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+            timer = f"Time: {int(currentTime/60)}min and {int(currentTime%60)}s"
         else:
-            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+            timer = f"Time: {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
 
         self.ui.label_time.setText(timer)
         # self.module_name = caller.GetModuleTitle() if self.module_name_bis is None else self.module_name_bis
-        self.ui.label_info.setText(f"Extension {self.module_name} is running. \nNumber of extension runned : {self.nb_extnesion_did} / {self.nb_extension_launch}")
+        self.ui.label_info.setText(f"Extension {self.module_name} is running. \nNumber of extension runned: {self.nb_extnesion_did} / {self.nb_extension_launch}")
         # self.displayModule = self.displayModule_bis if self.displayModule_bis is not None else self.display[self.module_name.split(' ')[0]]
 
         if self.module_name_before != self.module_name:
-            print("Valeur progress barre : ",100*self.nb_extnesion_did/self.nb_extension_launch)
             self.ui.progressBar.setValue(self.nb_extnesion_did/self.nb_extension_launch)
             self.ui.progressBar.setFormat(f"{100*self.nb_extnesion_did/self.nb_extension_launch}%")
             self.nb_extnesion_did += 1
             self.ui.label_info.setText(
-                f"Extension {self.module_name} is running. \nNumber of extension runned : {self.nb_extnesion_did} / {self.nb_extension_launch}"
+                f"Extension {self.module_name} is running. \nNumber of extension runned: {self.nb_extnesion_did} / {self.nb_extension_launch}"
             )
             
 
