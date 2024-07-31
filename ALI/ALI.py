@@ -28,14 +28,6 @@ import sys
 
 def check_lib_installed(lib_name, required_version=None):
     try:
-      if lib_name == "numpy" :
-        import numpy as np
-        numpy_version = np.__version__
-        if int(numpy_version.split('.')[0]) >= 2:
-            print("NumPy version is 2.0.0 or higher, downgrading...")
-            return False
-        return True
-
       installed_version =importlib.metadata.version(lib_name)
       if required_version and installed_version != required_version:
           return False
@@ -46,9 +38,9 @@ def check_lib_installed(lib_name, required_version=None):
 # import csv
 def install_function():
     if platform.system() == "Windows":
-      libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('numpy', None)]
+      libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0')]
     else :
-      libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('pytorch3d', '0.6.2'),('numpy', None)]
+      libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('pytorch3d', '0.6.2')]
 
     if platform.system() == "Windows":
         libs.append(('torch', None))
@@ -76,11 +68,7 @@ def install_function():
                     extra_url = 'https://download.pytorch.org/whl/cu118' if platform.system() == "Windows" else 'https://download.pytorch.org/whl/cu113'
                     pip_install(f'{lib} --extra-index-url {extra_url}')
 
-                if lib=="numpy" :
-                  pip_uninstall('numpy')
-                  pip_install('numpy<2')
-
-                elif lib=="pytorch3d":
+                if lib=="pytorch3d":
                     try : 
                       import torch
                       pyt_version_str = torch.__version__.split("+")[0].replace(".", "")
