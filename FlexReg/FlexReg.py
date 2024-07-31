@@ -6,12 +6,8 @@ import shutil
 import zipfile
 import urllib
 
-try : 
-    import vtk
-except ImportError : 
-    pip_install('vtk')
-    import vtk
-    
+import vtk
+
 import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
