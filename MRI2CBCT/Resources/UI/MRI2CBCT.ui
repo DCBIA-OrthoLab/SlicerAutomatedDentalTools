@@ -72,14 +72,14 @@
           <item row="1" column="0">
            <widget class="QLabel" name="label_4">
             <property name="text">
-             <string>Input MRI files(s):</string>
+             <string>Input MRI folder:</string>
             </property>
            </widget>
           </item>
           <item row="0" column="0">
            <widget class="QLabel" name="label_3">
             <property name="text">
-             <string>Input CBCT file(s) :</string>
+             <string>Input CBCT folder:</string>
             </property>
            </widget>
           </item>
@@ -127,7 +127,7 @@
         <item row="0" column="0">
          <widget class="QLabel" name="label_7">
           <property name="text">
-           <string>Output folder :</string>
+           <string>Output folder:</string>
           </property>
          </widget>
         </item>
@@ -150,14 +150,14 @@
         <item row="1" column="0">
          <widget class="QLabel" name="label_14">
           <property name="text">
-           <string>Orientation Model : </string>
+           <string>Orientation Model: </string>
           </property>
          </widget>
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="label_15">
           <property name="text">
-           <string>Segmentation Model : </string>
+           <string>Segmentation Model: </string>
           </property>
          </widget>
         </item>
@@ -193,7 +193,7 @@
       <item row="6" column="1">
        <widget class="QLabel" name="label_8">
         <property name="text">
-         <string>Orientation + centering of MRI</string>
+         <string>Orientation + Centering of the MRI</string>
         </property>
        </widget>
       </item>
@@ -233,7 +233,7 @@
         <item>
          <widget class="QLabel" name="label_25">
           <property name="text">
-           <string>Output folder : </string>
+           <string>Output folder: </string>
           </property>
          </widget>
         </item>
@@ -252,7 +252,7 @@
       <item row="11" column="1">
        <widget class="QPushButton" name="pushButtonOrientMRI">
         <property name="text">
-         <string>Orient and centering MRI</string>
+         <string>Orient and Center MRI</string>
         </property>
        </widget>
       </item>
@@ -346,14 +346,14 @@
           <item row="1" column="0">
            <widget class="QLabel" name="label_2">
             <property name="text">
-             <string>Output folder :</string>
+             <string>Output folder:</string>
             </property>
            </widget>
           </item>
           <item row="2" column="0">
            <widget class="QLabel" name="label_5">
             <property name="text">
-             <string>Suffix :</string>
+             <string>Suffix:</string>
             </property>
            </widget>
           </item>
@@ -435,7 +435,7 @@
         <item row="1" column="0">
          <widget class="QLabel" name="label_12">
           <property name="text">
-           <string>Input CBCT :</string>
+           <string>Input CBCT folder:</string>
           </property>
          </widget>
         </item>
@@ -455,7 +455,7 @@
         <item row="2" column="0">
          <widget class="QLabel" name="label_13">
           <property name="text">
-           <string>Input Seg CBCT :</string>
+           <string>Input Seg CBCT folder:</string>
           </property>
          </widget>
         </item>
@@ -476,7 +476,7 @@
         <item row="0" column="0">
          <widget class="QLabel" name="label_11">
           <property name="text">
-           <string>Input MRI :</string>
+           <string>Input MRI folder:</string>
           </property>
          </widget>
         </item>
@@ -567,14 +567,14 @@
        <item row="0" column="0">
         <widget class="QLabel" name="label_info">
          <property name="text">
-          <string>Number of processed files : </string>
+          <string>Number of processed files: </string>
          </property>
         </widget>
        </item>
        <item row="2" column="0">
         <widget class="QLabel" name="label_time">
          <property name="text">
-          <string>time : </string>
+          <string>time: </string>
          </property>
         </widget>
        </item>

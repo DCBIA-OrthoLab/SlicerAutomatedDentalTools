@@ -76,7 +76,8 @@ def run_script_apply_mask(cbct_folder, cbct_label2,folder_general, suffix,upper_
     max_norm (float): Maximum value for normalization.
     min_norm (float): Minimum value for normalization.
     """
-    cbct_mask_folder = os.path.join(folder_general,"b3_CBCT_norm_mask:l2",f"percentile=[{lower_percentile},{upper_percentile}]_norm=[{min_norm},{max_norm}]")
+    print("folder_general : ",folder_general)
+    cbct_mask_folder = os.path.join(folder_general,"b3_CBCT_norm_mask_l2",f"percentile=[{lower_percentile},{upper_percentile}]_norm=[{min_norm},{max_norm}]")
     create_folder(cbct_mask_folder)
     apply_mask_f(folder_path=cbct_folder, seg_folder=cbct_label2, folder_output=cbct_mask_folder, suffix=suffix, seg_label=1)
     return cbct_mask_folder
@@ -101,7 +102,7 @@ def run_script_AREG_MRI_folder(cbct_folder, cbct_mask_folder,mri_folder,mri_orig
     cbct_max_norm (float): Maximum value for CBCT normalization.
     """
     
-    output_folder = os.path.join(folder_general,f"mri:inv+norm[{mri_min_norm},{mri_max_norm}]+p[{mri_lower_p},{mri_upper_p}]_cbct:norm[{cbct_min_norm},{cbct_max_norm}]+p[{cbct_lower_p},{cbct_upper_p}]+mask")
+    output_folder = os.path.join(folder_general,f"mri=inv+norm[{mri_min_norm},{mri_max_norm}]+p[{mri_lower_p},{mri_upper_p}]_cbct=norm[{cbct_min_norm},{cbct_max_norm}]+p[{cbct_lower_p},{cbct_upper_p}]+mask")
     create_folder(output_folder)
     registration(cbct_folder,mri_folder,cbct_mask_folder,output_folder,mri_original_folder)
     return cbct_mask_folder
