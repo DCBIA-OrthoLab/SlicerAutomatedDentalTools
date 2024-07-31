@@ -2,10 +2,10 @@
 
 import argparse
 import vtk
-from Method_FlexRegCli.make_butterfly import butterflyPatch
-from Method_FlexRegCli.draw import drawPatch
-from Method_FlexRegCli.ICP import vtkICP,ICP
-from Method_FlexRegCli.vtkSegTeeth import vtkMeshTeeth
+from FlexReg_Method.make_butterfly import butterflyPatch
+from FlexReg_Method.draw import drawPatch
+from FlexReg_Method.ICP import vtkICP,ICP
+from FlexReg_Method.vtkSegTeeth import vtkMeshTeeth
 import os 
 import numpy as np
 import torch

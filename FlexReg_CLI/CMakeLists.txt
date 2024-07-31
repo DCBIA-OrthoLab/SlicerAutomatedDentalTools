@@ -1,11 +1,11 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME Flex_Reg_CLI)
+set(MODULE_NAME FlexReg_CLI)
 
 SlicerMacroBuildScriptedCLI(
   NAME ${MODULE_NAME}
 )
 
-set(FOLDER_LIBRARY Method_FlexRegCli)
+set(FOLDER_LIBRARY FlexReg_Method)
 
 set(MODULE_PYTHON_SCRIPTS
   ${FOLDER_LIBRARY}/__init__.py 
