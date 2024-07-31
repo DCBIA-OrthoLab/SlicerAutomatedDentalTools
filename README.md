@@ -39,6 +39,7 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [AutoCrop3D](#autocrop3d-module) | Automatically crop a folder of CBCT scans with the same region of interest. |
 | [AutoMatrix](#automatrix-module)| Automatically apply one or different matrix to a folder of IOS or CBCT scans. |
 | [MRI2CBCT](#mri2cbct-module) | Contains the steps to perform the registration of MRI and CBCT scans.|
+| [FlexReg](#flex-reg) | Registration of IOS patient per patient with customizable patch creation. |
 
 These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
 
@@ -66,6 +67,7 @@ Additionally, the following modules are implemented as python scripted command-l
 | [MRI2CBCT_ORIENT_CENTER_MRI](MRI2CBCT_ORIENT_CENTER_MR) | Perform orientation and centering of MRI scans |
 | [MRI2CBCT_RESAMPLE_CBCT_MRI](MRI2CBCT_RESAMPLE_CBCT_MRI) | Perform resample of MRI and CBCT scans |
 | [MRI2CBCT_REG](MRI2CBCT_REG) | Perform registration of MRI-CBCT scans |
+| [FlexReg_CLI](FlexReg_CLI) | Perform creation of patch and registration on IOS scans. |
 
 
 ## Requirements
@@ -423,6 +425,35 @@ For the cropping, the user can use AutoCrop3D available in this extension.
 #### Registration:
 - **Inputs:** CBCT, CBCT segmentation, and MRI scans after completing the preprocessing steps, including manual approximation and cropping.
 - **Normalization Options:** Select the normalization method and specify the percentile to apply to both MRI and CBCT scans. Default values are provided for convenience.
+  
+## FlexReg Module
+FlexReg is a module that allows you to register patient-specific Intra Oral Scans. It lets you create custom patches for registration.
+
+### How does the module work?
+
+1. **Load your files:**
+   - Choose your path by clicking on "Select" and load it by clicking on "View".
+
+2. **Draw your own patch:**
+   - **Butterfly Patch:**
+     - You can draw a butterfly patch using the parameters and select your own teeth. Note that this patch, with the default values, is called “ButterflyPatch” and is created when you run AREG_IOS:
+       <p align="center">
+         <img src="https://github.com/user-attachments/assets/57117815-5ce2-4897-95cc-679624476bdc" alt="Butterfly Patch Image" width="300"/>
+       </p>
+   - **Custom Patch:**
+     - You can draw the patch using landmarks and customize it:
+     - <p align="center">
+         <img src="https://github.com/user-attachments/assets/75020379-0a54-43bc-b5ba-ac4349f3517e" alt="Patch landmarks" />
+       </p>
+   - You can combine multiple patches by creating them one by one. All your patches will be used as a single patch for the registration.
+   - <p align="center">
+         <img src="https://github.com/user-attachments/assets/3569c7bd-3390-4909-b2e5-5911e3f4e518" alt="Multiple patchs"/>
+       </p>
+
+3. **Registration:**
+   - After creating your patch for both the fixed and moving scans, choose the output folder and the suffix you would like. If you have a lower arch to move, you can select it.
+   - Register them by clicking on "Registration".
+
 
 
 

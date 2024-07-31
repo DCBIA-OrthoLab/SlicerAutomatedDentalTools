@@ -16,8 +16,8 @@ from functools import partial
 import SimpleITK as sitk
 from pathlib import Path
 
-# import Method.General_tools as gt
-from Method.General_tools import search, GetPatients
+# import AutoMatrix_Method.General_tools as gt
+from AutoMatrix_Method.General_tools import search, GetPatients
 
 
 
