@@ -1,15 +1,16 @@
 #-----------------------------------------------------------------------------
 set(MODULE_NAME MRI2CBCT)
+set(FOLDER_LIBRARY MRI2CBCT_utils)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  utils/Method.py
-  utils/Preprocess_CBCT_MRI.py
-  utils/Preprocess_CBCT.py
-  utils/Preprocess_MRI.py
-  utils/Reg_MRI2CBCT.py
-  utils/utils_CBCT.py
+  ${FOLDER_LIBRARY}/Method.py
+  ${FOLDER_LIBRARY}/Preprocess_CBCT_MRI.py
+  ${FOLDER_LIBRARY}/Preprocess_CBCT.py
+  ${FOLDER_LIBRARY}/Preprocess_MRI.py
+  ${FOLDER_LIBRARY}/Reg_MRI2CBCT.py
+  ${FOLDER_LIBRARY}/utils_CBCT.py
   )
 
 set(MODULE_PYTHON_RESOURCES

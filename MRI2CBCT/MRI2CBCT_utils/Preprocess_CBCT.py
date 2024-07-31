@@ -1,5 +1,5 @@
-from utils.Method import Method
-from utils.utils_CBCT import GetDictPatients, GetPatients
+from .Method import Method
+from .utils_CBCT import GetDictPatients, GetPatients
 import os, sys
 
 import SimpleITK as sitk
