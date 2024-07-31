@@ -1094,7 +1094,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 print("seg_env : ",check_env)
                 
                 if check_env :
-                    list_libs_IOS =[("tqdm",None,None),('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None),('numpy','>=1.21.6,<1.28',None)]
+                    list_libs_IOS =[("tqdm",None,None),('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None)]
 
                     is_installed = install_function(self,list_libs_IOS)
                 # qt.QMessageBox.warning(self.parent, 'Warning', 'AREG IOS is currently not available on Windows. Please use a Linux or MacOS system to run the module.')
@@ -1111,7 +1111,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 # Installation of pytorch is done before pytorch3d installation in the function because the order is important andfor version compatibility
                 list_libs_IOS =[("shapeaxi",None,None),('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None),
                                 ('pytorch3d',"==0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"),
-                                ('torchmetrics','==0.9.3',None),('pytorch-lightning','==1.7.7',None),('numpy','>=1.21.6,<1.28',None)]
+                                ('torchmetrics','==0.9.3',None),('pytorch-lightning','==1.7.7',None)]
 
                 is_installed = install_function(self,list_libs_IOS)
 

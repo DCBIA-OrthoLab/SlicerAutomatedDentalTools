@@ -28,16 +28,20 @@ import sys
 
 def check_lib_installed(lib_name, required_version=None):
     try:
-        installed_version =importlib.metadata.version(lib_name)
-        if required_version and installed_version != required_version:
-            return False
-        return True
+      installed_version =importlib.metadata.version(lib_name)
+      if required_version and installed_version != required_version:
+          return False
+      return True
     except importlib.metadata.PackageNotFoundError:
         return False
 
 # import csv
 def install_function():
-    libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('pytorch3d', '0.6.2')]
+    if platform.system() == "Windows":
+      libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0')]
+    else :
+      libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('pytorch3d', '0.6.2')]
+
     if platform.system() == "Windows":
         libs.append(('torch', None))
         libs.append(('torchvision', None))
@@ -64,7 +68,7 @@ def install_function():
                     extra_url = 'https://download.pytorch.org/whl/cu118' if platform.system() == "Windows" else 'https://download.pytorch.org/whl/cu113'
                     pip_install(f'{lib} --extra-index-url {extra_url}')
 
-                elif lib=="pytorch3d":
+                if lib=="pytorch3d":
                     try : 
                       import torch
                       pyt_version_str = torch.__version__.split("+")[0].replace(".", "")
