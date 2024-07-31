@@ -3,10 +3,10 @@ import os
 from typing import Annotated, Optional
 from qt import QApplication, QWidget, QTableWidget, QDoubleSpinBox, QTableWidgetItem, QHeaderView,QSpinBox, QVBoxLayout, QLabel, QSizePolicy, QCheckBox, QFileDialog,QMessageBox, QApplication, QProgressDialog
 import qt
-from utils.Preprocess_CBCT import Process_CBCT
-from utils.Preprocess_MRI import Process_MRI
-from utils.Preprocess_CBCT_MRI import Preprocess_CBCT_MRI
-from utils.Reg_MRI2CBCT import Registration_MRI2CBCT
+from MRI2CBCT_utils.Preprocess_CBCT import Process_CBCT
+from MRI2CBCT_utils.Preprocess_MRI import Process_MRI
+from MRI2CBCT_utils.Preprocess_CBCT_MRI import Preprocess_CBCT_MRI
+from MRI2CBCT_utils.Reg_MRI2CBCT import Registration_MRI2CBCT
 import time 
 
 import vtk

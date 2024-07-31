@@ -1,22 +1,22 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME MRI2CBCT)
-set(FOLDER_LIBRARY MRI2CBCT_utils)
+set(MODULE_NAME FlexReg)
 
 #-----------------------------------------------------------------------------
-set(MODULE_PYTHON_SCRIPTS
-  ${MODULE_NAME}.py
-  ${FOLDER_LIBRARY}/Method.py
-  ${FOLDER_LIBRARY}/Preprocess_CBCT_MRI.py
-  ${FOLDER_LIBRARY}/Preprocess_CBCT.py
-  ${FOLDER_LIBRARY}/Preprocess_MRI.py
-  ${FOLDER_LIBRARY}/Reg_MRI2CBCT.py
-  ${FOLDER_LIBRARY}/utils_CBCT.py
-  )
+
+set(FOLDER_LIBRARY FlexReg_utils)
 
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
   Resources/UI/${MODULE_NAME}.ui
   )
+
+set(MODULE_PYTHON_SCRIPTS
+  ${MODULE_NAME}.py
+  FlexReg_utils/__init__.py
+  FlexReg_utils/orientation.py
+  FlexReg_utils/transform.py
+  FlexReg_utils/util.py
+)
 
 #-----------------------------------------------------------------------------
 slicerMacroBuildScriptedModule(
