@@ -41,7 +41,7 @@ def check_lib_installed(lib_name, required_version=None):
 # import csv
     
 def install_function():
-    libs = [('vtk', None),('dicom2nifti',None),('itk',None),('monai','0.7.0'),('einops',None),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1'),("pandas",None)]
+    libs = [('dicom2nifti',None),('itk',None),('monai','0.7.0'),('einops',None),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1'),("pandas",None)]
     libs_to_install = []
     for lib, version in libs:
         if not check_lib_installed(lib, version):
