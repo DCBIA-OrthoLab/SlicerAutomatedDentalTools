@@ -5,7 +5,7 @@ SlicerMacroBuildScriptedCLI(
   NAME ${MODULE_NAME}
 )
 
-set(FOLDER_LIBRARY Method)
+set(FOLDER_LIBRARY Method_FlexRegCli)
 
 set(MODULE_PYTHON_SCRIPTS
   ${FOLDER_LIBRARY}/__init__.py 
