@@ -6,12 +6,8 @@ import shutil
 import zipfile
 import urllib
 
-try : 
-    import vtk
-except ImportError : 
-    pip_install('vtk')
-    import vtk
-    
+import vtk
+
 import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
@@ -60,17 +56,6 @@ def func_import(install=False):
 def func_import_windows(install=False):
     try:
         if not install : 
-            import numpy as np
-            numpy_version = np.__version__
-            if int(numpy_version.split('.')[0]) >= 2:
-                print("NumPy version is 2.0.0 or higher, downgrading...")
-                return False
-                    
-            import numpy as np
-            numpy_version = np.__version__
-
-            print(f"NumPy version is {numpy_version}")
-
             import pkg_resources
             shapeaxi_version = pkg_resources.get_distribution("torch").version
 
@@ -87,15 +72,10 @@ def func_import_windows(install=False):
             return True
         else : 
             pip_uninstall('torch')
-            pip_uninstall('numpy')
             pip_install('--force-reinstall torch==1.12.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113')
-            pip_install('numpy<2')
-            
+
             import torch
             print("torch version : ",torch.__version__)
-            import numpy as np
-            numpy_version = np.__version__
-            print(f"NumPy version is {numpy_version}")
             return True
 
     except Exception as e:
