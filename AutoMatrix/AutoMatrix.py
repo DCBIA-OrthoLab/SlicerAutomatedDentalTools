@@ -454,28 +454,37 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         '''
         Function that will apply the matrix to all the files
         '''
-        volume_storage_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLVolumeArchetypeStorageNode")
-        model_storage_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelStorageNode")
         patients,nb_files = GetPatients(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
 
 
         if nb_files!=0:
             for key,values in patients.items():
                 for scan in values['scan']:
-                    
-                    extension_scan = volume_storage_node.GetSupportedFileExtension(scan)
+                    # try loaders until one succeeds. if none succeed, log and skip the case.
+                    for loader in (
+                            slicer.util.loadModel,
+                            slicer.util.loadVolume,
+                    ):
+                        try:
+                            model = loader(scan)
+                            break
+                        except RuntimeError:
+                            # slicer.util.load* give no finer indication of failure; so catch all.
+                            pass
+                    else:
+                        print("Can't load the scan:", scan)
+                        continue
+
+                    # sanity check on the result type
+                    assert isinstance(model, (
+                        slicer.vtkMRMLModelNode,
+                        slicer.vtkMRMLVolumeNode,
+                    ))
+
+                    extension_scan = ''.join(Path(scan).suffixes)
                     print("extension_scan : ",extension_scan)
                     self.UpdateTime()
 
-                    if bool(model_storage_node.GetSupportedFileExtension(scan)) :
-                        model = slicer.util.loadModel(scan)
-                    elif  bool(volume_storage_node.GetSupportedFileExtension(scan)):
-                        model = slicer.util.loadVolume(scan)
-                    else : 
-                        print("Can't load the scan : ",scan)
-                        continue
-                    
-                    self.UpdateTime()
                     for matrix in values['matrix']:
                         try:
                             self.UpdateTime()
