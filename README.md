@@ -40,6 +40,8 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [AutoMatrix](#automatrix-module)| Automatically apply one or different matrix to a folder of IOS or CBCT scans. |
 | [MRI2CBCT](#mri2cbct-module) | Contains the steps to perform the registration of MRI and CBCT scans.|
 | [FlexReg](#flex-reg) | Registration of IOS patient per patient with customizable patch creation. |
+| [DOCShapeAXI](#doc-shapeaxi) | Automatic classification of 3D Shape. DOC-ShapeAXI is an acronym for Dental Oral and Craniofacial Shape Analysis eXplainability and Interpretability. |
+
 
 These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
 
@@ -68,6 +70,7 @@ Additionally, the following modules are implemented as python scripted command-l
 | [MRI2CBCT_RESAMPLE_CBCT_MRI](MRI2CBCT_RESAMPLE_CBCT_MRI) | Perform resample of MRI and CBCT scans |
 | [MRI2CBCT_REG](MRI2CBCT_REG) | Perform registration of MRI-CBCT scans |
 | [FlexReg_CLI](FlexReg_CLI) | Perform creation of patch and registration on IOS scans. |
+| [DOCShapeAXI](DOCShapeAXI_CLI) | Perform automatic classification of 3D Shape. |
 
 
 ## Requirements
@@ -457,7 +460,52 @@ FlexReg is a module that allows you to register patient-specific Intra Oral Scan
 
 
 
+## DOCShapeAXI Module
 
+### Prerequisites
+
+* This extension works with Linux and Windows.
+* This extension requires the installation of SlicerConda. Follows the [instructions](https://github.com/DCBIA-OrthoLab/SlicerConda) for more information.
+
+
+### Supported Dataset
+Currently, the extension supports only three types of datasets:
+- Nasopharynx Airway Obstruction: Three models are available for this dataset. 
+  - **Severity model**: classifies 4 levels of airway obstruction ranging from 0 to 3, where 0 is the lowest level and 3 is the greatest level. 
+  - **Binary model**: classifies between 0 and 1, where 0 is the absence and 1 is the presence of adenoid hypertrophy-related obstruction. 
+  - **Regression model**: directly predicts the ratio of obstruction ranging between 0 and 100%.
+- Mandibular Condyle: 
+  - **Severity model**: classifies the condylar changes into 4 levels of severity ranging from 0 to 3.
+- Alveolar Bone Defect in Cleft: 
+  - **Severity model**: classifies the defect into 4 levels of severity ranging from 0 to 3.
+
+### How does the module work?
+
+ 1. Select a **Data Type**: nasopharynx airways obstruction, mandibular condyles, and alveolar bone defect in cleft.
+   > [!NOTE]
+   > This step allow to select automatically the appropriate classification model.
+ 2. Select an **Input folder**: a folder that contains 3D models stored as VTK files.
+ 3. Select an **Output directory**: a folder that will contain all the outputs (model, predictions results stored in a CSV file, and explainability visualizations).
+![User Interface.](DOCShapeAXI/Resources/Image/global_ui.png)
+ 4. Run the module: Click on the **Run Prediction** button. 
+   > [!NOTE]
+   > The progress will be display in the UI with a progress bar.
+
+### Viewing the Results
+
+All the results are saved in the **Output directory** specified by the user. you can find:
+
+A. the csv file containing the prediction made by the network.
+
+B. a folder named **Explainability** containing the visualization results:
+  1. Open the folder and drag and drop a shape in Slicer
+  2. Go to the module **Models**
+      ![location of the Models tab to select in Slicer.](DOCShapeAXI/Resources/Image/explainability_tab.png)
+  3. In the **Display** drop-down menu, click on the **Scalar** section
+  4. check the **visibility** box and change the color table to **ColdToHotRainbow**
+  5. Set the **Data Scalar Range** to **Auto** if not set
+    ![Screenshot of the location and values of the visualization settings](DOCShapeAXI/Resources/Image/explainability_params.png)
+  6. Change the **Active Scalar** to the class you want to visualize
 
 # Acknowledgements
 
