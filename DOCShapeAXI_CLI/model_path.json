@@ -1,0 +1,27 @@
+{
+    "airways_2_class": {
+        "version": "1.0",
+        "url": "https://github.com/lucieDLE/DOC-ShapeAXI/releases/download/v1/airways_2_class.ckpt"
+    },
+
+    "airways_4_class": {
+        "version": "1.0",
+        "url": "https://github.com/lucieDLE/DOC-ShapeAXI/releases/download/v1/airways_4_class.ckpt"
+    },
+    
+    "airways_4_regress": {
+        "version": "1.0",
+        "url": "https://github.com/lucieDLE/DOC-ShapeAXI/releases/download/v1/airways_4_regress.ckpt"
+    },
+    
+    
+    "clefts_4_class": {
+        "version": "1.0",
+        "url": "https://github.com/lucieDLE/DOC-ShapeAXI/releases/download/v1/cleft_4_class.ckpt"
+    },
+    
+    "condyles_4_class": {
+        "version": "1.0",
+        "url": "https://github.com/lucieDLE/DOC-ShapeAXI/releases/download/v1/condyles_4_class.ckpt"
+    }
+}
