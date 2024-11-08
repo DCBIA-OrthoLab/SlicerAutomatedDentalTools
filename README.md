@@ -462,6 +462,10 @@ FlexReg is a module that allows you to register patient-specific Intra Oral Scan
 
 ## DOCShapeAXI Module
 
+
+This integrates advanced deep learning algorithms enabling the classification of nasopharynx airways obstruction, mandibular condyles, and alveolar bone defect in cleft. The tool facilitates the automated classification of medical shapes, assisting in clinical diagnosis and decision-making.
+The extension was originally developped https://github.com/lucieDLE/DOC-ShapeAXI/
+
 ### Prerequisites
 
 * This extension works with Linux and Windows.
