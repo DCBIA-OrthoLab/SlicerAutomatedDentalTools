@@ -6,7 +6,7 @@ set(FOLDER_LIBRARY DOCShapeAXI_utils)
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   ${FOLDER_LIBRARY}/__init__.py
-  DOCShapeAXI/${FOLDER_LIBRARY}/install_pytorch.py
+  ${FOLDER_LIBRARY}/install_pytorch.py
   )
 
 set(MODULE_PYTHON_RESOURCES
