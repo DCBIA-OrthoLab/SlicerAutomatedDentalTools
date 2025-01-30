@@ -278,14 +278,14 @@ def main(args):
 if __name__ == '__main__':
 
   parser = argparse.ArgumentParser()
-  parser.add_argument('input_dir',type = str)
-  parser.add_argument('output_dir',type=str)
-  parser.add_argument('data_type',type = str)
-  parser.add_argument('task', type=str)
-  parser.add_argument('model',type=str)
-  parser.add_argument('nn',type=str)
-  parser.add_argument('num_classes',type=int)
-  parser.add_argument('log_path',type=str)
+  parser.add_argument('input_dir',type =str,help='input directory containing the .vtk files')
+  parser.add_argument('output_dir',type=str, help='output directory to save the prediction and explainability files')
+  parser.add_argument('data_type',type = str, help='data type: Nasopharynx Airway Obstruction, Mandibular Condyles, or Alveolar Bone Defect in Cleft')
+  parser.add_argument('task', type=str, help='task: binary, severity, or regression')
+  parser.add_argument('model',type=str, help='model name used in json file')
+  parser.add_argument('nn',type=str, help='model type, i.e SaxiMHAFBClassification')
+  parser.add_argument('num_classes',type=int, help='number of classes')
+  parser.add_argument('log_path',type=str, help='path to log file (.txt)')
 
   args = parser.parse_args()
 
