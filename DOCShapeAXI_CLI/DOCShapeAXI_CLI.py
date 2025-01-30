@@ -12,15 +12,11 @@ from torch.utils.data import DataLoader
 
 from tqdm import tqdm
 
-import shapeaxi
 from shapeaxi.saxi_dataset import SaxiDataset
-from shapeaxi.saxi_transforms import TrainTransform, EvalTransform
+from shapeaxi.saxi_transforms import EvalTransform
 
 from shapeaxi.saxi_gradcam import gradcam_process 
 
-
-from pytorch_grad_cam import GradCAM
-from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 import vtk
 
 from shapeaxi import saxi_nets_lightning, post_process as psp, utils

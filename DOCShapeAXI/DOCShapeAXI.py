@@ -1,18 +1,15 @@
 import os
 import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin, pip_install
+from slicer.util import VTKObservationMixin
 import subprocess
 import platform
 import sys
 import time
 import threading
-import pkg_resources
 import signal
-sys.path.append('../../../ShapeAXI/')
 
 from pathlib import Path
-import re
 #
 # DOCShapeAXI
 #
@@ -26,8 +23,7 @@ class DOCShapeAXI(ScriptedLoadableModule):
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "DOCShapeAXI"  # TODO: make this more human readable by adding spaces
-    # TODO: set categories (folders where the module shows up in the module selector)
+    self.parent.title = "DOCShapeAXI" 
     self.parent.categories = ["Automated Dental Tools"]
     self.parent.dependencies = []  # TODO: add here list of module names that this module requires
     
