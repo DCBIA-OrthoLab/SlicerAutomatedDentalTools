@@ -18,50 +18,50 @@
       <name>input_dir</name>
       <label>input_dir</label>
       <index>0</index>
-      <description>input directory containing data</description>
+      <description>input directory containing the .vtk files</description>
     </string>
 
     <string>
       <name>output_dir</name>
       <label>output_dir</label>
       <index>1</index>
-      <description>output directory</description>
+      <description>output directory to save the prediction and explainability files</description>
     </string>
     <string>
       <name>data_type</name>
       <label>data_type</label>
       <index>2</index>
-      <description>type of input data</description>
+      <description>data name for prediction filename</description>
     </string>
     <string>
       <name>task</name>
       <label>task</label>
       <index>3</index>
-      <description>type of input data</description>
+      <description>binary, severity (multiclass) or regression</description>
     </string>
     <string>
       <name>model</name>
       <label>model</label>
       <index>4</index>
-      <description>type of input data</description>
+      <description>model name in json file</description>
     </string>
       <string>
       <name>nn</name>
       <label>nn</label>
       <index>5</index>
-      <description>type of input data</description>
+      <description>type of neural network</description>
     </string>
       <string>
       <name>num_classes</name>
       <label>num_classes</label>
       <index>6</index>
-      <description>type of input data</description>
+      <description>number of classes</description>
     </string>
     <string>
       <name>log_path</name>
       <label>log_path</label>
       <index>7</index>
-      <description>log_path: process.log</description>
+      <description>path to log file</description>
     </string>
   </parameters>
 </executable>
