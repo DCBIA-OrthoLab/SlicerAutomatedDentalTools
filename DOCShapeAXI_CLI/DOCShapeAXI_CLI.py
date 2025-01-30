@@ -58,7 +58,7 @@ def gradcam_save(args, gradcam_path, surf_path, surf):
     
     out_surf_path = os.path.join(gradcam_path, os.path.basename(surf_path))
 
-    subprocess.call(["cp", surf_path, out_surf_path])
+    shutil.copy(surf_path, out_surf_path)
 
     writer = vtk.vtkPolyDataWriter()
     writer.SetFileName(out_surf_path)
