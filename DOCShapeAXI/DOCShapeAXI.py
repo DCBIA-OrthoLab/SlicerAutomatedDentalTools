@@ -494,9 +494,9 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           self.ui.labelBar.setText(f'Loading {self.task} model...')
         else:
           self.progress = int(progress)
-          if self.previous_saxi_task != current_saxi_task: 
+          if self.logic.previous_saxi_task != current_saxi_task: 
             self.progress = 0
-            self.previous_saxi_task = current_saxi_task
+            self.logic.previous_saxi_task = current_saxi_task
             self.ui.progressBar.setValue(0)
 
           self.ui.progressLabel.setText(f'{current_saxi_task} in progress...')
