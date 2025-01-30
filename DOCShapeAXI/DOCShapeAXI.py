@@ -26,14 +26,14 @@ class DOCShapeAXI(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "DOCShapeAXI" 
     self.parent.categories = ["Automated Dental Tools"]
-    self.parent.dependencies = []  # TODO: add here list of module names that this module requires
+    self.parent.dependencies = ["CondaSetUp"] 
     
     self.parent.contributors = ["Lucie Dole (University of North Carolina)", 
-    "Juan Carlos Prieto (University of North Carolina)",
-    "Lucia Cevidanes (University of Michigan)"] 
+    "Gaelle Leroux (University of Michigan)",
+    "Lucia Cevidanes (University of Michigan)",
+    "Juan Carlos Prieto (University of North Carolina)"] 
     
-    # TODO: update with short description of the module and a link to online module documentation
-        self.parent.helpText = textwrap.dedent("""
+    self.parent.helpText = textwrap.dedent("""
     This extension provides a Graphical User Interface (GUI) 
     for a deep learning automated classification of Alveolar Bone Defect in Cleft, 
     Nasopharynx Airway Obstruction and Mandibular Condyles.<br>
@@ -49,14 +49,13 @@ class DOCShapeAXI(ScriptedLoadableModule):
     When prediction is over, you can open the output csv file which will containing 
     the path of each .vtk file as well as the predicted class. <br><br>
 
-    More help can be found on the <a href="https://github.com/DCBIA-OrthoLab/SlicerDentalModelSeg">Github repository</a> 
+    More help can be found on the <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools">Github repository</a> 
     for the extension.
     """).strip()
 
-    # TODO: replace with organization, grant and thanks
     self.parent.acknowledgementText = """
-    This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
-    and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
+    This file was developed by Lucie Dole, University of North Carolina and 
+    Gaelle Leroux (University of Michigan), and was supported by R01-DE024450.
     """
 
 
