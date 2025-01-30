@@ -8,6 +8,7 @@ import sys
 import time
 import threading
 import signal
+import textwrap
 
 from pathlib import Path
 #
@@ -32,20 +33,26 @@ class DOCShapeAXI(ScriptedLoadableModule):
     "Lucia Cevidanes (University of Michigan)"] 
     
     # TODO: update with short description of the module and a link to online module documentation
-    self.parent.helpText = """
-    This extension provides a Graphical User Interface (GUI) for a deep learning automated classification of Alveolar Bone Defect in Cleft, Nasopharynx Airway Obstruction and Mandibular Condyles.
+        self.parent.helpText = textwrap.dedent("""
+    This extension provides a Graphical User Interface (GUI) 
+    for a deep learning automated classification of Alveolar Bone Defect in Cleft, 
+    Nasopharynx Airway Obstruction and Mandibular Condyles.<br>
 
-    - The input file must be a folder containing a list of vtk files. 
+    - The input file must be a folder containing a list of vtk files.<br>
 
-    - data type for classification:  <br>Mandibular Condyle<br>, <br>Nasopharynx Airway Obstruction<br> and <br>Alveolar Bone Defect in Cleft<br>
+    - data type for classification: Mandibular Condyle, Nasopharynx Airway 
+    Obstruction and Alveolar Bone Defect in Cleft.<br>
 
-    - output directory: a folder that will contain all the outputs (models, prediction and explainability results)
+    - output directory: a folder that will contain all the outputs 
+    (models, prediction and explainability results)<br>
 
-    When prediction is over, you can open the output csv file which will containing the path of each .vtk file as well as the predicted class.
-    <br><br>
+    When prediction is over, you can open the output csv file which will containing 
+    the path of each .vtk file as well as the predicted class. <br><br>
 
-    More help can be found on the <a href="https://github.com/DCBIA-OrthoLab/SlicerDentalModelSeg">Github repository</a> for the extension.
-    """
+    More help can be found on the <a href="https://github.com/DCBIA-OrthoLab/SlicerDentalModelSeg">Github repository</a> 
+    for the extension.
+    """).strip()
+
     # TODO: replace with organization, grant and thanks
     self.parent.acknowledgementText = """
     This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
@@ -341,7 +348,10 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     except:
       self.ui.timeLabel.setText(f"Checking if SlicerConda is installed")
       messageBox = qt.QMessageBox()
-      text = "SlicerConda is not set up, please click <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation."
+      text = textwrap.dedent("""
+      SlicerConda is not set up, please click 
+      <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
+      """).strip()
       messageBox.information(None, "Information", text)
       return False
 
@@ -362,14 +372,21 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           self.ui.timeLabel.setText(f"Checking if the required librairies are installed, this task may take a moments")
           messageBox = qt.QMessageBox()
           # text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip may be blocked by Chrome, this is normal, just authorize it."
-          text = "WSL doen't have all the necessary libraries, please download the installer and follow the instructions <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> for installation. The link may be blocked by Chrome, just authorize it."
+          text = textwrap.dedent("""
+            WSL doesn't have all the necessary libraries, please download the installer 
+            nd follow the instructions 
+            <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+            for installation. The link may be blocked by Chrome, just authorize it.""").strip()
 
           messageBox.information(None, "Information", text)
           return False
       else : # if wsl not install, ask user to install it ans stop process
         messageBox = qt.QMessageBox()
-        text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip may be blocked by Chrome, this is normal, just authorize it."
-        text = "WSL is not installed, please download the installer and follow the instructions <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> for installation. The link may be blocked by Chrome, just authorize it."
+        # text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip may be blocked by Chrome, this is normal, just authorize it."
+        text = textwrap.dedent("""
+          WSL is not installed, please download the installer and follow the instructions 
+          <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+          for installation. The link may be blocked by Chrome, just authorize it.""").strip()        
 
         messageBox.information(None, "Information", text)
         return False
@@ -383,7 +400,9 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.timeLabel.setText(f"Checking if miniconda is installed")
     if "Error" in self.conda.condaRunCommand([self.conda.getCondaExecutable(),"--version"]): # if conda is setup
       messageBox = qt.QMessageBox()
-      text = "Code can't be launch. \nConda is not setup. Please go the extension CondaSetUp in SlicerConda to do it."
+      text = textwrap.dedent("""
+      Code can't be launch. \nConda is not setup. 
+      Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
       messageBox.information(None, "Information", text)
       return False
 
@@ -414,7 +433,10 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         start_time = time.time()
         previous_time = start_time
         formatted_time = self.format_time(0)
-        self.ui.timeLabel.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: {formatted_time}")
+        text = textwrap.dedent(f"""
+        Installation of librairies into the new environnement. 
+        This task may take a few minutes.\ntime: {formatted_time}""").strip()
+        self.ui.timeLabel.setText(text)
       else:
         return False
     else:
@@ -453,7 +475,11 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           previous_time = current_time
           elapsed_time = current_time - start_time
           formatted_time = self.format_time(elapsed_time)
-          self.ui.timeLabel.setText(f"Installation of pytorch into the new environnement. This task may take a few minutes.\ntime: {formatted_time}")
+          text = textwrap(f"""
+          Installation of pytorch into the new environnement. 
+          This task may take a few minutes.\ntime: {formatted_time}
+          """).strip()
+          self.ui.timeLabel.setText(text)
     else:
       self.ui.timeLabel.setText(f"pytorch3d is already installed")
       print("pytorch3d already installed")
