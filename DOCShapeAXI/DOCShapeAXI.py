@@ -469,8 +469,7 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.progressBar.setFormat("")
 
   def onProcessStarted(self):
-    self.nbSubjects = sum(1 for elt in os.listdir(self.logic.input_dir) if os.path.splitext(elt)[1] == '.vtk') 
-
+    self.logic.count_num_subjects()
     self.ui.progressBar.setValue(0)
     self.ui.labelBar.setText(f'Loading {self.logic.task} model...')
     
@@ -501,8 +500,8 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.progressBar.setValue(0)
 
           self.ui.progressLabel.setText(f'{current_saxi_task} in progress...')
-          self.ui.labelBar.setText(f"{self.task} model \nNumber of processed subjects : {self.progress}/{self.nbSubjects}")
-          progressbar_value = round((self.progress) /self.nbSubjects * 100,2)
+          self.ui.labelBar.setText(f"{self.task} model \nNumber of processed subjects : {self.progress}/{self.logic.nbSubjects}")
+          progressbar_value = round((self.progress) /self.logic.nbSubjects * 100,2)
           self.time_log = time_progress
 
           self.ui.progressBar.setValue(progressbar_value)
@@ -772,6 +771,13 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
       line = f.readline()
       if line != '':
         return line
+
+  def count_num_subjects(self):
+    self.nbSubjects = 0
+    for elt in os.listdir(self.input_dir):
+      name, ext = os.path.splitext(elt)
+      if ext == '.vtk':
+        self.nbSubjects +=1
 
   def find_cli_parameters(self):
 
