@@ -537,6 +537,7 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.doneLabel.setHidden(False)
       
   def onReset(self):
+    self.logic.cancel = False
     self.ui.outputLineEdit.setText("")
     self.ui.mountPointLineEdit.setText("")
     self.ui.errorLabel.setText("Error: ")
