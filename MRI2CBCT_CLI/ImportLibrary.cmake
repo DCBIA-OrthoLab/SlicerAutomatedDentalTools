@@ -10,6 +10,8 @@ set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}/AREG_MRI.py
   ${MODULE_NAME}/mri_inverse.py
   ${MODULE_NAME}/normalize_percentile.py
+  ${MODULE_NAME}/approximate.py
+  ${MODULE_NAME}/crop_approximation.py
 )
 
 #-----------------------------------------------------------------------------
