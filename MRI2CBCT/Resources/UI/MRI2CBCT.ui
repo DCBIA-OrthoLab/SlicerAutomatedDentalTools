@@ -7,13 +7,13 @@
     <x>0</x>
     <y>0</y>
     <width>1002</width>
-    <height>1210</height>
+    <height>1399</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text">
       <string>Inputs</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
@@ -270,10 +270,120 @@
         </property>
        </widget>
       </item>
-      <item row="14" column="1">
+      <item row="15" column="1">
+       <layout class="QVBoxLayout" name="verticalLayout_6">
+        <item>
+         <layout class="QGridLayout" name="gridLayout_7">
+          <item row="0" column="0">
+           <widget class="QLabel" name="labelT1CBCT">
+            <property name="text">
+             <string>Input CBCT folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="2">
+           <widget class="QPushButton" name="SearchButtonResampleSeg">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="labelT2CBCT">
+            <property name="text">
+             <string>Input CBCT T2 folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="2">
+           <widget class="QPushButton" name="SearchButtonResampleT2Seg">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="lineEditResampleT2MRI"/>
+          </item>
+          <item row="2" column="2">
+           <widget class="QPushButton" name="SearchButtonResampleMRI">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="labelT2Seg">
+            <property name="text">
+             <string>Input Seg T2 folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="labelT1Seg">
+            <property name="text">
+             <string>Input Seg folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QLineEdit" name="lineEditResampleMRI"/>
+          </item>
+          <item row="4" column="1">
+           <widget class="QLineEdit" name="lineEditResampleSeg"/>
+          </item>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="SearchButtonResampleT2CBCT">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QPushButton" name="SearchButtonResampleCBCT">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="2">
+           <widget class="QPushButton" name="SearchButtonResampleT2MRI">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1">
+           <widget class="QLineEdit" name="lineEditResampleT2Seg"/>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="lineEditResampleT2CBCT"/>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="lineEditResampleCBCT"/>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="labelT2MRI">
+            <property name="text">
+             <string>Input MRI T2 folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="labelT1MRI">
+            <property name="text">
+             <string>Input MRI folder:</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </item>
+      <item row="16" column="1">
        <widget class="QTableWidget" name="tableWidgetResample"/>
       </item>
-      <item row="15" column="1">
+      <item row="17" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_3">
         <item>
          <widget class="QLabel" name="label_10">
@@ -297,22 +407,10 @@
       <item row="19" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_4">
         <item>
-         <widget class="QComboBox" name="comboBoxResample">
-          <item>
-           <property name="text">
-            <string>MRI &amp; CBCT</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>MRI</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>CBCT</string>
-           </property>
-          </item>
+         <widget class="QLabel" name="labelResampling">
+          <property name="text">
+           <string>No resampling selected</string>
+          </property>
          </widget>
         </item>
         <item>
@@ -324,12 +422,37 @@
         </item>
        </layout>
       </item>
+      <item row="14" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_5">
+        <item>
+         <widget class="QCheckBox" name="CheckBoxT2CBCT">
+          <property name="text">
+           <string>T1 and T2 CBCT</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="CheckBoxT2MRI">
+          <property name="text">
+           <string>T1 and T2 MRI</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="CheckBoxT2Seg">
+          <property name="text">
+           <string>T1 and T2 Seg</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
      </layout>
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton">
+     <property name="text">
       <string>Output</string>
      </property>
      <layout class="QFormLayout" name="formLayout_21">

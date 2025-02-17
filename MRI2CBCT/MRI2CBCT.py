@@ -238,6 +238,23 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SearchButtonRegMRI.connect("clicked(bool)",partial(self.openFinder,"InputRegMRI"))
         self.ui.SearchButtonRegCBCT.connect("clicked(bool)",partial(self.openFinder,"InputRegCBCT"))
         self.ui.SearchButtonRegLabel.connect("clicked(bool)",partial(self.openFinder,"InputRegLabel"))
+        self.ui.SearchButtonResampleCBCT.connect("clicked(bool)",partial(self.openFinder,"InputResampleCBCT"))
+        self.ui.SearchButtonResampleMRI.connect("clicked(bool)",partial(self.openFinder,"InputResampleMRI"))
+        self.ui.SearchButtonResampleSeg.connect("clicked(bool)",partial(self.openFinder,"InputResampleSeg"))
+        self.ui.SearchButtonResampleT2CBCT.connect("clicked(bool)",partial(self.openFinder,"InputResampleT2CBCT"))
+        self.ui.SearchButtonResampleT2MRI.connect("clicked(bool)",partial(self.openFinder,"InputResampleT2MRI"))
+        self.ui.SearchButtonResampleT2Seg.connect("clicked(bool)",partial(self.openFinder,"InputResampleT2Seg"))
+        self.ui.lineEditResampleCBCT.textChanged.connect(self.updateResamplingLabel)
+        self.ui.lineEditResampleT2CBCT.textChanged.connect(self.updateResamplingLabel)
+        self.ui.lineEditResampleMRI.textChanged.connect(self.updateResamplingLabel)
+        self.ui.lineEditResampleT2MRI.textChanged.connect(self.updateResamplingLabel)
+        self.ui.lineEditResampleSeg.textChanged.connect(self.updateResamplingLabel)
+        self.ui.lineEditResampleT2Seg.textChanged.connect(self.updateResamplingLabel)
+        
+        self.ui.CheckBoxT2CBCT.connect("clicked(bool)",self.toggleT2)
+        self.ui.CheckBoxT2MRI.connect("clicked(bool)",self.toggleT2)
+        self.ui.CheckBoxT2Seg.connect("clicked(bool)",self.toggleT2)
+        
         self.ui.SearchOutputFolderOrientCBCT.connect("clicked(bool)",partial(self.openFinder,"OutputOrientCBCT"))
         self.ui.SearchOutputFolderOrientMRI.connect("clicked(bool)",partial(self.openFinder,"OutputOrientMRI"))
         self.ui.SearchOutputFolderResample.connect("clicked(bool)",partial(self.openFinder,"OutputOrientResample"))
@@ -260,6 +277,17 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ComboBoxCBCT.setEnabled(False)
         self.ui.ComboBoxMRI.setCurrentIndex(1)
         self.ui.ComboBoxMRI.setEnabled(False)
+        
+        self.ui.labelT2CBCT.setVisible(False)
+        self.ui.lineEditResampleT2CBCT.setVisible(False)
+        self.ui.SearchButtonResampleT2CBCT.setVisible(False)
+        self.ui.labelT2MRI.setVisible(False)
+        self.ui.lineEditResampleT2MRI.setVisible(False)
+        self.ui.SearchButtonResampleT2MRI.setVisible(False)
+        self.ui.labelT2Seg.setVisible(False)
+        self.ui.lineEditResampleT2Seg.setVisible(False)
+        self.ui.SearchButtonResampleT2Seg.setVisible(False)
+        
         self.ui.comboBoxRegMRI.setCurrentIndex(1)
         self.ui.comboBoxRegMRI.setEnabled(False)
         self.ui.comboBoxRegCBCT.setCurrentIndex(1)
@@ -763,6 +791,30 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             else :
                 surface_folder = QFileDialog.getOpenFileName(self.parent,'Open a file',)
             self.ui.lineEditRegLabel.setText(surface_folder)
+            
+        elif nom=="InputResampleCBCT":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditResampleCBCT.setText(surface_folder)
+            
+        elif nom=="InputResampleT2CBCT":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditResampleT2CBCT.setText(surface_folder)
+            
+        elif nom=="InputResampleMRI":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditResampleMRI.setText(surface_folder)
+            
+        elif nom=="InputResampleT2MRI":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditResampleT2MRI.setText(surface_folder)
+            
+        elif nom=="InputResampleSeg":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditResampleSeg.setText(surface_folder)
+            
+        elif nom=="InputResampleT2Seg":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditResampleT2Seg.setText(surface_folder)
  
 
         elif nom=="OutputOrientCBCT":
@@ -1043,18 +1095,32 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         passing, and process initiation, including setting up observers for process updates.
         """
         install_function()
-        if self.ui.comboBoxResample.currentText=="CBCT":
-            LineEditMRI = "None"
-            LineEditCBCT = self.ui.LineEditCBCT.text
-        elif self.ui.comboBoxResample.currentText=="MRI":
-            LineEditMRI = self.ui.LineEditMRI.text
-            LineEditCBCT = "None"
-        else : 
-            LineEditMRI = self.ui.LineEditMRI.text
-            LineEditCBCT = self.ui.LineEditCBCT.text
+        LineEditMRI = "None"
+        LineEditT2MRI = "None"
+        LineEditCBCT = "None"
+        LineEditT2CBCT = "None"
+        LineEditSeg = "None"
+        LineEditT2Seg = "None"
+        
+        if self.ui.lineEditResampleMRI.text != "":
+            LineEditMRI = self.ui.lineEditResampleMRI.text
+        if self.ui.lineEditResampleT2MRI.text != "" and self.ui.CheckBoxT2MRI.isChecked():
+            LineEditT2MRI = self.ui.lineEditResampleT2MRI.text
+        if self.ui.lineEditResampleCBCT.text != "":
+            LineEditCBCT = self.ui.lineEditResampleCBCT.text
+        if self.ui.lineEditResampleT2CBCT.text != "" and self.ui.CheckBoxT2CBCT.isChecked():
+            LineEditT2CBCT = self.ui.lineEditResampleT2CBCT.text
+        if self.ui.lineEditResampleSeg.text != "":
+            LineEditSeg = self.ui.lineEditResampleSeg.text
+        if self.ui.lineEditResampleT2Seg.text != "" and self.ui.CheckBoxT2Seg.isChecked():
+            LineEditT2Seg = self.ui.lineEditResampleT2Seg.text
             
         param = {"input_folder_MRI": LineEditMRI,
+            "input_folder_T2_MRI": LineEditT2MRI,
             "input_folder_CBCT": LineEditCBCT,
+            "input_folder_T2_CBCT": LineEditT2CBCT,
+            "input_folder_Seg": LineEditSeg,
+            "input_folder_T2_Seg": LineEditT2Seg,
             "output_folder": self.ui.lineEditOuputResample.text,
             "resample_size": self.get_resample_values()[0],
             "spacing" : self.get_resample_values()[1]
@@ -1066,18 +1132,50 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             return
         
         ok,mess = self.preprocess_mri_cbct.TestScan(param["input_folder_MRI"])
-
         if not ok : 
-            mess = mess + "MRI folder"
+            if self.ui.CheckBoxT2MRI.isChecked():
+                mess = mess + "MRI T1 folder"
+            else:
+                mess = mess + "MRI folder"
+            self.showMessage(mess)
+            return
+        
+        ok,mess = self.preprocess_mri_cbct.TestScan(param["input_folder_T2_MRI"])
+        if not ok :
+            mess = mess + "MRI T2 folder"
             self.showMessage(mess)
             return
         
         ok,mess = self.preprocess_mri_cbct.TestScan(param["input_folder_CBCT"])
         if not ok : 
-            mess = mess + "CBCT folder"
+            if self.ui.CheckBoxT2CBCT.isChecked():
+                mess = mess + "CBCT T1 folder"
+            else:
+                mess = mess + "CBCT folder"
+            self.showMessage(mess)
+            return
+        
+        ok,mess = self.preprocess_mri_cbct.TestScan(param["input_folder_T2_CBCT"])
+        if not ok :
+            mess = mess + "CBCT T2 folder"
             self.showMessage(mess)
             return
             
+        ok,mess = self.preprocess_mri_cbct.TestScan(param["input_folder_Seg"])
+        if not ok :
+            if self.ui.CheckBoxT2Seg.isChecked():
+                mess = mess + "Seg T1 folder"
+            else: 
+                mess = mess + "Seg folder"
+            self.showMessage(mess)
+            return
+
+        ok,mess = self.preprocess_mri_cbct.TestScan(param["input_folder_T2_Seg"])
+        if not ok :
+            mess = mess + "Seg T2 folder"
+            self.showMessage(mess)
+            return
+        
             
         self.list_Processes_Parameters = self.preprocess_mri_cbct.Process(**param)
         
@@ -1100,6 +1198,75 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         del self.list_Processes_Parameters[0]
         
+        
+    def updateResamplingLabel(self):
+        """
+        Updates the 'labelResampling' text dynamically based on which input folders are set.
+        """
+        selected = []
+        if self.ui.lineEditResampleCBCT.text.strip():
+            if self.ui.lineEditResampleT2CBCT.text.strip():
+                selected.append("CBCT T1&T2")
+            else:
+                selected.append("CBCT")
+        if self.ui.lineEditResampleMRI.text.strip():
+            if self.ui.lineEditResampleT2MRI.text.strip():
+                selected.append("MRI T1&T2")
+            else:
+                selected.append("MRI")
+                
+        if self.ui.lineEditResampleSeg.text.strip():
+            if self.ui.lineEditResampleT2Seg.text.strip():
+                selected.append("Seg T1&T2")
+            else:
+                selected.append("Seg")
+                
+        if selected:
+            self.ui.labelResampling.setText(f"<b>Running resampling for: {', '.join(selected)}</b>")
+        else:
+            self.ui.labelResampling.setText("No resampling selected")
+
+    def toggleT2(self):
+        if self.ui.CheckBoxT2CBCT.text == "T1 and T2 CBCT":
+            is_visible = False
+            if self.ui.CheckBoxT2CBCT.isChecked():
+                is_visible = True
+                self.ui.labelT1CBCT.setText("Input CBCT T1 folder:")
+            else:
+                self.ui.lineEditResampleT2CBCT.setText("")
+                self.ui.labelT1CBCT.setText("Input CBCT folder:")
+                
+            self.ui.labelT2CBCT.setVisible(is_visible)
+            self.ui.lineEditResampleT2CBCT.setVisible(is_visible)
+            self.ui.SearchButtonResampleT2CBCT.setVisible(is_visible)
+            
+        if self.ui.CheckBoxT2MRI.text == "T1 and T2 MRI":
+            is_visible = False
+            if self.ui.CheckBoxT2MRI.isChecked():
+                is_visible = True
+                self.ui.labelT1MRI.setText("Input MRI T1 folder:")
+            else:
+                self.ui.lineEditResampleT2MRI.setText("")
+                self.ui.labelT1MRI.setText("Input MRI folder:")
+                
+            self.ui.labelT2MRI.setVisible(is_visible)
+            self.ui.lineEditResampleT2MRI.setVisible(is_visible)
+            self.ui.SearchButtonResampleT2MRI.setVisible(is_visible)
+            
+        if self.ui.CheckBoxT2Seg.text == "T1 and T2 Seg":
+            is_visible = False
+            if self.ui.CheckBoxT2Seg.isChecked():
+                is_visible = True
+                self.ui.labelT1Seg.setText("Input Seg T1 folder:")
+            else:
+                self.ui.lineEditResampleT2Seg.setText("")
+                self.ui.labelT1Seg.setText("Input Seg folder:")
+                
+            self.ui.labelT2Seg.setVisible(is_visible)
+            self.ui.lineEditResampleT2Seg.setVisible(is_visible)
+            self.ui.SearchButtonResampleT2Seg.setVisible(is_visible)
+            
+            
         
     def registration_MR2CBCT(self) -> None:
         """
