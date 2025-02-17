@@ -7,10 +7,168 @@
     <x>0</x>
     <y>0</y>
     <width>1002</width>
-    <height>1399</height>
+    <height>1701</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="ctkCollapsibleButton" name="approxCollapsibleButton">
+     <property name="text">
+      <string>Approximation</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout">
+      <item row="0" column="0" colspan="2">
+       <layout class="QVBoxLayout" name="verticalLayout_4">
+        <item>
+         <layout class="QGridLayout" name="gridLayout_4">
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_18">
+            <property name="text">
+             <string>Input mean CBCT folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="3">
+           <widget class="QPushButton" name="DownloadButtonMeanCBCT">
+            <property name="text">
+             <string>Download</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QLineEdit" name="lineEditMeanCBCT"/>
+          </item>
+          <item row="2" column="2">
+           <widget class="QPushButton" name="SearchButtonMeanCBCT">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_16">
+            <property name="text">
+             <string>Input MRI folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="2">
+           <widget class="QPushButton" name="SearchButtonROI">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="label_19">
+            <property name="text">
+             <string>Input ROI file:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="lineEditROI"/>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_17">
+            <property name="text">
+             <string>Input CBCT folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="3">
+           <widget class="QPushButton" name="DownloadButtonROI">
+            <property name="text">
+             <string>Download</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="3">
+           <widget class="QPushButton" name="SearchButtonApproxCBCT">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="3">
+           <widget class="QPushButton" name="SearchButtonApproxMRI">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1" colspan="2">
+           <widget class="QLineEdit" name="lineEditApproxCBCT"/>
+          </item>
+          <item row="1" column="1" colspan="2">
+           <widget class="QLineEdit" name="lineEditApproxMRI"/>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_21">
+        <property name="text">
+         <string>__________________________________________________________________________________________________________________________________</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <spacer name="horizontalSpacer_3">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>7</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <layout class="QVBoxLayout" name="verticalLayout_5">
+        <item>
+         <layout class="QGridLayout" name="gridLayout_5">
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="lineEditOutputApprox"/>
+          </item>
+          <item row="0" column="2">
+           <widget class="QPushButton" name="SearchButtonOutputApprox">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_20">
+            <property name="text">
+             <string>Output folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QCheckBox" name="checkBoxTemporaryFoldApprox">
+            <property name="text">
+             <string>Keep the temporary folder</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="QPushButton" name="pushButtonApproximateMRI">
+        <property name="text">
+         <string>Approximate MRI</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
    <item>
     <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
      <property name="text">
@@ -274,12 +432,76 @@
        <layout class="QVBoxLayout" name="verticalLayout_6">
         <item>
          <layout class="QGridLayout" name="gridLayout_7">
-          <item row="0" column="0">
-           <widget class="QLabel" name="labelT1CBCT">
+          <item row="1" column="0">
+           <widget class="QLabel" name="labelT2CBCT">
             <property name="text">
-             <string>Input CBCT folder:</string>
+             <string>Input CBCT T2 folder:</string>
             </property>
            </widget>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="labelT2Seg">
+            <property name="text">
+             <string>Input Seg T2 folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="2">
+           <widget class="QPushButton" name="SearchButtonResampleT2MRI">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QLineEdit" name="lineEditResampleSeg"/>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="lineEditResampleT2CBCT"/>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="lineEditResampleCBCT"/>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="labelT1MRI">
+            <property name="text">
+             <string>Input MRI folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QPushButton" name="SearchButtonResampleCBCT">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="labelT2MRI">
+            <property name="text">
+             <string>Input MRI T2 folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="SearchButtonResampleT2CBCT">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QLineEdit" name="lineEditResampleMRI"/>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="labelT1Seg">
+            <property name="text">
+             <string>Input Seg folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1">
+           <widget class="QLineEdit" name="lineEditResampleT2Seg"/>
           </item>
           <item row="4" column="2">
            <widget class="QPushButton" name="SearchButtonResampleSeg">
@@ -288,10 +510,10 @@
             </property>
            </widget>
           </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="labelT2CBCT">
+          <item row="2" column="2">
+           <widget class="QPushButton" name="SearchButtonResampleMRI">
             <property name="text">
-             <string>Input CBCT T2 folder:</string>
+             <string>Search</string>
             </property>
            </widget>
           </item>
@@ -305,74 +527,10 @@
           <item row="3" column="1">
            <widget class="QLineEdit" name="lineEditResampleT2MRI"/>
           </item>
-          <item row="2" column="2">
-           <widget class="QPushButton" name="SearchButtonResampleMRI">
+          <item row="0" column="0">
+           <widget class="QLabel" name="labelT1CBCT">
             <property name="text">
-             <string>Search</string>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="0">
-           <widget class="QLabel" name="labelT2Seg">
-            <property name="text">
-             <string>Input Seg T2 folder:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="0">
-           <widget class="QLabel" name="labelT1Seg">
-            <property name="text">
-             <string>Input Seg folder:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QLineEdit" name="lineEditResampleMRI"/>
-          </item>
-          <item row="4" column="1">
-           <widget class="QLineEdit" name="lineEditResampleSeg"/>
-          </item>
-          <item row="1" column="2">
-           <widget class="QPushButton" name="SearchButtonResampleT2CBCT">
-            <property name="text">
-             <string>Search</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="2">
-           <widget class="QPushButton" name="SearchButtonResampleCBCT">
-            <property name="text">
-             <string>Search</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="2">
-           <widget class="QPushButton" name="SearchButtonResampleT2MRI">
-            <property name="text">
-             <string>Search</string>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="1">
-           <widget class="QLineEdit" name="lineEditResampleT2Seg"/>
-          </item>
-          <item row="1" column="1">
-           <widget class="QLineEdit" name="lineEditResampleT2CBCT"/>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLineEdit" name="lineEditResampleCBCT"/>
-          </item>
-          <item row="3" column="0">
-           <widget class="QLabel" name="labelT2MRI">
-            <property name="text">
-             <string>Input MRI T2 folder:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="labelT1MRI">
-            <property name="text">
-             <string>Input MRI folder:</string>
+             <string>Input CBCT folder:</string>
             </property>
            </widget>
           </item>
