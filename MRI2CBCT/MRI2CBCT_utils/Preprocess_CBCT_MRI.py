@@ -47,9 +47,25 @@ class Preprocess_CBCT_MRI(Method):
         if kwargs["input_folder_MRI"] == "":
             out += "Please select an input folder for MRI scans\n"
             ok = False
+        
+        if kwargs["input_folder_T2_MRI"] == "":
+            out += "Please select an input folder for T2 MRI scans\n"
+            ok = False
 
         if kwargs["input_folder_CBCT"] == "":
             out += "Please select an input folder for CBCT scans\n"
+            ok = False
+            
+        if kwargs["input_folder_T2_CBCT"] == "":
+            out += "Please select an input folder for T2 CBCT scans\n"
+            ok = False
+            
+        if kwargs["input_folder_Seg"] == "":
+            out += "Please select an input folder for Segmentation scans\n"
+            ok = False
+            
+        if kwargs["input_folder_T2_Seg"] == "":
+            out += "Please select an input folder for T2 Seg scans\n"
             ok = False
 
         if kwargs["output_folder"] == "":
@@ -75,7 +91,11 @@ class Preprocess_CBCT_MRI(Method):
         MRI2CBCT_RESAMPLE_CBCT_MRI = slicer.modules.mri2cbct_resample_cbct_mri
         parameter_mri2cbct_resample_cbct_mri = {
             "input_folder_MRI": kwargs["input_folder_MRI"],
+            "input_folder_T2_MRI": kwargs["input_folder_T2_MRI"],
             "input_folder_CBCT": kwargs["input_folder_CBCT"],
+            "input_folder_T2_CBCT": kwargs["input_folder_T2_CBCT"],
+            "input_folder_Seg": kwargs["input_folder_Seg"],
+            "input_folder_T2_Seg": kwargs["input_folder_T2_Seg"],
             "output_folder": kwargs["output_folder"],
             "resample_size": kwargs["resample_size"],
             "spacing" : kwargs["spacing"]
