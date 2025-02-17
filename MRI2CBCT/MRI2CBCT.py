@@ -7,6 +7,7 @@ from MRI2CBCT_utils.Preprocess_CBCT import Process_CBCT
 from MRI2CBCT_utils.Preprocess_MRI import Process_MRI
 from MRI2CBCT_utils.Preprocess_CBCT_MRI import Preprocess_CBCT_MRI
 from MRI2CBCT_utils.Reg_MRI2CBCT import Registration_MRI2CBCT
+from MRI2CBCT_utils.Approx_MRI2CBCT import Approximation_MRI2CBCT
 import time 
 
 
@@ -41,7 +42,7 @@ def check_lib_installed(lib_name, required_version=None):
 # import csv
     
 def install_function():
-    libs = [('dicom2nifti',None),('itk',None),('monai','0.7.0'),('einops',None),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1'),("pandas",None)]
+    libs = [('dicom2nifti',None),('itk',None),('monai','0.7.0'),('einops',None),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1'),("pandas",None),("scikit-learn",None),("torch",None),("torchreg",None),("SimpleITK",None)]
     libs_to_install = []
     for lib, version in libs:
         if not check_lib_installed(lib, version):
@@ -224,6 +225,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.preprocess_mri = Process_MRI(self)
         self.preprocess_mri_cbct = Preprocess_CBCT_MRI(self)
         self.registration_mri2cbct = Registration_MRI2CBCT(self)
+        self.approximate_mri2cbct = Approximation_MRI2CBCT(self)
 
         # Connections
         #        LineEditOutputReg
@@ -232,6 +234,15 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
 
         # Buttons
+        self.ui.pushButtonApproximateMRI.connect("clicked(bool)", self.approximateMRI)
+        self.ui.SearchButtonApproxCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCTApprox"))
+        self.ui.SearchButtonApproxMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRIApprox"))
+        self.ui.SearchButtonMeanCBCT.connect("clicked(bool)",partial(self.openFinder,"MeanCBCTApprox"))
+        self.ui.SearchButtonROI.connect("clicked(bool)",partial(self.openFinder,"ROIApprox"))
+        self.ui.SearchButtonOutputApprox.connect("clicked(bool)",partial(self.openFinder,"OutputApprox"))
+        self.ui.DownloadButtonMeanCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditMeanCBCT, "MeanCBCT", True))
+        self.ui.DownloadButtonROI.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditROI, "ROI", True))
+        
         self.ui.registrationButton.connect("clicked(bool)", self.registration_MR2CBCT)
         self.ui.SearchButtonCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCT"))
         self.ui.SearchButtonMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRI"))
@@ -307,9 +318,11 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         self.ui.outputCollapsibleButton.setText("Registration")
         self.ui.inputsCollapsibleButton.setText("Preprocess")
+        self.ui.approxCollapsibleButton.setText("Approximate & crop")
         
         self.ui.outputCollapsibleButton.setChecked(True)  # True to expand, False to collapse
-        self.ui.inputsCollapsibleButton.setChecked(False) 
+        self.ui.inputsCollapsibleButton.setChecked(False)
+        self.ui.approxCollapsibleButton.setChecked(True)
         ##################################################################################################
         ### Orientation Table
         self.tableWidgetOrient = self.ui.tableWidgetOrient
@@ -402,7 +415,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Add QSpinBoxes for the first row
         spinBox1 = QSpinBox()
         spinBox1.setMaximum(10000)
-        spinBox1.setValue(119)
+        spinBox1.setValue(443)
         self.tableWidgetResample.setCellWidget(0, 0, spinBox1)
 
         spinBox2 = QSpinBox()
@@ -412,7 +425,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         spinBox3 = QSpinBox()
         spinBox3.setMaximum(10000)
-        spinBox3.setValue(443)
+        spinBox3.setValue(119)
         self.tableWidgetResample.setCellWidget(0, 2, spinBox3)
 
         # Add QSpinBoxes for the new row
@@ -832,6 +845,26 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         elif nom=="OutputReg":
             surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
             self.ui.LineEditOutput.setText(surface_folder)
+            
+        elif nom=="InputCBCTApprox":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditApproxCBCT.setText(surface_folder)
+            
+        elif nom=="InputMRIApprox":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditApproxMRI.setText(surface_folder)
+            
+        elif nom=="MeanCBCTApprox":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditMeanCBCT.setText(surface_folder)
+            
+        elif nom=="ROIApprox":
+            surface_folder = QFileDialog.getOpenFileName(self.parent,'Open a file',)
+            self.ui.lineEditROI.setText(surface_folder)
+            
+        elif nom=="OutputApprox":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditOutputApprox.setText(surface_folder)
 
         
         
@@ -888,6 +921,23 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
                 else:
                     lineEdit.setText(model_folder)
+                    
+        elif name == "MeanCBCT" or name == "ROI":
+            listmodel = self.approximate_mri2cbct.getModelUrl()
+            print("listmodel : ", listmodel)
+
+            urls = listmodel[name]
+            if isinstance(urls, str):
+                url = urls
+                _ = self.DownloadUnzip(
+                    url=url,
+                    directory=os.path.join(self.SlicerDownloadPath),
+                    folder_name=os.path.join("Models", name),
+                    num_downl=1,
+                    total_downloads=1,
+                )
+                model_folder = os.path.join(self.SlicerDownloadPath, "Models", name)
+               
         else :
             url = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/test_files/TestFile.zip"
 
@@ -1101,7 +1151,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         LineEditT2CBCT = "None"
         LineEditSeg = "None"
         LineEditT2Seg = "None"
-        
         if self.ui.lineEditResampleMRI.text != "":
             LineEditMRI = self.ui.lineEditResampleMRI.text
         if self.ui.lineEditResampleT2MRI.text != "" and self.ui.CheckBoxT2MRI.isChecked():
@@ -1334,7 +1383,69 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         del self.list_Processes_Parameters[0]
         
+    def approximateMRI(self) -> None:
+        """
+        Approximates MRI images to CBCT images using specified parameters and initiate the processing pipeline.
+
+        This function sets up the parameters for MRI to CBCT registration, tests the process and scans,
+        and starts the processing pipeline if all checks pass. It handles the initial setup, parameter passing,
+        and process initiation, including setting up observers for process updates. The function also checks
+        for normalization parameters and validates input folders for the presence of necessary files.
+        """
+        install_function()
+        param = {"cbct_folder": self.ui.lineEditApproxCBCT.text,
+            "mri_folder": self.ui.lineEditApproxMRI.text,
+            "mean_folder": self.ui.lineEditMeanCBCT.text,
+            "ROI_file" : self.ui.lineEditROI.text,
+            "output_folder" : self.ui.lineEditOutputApprox.text,
+            "tempo_fold" : self.ui.checkBoxTemporaryFoldApprox.isChecked()}
         
+        ok,mess = self.approximate_mri2cbct.TestProcess(**param) 
+        if not ok : 
+            self.showMessage(mess)
+            return
+        
+        ok1,mess = self.approximate_mri2cbct.TestScan(param["cbct_folder"])
+        ok2,mess2 = self.approximate_mri2cbct.TestScan(param["mri_folder"])
+        ok3,mess3 = self.approximate_mri2cbct.TestScan(param["mean_folder"])
+        ok4,mess4 = self.approximate_mri2cbct.TestScan(param["ROI_file"])
+        
+        error_messages = []
+
+        if not ok1:
+            error_messages.append("CBCT folder")
+        if not ok2:
+            error_messages.append("MRI folder")
+        if not ok3:
+            error_messages.append("Mean folder")
+        if not ok4:
+            error_messages.append("ROI file")
+
+        if error_messages:
+            error_message = "No files to run has been found in the following folders: " + ", ".join(error_messages)
+            self.showMessage(error_message)
+            return
+        
+        self.list_Processes_Parameters = self.approximate_mri2cbct.Process(**param)
+        
+        self.onProcessStarted()
+        
+        # /!\ Launch of the first process /!\
+        print("module name : ",self.list_Processes_Parameters[0]["Module"])
+        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        
+        self.process = slicer.cli.run(
+                self.list_Processes_Parameters[0]["Process"],
+                None,
+                self.list_Processes_Parameters[0]["Parameter"],
+            )
+        
+        self.module_name = self.list_Processes_Parameters[0]["Module"]
+        self.processObserver = self.process.AddObserver(
+            "ModifiedEvent", self.onProcessUpdate
+        )
+
+        del self.list_Processes_Parameters[0]   
         
     def onProcessStarted(self):
         """
