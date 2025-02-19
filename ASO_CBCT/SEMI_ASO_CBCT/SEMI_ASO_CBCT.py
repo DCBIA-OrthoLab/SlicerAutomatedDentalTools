@@ -44,10 +44,10 @@ def main(args):
     for patient, data in patients.items():
 
         try:
-            input_file, input_json_file = data["scan"], data["json"]
+            input_file, input_json_file, input_transform = data["scan"], data["json"], data["tfm"]
 
-            output, source_transformed = ICP(
-                input_file, input_json_file, gold_file, gold_json_file, list_landmark
+            output, source_transformed, TransformSITK = ICP(
+                input_file, input_json_file, gold_file, gold_json_file, list_landmark, input_transform
             )
 
             if output is None:
@@ -75,6 +75,12 @@ def main(args):
             )
             if not os.path.exists(file_outpath):
                 sitk.WriteImage(output, file_outpath)
+                
+            transform_outpath = os.path.join(
+                dir_scan, patient + "_" + args.add_inname[0] + ".tfm"
+            )
+            if not os.path.exists(transform_outpath):
+                sitk.WriteTransform(TransformSITK, transform_outpath)
 
         except KeyError:
             print("patient {} does not have scan and/or json file(s)".format(patient))

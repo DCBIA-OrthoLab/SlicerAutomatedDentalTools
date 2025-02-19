@@ -745,7 +745,7 @@ def InitICP(source, target, Print=False, BestLMList=None, search=False):
     return source, TransformMatrix, TransformList
 
 
-def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark):
+def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark, input_transform_file):
     # Check if some landmarks are not well located
     ldmk_to_remove = GetLandmarkToRemove(input_json_file, gold_json_file)
     if len(ldmk_to_remove) > 0:
@@ -757,10 +757,11 @@ def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark):
         list_landmark = [lm for lm in list_landmark if lm not in ldmk_to_remove]
 
     if len(list_landmark) <= 3:
-        return None, None
+        return None, None, None
 
     # Read input files
     input_image = sitk.ReadImage(input_file)
+    input_transform = sitk.ReadTransform(input_transform_file)
     # print('input spacing:',input_image.GetSpacing())
     gold_image = sitk.ReadImage(gold_file)
     # print('gold spacing:',gold_image.GetSpacing())
@@ -773,7 +774,7 @@ def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark):
                 os.path.basename(input_file).split(".")[0]
             )
         )
-        return None, None
+        return None, None, None
 
     target = LoadJsonLandmarks(gold_json_file, list_landmark)
     target = {
@@ -809,6 +810,10 @@ def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark):
     for i in range(len(TransformList) - 1, 0, -1):
         TransformSITK.AddTransform(TransformList[i])
 
+    TransformSITKFinal = sitk.CompositeTransform(TransformSITK)
+    TransformSITKFinal.AddTransform(input_transform)
+    TransformSITKFinal = TransformSITKFinal.GetInverse()
+    
     TransformSITK = TransformSITK.GetInverse()
 
     TransformMatrixFinal = TransformMatrixBis @ TransformMatrix
@@ -820,7 +825,7 @@ def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark):
     # Resample the source image with the final transform
     output = ResampleImage(input_image, transform=TransformSITK)
 
-    return output, source_transformed
+    return output, source_transformed, TransformSITKFinal
 
 
 """
@@ -1025,6 +1030,7 @@ def GetPatients(folder_path):
     normpath = os.path.join(folder_path, "**", "*")
     for file in glob.iglob(normpath, recursive=True):
         basename = os.path.basename(file)
+        print(f"file: {file}")
         patient = (
             basename.split("_Or")[0]
             .split("_OR")[0]
@@ -1048,5 +1054,9 @@ def GetPatients(folder_path):
 
         if True in [ext in basename for ext in [".json"]]:
             patients[patient]["json"] = file
+        
+        if True in [ext in basename for ext in [".tfm"]]:
+            patients[patient]["tfm"] = file
+            print(f"----------------------- added tfm -----------------------")
 
     return patients
