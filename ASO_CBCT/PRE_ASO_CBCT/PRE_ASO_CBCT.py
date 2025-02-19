@@ -103,6 +103,10 @@ def main(args):
         file_outpath = os.path.join(dir_scan, os.path.basename(input_file))
         if not os.path.exists(file_outpath):
             sitk.WriteImage(img_out, file_outpath)
+        
+        translation_outpath = os.path.join(dir_scan, os.path.basename(input_file).replace(".nii.gz", ".tfm"))
+        if not os.path.exists(translation_outpath):
+            sitk.WriteTransform(translation, translation_outpath)
 
         print(f"""<filter-progress>{0}</filter-progress>""")
         sys.stdout.flush()
