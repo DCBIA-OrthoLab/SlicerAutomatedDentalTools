@@ -54,14 +54,6 @@ class Approximation_MRI2CBCT(Method):
             out += "Please select an input folder for MRI scans\n"
             ok = False
             
-        if kwargs["mean_folder"] == "":
-            out += "Please select an input folder for the mean CBCT\n"
-            ok = False
-            
-        if kwargs["ROI_file"] == "":
-            out += "Please select an input file for the ROI\n"
-            ok = False
-            
         if kwargs["output_folder"] == "":
             out += "Please select an output folder\n"
             ok = False
@@ -78,9 +70,8 @@ class Approximation_MRI2CBCT(Method):
         parameter_mri2cbct_approx = {
             "cbct_folder": kwargs["cbct_folder"],
             "mri_folder": kwargs["mri_folder"],
-            "mean_folder": kwargs["mean_folder"],
-            "ROI_file": kwargs["ROI_file"],
             "output_folder": kwargs["output_folder"],
+            "temp_dir": kwargs["temp_dir"],
             "tempo_fold" : kwargs["tempo_fold"]
         }
         
@@ -88,7 +79,7 @@ class Approximation_MRI2CBCT(Method):
             {
                 "Process": MRI2CBCT_APPROX,
                 "Parameter": parameter_mri2cbct_approx,
-                "Module": "Approximate files",
+                "Module": "MRI2CBCT approximation",
             }
         )
            
