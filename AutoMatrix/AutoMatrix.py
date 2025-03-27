@@ -489,13 +489,6 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         try:
                             self.UpdateTime()
                             fname, extension_mat = os.path.splitext(os.path.basename(matrix))
-                            if extension_mat==".npy":
-                                array = np.load(matrix)
-                                tform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
-                                tform.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(array))
-
-                            else :
-                                tform = slicer.util.loadTransform(matrix)
 
                             if Path(self.ui.LineEditPatient.text).is_dir():
                                     outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
@@ -510,9 +503,38 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             except :
                                 print('Impossible to extract the name of the matrix')
                                 matrix_name="matrix_name"
+                                
+                            print("matrix_name : ",matrix_name)
 
                             if not os.path.exists(os.path.dirname(outpath)):
                                 os.makedirs(os.path.dirname(outpath))
+                                
+                            if extension_mat==".npy":
+                                array = np.load(matrix)
+                                tform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
+                                tform.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(array))
+
+                            elif extension_mat==".tfm":
+                                tform = sitk.ReadTransform(matrix)
+                                if isinstance(tform, sitk.CompositeTransform):
+                                    reference_path = matrix.replace("_transform.tfm",".nii.gz")
+                                    reference_image = sitk.ReadImage(reference_path)
+                                    
+                                    if not reference_image:
+                                        print(f"Warning: Reference image not found at {reference_path}")
+                                        continue
+                                    
+                                    print(f"Resampling using reference image: {reference_path}")
+                                    output_image = self.ResampleImage(sitk.ReadImage(scan), tform, reference_image)
+                                    
+                                    sitk.WriteImage(output_image, outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
+                                    continue
+
+                                else:
+                                    tform = slicer.util.loadTransform(matrix)
+                                                    
+                            else :
+                                tform = slicer.util.loadTransform(matrix)
 
                             self.UpdateTime()
                             model.SetAndObserveTransformNodeID(tform.GetID())
@@ -543,7 +565,13 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     self.UpdateTime()
 
 
-
+    def ResampleImage(self, image, transform, reference_image, is_segmentation=False):
+        resampler = sitk.ResampleImageFilter()
+        resampler.SetReferenceImage(reference_image)
+        resampler.SetInterpolator(sitk.sitkNearestNeighbor if is_segmentation else sitk.sitkLinear)
+        resampler.SetDefaultPixelValue(0)
+        resampler.SetTransform(transform)
+        return resampler.Execute(image)
 
 
     def saveOutput(self, outputVolumeNode, outputFilePath)->None:
