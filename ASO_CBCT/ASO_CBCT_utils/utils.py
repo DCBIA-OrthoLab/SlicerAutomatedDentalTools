@@ -1030,7 +1030,6 @@ def GetPatients(folder_path):
     normpath = os.path.join(folder_path, "**", "*")
     for file in glob.iglob(normpath, recursive=True):
         basename = os.path.basename(file)
-        print(f"file: {file}")
         patient = (
             basename.split("_Or")[0]
             .split("_OR")[0]
@@ -1057,6 +1056,5 @@ def GetPatients(folder_path):
         
         if True in [ext in basename for ext in [".tfm"]]:
             patients[patient]["tfm"] = file
-            print(f"----------------------- added tfm -----------------------")
 
     return patients
