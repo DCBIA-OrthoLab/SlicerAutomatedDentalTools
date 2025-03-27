@@ -29,7 +29,7 @@
       <description>Input Path MRI folder</description>
     </string>
 
-    <string>
+    <!-- <string>
       <name>mean_folder</name>
       <label>mean_folder</label>
       <index>2</index>
@@ -41,19 +41,26 @@
       <label>ROI_file</label>
       <index>3</index>
       <description>Input File ROI</description>
-    </string>
+    </string> -->
 
     <string>
       <name>output_folder</name>
       <label>output_folder</label>
-      <index>4</index>
+      <index>2</index>
       <description>Output Path approximated folder</description>
+    </string>
+
+    <string>
+      <name>temp_dir</name>
+      <label>temp_dir</label>
+      <index>3</index>
+      <description>Temporary directory for intermediate files</description>
     </string>
 
     <string>
       <name>tempo_fold</name>
       <label>tempo_fold</label>
-      <index>5</index>
+      <index>4</index>
       <description>If keeping temporary fold or not</description>
     </string>
 

@@ -42,7 +42,7 @@ def check_lib_installed(lib_name, required_version=None):
 # import csv
     
 def install_function():
-    libs = [('dicom2nifti',None),('itk',None),('monai','0.7.0'),('einops',None),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1'),("pandas",None),("scikit-learn",None),("torch",None),("torchreg",None),("SimpleITK",None)]
+    libs = [('itk',None),('monai','0.7.0'),('einops',None),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1'),("pandas",None),("scikit-learn",None),("torch",None),("torchreg",None),("SimpleITK",None)]
     libs_to_install = []
     for lib, version in libs:
         if not check_lib_installed(lib, version):
@@ -61,7 +61,6 @@ def install_function():
         else :
           return False
     import vtk
-    import dicom2nifti
     import itk
     import cc3d
     return True
@@ -191,6 +190,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.minus_checked_rows = set()
         self._parameterNode = None
         self._parameterNodeGuiTag = None
+        self.processWasCanceled = False
         
         
 
@@ -237,11 +237,12 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.pushButtonApproximateMRI.connect("clicked(bool)", self.approximateMRI)
         self.ui.SearchButtonApproxCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCTApprox"))
         self.ui.SearchButtonApproxMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRIApprox"))
-        self.ui.SearchButtonMeanCBCT.connect("clicked(bool)",partial(self.openFinder,"MeanCBCTApprox"))
-        self.ui.SearchButtonROI.connect("clicked(bool)",partial(self.openFinder,"ROIApprox"))
         self.ui.SearchButtonOutputApprox.connect("clicked(bool)",partial(self.openFinder,"OutputApprox"))
-        self.ui.DownloadButtonMeanCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditMeanCBCT, "MeanCBCT", True))
-        self.ui.DownloadButtonROI.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditROI, "ROI", True))
+        # self.ui.SearchButtonMeanCBCT.connect("clicked(bool)",partial(self.openFinder,"MeanCBCTApprox"))
+        # self.ui.SearchButtonROI.connect("clicked(bool)",partial(self.openFinder,"ROIApprox"))
+        # self.ui.DownloadButtonMeanCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditMeanCBCT, "MeanCBCT", True))
+        # self.ui.DownloadButtonROI.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditROI, "ROI", True))
+        self.ui.pushButtonCancelProcess.connect("clicked(bool)", self.onCancel)
         
         self.ui.registrationButton.connect("clicked(bool)", self.registration_MR2CBCT)
         self.ui.SearchButtonCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCT"))
@@ -323,6 +324,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.outputCollapsibleButton.setChecked(True)  # True to expand, False to collapse
         self.ui.inputsCollapsibleButton.setChecked(False)
         self.ui.approxCollapsibleButton.setChecked(True)
+        
+        self.ui.pushButtonCancelProcess.setVisible(False)
         ##################################################################################################
         ### Orientation Table
         self.tableWidgetOrient = self.ui.tableWidgetOrient
@@ -854,13 +857,13 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
             self.ui.lineEditApproxMRI.setText(surface_folder)
             
-        elif nom=="MeanCBCTApprox":
-            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-            self.ui.lineEditMeanCBCT.setText(surface_folder)
+        # elif nom=="MeanCBCTApprox":
+        #     surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+        #     self.ui.lineEditMeanCBCT.setText(surface_folder)
             
-        elif nom=="ROIApprox":
-            surface_folder = QFileDialog.getOpenFileName(self.parent,'Open a file',)
-            self.ui.lineEditROI.setText(surface_folder)
+        # elif nom=="ROIApprox":
+        #     surface_folder = QFileDialog.getOpenFileName(self.parent,'Open a file',)
+        #     self.ui.lineEditROI.setText(surface_folder)
             
         elif nom=="OutputApprox":
             surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
@@ -1393,11 +1396,12 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for normalization parameters and validates input folders for the presence of necessary files.
         """
         install_function()
+        
+        temp_dir = slicer.util.tempDirectory()
         param = {"cbct_folder": self.ui.lineEditApproxCBCT.text,
             "mri_folder": self.ui.lineEditApproxMRI.text,
-            "mean_folder": self.ui.lineEditMeanCBCT.text,
-            "ROI_file" : self.ui.lineEditROI.text,
             "output_folder" : self.ui.lineEditOutputApprox.text,
+            "temp_dir" : temp_dir,
             "tempo_fold" : self.ui.checkBoxTemporaryFoldApprox.isChecked()}
         
         ok,mess = self.approximate_mri2cbct.TestProcess(**param) 
@@ -1407,8 +1411,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         ok1,mess = self.approximate_mri2cbct.TestScan(param["cbct_folder"])
         ok2,mess2 = self.approximate_mri2cbct.TestScan(param["mri_folder"])
-        ok3,mess3 = self.approximate_mri2cbct.TestScan(param["mean_folder"])
-        ok4,mess4 = self.approximate_mri2cbct.TestScan(param["ROI_file"])
+        # ok3,mess3 = self.approximate_mri2cbct.TestScan(param["mean_folder"])
+        # ok4,mess4 = self.approximate_mri2cbct.TestScan(param["ROI_file"])
         
         error_messages = []
 
@@ -1416,10 +1420,10 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             error_messages.append("CBCT folder")
         if not ok2:
             error_messages.append("MRI folder")
-        if not ok3:
-            error_messages.append("Mean folder")
-        if not ok4:
-            error_messages.append("ROI file")
+        # if not ok3:
+        #     error_messages.append("Mean folder")
+        # if not ok4:
+        #     error_messages.append("ROI file")
 
         if error_messages:
             error_message = "No files to run has been found in the following folders: " + ", ".join(error_messages)
@@ -1485,6 +1489,9 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         
         self.ui.progressBar.setVisible(False)
+        if not self.processWasCanceled:
+            self.ui.pushButtonCancelProcess.setVisible(True)
+        
         currentTime = time.time() - self.startTime
         if currentTime < 60:
             timer = f"Time: {int(currentTime)}s"
@@ -1512,6 +1519,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
         if caller.GetStatus() & caller.Completed:
+            self.ui.pushButtonCancelProcess.setVisible(False)
             if caller.GetStatus() & caller.ErrorsMask:
                 # error
                 print("\n\n ========= PROCESSED ========= \n")
@@ -1593,8 +1601,10 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
        
         
     def onCancel(self):
+        self.processWasCanceled = True
         self.process.Cancel()
-
+        print("Process canceled by user.")
+        self.ui.label_info.setText("Process was canceled.")
         self.RunningUI(False)
         
     def RunningUI(self, run=False):
@@ -1602,6 +1612,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setVisible(run)
         self.ui.label_time.setVisible(run)
         self.ui.label_info.setVisible(run)
+        self.ui.pushButtonCancelProcess.setVisible(run)
         
     def showMessage(self,mess):
         msg = QMessageBox()
