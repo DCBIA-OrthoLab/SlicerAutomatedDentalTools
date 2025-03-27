@@ -1,76 +1,40 @@
 import os
 import torch
+import shutil
 import argparse
 import numpy as np
 import nibabel as nib
+import SimpleITK as sitk
+from .nmi import NMI
+from pathlib import Path
 from torchreg import AffineRegistration
 from sklearn.model_selection import ParameterSampler
-from .nmi import NMI
+from .approx_utils import get_corresponding_file, downsample, prealign_mri_to_cbct, resample_image, sitk_to_nib, convert_transform_for_slicer
 
-def get_corresponding_file(folder, patient_id, modality):
+
+def approximation(cbct_folder, mri_folder, output_folder, temp_mri, temp_cbct, progress_callback=None):
     """
-    Gets the corresponding file for a patient in a folder.
+    Main function to perform registration of CBCT images with corresponding MRI images.
 
     Args:
-        folder (str): Path to the folder containing the files
-        patient_id (str): ID of the patient
-        modality (str): Modality of the file
-
-    Returns:
-        str: Path to the corresponding file if exists, None otherwise
+        cbct_folder (str): Path to the folder containing CBCT images.
+        mri_folder (str): Path to the folder containing MRI images.
+        output_folder (str): Path to save the registered images.
+        temp_mri (str): Temporary folder for MRI images.
+        temp_cbct (str): Temporary folder for CBCT images.
     """
-    for root, _, files in os.walk(folder):
-        for file in files:
-            if file.startswith(patient_id) and modality in file and (file.endswith(".nii.gz") or file.endswith(".nii")):
-                return os.path.join(root, file)
-    return None
-
-def save_as_nifti(moving_tensor, static_tensor, output_path):
-    """
-    Saves a tensor as a NIfTI file.
+    if not os.path.isdir(cbct_folder): raise ValueError(f"CBCT folder does not exist: {cbct_folder}")
+    if not os.path.isdir(mri_folder): raise ValueError(f"MRI folder does not exist: {mri_folder}")
     
-    Args:
-        moving_tensor (torch.Tensor): PyTorch tensor to save as NIfTI
-        static_tensor (torch.Tensor): PyTorch tensor to get the affine and header information
-        output_path (str): Path to save the NIfTI file
-    """
-    # Load the reference nifti file to get the affine and header information
-    static_nifti = nib.load(static_tensor)
-    
-    # Create a new Nifti1Image using the numpy data and the affine from the reference image
-    new_nifti = nib.Nifti1Image(moving_tensor.cpu().numpy(), static_nifti.affine, static_nifti.header)
-    
-    # Save the new NIfTI image to disk
-    print("Saved registered image to:", output_path)
-    nib.save(new_nifti, output_path)
-
-def approximation(cbct_folder, mri_folder, output_folder):
-    """
-    Approximates CBCT images to MRI images and saves the resulting images.
-
-    Args:
-        cbct_folder (str): Path to the folder containing CBCT images
-        mri_folder (str): Path to the folder containing MRI images
-        output_folder (str): Path to the folder where output images will be saved
-    """
-    
-    # Generate output folder if it doesn't exist
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-        
-    # Define the parameter grid for hyperparameter search
-    param_grid = {
-        'learning_rate_rigid': np.logspace(-5, -3, 15),   # Learning rate for rigid registration
-        'sigma_rigid': np.logspace(-3, -2, 3)             # Sigma for rigid NMI
-    }
-
-    # Number of parameter combinations to sample
-    n_samples = 45
-    param_sampler = ParameterSampler(param_grid, n_iter=n_samples)
-    
-    # Check if GPU is available
+    os.makedirs(output_folder, exist_ok=True)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    
+
+    param_grid = {
+        'learning_rate': np.linspace(1e-5, 1e-3, 7),
+        'sigma': np.linspace(1e-2, 1e-1, 2)
+    }
+    param_sampler = ParameterSampler(param_grid, n_iter=14)
+
     for root, _, files in os.walk(cbct_folder):
         for cbct_file in files:
             if "_CBCT_" in cbct_file and (cbct_file.endswith(".nii") or cbct_file.endswith(".nii.gz")):
@@ -78,77 +42,105 @@ def approximation(cbct_folder, mri_folder, output_folder):
                 cbct_path = os.path.join(root, cbct_file)
                 mri_path = get_corresponding_file(mri_folder, patient_id, "_MR_")
 
-                if mri_path:
-                    best_loss = float('inf')  # Initialize to track the best loss
-                    best_params = None        # Initialize to store the best parameter combination
-                    # Iterate over the parameter samples
-                    for params in param_sampler:
-                        # Load images using nibabel
-                        moving_nii = nib.load(mri_path)
-                        static_nii = nib.load(cbct_path)
+                if not mri_path:
+                    print(f"No corresponding MRI file found for: {cbct_file}")
+                    continue
+                
+                print(f"Treating patient: {patient_id}")
+                output_path = os.path.join(output_folder, f'{patient_id}_MR_registered.tfm')
 
-                        # Get numpy arrays out of niftis
-                        moving = nib.as_closest_canonical(moving_nii).get_fdata()
-                        static = nib.as_closest_canonical(static_nii).get_fdata()
+                moving_nii, static_nii, prealign_transform, mri_spacing = prealign_mri_to_cbct(mri_path, cbct_path)
+                
+                nib.save(moving_nii, os.path.join(temp_mri, f"{patient_id}_prealigned.nii.gz"))
+                          
+                static_spacing = tuple(float(s) for s in static_nii.header.get_zooms())      
+                moving_sitk = resample_image(moving_nii, static_spacing, sitk.sitkLinear)
+                static_sitk = resample_image(static_nii, static_spacing, sitk.sitkLinear)
+                
+                nib.save(sitk_to_nib(moving_sitk), os.path.join(temp_mri, os.path.basename(mri_path)))
+                nib.save(sitk_to_nib(static_sitk), os.path.join(temp_cbct, os.path.basename(cbct_path)))
+                
+                # Convert to PyTorch tensors
+                moving_data = sitk.GetArrayFromImage(moving_sitk)
+                static_data = sitk.GetArrayFromImage(static_sitk)
+                moving = torch.from_numpy(moving_data).float().to(device)
+                static = torch.from_numpy(static_data).float().to(device)
+                
+                moving = moving.max() - moving
+                moving[moving == 0] = 0
 
-                        print(f"\n\033[1mUsing {device.upper()} -- Registering CBCT: {cbct_path} with MRI: {mri_path}")
+                moving_normed = (moving - moving.min()) / (moving.max() - moving.min() + 1e-8)
+                static_normed = (static - static.min()) / (static.max() - static.min() + 1e-8)
 
-                        # Convert numpy arrays to torch tensors
-                        moving = torch.from_numpy(moving).float().to(device)
-                        static = torch.from_numpy(static).float().to(device)
+                best_loss = float('inf')
+                best_transform = None
+                
+                for params in param_sampler:
+                    # print(f"\n\033[1mUsing {device.upper()} -- Registering MRI: {temp_mri} to CBCT: {temp_cbct}")
+                    # print(f"Testing parameters: {params}\033[0m")
 
-                        # Normalize the images
-                        epsilon = 1e-8    # Small value to avoid division by zero
-                        moving_normed = (moving - moving.min()) / (moving.max() - moving.min() + epsilon)
-                        static_normed = (static - static.min()) / (static.max() - static.min() + epsilon)
+                    nmi_loss_function = NMI(intensity_range=None, nbins=32, sigma=params['sigma'], use_mask=False)
+                    reg = AffineRegistration(scales=(4, 2), iterations=(500, 100), is_3d=True, 
+                                                    learning_rate=params['learning_rate'],
+                                                    dissimilarity_function=nmi_loss_function,
+                                                    optimizer=torch.optim.Adam, verbose=False,
+                                                    with_translation=True, with_rotation=True, 
+                                                    with_zoom=False, with_shear=False,
+                                                    interp_mode="trilinear", padding_mode='zeros')
+                    moved_image = reg(moving_normed[None, None], static_normed[None, None])
+                    moved_image = moved_image[0,0]
+                    
+                    transform_matrix = reg.get_affine().cpu().numpy()
+                    
+                    if transform_matrix.shape[0] == 1:
+                        transform_matrix = transform_matrix.squeeze(0)
+                    transform_matrix = np.vstack([transform_matrix, [0, 0, 0, 1]])
+                    final_transform = prealign_transform @ transform_matrix
+                    
+                    moved_downsampled, static_downsampled = downsample(moved_image, static_normed, scale_factor=0.5)
+                    loss = nmi_loss_function(moved_downsampled[None, None], static_downsampled[None, None])
 
-                        # Print the current parameter values
-                        print(f"Testing parameters: {params}\033[0m")
-
-                        # Initialize NMI loss function for rigid registration
-                        nmi_loss_function_rigid = NMI(intensity_range=None, nbins=32, sigma=params['sigma_rigid'], use_mask=False)
-
-                        # Initialize AffineRegistration for Rigid registration
-                        reg_rigid = AffineRegistration(scales=(4, 2), iterations=(100, 30), is_3d=True, 
-                                                       learning_rate=params['learning_rate_rigid'],
-                                                       verbose=True, dissimilarity_function=nmi_loss_function_rigid.metric,
-                                                       optimizer=torch.optim.Adam, with_translation=True, with_rotation=True, 
-                                                       with_zoom=False, with_shear=False, align_corners=True,
-                                                       interp_mode="trilinear", padding_mode='zeros')
-
-                        # Perform rigid registration
-                        moved_image = reg_rigid(moving_normed[None, None],
-                                                static_normed[None, None])
+                    if loss < best_loss:
+                        best_loss = loss
+                        best_transform = final_transform
+                        # print(f"New best parameters found with loss: {best_loss}")
                         
-                        moved_image = moved_image[0, 0]
+                if best_transform is not None:
+                    best_transform_lps = convert_transform_for_slicer(best_transform)
+                    best_transform_lps_inv = np.linalg.inv(best_transform_lps)
+                    
+                    rotation = best_transform_lps_inv[:3, :3].flatten().tolist()
+                    translation = best_transform_lps_inv[:3, 3].tolist()
+                    
+                    sitk_transform = sitk.AffineTransform(3)
+                    sitk_transform.SetMatrix(rotation)
+                    sitk_transform.SetTranslation(translation)
 
-                        # Calculate the final loss
-                        final_loss = -nmi_loss_function_rigid.metric(moved_image[None, None], static_normed[None, None])
-                        print(f"Final Loss (NMI): {final_loss}")
+                    sitk.WriteTransform(sitk_transform, output_path)
+                    print(f"Saved transformation to {output_path}\n\n")
 
-                        moved_image = moving.max() * moved_image
-
-                        # Check if this is the best loss so far
-                        if final_loss < best_loss and final_loss > 1e-5:
-                            best_loss = final_loss
-                            best_params = params
-                            print(f"New best parameters found with loss: {best_loss}")
-
-                            # Save the registered image as a NIfTI file
-                            output_path = os.path.join(output_folder, f'{patient_id}_MR_registered.nii.gz')
-                            save_as_nifti(moved_image, cbct_path, output_path)
-
-                    # Print the best result at the end
-                    print(f"Best parameters: {best_params}")
-                    print(f"Best NMI loss: {best_loss}")
-
+            else: 
+                print(f"CBCT file {cbct_file} does not match the expected format: {patient_id}_CBCT_xx.nii.gz")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Register CBCT images with corresponding MRI images.')
     parser.add_argument('--cbct_folder', type=str, help='Path to the folder containing CBCT images')
     parser.add_argument('--mri_folder', type=str, help='Path to the folder containing MRI images')
     parser.add_argument('--output_folder', type=str, help='Path to the folder where output transforms will be saved')
-    
+    parser.add_argument('--del_temp', action='store_true', help='Delete temporary files after processing')
     args = parser.parse_args()
+    
+    temp_folder = str(Path(args.mri_folder).parent) + '/temp/'
+    temp_mri_folder_path = temp_folder + 'mri/'
+    temp_cbct_folder_path = temp_folder + 'cbct/'
+    os.makedirs(temp_mri_folder_path, exist_ok=True)
+    os.makedirs(temp_cbct_folder_path, exist_ok=True)
 
-    approximation(args.cbct_folder, args.mri_folder, args.output_folder)
+    approximation(args.cbct_folder, args.mri_folder, args.output_folder, temp_mri_folder_path, temp_cbct_folder_path)
+    
+    if args.del_temp:
+        if os.path.exists(temp_folder):
+            shutil.rmtree(temp_folder)
+            print(f"Temporary folder {temp_folder} deleted.")
+        else:
+            print(f"Temporary folder {temp_folder} does not exist.")

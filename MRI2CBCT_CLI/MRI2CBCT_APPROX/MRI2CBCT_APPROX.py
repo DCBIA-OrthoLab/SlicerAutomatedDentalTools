@@ -4,6 +4,7 @@ import argparse
 import os
 import re
 import shutil
+from pathlib import Path
 
 import sys
 fpath = os.path.join(os.path.dirname(__file__), "..")
@@ -20,7 +21,7 @@ def create_folder(folder):
     if not os.path.exists(folder):
         os.makedirs(folder)
         
-def run_script_first_approximation(cbct_folder, mri_folder, output_folder):
+def run_script_first_approximation(cbct_folder, mri_folder, output_folder, temp_folder):
     """
     Approximates CBCT images to MRI images and saves the resulting images.
 
@@ -28,14 +29,20 @@ def run_script_first_approximation(cbct_folder, mri_folder, output_folder):
         cbct_folder (str): Path to the folder containing CBCT images
         mri_folder (str): Path to the folder containing MRI images
         output_folder (str): Path to the folder where output images will be saved
+        temp_folder (str): Path to the temporary folder for intermediate files
 
     Returns:
         str: Path to the folder containing the approximated images.
     """
+    temp_mri = os.path.join(temp_folder, 'mri/')
+    temp_cbct = os.path.join(temp_folder, 'cbct/')
+    os.makedirs(temp_mri, exist_ok=True)
+    os.makedirs(temp_cbct, exist_ok=True)
     
     first_approximation_folder = os.path.join(output_folder, "first_approximation")
     create_folder(first_approximation_folder)
-    approximation(cbct_folder, mri_folder, first_approximation_folder)
+    
+    approximation(cbct_folder, mri_folder, first_approximation_folder, temp_mri, temp_cbct)
     return first_approximation_folder
 
 def run_script_get_transformation(mean_folder, cbct_folder, output_folder):
@@ -92,23 +99,16 @@ def main():
     parser = argparse.ArgumentParser(description="Run multiple Python scripts with arguments")
     parser.add_argument('cbct_folder', type=str, help="Folder containing original CBCT images.")
     parser.add_argument('mri_folder', type=str, help="Folder containing original MRI images.")
-    parser.add_argument('mean_folder', type=str, help="Folder containing the mean CBCT image.")
-    parser.add_argument('ROI_file', type=str, help="File containing the ROI.")
     parser.add_argument('output_folder', type=str, help="Folder containing the outputs of the approximation.")
+    parser.add_argument('temp_dir', type=str, help="Temporary directory for intermediate files.")
     parser.add_argument('tempo_fold', type=str, help="Indicate to keep the temporary fold or not")
     args = parser.parse_args()
     
     # Approximate MRI to CBCT
-    first_approximation_folder = run_script_first_approximation(args.cbct_folder, args.mri_folder, args.output_folder)
-
-    # Register CBCT to mean CBCT and get the transformation
-    transformation_folder = run_script_get_transformation(args.mean_folder, first_approximation_folder, args.output_folder)
+    first_approximation_folder = run_script_first_approximation(args.cbct_folder, args.mri_folder, args.output_folder, args.temp_dir)
     
-    # Crop the volumes based on the ROI
-    run_script_crop_volumes(args.ROI_file, transformation_folder, first_approximation_folder, args.cbct_folder, args.output_folder)
-    
-    if args.tempo_fold=="false":
-        delete_folder(transformation_folder)
+    # if args.tempo_fold=="false":
+    #     delete_folder(temp_folder)
 
 if __name__ == "__main__":
     print("Debug: MRI2CBCT_APPROX module is being loaded")
