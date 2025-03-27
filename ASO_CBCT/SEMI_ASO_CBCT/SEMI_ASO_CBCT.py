@@ -77,7 +77,7 @@ def main(args):
                 sitk.WriteImage(output, file_outpath)
                 
             transform_outpath = os.path.join(
-                dir_scan, patient + "_" + args.add_inname[0] + ".tfm"
+                dir_scan, patient + "_" + args.add_inname[0] + "_transform.tfm"
             )
             if not os.path.exists(transform_outpath):
                 sitk.WriteTransform(TransformSITK, transform_outpath)
