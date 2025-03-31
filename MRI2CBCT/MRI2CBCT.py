@@ -42,7 +42,7 @@ def check_lib_installed(lib_name, required_version=None):
 # import csv
     
 def install_function():
-    libs = [('itk',None),('monai','0.7.0'),('einops',None),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1'),("pandas",None),("scikit-learn",None),("torch",None),("torchreg",None),("SimpleITK",None)]
+    libs = [('itk',None),('monai','0.7.0'),('einops',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2'),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1'),("pandas",None),("scikit-learn",None),("torch",None),("torchreg",None),("SimpleITK",None)]
     libs_to_install = []
     for lib, version in libs:
         if not check_lib_installed(lib, version):
@@ -319,7 +319,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         self.ui.outputCollapsibleButton.setText("Registration")
         self.ui.inputsCollapsibleButton.setText("Preprocess")
-        self.ui.approxCollapsibleButton.setText("Approximate & crop")
+        self.ui.approxCollapsibleButton.setText("Approximate")
         
         self.ui.outputCollapsibleButton.setChecked(True)  # True to expand, False to collapse
         self.ui.inputsCollapsibleButton.setChecked(False)
@@ -1397,12 +1397,9 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         install_function()
         
-        temp_dir = slicer.util.tempDirectory()
         param = {"cbct_folder": self.ui.lineEditApproxCBCT.text,
             "mri_folder": self.ui.lineEditApproxMRI.text,
-            "output_folder" : self.ui.lineEditOutputApprox.text,
-            "temp_dir" : temp_dir,
-            "tempo_fold" : self.ui.checkBoxTemporaryFoldApprox.isChecked()}
+            "output_folder" : self.ui.lineEditOutputApprox.text}
         
         ok,mess = self.approximate_mri2cbct.TestProcess(**param) 
         if not ok : 
@@ -1461,13 +1458,16 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         self.startTime = time.time()
 
-        # self.ui.progressBar.setMaximum(self.nb_patient)
+        self.ui.progressBar.setHidden(False)
+        self.ui.progressBar.setMinimum(0)
+        self.ui.progressBar.setMaximum(100)
         self.ui.progressBar.setValue(0)
         self.ui.progressBar.setTextVisible(True)
-        self.ui.progressBar.setFormat("0%")
+        self.ui.progressBar.setFormat("%p%")
 
+        self.ui.label_info.setHidden(False)
         self.ui.label_info.setText(f"Starting process")
-        
+
         self.nb_extnesion_did = 0
         self.nb_extension_launch = len(self.list_Processes_Parameters)
 
@@ -1488,7 +1488,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         - event: The event that triggered the update.
         """
         
-        self.ui.progressBar.setVisible(False)
         if not self.processWasCanceled:
             self.ui.pushButtonCancelProcess.setVisible(True)
         
@@ -1504,19 +1503,15 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # self.module_name = caller.GetModuleTitle() if self.module_name_bis is None else self.module_name_bis
         self.ui.label_info.setText(f"Extension {self.module_name} is running. \nNumber of extension runned: {self.nb_extnesion_did} / {self.nb_extension_launch}")
         # self.displayModule = self.displayModule_bis if self.displayModule_bis is not None else self.display[self.module_name.split(' ')[0]]
-
+        
+        progress_value = caller.GetProgress()
+        self.ui.progressBar.setValue(progress_value)
+        self.ui.progressBar.setFormat(f"{progress_value}%")
+        
         if self.module_name_before != self.module_name:
-            self.ui.progressBar.setValue(self.nb_extnesion_did/self.nb_extension_launch)
-            self.ui.progressBar.setFormat(f"{100*self.nb_extnesion_did/self.nb_extension_launch}%")
             self.nb_extnesion_did += 1
-            self.ui.label_info.setText(
-                f"Extension {self.module_name} is running. \nNumber of extension runned: {self.nb_extnesion_did} / {self.nb_extension_launch}"
-            )
-            
-
             self.module_name_before = self.module_name
             self.nb_change_bystep = 0
-
 
         if caller.GetStatus() & caller.Completed:
             self.ui.pushButtonCancelProcess.setVisible(False)

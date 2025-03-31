@@ -146,7 +146,7 @@ def process_images(mri_path, cbct_mask_path, output_folder, patient_id,mri_path_
         mri_path = itk.imread(mri_path, itk.F)
         cbct_mask_path = itk.imread(cbct_mask_path, itk.F)
     except KeyError as e:
-        print("An error occurred while reading the images of the patient : {patient_id}")
+        print(f"An error occurred while reading the images of the patient : {patient_id}")
         print(e)
         print(f"{patient_id} failed")
         return
@@ -156,7 +156,7 @@ def process_images(mri_path, cbct_mask_path, output_folder, patient_id,mri_path_
     try : 
         TransformObj_Fine = ElastixReg(cbct_mask_path, mri_path, initial_transform=None)
     except Exception as e:
-        print("An error occurred during the registration process on the patient {patient_id} :")
+        print(f"An error occurred during the registration process on the patient {patient_id} :")
         print(e)
         return
     
