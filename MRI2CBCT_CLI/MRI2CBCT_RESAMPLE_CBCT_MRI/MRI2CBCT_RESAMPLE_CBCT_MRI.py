@@ -3,7 +3,7 @@
 import csv
 import argparse
 import os
-
+import time
 import sys
 fpath = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(fpath)
@@ -65,7 +65,10 @@ def main(input_folder,output_folder,resample_size,spacing,iso_spacing,is_seg=Fal
     
     with open(csv_path, mode='r') as csv_file:
         csv_reader = csv.DictReader(csv_file)
-        for row in csv_reader:
+        rows = list(csv_reader)
+        total_patients = len(rows)
+        patient_count = 0
+        for row in rows:
             size_file = tuple(map(int, row["size"].strip("()").split(",")))
             spacing_file = tuple(map(float, row["Spacing"].strip("()").split(",")))
             input_path = row["in"]
@@ -78,6 +81,13 @@ def main(input_folder,output_folder,resample_size,spacing,iso_spacing,is_seg=Fal
                 run_resample(img=input_path,out=out_path,spacing=list(map(float, spacing.split(','))),size=[size_file[0],size_file[1],size_file[2]],fit_spacing=False,center=1,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
             elif resample_size != "None" and spacing!="None" :
                 run_resample(img=input_path,out=out_path,spacing=list(map(float, spacing.split(','))),size=list(map(int, resample_size.split(','))),fit_spacing=True,center=1,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+                
+            if total_patients > 0:
+                patient_count += 1
+                progress = patient_count / total_patients
+                print(f"<filter-progress>{progress}</filter-progress>")
+                sys.stdout.flush()
+                time.sleep(0.5)
             
     delete_csv(csv_path)
     

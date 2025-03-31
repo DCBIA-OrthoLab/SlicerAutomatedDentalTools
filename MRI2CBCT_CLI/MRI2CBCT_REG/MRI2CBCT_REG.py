@@ -145,16 +145,36 @@ def main():
     
     mri_min_norm, mri_max_norm, mri_lower_p, mri_upper_p, cbct_min_norm, cbct_max_norm, cbct_lower_p, cbct_upper_p = extract_values(args.normalization)
     
+    total_steps = 5
+    current_step = 0
+    
     # MRI
     folder_mri_inverse = run_script_inverse_mri(args.mri_folder, args.folder_general)
+    current_step += 1
+    print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
+    sys.stdout.flush()
+    
     input_path_norm_mri = run_script_normalize_percentile("MRI",folder_mri_inverse, args.folder_general, upper_percentile=mri_upper_p, lower_percentile=mri_lower_p, max_norm=mri_max_norm, min_norm=mri_min_norm)
+    current_step += 1
+    print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
+    sys.stdout.flush()
 
     # CBCT
     output_path_norm_cbct = run_script_normalize_percentile("CBCT",args.cbct_folder, args.folder_general, upper_percentile=cbct_upper_p, lower_percentile=cbct_lower_p, max_norm=cbct_max_norm, min_norm=cbct_min_norm)
+    current_step += 1
+    print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
+    sys.stdout.flush()
+    
     input_path_cbct_norm_mask = run_script_apply_mask(output_path_norm_cbct,args.cbct_label2,args.folder_general,"mask",upper_percentile=cbct_upper_p, lower_percentile=cbct_lower_p, max_norm=cbct_max_norm, min_norm=cbct_min_norm)
+    current_step += 1
+    print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
+    sys.stdout.flush()
     
     # REG
     run_script_AREG_MRI_folder(cbct_folder=args.cbct_folder,cbct_mask_folder=input_path_cbct_norm_mask,mri_folder=input_path_norm_mri,mri_original_folder=args.mri_folder,folder_general=args.folder_general,mri_lower_p=mri_lower_p,mri_upper_p=mri_upper_p,mri_min_norm=mri_min_norm,mri_max_norm=mri_max_norm,cbct_lower_p=cbct_lower_p,cbct_upper_p=cbct_upper_p,cbct_min_norm=cbct_min_norm,cbct_max_norm=cbct_max_norm)
+    current_step += 1
+    print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
+    sys.stdout.flush()
     
     
     if args.tempo_fold=="false":
