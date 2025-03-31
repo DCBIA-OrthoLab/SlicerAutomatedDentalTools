@@ -750,7 +750,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onPredictButton(self):
     import platform
     # first, install the required libraries and their version
-    list_libs = [('torch', None),('torchvision', None),('torchaudio',None),('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
+    list_libs = [('torch', None),('torchvision', None),('torchaudio',None),('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2'), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
 
     libs_installation = install_function(self,list_libs,platform.system())
     if not libs_installation:
