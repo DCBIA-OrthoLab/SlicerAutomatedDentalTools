@@ -38,9 +38,9 @@ def check_lib_installed(lib_name, required_version=None):
 # import csv
 def install_function():
     if platform.system() == "Windows":
-      libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0')]
+      libs = [('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2'), ('monai', '0.7.0')]
     else :
-      libs = [('itk', None), ('dicom2nifti', None), ('monai', '0.7.0'),('pytorch3d', '0.6.2')]
+      libs = [('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2'), ('monai', '0.7.0'),('pytorch3d', '0.6.2')]
 
     if platform.system() == "Windows":
         libs.append(('torch', None))
