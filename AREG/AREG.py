@@ -1083,7 +1083,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if platform.system()== "Windows":
             if self.type == "CBCT":
                 # libraries and versions compatibility to use AREG_CBCT
-                list_libs_CBCT_windows = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti',None,None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
+                list_libs_CBCT_windows = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
                             ('pandas',None,None),('torch',None,"https://download.pytorch.org/whl/cu118"),('monai','==0.7.0',None)] #(lib_name, version, url)
 
                 is_installed = install_function(self,list_libs_CBCT_windows)
