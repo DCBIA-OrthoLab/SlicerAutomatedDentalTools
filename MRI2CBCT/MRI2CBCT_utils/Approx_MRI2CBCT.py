@@ -70,9 +70,7 @@ class Approximation_MRI2CBCT(Method):
         parameter_mri2cbct_approx = {
             "cbct_folder": kwargs["cbct_folder"],
             "mri_folder": kwargs["mri_folder"],
-            "output_folder": kwargs["output_folder"],
-            "temp_dir": kwargs["temp_dir"],
-            "tempo_fold" : kwargs["tempo_fold"]
+            "output_folder": kwargs["output_folder"]
         }
         
         list_process.append(
