@@ -1,6 +1,8 @@
 #!/usr/bin/env python-real
 
 import os
+import sys
+import time
 import SimpleITK as sitk
 import argparse
 
@@ -73,6 +75,8 @@ def main(args):
                 nifti_files.append(os.path.join(root, file))
 
     # Process each file
+    total_patients = len(nifti_files)
+    patient_count = 0
     for file_path in nifti_files:
         filename = os.path.basename(file_path)
         file_id,type_file = extract_id(filename)
@@ -81,6 +85,13 @@ def main(args):
         else :
             output_file_path = os.path.join(output_folder, f"{file_id}_OR.nii.gz")
         modify_image_properties(file_path, new_direction, output_file_path)
+        
+        if total_patients > 0:
+            patient_count += 1
+            progress = patient_count / total_patients
+            print(f"<filter-progress>{progress}</filter-progress>")
+            sys.stdout.flush()
+            time.sleep(0.5)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Modify NIfTI file directions and center them.")

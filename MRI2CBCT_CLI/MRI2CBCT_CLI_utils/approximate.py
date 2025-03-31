@@ -1,4 +1,6 @@
 import os
+import sys
+import time
 import torch
 import shutil
 import argparse
@@ -12,7 +14,7 @@ from sklearn.model_selection import ParameterSampler
 from .approx_utils import get_corresponding_file, downsample, prealign_mri_to_cbct, resample_image, sitk_to_nib, convert_transform_for_slicer
 
 
-def approximation(cbct_folder, mri_folder, output_folder, temp_mri, temp_cbct, progress_callback=None):
+def approximation(cbct_folder, mri_folder, output_folder):
     """
     Main function to perform registration of CBCT images with corresponding MRI images.
 
@@ -20,8 +22,6 @@ def approximation(cbct_folder, mri_folder, output_folder, temp_mri, temp_cbct, p
         cbct_folder (str): Path to the folder containing CBCT images.
         mri_folder (str): Path to the folder containing MRI images.
         output_folder (str): Path to save the registered images.
-        temp_mri (str): Temporary folder for MRI images.
-        temp_cbct (str): Temporary folder for CBCT images.
     """
     if not os.path.isdir(cbct_folder): raise ValueError(f"CBCT folder does not exist: {cbct_folder}")
     if not os.path.isdir(mri_folder): raise ValueError(f"MRI folder does not exist: {mri_folder}")
@@ -34,6 +34,10 @@ def approximation(cbct_folder, mri_folder, output_folder, temp_mri, temp_cbct, p
         'sigma': np.linspace(1e-2, 1e-1, 2)
     }
     param_sampler = ParameterSampler(param_grid, n_iter=14)
+    
+    patient_count = 0
+    total_patients = sum(1 for root, _, files in os.walk(cbct_folder)
+                         for f in files if "_CBCT_" in f and (f.endswith(".nii") or f.endswith(".nii.gz")))
 
     for root, _, files in os.walk(cbct_folder):
         for cbct_file in files:
@@ -50,15 +54,10 @@ def approximation(cbct_folder, mri_folder, output_folder, temp_mri, temp_cbct, p
                 output_path = os.path.join(output_folder, f'{patient_id}_MR_registered.tfm')
 
                 moving_nii, static_nii, prealign_transform, mri_spacing = prealign_mri_to_cbct(mri_path, cbct_path)
-                
-                nib.save(moving_nii, os.path.join(temp_mri, f"{patient_id}_prealigned.nii.gz"))
                           
                 static_spacing = tuple(float(s) for s in static_nii.header.get_zooms())      
                 moving_sitk = resample_image(moving_nii, static_spacing, sitk.sitkLinear)
                 static_sitk = resample_image(static_nii, static_spacing, sitk.sitkLinear)
-                
-                nib.save(sitk_to_nib(moving_sitk), os.path.join(temp_mri, os.path.basename(mri_path)))
-                nib.save(sitk_to_nib(static_sitk), os.path.join(temp_cbct, os.path.basename(cbct_path)))
                 
                 # Convert to PyTorch tensors
                 moving_data = sitk.GetArrayFromImage(moving_sitk)
@@ -76,7 +75,7 @@ def approximation(cbct_folder, mri_folder, output_folder, temp_mri, temp_cbct, p
                 best_transform = None
                 
                 for params in param_sampler:
-                    # print(f"\n\033[1mUsing {device.upper()} -- Registering MRI: {temp_mri} to CBCT: {temp_cbct}")
+                    # print(f"\n\033[1mUsing {device.upper()} -- Registering MRI: {mri_path} to CBCT: {cbct_path}")
                     # print(f"Testing parameters: {params}\033[0m")
 
                     nmi_loss_function = NMI(intensity_range=None, nbins=32, sigma=params['sigma'], use_mask=False)
@@ -118,6 +117,13 @@ def approximation(cbct_folder, mri_folder, output_folder, temp_mri, temp_cbct, p
 
                     sitk.WriteTransform(sitk_transform, output_path)
                     print(f"Saved transformation to {output_path}\n\n")
+                    
+                    patient_count += 1
+                    if total_patients > 0:
+                        progress = patient_count / total_patients
+                        print(f"<filter-progress>{progress}</filter-progress>")
+                        sys.stdout.flush()
+                        time.sleep(0.5)
 
             else: 
                 print(f"CBCT file {cbct_file} does not match the expected format: {patient_id}_CBCT_xx.nii.gz")
@@ -127,20 +133,6 @@ if __name__ == "__main__":
     parser.add_argument('--cbct_folder', type=str, help='Path to the folder containing CBCT images')
     parser.add_argument('--mri_folder', type=str, help='Path to the folder containing MRI images')
     parser.add_argument('--output_folder', type=str, help='Path to the folder where output transforms will be saved')
-    parser.add_argument('--del_temp', action='store_true', help='Delete temporary files after processing')
     args = parser.parse_args()
-    
-    temp_folder = str(Path(args.mri_folder).parent) + '/temp/'
-    temp_mri_folder_path = temp_folder + 'mri/'
-    temp_cbct_folder_path = temp_folder + 'cbct/'
-    os.makedirs(temp_mri_folder_path, exist_ok=True)
-    os.makedirs(temp_cbct_folder_path, exist_ok=True)
 
-    approximation(args.cbct_folder, args.mri_folder, args.output_folder, temp_mri_folder_path, temp_cbct_folder_path)
-    
-    if args.del_temp:
-        if os.path.exists(temp_folder):
-            shutil.rmtree(temp_folder)
-            print(f"Temporary folder {temp_folder} deleted.")
-        else:
-            print(f"Temporary folder {temp_folder} does not exist.")
+    approximation(args.cbct_folder, args.mri_folder, args.output_folder)

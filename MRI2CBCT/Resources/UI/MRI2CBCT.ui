@@ -83,9 +83,6 @@
        <layout class="QVBoxLayout" name="verticalLayout_5">
         <item>
          <layout class="QGridLayout" name="gridLayout_5">
-          <item row="0" column="1">
-           <widget class="QLineEdit" name="lineEditOutputApprox"/>
-          </item>
           <item row="0" column="2">
            <widget class="QPushButton" name="SearchButtonOutputApprox">
             <property name="text">
@@ -93,17 +90,13 @@
             </property>
            </widget>
           </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="lineEditOutputApprox"/>
+          </item>
           <item row="0" column="0">
            <widget class="QLabel" name="label_20">
             <property name="text">
              <string>Output folder:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QCheckBox" name="checkBoxTemporaryFoldApprox">
-            <property name="text">
-             <string>Keep the temporary folder</string>
             </property>
            </widget>
           </item>
