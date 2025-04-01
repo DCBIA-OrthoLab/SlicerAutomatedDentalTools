@@ -3,6 +3,7 @@ import json
 import os
 import argparse
 from urllib import request
+import requests
 import subprocess
 import pandas as pd
 
@@ -99,11 +100,12 @@ def csv_edit(args):
               f.write(f"{surf}\n")
 
 def download_model(model_name, output_path):
-    json_path = os.path.join(os.path.dirname(__file__), "model_path.json")
-    with open(json_path, 'r') as file:
-        model_info = json.load(file)
-    model_url = model_info[model_name]["url"]
-    request.urlretrieve(model_url, output_path)
+  json_url = 'https://raw.githubusercontent.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/refs/heads/main/DOCShapeAXI_CLI/model_path.json'
+
+  res = requests.get(json_url)
+  model_info = json.loads(res.text)
+  model_url = model_info[model_name]["url"]
+  request.urlretrieve(model_url, output_path)
 
 
 def saxi_gradcam(args, out_model_path):
