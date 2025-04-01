@@ -38,7 +38,7 @@ def check_lib_installed(lib_name, required_version=None):
 # import csv
     
 def install_function():
-    libs = [('torch', None), ('monai', None),('pytorch_lightning',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2')]
+    libs = [('itk', None), ('torch', None), ('monai', '0.7.0'),('pytorch_lightning',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2')]
     libs_to_install = []
     for lib, version in libs:
         if not check_lib_installed(lib, version):
