@@ -385,7 +385,7 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Installation of pytorch into the new environnement. 
         This task may take a few minutes.\ntime: {formatted_time}
         """).strip()
-        self.ui.timeLabel.setText()
+        self.ui.timeLabel.setText(text)
     else:
       self.ui.timeLabel.setText(f"pytorch3d is already installed")
       print("pytorch3d already installed")
