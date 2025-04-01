@@ -623,12 +623,12 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
       from CondaSetUp import CondaSetUpCall
       return CondaSetUpCall()     
 
-  def run_conda_command(self, env, command):
-    self.process = threading.Thread(target=env, args=(command,)) #run in parallel to not block slicer
+  def run_conda_command(self, target, command):
+    self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
     self.process.start()
 
   def install_shapeaxi(self):
-    self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.9"],)) #run in parallel to not block slicer
+    self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
 
   def check_if_pytorch3d(self):
     conda_exe = self.conda.getCondaExecutable()
@@ -656,7 +656,7 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
     for arg in args :
       command.append("\""+arg+"\"")
 
-    self.run_conda_command(env=self.condaRunCommand, command=command)
+    self.run_conda_command(target=self.condaRunCommand, command=(command,))
 
   def check_lib_wsl(self)->bool:
     '''
