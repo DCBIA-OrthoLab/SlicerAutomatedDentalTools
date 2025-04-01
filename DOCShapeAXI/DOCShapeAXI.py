@@ -132,10 +132,9 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.time_log = 0
     self.progress = 0
     self.logic.cancel = False
-    self.onCheckRequirements()
 
     self.ui.errorLabel.setVisible(False)
-    self.ui.timeLabel.setVisible(False)
+    self.ui.timeLabel.setVisible(True)
     self.ui.labelBar.setVisible(False)
     self.ui.labelBar.setStyleSheet(f"""QLabel{{font-size: 12px; qproperty-alignment: AlignCenter;}}""")
     self.ui.progressLabel.setVisible(False)
@@ -145,9 +144,9 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.progressBar.setTextVisible(True)
 
     self.ui.applyChangesButton.connect('clicked(bool)',self.onApplyChangesButton)
-
-    # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
+    qt.QTimer.singleShot(100, self.onCheckRequirements)
+
 
   def cleanup(self) -> None:
     """Called when the application closes and the module widget is destroyed."""
