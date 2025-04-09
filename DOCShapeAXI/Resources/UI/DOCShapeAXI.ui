@@ -29,7 +29,7 @@
       <item row="1" column="0" colspan="2">
        <widget class="QLabel" name="labelInstructions">
         <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;This module requires SlicerConda to work. Please refer to the &lt;a href=&quot;https://github.com/DCBIA-OrthoLab/SlicerConda&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;installation&lt;/span&gt;&lt;/a&gt; instructions for setup. If you already have configured SlicerConda, you can start using the interface. The module will automatically check for the required dependencies and ask for permission to install any that are missing.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;This module requires SlicerConda to work. You can download it from the Extension Manager. DOC-ShapeAXI will automatically check for the required dependencies and ask for permission to install or setup any that are missing.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
