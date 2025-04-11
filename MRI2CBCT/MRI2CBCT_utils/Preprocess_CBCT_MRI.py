@@ -98,7 +98,8 @@ class Preprocess_CBCT_MRI(Method):
             "input_folder_T2_Seg": kwargs["input_folder_T2_Seg"],
             "output_folder": kwargs["output_folder"],
             "resample_size": kwargs["resample_size"],
-            "spacing" : kwargs["spacing"]
+            "spacing": kwargs["spacing"],
+            "center": kwargs["center"],
         }
         
         list_process.append(

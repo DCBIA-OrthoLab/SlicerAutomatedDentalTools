@@ -78,6 +78,12 @@
       <description>spacing</description>
     </string>
 
+    <string>
+      <name>center</name>
+      <label>center</label>
+      <index>9</index>
+      <description>Center the image</description>
+    </string>
 
   </parameters>
 </executable>
