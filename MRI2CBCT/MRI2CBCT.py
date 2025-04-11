@@ -1175,7 +1175,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "input_folder_T2_Seg": LineEditT2Seg,
             "output_folder": self.ui.lineEditOuputResample.text,
             "resample_size": self.get_resample_values()[0],
-            "spacing" : self.get_resample_values()[1]
+            "spacing": self.get_resample_values()[1],
+            "center": str(self.ui.checkBoxCenterImage.isChecked()),
         }
             
         ok,mess = self.preprocess_mri_cbct.TestProcess(**param) 
@@ -1598,7 +1599,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onCancel(self):
         self.processWasCanceled = True
         self.process.Cancel()
-        print("Process canceled by user.")
+        print("\n\n ========= PROCESS MANUALLY CANCELED ========= \n")
         self.ui.label_info.setText("Process was canceled.")
         self.RunningUI(False)
         
