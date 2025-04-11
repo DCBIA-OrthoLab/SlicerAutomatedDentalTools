@@ -5,6 +5,9 @@ import slicer
 import webbrowser
 import glob
 import os
+import re
+import csv
+import platform
 import vtk
 import shutil
 from itertools import chain
@@ -133,12 +136,6 @@ class Auto_IOS(Method):
             "https://github.com/HUTIN1/ASO/releases/download/v1.0.1/Test_file_Full-IOS.zip",
         )
 
-    def __Model(self, path):
-
-        model = self.search(path, ".pth")[".pth"][0]
-
-        return model
-
     def getSegOrModelList(self):
         return (
             "PreASOModel",
@@ -224,39 +221,50 @@ class Auto_IOS(Method):
         list_teeth, jaw, occlusion = self.__CheckboxisChecked(kwargs["dic_checkbox"])
 
         path_tmp = slicer.util.tempDirectory()
-        path_input = os.path.join(path_tmp, "intpu_seg")
+        path_input = os.path.join(path_tmp, "input_seg")
         path_seg = os.path.join(path_tmp, "seg")
         path_preor = os.path.join(path_tmp, "PreOr")
 
-        if not os.path.exists(path_seg):
-            os.mkdir(os.path.join(path_seg))
-
-        if not os.path.exists(path_preor):
-            os.mkdir(path_preor)
-
-        if not os.path.exists(path_input):
-            os.mkdir(path_input)
-
-        if not os.path.exists(kwargs["folder_output"]):
-            os.mkdir(kwargs["folder_output"])
+        os.makedirs(path_input, exist_ok=True)
+        os.makedirs(path_seg, exist_ok=True)
+        os.makedirs(path_preor, exist_ok=True)
+        os.makedirs(kwargs["folder_output"], exist_ok=True)
 
         path_error = os.path.join(kwargs["folder_output"], "Error")
 
         number_scan_toseg = self.__BypassCrownseg__(
             kwargs["input_folder"], path_input, path_seg
         )
-
+        slicer_path = slicer.app.applicationDirPath()
+        dentalmodelseg_path = os.path.join(slicer_path,"..","lib","Python","bin","dentalmodelseg")
+        
+        surf = "None"
+        input_csv = "None"
+        vtk_folder = "None"
+        
+        if os.path.isfile(path_input):
+            extension = os.path.splitext(self.input)[1]
+            if (extension == ".vtk" or extension == ".stl"):
+                surf = path_input
+                
+        elif os.path.isdir(path_input):
+            input_csv = self.create_csv(path_input, "liste_csv_file")
+            vtk_folder = path_input
+            
         parameter_seg = {
-            "input": path_input,
-            "output": path_seg,
-            "subdivision_level": 2,
-            "resolution": 320,
-            "model": self.__Model(kwargs["model_folder_segor"]),
-            "predictedId": "Universal_ID",
-            "sepOutputs": 0,
-            "chooseFDI": 0,
-            "logPath": kwargs["logPath"],
+            "surf": surf,
+            "input_csv": input_csv,
+            "out": path_seg,
+            "overwrite": "0",
+            "model": "latest",
+            "crown_segmentation": "0",
+            "array_name": "Universal_ID",
+            "fdi": 0,
+            "suffix": "Seg",
+            "vtk_folder": vtk_folder,
+            "dentalmodelseg_path": dentalmodelseg_path
         }
+        
         parameter_pre_aso = {
             "input": path_seg,
             "gold_folder": kwargs["gold_folder"],
@@ -306,28 +314,48 @@ class Auto_IOS(Method):
         # OrientProcess = slicer.modules.semi_aso_ios
 
         # {'Process':SegProcess,'Parameter':parameter_seg},{'Process':PreOrientProcess,'Parameter':parameter_pre_aso},
+        
+        numberscan = self.NumberScan(kwargs["input_folder"])
+        
         list_process = [
-            {"Process": SegProcess, "Parameter": parameter_seg},
-            {"Process": PreOrientProcess, "Parameter": parameter_pre_aso},
-            # {"Process":aliiosProcess,"Parameter":parameter_aliios},
-            # {'Process':OrientProcess,'Parameter':parameter_semi_aso}
+            {
+                "Process": SegProcess,
+                "Parameter": parameter_seg,
+                "Module": "CrownSegmentationcli",
+                "Display": DisplayCrownSeg(
+                    number_scan_toseg, kwargs["logPath"]
+                ),
+            },
+            {
+                "Process": PreOrientProcess,
+                "Parameter": parameter_pre_aso,
+                "Module": "PRE_ASO_IOS",
+                "Display": DisplayASOIOS(
+                    numberscan if len(jaw) == 1 else int(numberscan / 2),
+                    jaw,
+                    kwargs["logPath"],
+                ),
+            },
+            # {
+            #     "Process": aliiosProcess,
+            #     "Parameter": parameter_aliios,
+            #     "Module": "ALI_IOS",
+            #     "Display": DisplayALIIOS(
+            #         len(mix), numberscan
+            #     ),
+            # },
+            # {
+            #     "Process": OrientProcess,
+            #     "Parameter": parameter_semi_aso,
+            #     "Module": "SEMI_ASO_IOS",
+            #     "Display": DisplayASOIOS(
+            #         numberscan if len(jaw) == 1 else int(numberscan / 2),
+            #         jaw,
+            #         kwargs["logPath"]),
+            # }
         ]
 
-        numberscan = self.NumberScan(kwargs["input_folder"])
-        display = {
-            "CrownSegmentationcli": DisplayCrownSeg(
-                number_scan_toseg, kwargs["logPath"]
-            ),
-            # 'ALI_IOS':DisplayALIIOS(len(mix),numberscan),
-            "PRE_ASO_IOS": DisplayASOIOS(
-                numberscan if len(jaw) == 1 else int(numberscan / 2),
-                jaw,
-                kwargs["logPath"],
-            ),
-            # 'SEMI_ASO_IOS': DisplayASOIOS(numberscan if len(jaw) ==1 else int(numberscan/2) , jaw,kwargs['logPath'] )
-        }
-        #
-        return list_process, display
+        return list_process
 
     def DicLandmark(self):
         dic = {
@@ -453,6 +481,33 @@ class Auto_IOS(Method):
             occlusion = diccheckbox["Occlusion"].isChecked()
 
         return teeth, jaw, occlusion
+    
+    def create_csv(self,input_dir,name_csv):
+        '''
+        create a csv with the complete path of the files in the folder (used for segmentation only)
+        '''
+        file_path = os.path.abspath(__file__)
+        folder_path = os.path.dirname(file_path)
+        csv_file = os.path.join(folder_path,f"{name_csv}.csv")
+        with open(csv_file, 'w', newline='') as fichier:
+            writer = csv.writer(fichier)
+            # Écrire l'en-tête du CSV
+            writer.writerow(["surf"])
+
+            # Parcourir le dossier et ses sous-dossiers
+            for root, dirs, files in os.walk(input_dir):
+                for file in files:
+                    if file.endswith(".vtk") or file.endswith(".stl"):
+                        # Écrire le chemin complet du fichier dans le CSV
+                        if platform.system() != "Windows" :    
+                            writer.writerow([os.path.join(root, file)])
+                        else :
+                            file_path = os.path.join(root, file)
+                            norm_file_path = os.path.normpath(file_path)
+                            writer.writerow([self.windows_to_linux_path(norm_file_path)])
+
+
+        return csv_file
 
 
 class Semi_IOS(Auto_IOS):
@@ -570,13 +625,20 @@ class Semi_IOS(Auto_IOS):
         print("parameter", parameter)
         OrientProcess = slicer.modules.semi_aso_ios
         numberscan = self.NumberScan(kwargs["input_folder"])
-        return [{"Process": OrientProcess, "Parameter": parameter}], {
-            "SEMI_ASO_IOS": DisplayASOIOS(
-                numberscan if len(jaw) == 1 else int(numberscan / 2),
-                jaw,
-                kwargs["logPath"],
-            )
-        }
+        list_process = [
+            {
+                "Process": OrientProcess,
+                "Parameter": parameter,
+                "Module": "SEMI_ASO_IOS",
+                "Display": DisplayASOIOS(
+                    numberscan if len(jaw) == 1 else int(numberscan / 2),
+                    jaw,
+                    kwargs["logPath"],
+                ),
+            },
+        ]
+        
+        return list_process
 
     def Suggest(self):
         out = ["Upper", "O", "UL6", "UL1", "UR1", "UR6"]

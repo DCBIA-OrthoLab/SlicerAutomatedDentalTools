@@ -7,13 +7,13 @@
     <x>0</x>
     <y>0</y>
     <width>669</width>
-    <height>872</height>
+    <height>954</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text">
       <string>Inputs</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
@@ -189,8 +189,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="advancedCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="advancedCollapsibleButton">
+     <property name="text">
       <string>Landmark Reference</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_10">
@@ -260,8 +260,8 @@
                   <rect>
                    <x>0</x>
                    <y>0</y>
-                   <width>627</width>
-                   <height>198</height>
+                   <width>609</width>
+                   <height>175</height>
                   </rect>
                  </property>
                  <layout class="QVBoxLayout" name="verticalLayout_14">
@@ -322,8 +322,8 @@
                   <rect>
                    <x>0</x>
                    <y>0</y>
-                   <width>627</width>
-                   <height>198</height>
+                   <width>202</width>
+                   <height>66</height>
                   </rect>
                  </property>
                  <layout class="QVBoxLayout" name="verticalLayout_12">
@@ -368,8 +368,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton">
+     <property name="text">
       <string>Outputs</string>
      </property>
      <layout class="QVBoxLayout" name="Output">
@@ -420,8 +420,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="computeCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="computeCollapsibleButton">
+     <property name="text">
       <string>Compute</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_8">
@@ -479,6 +479,13 @@
           </property>
           <property name="value">
            <number>0</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_LibsInstallation">
+          <property name="text">
+           <string>...Installing Libraries - Open Python Console to see errors...</string>
           </property>
          </widget>
         </item>
