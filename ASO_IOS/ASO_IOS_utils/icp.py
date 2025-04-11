@@ -151,7 +151,7 @@ class InitIcp:
         if not os.path.exists(os.path.join(script_dir, "cache")):
             os.mkdir(os.path.join(script_dir, "cache"))
         np.save(os.path.join(script_dir, "cache", "source.npy"), source)
-        np.save(os.path.join(script_dir, "cache", "target.npy"), source)
+        np.save(os.path.join(script_dir, "cache", "target.npy"), target)
         best = self.FindOptimalLandmarks(source, target)
 
         (

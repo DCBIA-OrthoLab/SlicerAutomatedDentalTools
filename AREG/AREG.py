@@ -16,95 +16,31 @@ from AREG_Method.CBCT import Semi_CBCT, Auto_CBCT, Or_Auto_CBCT
 from AREG_Method.Method import Method
 from AREG_Method.Progress import Display
 
-from CondaSetUp import  CondaSetUpCallWsl
 from pathlib import Path
+import textwrap
 import pkg_resources
 import platform
 import threading
 import subprocess
 import re
 
-def install_pytorch3d():
-    try:
-        import torch
-        desired_pytorch_version= "1.11.0"
-        desired_cuda_version = "cu113"
-        if torch.__version__ != desired_pytorch_version or torch.version.cuda != desired_cuda_version.replace("cu",""):
-            raise ImportError("Incompatible Pytorch version or CUDA version")
-    except ImportError:
-        # torch_install_cmd = f'torch=={desired_pytorch_version}+{desired_cuda_version} torchvision==0.12.0+{desired_cuda_version} torchaudio==0.11.0+{desired_cuda_version} --extra-index-url https://download.pytorch.org/whl/{desired_cuda_version}'
-        # pip_install(torch_install_cmd)
-
-        pip_install(f'--force-reinstall torch==1.12.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{desired_cuda_version}')
-        import torch
-
-    system = platform.system()
-
-    if system == 'Darwin':  # MACOS
-        try:
-            import pytorch3d
-        except ImportError:
-            pip_install('pytorch3d')
-            import pytorch3d
-
-    else: # Linux or Windows
-        # try:
-        #     import pytorch3d
-        #     # print('version_constraint splitted', version_constraint.split("==").split("<=").split(">=").split("<").split(">"))
-        #     if pytorch3d.__version__ != version_constraint.replace("==","").replace("<=","").replace(">=","").replace("<","").replace(">",""):
-        #         raise ImportError
-        # except ImportError:
-        # pyt_message = "ALI IOS needs to install pytorch3d library. \n"
-        # pyt_message += "Do you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
-        # pyt_user_choice = slicer.util.confirmYesNoDisplay(pyt_message)
-        # if pyt_user_choice:
-
-        # try:
-        #     import torch
-        #     pyt_version_str=torch.__version__.split("+")[0].replace(".", "")
-        #     version_str="".join([f"py3{sys.version_info.minor}_cu",torch.version.cuda.replace(".",""),f"_pyt{pyt_version_str}"])
-        #     # pip_install('--upgrade pip')
-        #     pip_install(f'pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/{version_str}/download.html')
-        # except: # install correct torch version
-        #     print('force install pytorch3d')
-        #     pip_install('torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113')
-        #     pip_install('pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1110/download.html')
-
-        try:
-            code_path = os.sep.join(
-                os.path.dirname(os.path.abspath(__file__)).split(os.sep)
-            )
-            # print(code_path)
-            pip_install(
-                os.path.join(
-                    code_path,
-                    "AREG_IOS_utils",
-                    "pytorch3d-0.7.0-cp39-cp39-linux_x86_64.whl",
-                )
-            )  # py39_cu113_pyt1120
-            import pytorch3d
-        except:
-            pip_install(
-                "--force-reinstall --no-deps --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"
-            )
-            import pytorch3d
 
 def check_lib_installed(lib_name, required_version=None):
     '''
-    Check if the library with the good version (if needed) is already installed in the slicer environment
-    input: lib_name (str) : name of the library
-            required_version (str) : required version of the library (if None, any version is accepted)
-    output: bool : True if the library is installed with the good version, False otherwise
+    Check if the library is installed and meets the required version constraint (if any).
+    - lib_name: "torch"
+    - required_version: ">=1.10.0", "==0.7.0", "<2.0.0", etc.
     '''
     try:
-        installed_version = pkg_resources.get_distribution(lib_name).version
-        # check if the version is the good one - if required_version != None it's considered as a True
-        #required_version can have some constraints like ==, <=, >=, <, >, ex: >=1.0.0
-        if required_version and installed_version != required_version:
-          return False
+        if required_version:
+            # Use full requirement spec (e.g., "torch>=1.10.0")
+            pkg_resources.require(f"{lib_name}{required_version}")
         else:
-          return True
-    except pkg_resources.DistributionNotFound:
+            # Just check if it's installed
+            pkg_resources.get_distribution(lib_name)
+        return True
+    except (pkg_resources.DistributionNotFound, pkg_resources.VersionConflict) as e:
+        print(f"Version check failed: {e}")
         return False
 
 # import csv
@@ -150,9 +86,9 @@ def install_function(self,list_libs:list):
             self.ui.label_LibsInstallation.setVisible(True)
             try:
                 for lib, version_constraint in libs_to_install + libs_to_update:
-                    if lib == "pytorch3d":
-                        install_pytorch3d()
-                        continue
+                    # if lib == "pytorch3d":
+                    #     install_pytorch3d()
+                    #     continue
                     if not version_constraint:
                         pip_install(lib)
 
@@ -194,7 +130,7 @@ class AREG(ScriptedLoadableModule):
             "Automated Dental Tools"
         ]  # set categories (folders where the module shows up in the module selector)
         self.parent.dependencies = (
-            []
+            ["CondaSetUp"]
         )  # TODO: add here list of module names that this module requires
         self.parent.contributors = [
             "Nathan Hutin (UoM), Luc Anchling (UoM)"
@@ -380,6 +316,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = None
         self._parameterNode = None
         self._updatingGUIFromParameterNode = False
+        self.all_installed = False
 
         self.nb_patient = 0  # number of scans in the input folder
 
@@ -582,6 +519,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.CbCBCTInputType.setVisible(True)
         self.ui.label_CBCTInputType.setVisible(True)
         self.ui.label_CBCTInputType_2.setVisible(True)
+        self.ui.advancedCollapsibleButton.collapsed = False
 
         if index == 2:  # Semi-Automated
             self.ui.label_6.setVisible(False)
@@ -631,6 +569,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.CbCBCTInputType.setVisible(False)
         self.ui.label_CBCTInputType.setVisible(False)
         self.ui.label_CBCTInputType_2.setVisible(False)
+        self.ui.advancedCollapsibleButton.collapsed = True
         self.isDCMInput = False
         # registration and orientation
         if index == 0:
@@ -1079,39 +1018,26 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
 
     def onPredictButton(self):
-        # install required libraries for all modules used (ASO,ALI,AMASS) and for the selected module
-        if platform.system()== "Windows":
-            if self.type == "CBCT":
-                # libraries and versions compatibility to use AREG_CBCT
+        if self.type == "CBCT":
+            if platform.system() == "Windows":
                 list_libs_CBCT_windows = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
                             ('pandas',None,None),('torch',None,"https://download.pytorch.org/whl/cu118"),('monai','==0.7.0',None)] #(lib_name, version, url)
 
                 is_installed = install_function(self,list_libs_CBCT_windows)
-
-            if self.type == "IOS":
-                is_installed = False
-                check_env = self.check_wsl_environment()
-                print("seg_env : ",check_env)
-                
-                if check_env :
-                    list_libs_IOS =[("tqdm",None,None),('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None)]
-
-                    is_installed = install_function(self,list_libs_IOS)
-                # qt.QMessageBox.warning(self.parent, 'Warning', 'AREG IOS is currently not available on Windows. Please use a Linux or MacOS system to run the module.')
-
-        else:
-            if self.type == "CBCT":
+            else:
                 # libraries and versions compatibility to use AREG_CBCT
                 list_libs_CBCT = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
                             ('pandas',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
 
                 is_installed = install_function(self,list_libs_CBCT)
-
-            if self.type == "IOS":
-                # Installation of pytorch is done before pytorch3d installation in the function because the order is important andfor version compatibility
-                list_libs_IOS =[("shapeaxi",None,None),('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None),
-                                ('pytorch3d',"==0.7.0","https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu113_pyt1120/download.html"),
-                                ('torchmetrics','==0.9.3',None),('pytorch-lightning','==1.7.7',None)]
+                
+        if self.type == "IOS":
+            is_installed = False
+            check_env = self.onCheckRequirements()
+            print("seg_env : ",check_env)
+            
+            if check_env:
+                list_libs_IOS =[("tqdm",None,None),('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None)]
 
                 is_installed = install_function(self,list_libs_IOS)
 
@@ -1119,6 +1045,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not is_installed:
             qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
             return
+        
+        self.logic.check_cli_script()
 
         self.ui.label_LibsInstallation.setVisible(False)
         error = self.ActualMeth.TestProcess(
@@ -1171,15 +1099,18 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.nb_extension_launch = len(self.list_Processes_Parameters)
             self.onProcessStarted()
 
+            module = self.list_Processes_Parameters[0]["Module"]
             # /!\ Launch of the first process /!\
-            print("module name : ",self.list_Processes_Parameters[0]["Module"])
+            print("module name : ", module)
             # if we are on windows, crownsegmentation and areg ios need to be run in wsl because of Pytorch3D
-            if (self.list_Processes_Parameters[0]["Module"]=="CrownSegmentationcli T1" or self.list_Processes_Parameters[0]["Module"]=="AREG_IOS") and platform.system()== "Windows" :
-                if self.list_Processes_Parameters[0]["Module"]=="CrownSegmentationcli T1" :
-                    self.run_wsl("seg")
+            if module in ["CrownSegmentationcli T1", "AREG_IOS"]:
+                self.ui.ButtonCancel.setEnabled(False)
+                if "CrownSegmentationcli" in module:
+                    self.run_conda_tool("seg")
                 else :
-                    self.run_wsl("areg")
-                
+                    self.run_conda_tool("areg")
+              
+            self.ui.ButtonCancel.setEnabled(True)
             self.process = slicer.cli.run(
                 self.list_Processes_Parameters[0]["Process"],
                 None,
@@ -1204,7 +1135,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.LabelProgressExtension.setText(
             f"Extension : 0 / {self.nb_extension_launch}"
         )
-        self.nb_extnesion_did = 0
+        self.nb_extension_did = 0
 
         self.module_name_before = 0
         self.nb_change_bystep = 0
@@ -1229,9 +1160,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         if self.module_name_before != self.module_name:
             self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
-            self.nb_extnesion_did += 1
+            self.nb_extension_did += 1
             self.ui.LabelProgressExtension.setText(
-                f"Extension : {self.nb_extnesion_did} / {self.nb_extension_launch}"
+                f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
             )
             self.ui.progressBar.setValue(0)
 
@@ -1274,8 +1205,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 print(self.process.GetOutputText())
                 try:
                     print("name process : ",self.list_Processes_Parameters[0]["Process"])
-                    if self.list_Processes_Parameters[0]["Module"]=="AREG_IOS" and platform.system()== "Windows" :
-                        self.run_wsl("areg")
+                    if self.list_Processes_Parameters[0]["Module"]=="AREG_IOS":
+                        self.run_conda_tool("areg")
+                        
+                    self.ui.ButtonCancel.setEnabled(True)
                     self.process = slicer.cli.run(
                         self.list_Processes_Parameters[0]["Process"],
                         None,
@@ -1293,9 +1226,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def OnEndProcess(self):
         self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
-        self.nb_extnesion_did += 1
+        self.nb_extension_did += 1
         self.ui.LabelProgressExtension.setText(
-            f"Extension : {self.nb_extnesion_did} / {self.nb_extension_launch}"
+            f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
         )
         self.ui.progressBar.setValue(0)
 
@@ -1348,6 +1281,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onCancel(self):
         self.process.Cancel()
+        print("\n\n ========= PROCESS CANCELED ========= \n")
 
         self.RunningUI(False)
 
@@ -1359,35 +1293,55 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.HideComputeItems(run)
         
+    def format_time(self,seconds):
+        """ Convert seconds to H:M:S format. """
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        return f"{hours:02}:{minutes:02}:{secs:02}"
+    
+    def update_ui_time(self, start_time, previous_time):
+        current_time = time.time()
+        gap=current_time-previous_time
+        if gap>0.3:
+            previous_time = current_time
+            self.elapsed_time = current_time - start_time
+            formatted_time = self.format_time(self.elapsed_time)
+            return formatted_time
         
-    def run_wsl(self,type):
+        
+    def run_conda_tool(self,type):
         if type=="seg":
-            output_command = self.conda_wsl.condaRunCommand(["which","dentalmodelseg"],"shapeaxi").strip()
+            output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
             clean_output = re.search(r"Result: (.+)", output_command)
-            dentalmodelseg_path = clean_output.group(1).strip()
-            dentalmodelseg_path_clean = dentalmodelseg_path.replace("\\n","")
+            if clean_output:
+                dentalmodelseg_path = clean_output.group(1).strip()
+                dentalmodelseg_path_clean = dentalmodelseg_path.replace("\\n","")
+            else:
+                print("Error: Unable to find dentalmodelseg path.")
+                return
+            
             for i in range(2):
-                name_env = "shapeaxi"
                 args = self.list_Processes_Parameters[0]["Parameter"]
                 print("args : ",args)
-                conda_exe = self.conda_wsl.getCondaExecutable()
-                command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"CrownSegmentationcli"]
+                conda_exe = self.logic.conda.getCondaExecutable()
+                command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
                 for key, value in args.items():
                     if key in ["out","input_csv","vtk_folder","dentalmodelseg_path"]:
-                        value = self.windows_to_linux_path(value)
-                    if key == "dentalmodelseg_path" :
+                        value = self.logic.windows_to_linux_path(value)
+                    if key == "dentalmodelseg_path":
                         value = dentalmodelseg_path_clean
                     command.append(f"\"{value}\"")
                 print("*"*50)
                 print("command : ",command)
 
                 # running in // to not block Slicer
-                process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command,))
-                process.start()
+                self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+                self.process.start()
                 self.ui.LabelTimer.setHidden(False)
                 self.ui.LabelTimer.setText(f"Time : 0.00s")
                 previous_time = self.startTime
-                while process.is_alive():
+                while self.process.is_alive():
                     slicer.app.processEvents()
                     current_time = time.time()
                     gap=current_time-previous_time
@@ -1404,26 +1358,26 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         self.ui.LabelTimer.setText(timer)
 
                 del self.list_Processes_Parameters[0]
+                
         elif type=="areg":
-            name_env = "shapeaxi"
             args = self.list_Processes_Parameters[0]["Parameter"]
-            print("args : ",args)
-            conda_exe = self.conda_wsl.getCondaExecutable()
-            command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"AREG_IOS"]
+            print("args : ", args)
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AREG_IOS"]
             for key, value in args.items():
                 print("key : ",key)
                 if Path(value).is_file() or Path(value).is_dir() :
-                    value = self.windows_to_linux_path(value)
+                    value = self.logic.windows_to_linux_path(value)
                 command.append(f"\"{value}\"")
             print("command : ",command)
 
             # running in // to not block Slicer
-            process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command,))
-            process.start()
+            self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+            self.process.start()
             self.ui.LabelTimer.setHidden(False)
             self.ui.LabelTimer.setText(f"time : 0.00s")
             previous_time = self.startTime
-            while process.is_alive():
+            while self.process.is_alive():
                 slicer.app.processEvents()
                 current_time = time.time()
                 gap=current_time-previous_time
@@ -1547,242 +1501,113 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                          Y88b. .d88P     888     888    888 888        888  T88b  Y88b  d88P
                           "Y88888P"      888     888    888 8888888888 888   T88b  "Y8888P"
     """
-
-    def check_lib_wsl(self)->bool:
-        '''
-        Check if wsl contains the require librairies
-        '''
-        result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
-        output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
-        clean_output1 = output1.replace('\x00', '')
-
-        result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
-        output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
-        clean_output2 = output2.replace('\x00', '')
-
-        return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
-  
-    def check_wsl_environment(self):
-            self.conda_wsl = CondaSetUpCallWsl()  
-            wsl = self.conda_wsl.testWslAvailable()
-            ready = True
+    
+    def onCheckRequirements(self):
+        if not self.logic.isCondaSetUp:
+            messageBox = qt.QMessageBox()
+            text = textwrap.dedent("""
+            SlicerConda is not set up, please click 
+            <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
+            """).strip()
+            messageBox.information(None, "Information", text)
+            return False
+        
+        if platform.system() == "Windows":
             self.ui.label_LibsInstallation.setHidden(False)
             self.ui.label_LibsInstallation.setText(f"Checking if wsl is installed, this task may take a moments")
-            slicer.app.processEvents()
             
-            if wsl : # if wsl is install
-              lib = self.check_lib_wsl()
-              if not lib : # if lib required are not install
-                  self.ui.label_LibsInstallation.setText(f"Checking if the required librairies are installed, this task may take a moments")
-                  messageBox = qt.QMessageBox()
-                  text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
-                  ready = False
-                  messageBox.information(None, "Information", text)
-            else : # if wsl not install, ask user to install it ans stop process
-              messageBox = qt.QMessageBox()
-              text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
-              ready = False
-              messageBox.information(None, "Information", text)
-            
-            if ready : # checking if miniconda installed on wsl
-              self.ui.label_LibsInstallation.setText(f"Checking if miniconda is installed")
-              if "Error" in self.conda_wsl.condaRunCommand([self.conda_wsl.getCondaExecutable(),"--version"]): # if conda is setup
+            if self.logic.testWslAvailable():
+                self.ui.label_LibsInstallation.setText(f"WSL installed")
+                if not self.logic.check_lib_wsl():
+                    self.ui.label_LibsInstallation.setText(f"Checking if the required librairies are installed, this task may take a moments")
                     messageBox = qt.QMessageBox()
-                    text = "Code can't be launch. \nConda is not setup in WSL. Please go the extension CondaSetUp in SlicerConda to do it."
-                    ready = False
+                    text = textwrap.dedent("""
+                        WSL doesn't have all the necessary libraries, please download the installer 
+                        and follow the instructions 
+                        <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+                        for installation. The link may be blocked by Chrome, just authorize it.""").strip()
+
                     messageBox.information(None, "Information", text)
+                    return False
+                
+            else : # if wsl not install, ask user to install it ans stop process
+                messageBox = qt.QMessageBox()
+                text = textwrap.dedent("""
+                    WSL is not installed, please download the installer and follow the instructions 
+                    <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+                    for installation. The link may be blocked by Chrome, just authorize it.""").strip()        
+
+                messageBox.information(None, "Information", text)
+                return False
             
-            if ready : # checking if environment 'shapeaxi' exist on wsl and if no ask user permission to create and install required lib in it
-              self.ui.label_LibsInstallation.setText(f"Checking if environnement exist")
-              name_env = "shapeaxi"     
-              if not self.conda_wsl.condaTestEnv(name_env) : # check is environnement exist, if not ask user the permission to do it
-                userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the segmentation doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
-                if userResponse :
-                  start_time = time.time()
-                  previous_time = start_time
-                  self.ui.label_LibsInstallation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: 0.0s")
-                  name_env = "shapeaxi"
-                  process = threading.Thread(target=self.conda_wsl.condaCreateEnv, args=(name_env,"3.9",["shapeaxi"],)) #run in paralle to not block slicer
-                  process.start()
-                  
-                  while process.is_alive():
+        
+        ## MiniConda
+        
+        
+        self.ui.label_LibsInstallation.setText(f"Checking if miniconda is installed")
+        if "Error" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
+            messageBox = qt.QMessageBox()
+            text = textwrap.dedent("""
+            Code can't be launch. \nConda is not setup. 
+            Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
+            messageBox.information(None, "Information", text)
+            return False
+        
+        
+        ## shapeAXI
+
+
+        self.ui.label_LibsInstallation.setText(f"Checking if environnement exists")
+        if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
+            userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+            if userResponse :
+                start_time = time.time()
+                previous_time = start_time
+                formatted_time = self.format_time(0)
+                self.ui.label_LibsInstallation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
+                process = self.logic.install_shapeaxi()
+                
+                while self.logic.process.is_alive():
                     slicer.app.processEvents()
-                    current_time = time.time()
-                    gap=current_time-previous_time
-                    if gap>0.3:
-                        previous_time = current_time
-                        elapsed_time = current_time - start_time
-                        self.ui.label_LibsInstallation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
-              
-                  start_time = time.time()
-                  previous_time = start_time
-                  self.ui.label_LibsInstallation.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: 0.0s")
-                  
-                  name_env = "shapeaxi"
-                  # result_pythonpath = self.check_pythonpath_windows(name_env,"ALI_IOS_utils.requirement") # THIS LINE IS WORKING
-                  result_pythonpath = self.check_pythonpath_windows(name_env,"CrownSegmentation_utils.install_pytorch")
-                  if not result_pythonpath : 
-                    self.give_pythonpath_windows(name_env)
-                    # result_pythonpath = self.check_pythonpath_windows(name_env,"ALI_IOS_utils.requirement") # THIS LINE IS WORKING
-                    result_pythonpath = self.check_pythonpath_windows(name_env,"CrownSegmentation_utils.install_pytorch")
-                    
-                  if result_pythonpath : 
-                    conda_exe = self.conda_wsl.getCondaExecutable()
-                    path_pip = self.conda_wsl.getCondaPath()+f"/envs/{name_env}/bin/pip"
-                    # command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"ALI_IOS_utils.requirement",path_pip] # THIS LINE IS WORKING
-                    command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"CrownSegmentation_utils.install_pytorch",path_pip]
-                    print("command : ",command)
-                  
-                    process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command,)) # launch install_pythorch.py with the environnement ali_ios to install pytorch3d on it
-                    process.start()
-                    
-                    while process.is_alive():
-                      slicer.app.processEvents()
-                      current_time = time.time()
-                      gap=current_time-previous_time
-                      if gap>0.3:
-                          previous_time = current_time
-                          elapsed_time = current_time - start_time
-                          self.ui.label_LibsInstallation.setText(f"Installation of librairies into the new environnement. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
-                          
-                  ready = True
-                else :
-                  ready = False
-                  
-              if ready : #check if wsl know the path to Crownsegmentationcli and AREG_IOS. If no it's trying to give it and check again.
-                print("CHECK AREG_IOS ET CROWNSEGMENTATIONCLI")
-                result_pythonpath = self.check_pythonpath_windows(name_env,"CrownSegmentationcli")
-                if not result_pythonpath : 
-                    self.give_pythonpath_windows(name_env)
-                    result_pythonpath = self.check_pythonpath_windows(name_env,"CrownSegmentationcli")
-                    
-                if result_pythonpath:
-                    ready = True
-                    print("WSL know the path to CrownSegmentationcli")
-                else :
-                    ready = False
-                    print("WSL don't know the path to CrownSegmentationcli")
-                    
-                result_pythonpath = self.check_pythonpath_windows(name_env,"AREG_IOS")
-                if not result_pythonpath : 
-                    self.give_pythonpath_windows(name_env)
-                    result_pythonpath = self.check_pythonpath_windows(name_env,"AREG_IOS")
-                    
-                if result_pythonpath:
-                    ready = True
-                    print("WSL know the path to AREG_IOS")
-                else :
-                    ready = False
-                    print("WSL don't know the path to AREG_IOS")
-                  
-                
-
-            # if not self.conda_wsl.condaTestEnv('ali_ios') : # check if the environnement ali_ios exist
-            #     userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the landmarks identification  doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist") # ask the persimission to create it
-            #     if userResponse : #create it in parallele to not blocking slicer
-                
-            #         process = threading.Thread(target=self.creation_env_ali_ios_wsl, args=())
-            #         process.start()
-                    
-            #         start_time = time.time()
-            #         previous_time = start_time
-            #         current_time = start_time
-                    
-            #         self.ui.label_LibsInstallation.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
-
-            #         while process.is_alive():
-            #             slicer.app.processEvents()
-            #             current_time = time.time()
-            #             if current_time - previous_time > 0.3 :
-            #                     previous_time = current_time
-            #                     self.ui.label_LibsInstallation.setText(f"The environnement doesn't exist, creation of the environnement\ntime: : {current_time-start_time:.2f}s")
-
-            #     else :
-            #             self.ui.label_LibsInstallation.setText(f"The environnement doesn't exist, code can't be launch")
-            #             ready = False        
-            return ready
-        
-    # def creation_env_ali_ios_wsl(self):
-    #     '''
-    #     Create the environnement on wsl to run landmarks identification of ios files
-    #     '''
-    #     name_env = "ali_ios"
-    #     self.conda_wsl.condaCreateEnv(name_env,'3.9')
-    #     result_pythonpath = self.check_pythonpath_windows(name_env,"ALI_IOS_utils.requirement")
-    #     print("result_pythonpath : ",result_pythonpath)
-    #     if not result_pythonpath : 
-    #         self.give_pythonpath_windows(name_env)
-    #         # result_pythonpath = self.check_pythonpath_windows(name_env,"ALI_IOS_utils.requirement") # THIS LINE IS WORKING
-    #         result_pythonpath = self.check_pythonpath_windows(name_env,"ALI_IOS_utils.requirement")
-    #         print("result_pythonpath : ",result_pythonpath)
+                    formatted_time = self.update_ui_time(start_time, previous_time)
+                    self.ui.label_LibsInstallation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
             
-    #     if result_pythonpath : 
-    #         conda_exe = self.conda_wsl.getCondaExecutable()
-    #         path_pip = self.conda_wsl.getCondaPath()+f"/envs/{name_env}/bin/pip"
-    #         # command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"ALI_IOS_utils.requirement",path_pip] # THIS LINE IS WORKING
-    #         command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"ALI_IOS_utils.requirement",path_pip]
-    #         print("command : ",command)
+                start_time = time.time()
+                previous_time = start_time
+                formatted_time = self.format_time(0)
+                text = textwrap.dedent(f"""
+                Installation of librairies into the new environnement. 
+                This task may take a few minutes.\ntime: {formatted_time}""").strip()
+                self.ui.label_LibsInstallation.setText(text)
+            else:
+                return False
+        else:
+            self.ui.label_LibsInstallation.setText(f"Ennvironnement already exists")
             
-    #         result = self.conda_wsl.condaRunCommand(command)
         
-    #         print("RESULT OF ALI IOS WSL REQUIREMENT : ",result)
-    
-   
-    def check_import_wsl(self, name_env, file, class_to_import):
-        conda_exe = self.conda_wsl.getCondaExecutable()
-        command = [
-            conda_exe, "run", "-n", name_env, "python", "-c",
-            f"\"from {file} import {class_to_import}; print(\"True\")\""
-        ]
-        print("command:", command)
-        result = self.conda_wsl.condaRunCommand(command)
-        print("result =", result)
-        if "Result:" in result:
-            return True
-        return False
+        ## pytorch3d
+
+
+        self.ui.label_LibsInstallation.setText(f"Checking if pytorch3d is installed")
+        if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed 
+            process = self.logic.install_pytorch3d()
+            start_time = time.time()
+            previous_time = start_time
             
-    def check_pythonpath_windows(self,name_env,file):
-        '''
-        Check is wsl now a specifique path (ex : ALI_IOS_utils.requirement) in a specific environment
-        return : bool
-        '''
-        conda_exe = self.conda_wsl.getCondaExecutable()
-        command = [conda_exe, "run", "-n", name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
-        print("command : ",command)
-        result = self.conda_wsl.condaRunCommand(command)
-        print("result = ",result)
-        if "True" in result :
-            return True
-        return False
-    
-    def give_pythonpath_windows(self,name_env):
-        '''
-        give all the path of slicer to wsl
-        '''
-        paths = slicer.app.moduleManager().factoryManager().searchPaths
-        mnt_paths = []
-        for path in paths :
-            mnt_paths.append(f"\"{self.windows_to_linux_path(path)}\"")
-        pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
-        conda_exe = self.conda_wsl.getCondaExecutable()
-        # print("Conda_exe : ",conda_exe)
-        argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', name_env, pythonpath_arg]
-        print("arguments : ",argument)
-        self.conda_wsl.condaRunCommand(argument)
-        
-    def windows_to_linux_path(self,windows_path):
-        '''
-        convert a windows path to a wsl path
-        '''
-        windows_path = windows_path.strip()
+            while self.logic.process.is_alive():
+                slicer.app.processEvents()
+                formatted_time = self.update_ui_time(start_time, previous_time)
+                text = textwrap.dedent(f"""
+                Installation of pytorch into the new environnement. 
+                This task may take a few minutes.\ntime: {formatted_time}
+                """).strip()
+                self.ui.label_LibsInstallation.setText(text)
+        else:
+            self.ui.label_LibsInstallation.setText(f"pytorch3d is already installed")
+            print("pytorch3d already installed")
 
-        path = windows_path.replace('\\', '/')
-
-        if ':' in path:
-            drive, path_without_drive = path.split(':', 1)
-            path = "/mnt/" + drive.lower() + path_without_drive
-
-        return path
+        self.all_installed = True   
+        return True
 
     def cleanup(self):
         """
@@ -1946,37 +1771,187 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
         ScriptedLoadableModuleLogic.__init__(self)
-
+        self.isCondaSetUp = False
+        self.conda = self.init_conda()
+        self.name_env = "shapeaxi"
         self.cliNode = None
 
-    def process(self, parameters):
-        """
-        Run the processing algorithm.
-        Can be used without GUI widget.
-        :param inputVolume: volume to be thresholded
+    def init_conda(self):
+        # check if CondaSetUp exists
+        try:
+            import CondaSetUp
+        except:
+            return False
+        self.isCondaSetUp = True
+        
+        # set up conda on windows with WSL
+        if platform.system() == "Windows":
+            from CondaSetUp import CondaSetUpCallWsl
+            return CondaSetUpCallWsl()
+        else:
+            from CondaSetUp import CondaSetUpCall
+            return CondaSetUpCall()
+        
+    def run_conda_command(self, target, command):
+        self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
+        self.process.start()
+        
+    def install_shapeaxi(self):
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+        
+    def check_if_pytorch3d(self):
+        conda_exe = self.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import pytorch3d;import pytorch3d.renderer\""]
+        return self.conda.condaRunCommand(command)
+    
+    def install_pytorch3d(self):
+        result_pythonpath = self.check_pythonpath_windows("AREG_Method.install_pytorch")
+        if not result_pythonpath :
+            self.give_pythonpath_windows()
+            result_pythonpath = self.check_pythonpath_windows("AREG_Method.install_pytorch")
+        
+        if result_pythonpath : 
+            conda_exe = self.conda.getCondaExecutable()
+            path_pip = self.conda.getCondaPath()+f"/envs/{self.name_env}/bin/pip"
+            command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"AREG_Method.install_pytorch",path_pip]
 
-        """
+        self.run_conda_command(target=self.conda.condaRunCommand, command=(command,))
+        
+    def setup_cli_command(self):
+        args = self.find_cli_parameters()
+        conda_exe = self.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"AREG_IOS"]
+        for arg in args :
+            command.append("\""+arg+"\"")
 
-        # import time
-        # startTime = time.time()
+        self.run_conda_command(target=self.condaRunCommand, command=(command,))
+        
+    def check_lib_wsl(self)->bool:
+        '''
+        Check if wsl contains the require librairies
+        '''
+        result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
+        output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
+        clean_output1 = output1.replace('\x00', '')
 
-        logging.info("Processing started")
+        result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
+        output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
+        clean_output2 = output2.replace('\x00', '')
 
-        PredictProcess = slicer.modules.aso_ios
+        return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
+    
+    def check_pythonpath_windows(self,file):
+        '''
+        Check if the environment env_name in wsl know the path to a specific file (ex : Crownsegmentationcli.py)
+        return : bool
+        '''
+        conda_exe = self.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
+        result = self.conda.condaRunCommand(command)
+        if "True" in result :
+            return True
+        return False
+    
+    def give_pythonpath_windows(self):
+        '''
+        take the pythonpath of Slicer and give it to the environment name_env in wsl.
+        '''
+        paths = slicer.app.moduleManager().factoryManager().searchPaths
+        mnt_paths = []
+        for path in paths :
+            mnt_paths.append(f"\"{self.windows_to_linux_path(path)}\"")
+        pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
+        conda_exe = self.conda.getCondaExecutable()
+        argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
+        results = self.conda.condaRunCommand(argument)
+        
+    def windows_to_linux_path(self,windows_path):
+        '''
+        convert a windows path to a wsl path
+        '''
+        windows_path = windows_path.strip()
 
-        self.cliNode = slicer.cli.run(PredictProcess, None, parameters)
+        path = windows_path.replace('\\', '/')
 
-        return PredictProcess
+        if ':' in path:
+            drive, path_without_drive = path.split(':', 1)
+            path = "/mnt/" + drive.lower() + path_without_drive
 
-    def iterillimeted(self, iter):
-        out = []
-        if isinstance(iter, dict):
-            iter = list(iter.values())
+        return path
+    
+    def check_cli_script(self):
+        if not self.check_pythonpath_windows("AREG_IOS"): 
+            self.give_pythonpath_windows()
+            results = self.check_pythonpath_windows("AREG_IOS")
+            
+        if not self.check_pythonpath_windows("CrownSegmentationcli"):
+            self.give_pythonpath_windows()
+            results = self.check_pythonpath_windows("CrownSegmentationcli")
+            
+    def condaRunCommand(self, command: list[str]):
+        '''
+        Runs a command in a specified Conda environment, handling different operating systems.
+        
+        copy paste from SlicerConda and change the process line to be able to get the stderr/stdout 
+        and cancel the process without blocking slicer
+        '''
+        path_activate = self.conda.getActivateExecutable()
 
-        for thing in iter:
-            if isinstance(thing, (dict, list, set)):
-                out += self.iterillimeted(thing)
-            else:
-                out.append(thing)
+        if path_activate=="None":
+            return "Path to conda no setup"
 
-        return out
+        if platform.system() == "Windows":
+            command_execute = f"source {path_activate} {self.name_env} &&"
+            for com in command :
+                command_execute = command_execute+ " "+com
+
+            user = self.conda.getUser()
+            command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
+            print("command_to_execute in condaRunCommand : ",command_to_execute)
+
+            self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                                    text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
+                                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
+                                    )
+        else:
+            path_conda_exe = self.conda.getCondaExecutable()
+            command_execute = f"{path_conda_exe} run -n {self.name_env}"
+            for com in command :
+                command_execute = command_execute+ " "+com
+
+            print("command_to_execute in conda run : ",command_execute)
+            self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
+    
+        self.stdout, self.stderr = self.subpro.communicate()
+        
+    # def process(self, parameters):
+    #     """
+    #     Run the processing algorithm.
+    #     Can be used without GUI widget.
+    #     :param inputVolume: volume to be thresholded
+
+    #     """
+
+    #     # import time
+    #     # startTime = time.time()
+
+    #     logging.info("Processing started")
+
+    #     PredictProcess = slicer.modules.aso_ios
+
+    #     self.cliNode = slicer.cli.run(PredictProcess, None, parameters)
+
+    #     return PredictProcess
+
+    # def iterillimeted(self, iter):
+    #     out = []
+    #     if isinstance(iter, dict):
+    #         iter = list(iter.values())
+
+    #     for thing in iter:
+    #         if isinstance(thing, (dict, list, set)):
+    #             out += self.iterillimeted(thing)
+    #         else:
+    #             out.append(thing)
+
+    #     return out
