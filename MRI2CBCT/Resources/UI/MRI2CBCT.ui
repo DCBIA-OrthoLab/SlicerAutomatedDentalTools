@@ -517,6 +517,16 @@
          </widget>
         </item>
         <item>
+         <widget class="QCheckBox" name="checkBoxCenterImage">
+          <property name="text">
+           <string>Center image</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QPushButton" name="pushButtonResample">
           <property name="text">
            <string>Run resample</string>
