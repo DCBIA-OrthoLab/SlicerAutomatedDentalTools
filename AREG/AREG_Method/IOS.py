@@ -25,14 +25,28 @@ class Auto_IOS(Method):
 
         return len(files_T1) - count
 
-    def IsLower(self, list_files):
-        words_lower = ["Lower", "_L", "L_", "Mandibule", "Md"]
-        bool = False
+    def IsLower(self, folder_path_or_file_list):
+        """
+        Detects if the folder or list contains any filenames that suggest lower jaw scans.
+        Accepts either a directory path or a list of filenames.
+        """
+        # Keywords that suggest a lower scan
+        words_lower = ["lower", "_l", "l_", "mandibule", "md"]
+
+        # If a directory is given, search for .vtk files in it
+        if isinstance(folder_path_or_file_list, str) and os.path.isdir(folder_path_or_file_list):
+            list_files = self.search(folder_path_or_file_list, ".vtk")[".vtk"]
+        else:
+            list_files = folder_path_or_file_list  # assume list of files
+
+        # Check if any file suggests a lower jaw
         for file in list_files:
-            name = os.path.basename(file)
-            if True in [word in name for word in words_lower]:
-                bool = True
-        return bool
+            name = os.path.basename(file).lower()
+            if any(word in name for word in words_lower):
+                return True
+
+        return False
+
 
     def TestScan(self, scan_folder_t1: str, scan_folder_t2: str):
         out = ""
@@ -237,7 +251,7 @@ class Auto_IOS(Method):
     def Process(self, **kwargs):
 
         path_tmp = slicer.util.tempDirectory()
-        path_input = os.path.join(path_tmp, "intpu_seg")
+        path_input = os.path.join(path_tmp, "input_seg")
         path_input_T1 = os.path.join(path_input, "T1")
         path_input_T2 = os.path.join(path_input, "T2")
         path_seg = os.path.join(path_tmp, "seg")
@@ -246,36 +260,17 @@ class Auto_IOS(Method):
         path_or = os.path.join(path_tmp, "Or")
         path_or_T1 = os.path.join(path_or, "T1")
         path_or_T2 = os.path.join(path_or, "T2")
-
-        if not os.path.exists(path_seg):
-            os.mkdir(os.path.join(path_seg))
-
-        if not os.path.exists(path_seg_T1):
-            os.mkdir(os.path.join(path_seg_T1))
-
-        if not os.path.exists(path_seg_T2):
-            os.mkdir(os.path.join(path_seg_T2))
-
-        if not os.path.exists(path_or):
-            os.mkdir(path_or)
-
-        if not os.path.exists(path_or_T1):
-            os.mkdir(os.path.join(path_or_T1))
-
-        if not os.path.exists(path_or_T2):
-            os.mkdir(os.path.join(path_or_T2))
-
-        if not os.path.exists(path_input):
-            os.mkdir(path_input)
-
-        if not os.path.exists(path_input_T1):
-            os.mkdir(os.path.join(path_input_T1))
-
-        if not os.path.exists(path_input_T2):
-            os.mkdir(os.path.join(path_input_T2))
-
-        if not os.path.exists(kwargs["folder_output"]):
-            os.mkdir(kwargs["folder_output"])
+        
+        os.makedirs(path_seg, exist_ok=True)
+        os.makedirs(path_seg_T1, exist_ok=True)
+        os.makedirs(path_seg_T2, exist_ok=True)
+        os.makedirs(path_or, exist_ok=True)
+        os.makedirs(path_or_T1, exist_ok=True)
+        os.makedirs(path_or_T2, exist_ok=True)
+        os.makedirs(path_input, exist_ok=True)
+        os.makedirs(path_input_T1, exist_ok=True)
+        os.makedirs(path_input_T2, exist_ok=True)
+        os.makedirs(kwargs["folder_output"], exist_ok=True)
 
         path_error = os.path.join(kwargs["folder_output"], "Error")
 
@@ -311,7 +306,7 @@ class Auto_IOS(Method):
             "fdi": 0,
             "suffix": "Seg",
             "vtk_folder": vtk_folder_T1,
-            "dentalmodelseg_path":dentalmodelseg_path
+            "dentalmodelseg_path": dentalmodelseg_path
         }
 
         surf_T2 = "None"
@@ -337,7 +332,7 @@ class Auto_IOS(Method):
             "fdi": 0,
             "suffix": "Seg",
             "vtk_folder": vtk_folder_T2,
-            "dentalmodelseg_path":dentalmodelseg_path
+            "dentalmodelseg_path": dentalmodelseg_path
         }
         
 

@@ -93,7 +93,7 @@ def PrePreAso(source, target, landmarks):
     landmarks = landmarks.copy()
     left, middle, right = organizeLandmark(landmarks)
 
-    if landmarks == 4:
+    if len(landmarks) == 4:
         meanTeeth = vtkMeanTeeth(
             [int(left), int(middle[0]), int(middle[1]), int(right)],
             property="PredictedID",

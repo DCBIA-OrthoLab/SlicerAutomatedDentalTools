@@ -44,76 +44,31 @@ class DisplayCrownSeg(Display):
                 out = True
 
         return out
-
+    
 
 class DisplayALIIOS(Display):
     def __init__(self, nb_landmark, nb_scan) -> None:
         self.nb_landmark = nb_landmark
         self.nb_scan_total = nb_scan
+        self.pred_step = 0
         super().__init__()
 
     def __call__(self) -> Tuple[float, str]:
-        self.progress += 1
+        self.progress += 0.07
         self.progress_bar = (
             self.progress / (self.nb_landmark * self.nb_scan_total)
         ) * 100
         nb_scan_treat = int(self.progress // self.nb_landmark)
-        self.message = f"Scan : {nb_scan_treat} / {self.nb_scan_total}"
+        self.message = f"Landmarks : {round(self.progress)} / {self.nb_landmark * self.nb_scan_total} | Patient : {nb_scan_treat} / {self.nb_scan_total}"
         return self.progress_bar, self.message
 
     def isProgress(self, **kwds) -> bool:
         out = False
+        if kwds["progress"] == 200:
+            self.pred_step += 1
         if kwds["progress"] == 100 and kwds["updateProgessBar"] == False:
-            out = True
-        return out
-
-
-class DisplayASOIOS(Display):
-    def __init__(self, nb_progress, mode, log_path) -> None:
-        self.nb_progress_total = nb_progress
-        self.mode = mode
-        self.log_path = log_path
-        self.time_log = 0
-        super().__init__()
-
-    def __call__(self, **kwds) -> Tuple[float, str]:
-        self.progress += 1
-        self.progress_bar = self.progress / self.nb_progress_total * 100
-        st = "Scan"
-        if "/" in self.mode:
-            st = "Patient"
-
-        self.message = f"{st} : {self.progress} / {self.nb_progress_total}"
-
-        return self.progress_bar, self.message
-
-    def isProgress(self, **kwds) -> bool:
-        out = False
-        if os.path.isfile(self.log_path):
-            path_time = os.path.getmtime(self.log_path)
-            if path_time != self.time_log:
-                self.time_log = path_time
+            if self.pred_step > 1:
                 out = True
-
-        return out
-
-
-class DisplayASOCBCT(Display):
-    def __init__(self, nb_progress) -> None:
-        self.nb_progress_total = nb_progress
-        self.time_log = 0
-        super().__init__()
-
-    def __call__(self, **kwds) -> Tuple[float, str]:
-        self.progress += 1
-        self.progress_bar = self.progress / self.nb_progress_total * 100
-        self.message = f"Scan : {self.progress} / {self.nb_progress_total}"
-        return self.progress_bar, self.message
-
-    def isProgress(self, **kwds) -> bool:
-        out = False
-        if kwds["progress"] == 200 and kwds["updateProgessBar"] == False:
-            out = True
         return out
 
 
