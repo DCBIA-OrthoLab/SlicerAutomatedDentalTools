@@ -1037,7 +1037,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             print("seg_env : ",check_env)
             
             if check_env:
-                list_libs_IOS =[("tqdm",None,None),('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None)]
+                list_libs_IOS = [("tqdm",None,None),('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None)]
 
                 is_installed = install_function(self,list_libs_IOS)
 
