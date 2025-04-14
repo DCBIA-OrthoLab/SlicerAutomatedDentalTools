@@ -15,49 +15,49 @@ class Auto_IOS(Method):
         super().__init__(widget)
 
     def NumberScan(self, scan_folder_t1: str, scan_folder_t2: str):
-        files_T1 = self.search(scan_folder_t1, ".vtk")[".vtk"]
+        files_T1 = self.search(scan_folder_t1, ".vtk", ".stl")
+        all_files = files_T1[".vtk"] + files_T1[".stl"]
         words_lower = ["Lower", "_L", "L_", "Mandibule", "Md"]
         count = 0
-        for file in files_T1:
+        for file in all_files:
             name = os.path.basename(file)
             if True in [word in name for word in words_lower]:
                 count += 1
 
-        return len(files_T1) - count
+        return len(all_files) - count
 
     def IsLower(self, folder_path_or_file_list):
-        """
-        Detects if the folder or list contains any filenames that suggest lower jaw scans.
-        Accepts either a directory path or a list of filenames.
-        """
-        # Keywords that suggest a lower scan
         words_lower = ["lower", "_l", "l_", "mandibule", "md"]
 
-        # If a directory is given, search for .vtk files in it
         if isinstance(folder_path_or_file_list, str) and os.path.isdir(folder_path_or_file_list):
-            list_files = self.search(folder_path_or_file_list, ".vtk")[".vtk"]
+            list_files = self.search(folder_path_or_file_list, ".vtk", ".stl")
+            all_files = list_files[".vtk"] + list_files[".stl"]
         else:
-            list_files = folder_path_or_file_list  # assume list of files
+            all_files = folder_path_or_file_list
 
-        # Check if any file suggests a lower jaw
-        for file in list_files:
+        for file in all_files:
             name = os.path.basename(file).lower()
             if any(word in name for word in words_lower):
                 return True
 
         return False
 
-
     def TestScan(self, scan_folder_t1: str, scan_folder_t2: str):
         out = ""
+        all_files_t1 = self.search(scan_folder_t1, ".vtk", ".stl")
+        all_files_t2 = self.search(scan_folder_t2, ".vtk", ".stl")
+
+        files_t1 = all_files_t1[".vtk"] + all_files_t1[".stl"]
+        files_t2 = all_files_t2[".vtk"] + all_files_t2[".stl"]
+
         if scan_folder_t1 == "" or scan_folder_t2 == "":
-            out = out + "Please select folder with vtk file \n"
-        if len(super().search(scan_folder_t1, ".vtk")[".vtk"]) != len(
-            super().search(scan_folder_t1, ".vtk")[".vtk"]
-        ):
-            out = out + "Please select T1 folder and T2 with the number of vkt files \n"
-        if len(super().search(scan_folder_t1, ".vtk")[".vtk"]) == 0:
-            out = out + "Please select folder with vkt files \n"
+            out += "Please select folders with .vtk or .stl files\n"
+
+        if len(files_t1) != len(files_t2):
+            out += "T1 and T2 folders must have the same number of surface files\n"
+
+        if len(files_t1) == 0:
+            out += "No .vtk or .stl files found in T1 folder\n"
 
         if out == "":
             out = None
@@ -80,31 +80,22 @@ class Auto_IOS(Method):
 
         return out
     
-    def create_csv(self,input_dir,name_csv):
-        '''
-        create a csv with the complete path of the files in the folder (used for segmentation only)
-        '''
+    def create_csv(self, input_dir, name_csv):
         file_path = os.path.abspath(__file__)
         folder_path = os.path.dirname(file_path)
-        csv_file = os.path.join(folder_path,f"{name_csv}.csv")
+        csv_file = os.path.join(folder_path, f"{name_csv}.csv")
         with open(csv_file, 'w', newline='') as fichier:
             writer = csv.writer(fichier)
-            # Écrire l'en-tête du CSV
             writer.writerow(["surf"])
 
-            # Parcourir le dossier et ses sous-dossiers
             for root, dirs, files in os.walk(input_dir):
                 for file in files:
                     if file.endswith(".vtk") or file.endswith(".stl"):
-                        # Écrire le chemin complet du fichier dans le CSV
-                        if platform.system() != "Windows" :    
+                        if platform.system() != "Windows":
                             writer.writerow([os.path.join(root, file)])
-                        else :
-                            file_path = os.path.join(root, file)
-                            norm_file_path = os.path.normpath(file_path)
+                        else:
+                            norm_file_path = os.path.normpath(os.path.join(root, file))
                             writer.writerow([self.windows_to_linux_path(norm_file_path)])
-
-
         return csv_file
     
     def windows_to_linux_path(self,windows_path):
@@ -216,37 +207,46 @@ class Auto_IOS(Method):
         return out
 
     def __BypassCrownseg__(self, folder, folder_toseg, folder_bypass):
-        files = self.search(folder, ".vtk")[".vtk"]
+        files_vtk = self.search(folder, ".vtk")[".vtk"]
+        files_stl = self.search(folder, ".stl")[".stl"]
+        files = files_vtk + files_stl
         toseg = 0
         for file in files:
-            base_name  = os.path.basename(file)
+            base_name = os.path.basename(file)
             if self.__isSegmented__(file):
                 name, ext = os.path.splitext(base_name)
                 new_name = f"{name}_Seg{ext}"
-                print("new_name : ",new_name)
+                print("new_name : ", new_name)
                 shutil.copy(file, os.path.join(folder_bypass, new_name))
-
             else:
                 shutil.copy(file, os.path.join(folder_toseg, base_name))
                 toseg += 1
-
         return toseg
 
     def __isSegmented__(self, path):
         properties = ["PredictedID", "UniversalID", "Universal_ID"]
-        reader = vtk.vtkPolyDataReader()
+        extension = os.path.splitext(path)[-1].lower()
+
+        if extension == ".vtk":
+            reader = vtk.vtkPolyDataReader()
+        elif extension == ".stl":
+            reader = vtk.vtkSTLReader()
+        else:
+            return False
+
         reader.SetFileName(path)
         reader.Update()
         surf = reader.GetOutput()
-        list_label = [
-            surf.GetPointData().GetArrayName(i)
-            for i in range(surf.GetPointData().GetNumberOfArrays())
-        ]
-        out = False
-        if True in [label in properties for label in list_label]:
-            out = True
 
-        return out
+        if not isinstance(surf, vtk.vtkPolyData):
+            return False
+
+        point_data = surf.GetPointData()
+        if not point_data:
+            return False
+
+        list_label = [point_data.GetArrayName(i) for i in range(point_data.GetNumberOfArrays())]
+        return any(label in properties for label in list_label if label is not None)
 
     def Process(self, **kwargs):
 
