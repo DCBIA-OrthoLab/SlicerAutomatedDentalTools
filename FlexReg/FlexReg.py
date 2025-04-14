@@ -616,7 +616,7 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
 
 
 
-        flybyProcess = slicer.modules.flex_reg_cli
+        flybyProcess = slicer.modules.flexreg_cli
         self.cliNode = slicer.cli.run(flybyProcess,None, parameters)  
         return flybyProcess
 
@@ -1522,10 +1522,7 @@ class WidgetParameter:
             return False
         
         except NoSegmentationSurf as error :
-            if platform.system()!="Windows":
-                sucess_segmentation = self.shapeaxi()
-            else :
-                sucess_segmentation = self.shapeaxi_windows()
+            sucess_segmentation = self.shapeaxi_conda()
             if sucess_segmentation:
                 self.viewScan()
                 # msg_box.hide()
@@ -1547,30 +1544,30 @@ class WidgetParameter:
 
           return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
             
-    def shapeaxi_windows(self):
-        self.conda_wsl = CondaSetUpCallWsl()  
-        wsl = self.conda_wsl.testWslAvailable()
+    def shapeaxi_conda(self):
+        self.conda = CondaSetUpCallWsl() if platform.system() == "Windows" else CondaSetUpCall()
         ready = True
         self.label_time.setHidden(False)
-        self.label_time.setText(f"Checking if wsl is installed, this task may take a moments")
         slicer.app.processEvents()
-        if wsl : # if wsl is install
-            lib = self.check_lib_wsl()
-            if not lib : # if lib required are not install
-                self.label_time.setText(f"Checking if the required librairies are installed, this task may take a moments")
+        if platform.system() == "Windows":
+            self.label_time.setText(f"Checking if wsl is installed, this task may take a moments")
+            if self.conda.testWslAvailable(): # if wsl is install
+                lib = self.check_lib_wsl()
+                if not lib : # if lib required are not install
+                    self.label_time.setText(f"Checking if the required librairies are installed, this task may take a moments")
+                    messageBox = QMessageBox()
+                    text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
+                    ready = False
+                    messageBox.information(None, "Information", text)
+            else :
                 messageBox = QMessageBox()
-                text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
+                text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
                 ready = False
                 messageBox.information(None, "Information", text)
-        else :
-            messageBox = QMessageBox()
-            text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_wsl2.zip\nDownloading may be blocked by Chrome, this is normal, just authorize it."
-            ready = False
-            messageBox.information(None, "Information", text)
         
         if ready :
             self.label_time.setText(f"Checking if miniconda is installed")
-            if "Error" in self.conda_wsl.condaRunCommand([self.conda_wsl.getCondaExecutable(),"--version"]): # if conda is setup
+            if "Error" in self.conda.condaRunCommand([self.conda.getCondaExecutable(),"--version"]): # if conda is setup
                 messageBox = QMessageBox()
                 text = "Code can't be launch. \nConda is not setup in WSL. Please go the extension CondaSetUp in SlicerConda to do it."
                 ready = False
@@ -1579,14 +1576,14 @@ class WidgetParameter:
         if ready :
             self.label_time.setText(f"Checking if environnement exist")
             name_env = "shapeaxi"
-            if not self.conda_wsl.condaTestEnv(name_env) : # check is environnement exist, if not ask user the permission to do it
+            if not self.conda.condaTestEnv(name_env) : # check is environnement exist, if not ask user the permission to do it
                 userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the segmentation doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
                 if userResponse :
                     start_time = time.time()
                     previous_time = start_time
                     self.label_time.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: 0.0s")
                     # name_env = "shapeaxi"
-                    process = threading.Thread(target=self.conda_wsl.condaCreateEnv, args=(name_env,"3.9",["shapeaxi"],)) #run in paralle to not block slicer
+                    process = threading.Thread(target=self.conda.condaCreateEnv, args=(name_env,"3.9",["shapeaxi"],)) #run in paralle to not block slicer
                     process.start()
                     self.label_time.setVisible(True)
                     
@@ -1611,12 +1608,12 @@ class WidgetParameter:
                         result_pythonpath = self.check_pythonpath_windows(name_env,"CrownSegmentation_utils.install_pytorch")
                         
                     if result_pythonpath : 
-                        conda_exe = self.conda_wsl.getCondaExecutable()
-                        path_pip = self.conda_wsl.getCondaPath()+f"/envs/{name_env}/bin/pip"
+                        conda_exe = self.conda.getCondaExecutable()
+                        path_pip = self.conda.getCondaPath()+f"/envs/{name_env}/bin/pip"
                         # command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"ALI_IOS_utils.requirement",path_pip] # THIS LINE IS WORKING
                         command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"CrownSegmentation_utils.install_pytorch",path_pip]
                     
-                        process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command,)) # launch install_pythorch.py with the environnement ali_ios to install pytorch3d on it
+                        process = threading.Thread(target=self.conda.condaRunCommand, args=(command,)) # launch install_pythorch.py with the environnement ali_ios to install pytorch3d on it
                         process.start()
                     
                         while process.is_alive():
@@ -1641,7 +1638,7 @@ class WidgetParameter:
                 
             if result_pythonpath :
                 # Creation path in wsl to dentalmodelseg
-                output_command = self.conda_wsl.condaRunCommand(["which","dentalmodelseg"],"shapeaxi").strip()
+                output_command = self.conda.condaRunCommand(["which","dentalmodelseg"],"shapeaxi").strip()
                 clean_output = re.search(r"Result: (.+)", output_command)
                 dentalmodelseg_path = clean_output.group(1).strip()
                 dentalmodelseg_path_clean = dentalmodelseg_path.replace("\\n","")
@@ -1661,13 +1658,13 @@ class WidgetParameter:
                         dentalmodelseg_path_clean]          #dentalmodelseg_path
         
                 
-                conda_exe = self.conda_wsl.getCondaExecutable()
+                conda_exe = self.conda.getCondaExecutable()
                 command = [conda_exe, "run", "-n", name_env, "python" ,"-m", f"CrownSegmentationcli"]
                 for arg in args :
                     command.append("\""+arg+"\"")
 
                 # running in // to not block Slicer
-                process = threading.Thread(target=self.conda_wsl.condaRunCommand, args=(command,))
+                process = threading.Thread(target=self.conda.condaRunCommand, args=(command,))
                 process.start()
                 self.label_time.setVisible(True)
                 self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: 0.0s")
@@ -1692,9 +1689,9 @@ class WidgetParameter:
         Check if the environment env_name in wsl know the path to a specific file (ex : Crownsegmentationcli.py)
         return : bool
         '''
-        conda_exe = self.conda_wsl.getCondaExecutable()
+        conda_exe = self.conda.getCondaExecutable()
         command = [conda_exe, "run", "-n", name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
-        result = self.conda_wsl.condaRunCommand(command)
+        result = self.conda.condaRunCommand(command)
         if "True" in result :
             return True
         return False
@@ -1709,10 +1706,10 @@ class WidgetParameter:
         for path in paths :
             mnt_paths.append(f"\"{self.windows_to_linux_path(path)}\"")
         pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
-        conda_exe = self.conda_wsl.getCondaExecutable()
+        conda_exe = self.conda.getCondaExecutable()
         # print("Conda_exe : ",conda_exe)
         argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', name_env, pythonpath_arg]
-        self.conda_wsl.condaRunCommand(argument)
+        self.conda.condaRunCommand(argument)
     
 
     def windows_to_linux_path(self,windows_path):
