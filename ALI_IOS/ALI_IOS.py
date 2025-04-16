@@ -65,11 +65,11 @@ def main(args):
     with open(args.log_path, "w") as log_f:
         log_f.truncate(0)
         
-    lm_types = args.lm_type.replace("'", "").replace('"', '').split(",")
-    teeth = [tooth.strip().replace("'", "").replace('"', '') for tooth in args.teeth.split(",")]
+    lm_types = args.lm_type.replace("'", "").replace('"', '').split(" ")
+    teeth = [tooth.strip().replace("'", "").replace('"', '') for tooth in args.teeth.split(" ")]
     
     landmarks_selected = [tooth + lm_type for tooth in teeth for lm_type in lm_types]
-    dic_teeth = TradLabel(args.teeth)
+    dic_teeth = TradLabel(teeth)
 
     # Find available models in folder
     available_models = {}
@@ -90,7 +90,7 @@ def main(args):
 
     for model_id in MODELS_DICT.keys():
         if model_id in available_models:
-            for lmtype in args.lm_type:
+            for lmtype in lm_types:
                 if lmtype in MODELS_DICT[model_id].keys():
                     if model_id not in models_to_use.keys():
                         models_to_use[model_id] = available_models[model_id]
@@ -121,15 +121,6 @@ def main(args):
         total_landmarks += len(jaw_teeth)
     total_landmarks *= len(dic_patients)
     
-    print(f"""<filter-progress>{0}</filter-progress>""")
-    sys.stdout.flush()
-    time.sleep(0.5)
-    print(f"""<filter-progress>{2}</filter-progress>""")
-    sys.stdout.flush()
-    time.sleep(0.5)
-    print(f"""<filter-progress>{0}</filter-progress>""")
-    sys.stdout.flush()
-    time.sleep(0.5)
     
     for patient_id,patient_path in dic_patients.items():
 
@@ -184,7 +175,7 @@ def main(args):
                         net.load_state_dict(torch.load(model, map_location=DEVICE))
                         images_pred = net(inputs)
 
-                        post_pred = AsDiscrete(argmax=True, to_onehot=True, num_classes=4)
+                        post_pred = AsDiscrete(argmax=True, to_onehot=4)
 
                         val_pred = torch.empty((0)).to(DEVICE)
                         for image in images_pred:
@@ -242,10 +233,10 @@ def main(args):
 
                                 group_data[land_name] = {"x": final[0], "y": final[1], "z": final[2]}
 
-                    print(f"""<filter-progress>{1}</filter-progress>""")
-                    sys.stdout.flush()
-                    time.sleep(0.5)
-                    print(f"""<filter-progress>{0}</filter-progress>""")
+                    # print(f"""<filter-progress>{1}</filter-progress>""")
+                    # sys.stdout.flush()
+                    # time.sleep(0.5)
+                    # print(f"""<filter-progress>{0}</filter-progress>""")
 
                 if len(group_data.keys()) > 0:
                     lm_lst = GenControlPoint(group_data, landmarks_selected)
@@ -253,16 +244,6 @@ def main(args):
                     
                     with open(args.log_path, "r+") as log_f:
                         log_f.write(str(1))
-
-    # print(f"""<filter-progress>{0}</filter-progress>""")
-    # sys.stdout.flush()
-    # time.sleep(0.5)
-    # print(f"""<filter-progress>{2}</filter-progress>""")
-    # sys.stdout.flush()
-    # time.sleep(0.5)
-    # print(f"""<filter-progress>{0}</filter-progress>""")
-    # sys.stdout.flush()
-    # time.sleep(0.5)
 
 
 if __name__ == "__main__":

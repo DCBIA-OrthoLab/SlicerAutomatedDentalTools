@@ -23,7 +23,7 @@ def GenPhongRenderer(image_size, blur_radius, faces_per_pixel, device):
     )
 
     # Mask renderer (defined separately in MaskRenderer class)
-    from .mask_renderer import MaskRenderer
+    from ALI_IOS_utils.mask_renderer import MaskRenderer
     mask_renderer = MeshRenderer(
         rasterizer=rasterizer,
         shader=MaskRenderer(device=device, cameras=cameras, lights=lights, blend_params=b)

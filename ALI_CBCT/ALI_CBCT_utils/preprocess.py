@@ -4,7 +4,7 @@ import itk
 import SimpleITK as sitk
 import dicom2nifti
 
-from .io import search
+from ALI_CBCT_utils.io import search
 
 def CorrectHisto(filepath,outpath,min_porcent=0.01,max_porcent = 0.95,i_min=-1500, i_max=4000):
 
