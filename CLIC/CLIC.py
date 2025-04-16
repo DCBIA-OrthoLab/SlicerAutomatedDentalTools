@@ -49,9 +49,9 @@ class CLIC(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "CLIC"
-        self.parent.categories = ["Segmentation"]
+        self.parent.categories = ["Automated Dental Tools"]
         self.parent.dependencies = []
-        self.parent.contributors = ["Enzo Tulissi"]
+        self.parent.contributors = ["Enzo Tulissi(CPE Lyon & UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UoNC)"]
         self.parent.helpText = """This module performs segmentation using a Mask R-CNN model."""
         self.parent.acknowledgementText = "Thanks to the community for support."
 
