@@ -59,7 +59,7 @@ def WriteJson(lm_lst, out_path):
     with open(out_path, 'w', encoding='utf-8') as f:
         json.dump(content, f, indent=4)
 
-def TradLabel(teeth_string):
+def TradLabel(teeth_list):
     mapping = {
         'LL7':18,'LL6':19,'LL5':20,'LL4':21,'LL3':22,'LL2':23,'LL1':24,
         'LR1':25,'LR2':26,'LR3':27,'LR4':28,'LR5':29,'LR6':30,'LR7':31,
@@ -68,8 +68,6 @@ def TradLabel(teeth_string):
     }
     result = {'Lower': [], 'Upper': []}
     
-    cleaned = teeth_string.replace("'", "").replace('"', "")
-    teeth_list = [t.strip() for t in cleaned.split(",")]
     for tooth in teeth_list:
         print(f"Processing tooth: {tooth}")
         if tooth in mapping.keys():

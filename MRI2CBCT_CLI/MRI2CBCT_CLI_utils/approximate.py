@@ -7,11 +7,12 @@ import argparse
 import numpy as np
 import nibabel as nib
 import SimpleITK as sitk
-from .nmi import NMI
 from pathlib import Path
 from torchreg import AffineRegistration
 from sklearn.model_selection import ParameterSampler
-from .approx_utils import get_corresponding_file, downsample, prealign_mri_to_cbct, resample_image, sitk_to_nib, convert_transform_for_slicer
+
+from MRI2CBCT_CLI_utils.nmi import NMI
+from MRI2CBCT_CLI_utils.approx_utils import get_corresponding_file, downsample, prealign_mri_to_cbct, resample_image, sitk_to_nib, convert_transform_for_slicer
 
 
 def approximation(cbct_folder, mri_folder, output_folder):

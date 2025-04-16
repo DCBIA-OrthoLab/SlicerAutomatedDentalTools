@@ -1,7 +1,7 @@
 import numpy as np
-from .util import vtkMeanTeeth
 import vtk
-from .transformation import RotationMatrix, TransformSurf
+from FlexReg_Method.util import vtkMeanTeeth
+from FlexReg_Method.transformation import RotationMatrix, TransformSurf
 
 cross = lambda a,b: np.cross(a,b)
 
@@ -89,19 +89,8 @@ def orientation(source,target,landmarks):
     mean = (mean_target- mean_source)
 
 
-
-    
-
     matrix = np.concatenate((matrix,np.array([mean]).T),axis=1)
     matrix = np.concatenate((matrix,np.array([[0,0,0,1]])),axis=0)
-
-
-    # matrix = np.matmul(matrix,matrix_translation)
-
-
-
-    
-
 
 
     output = vtk.vtkPolyData()

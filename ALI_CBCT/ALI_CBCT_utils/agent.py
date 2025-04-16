@@ -2,7 +2,7 @@ import numpy as np
 import time
 from collections import deque
 
-from .constants import bcolors
+from ALI_CBCT_utils.constants import bcolors
 
 def GetAgentLst(agents_param):
     print("-- Generating agents --")
