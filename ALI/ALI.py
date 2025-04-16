@@ -906,30 +906,34 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.nb_lm = self.ActualMeth.NumberLandmark(self.selected_lm)
     self.onProcessStarted()
     
-    module = self.list_Processes_Parameters[0]["Module"]
-    # /!\ Launch of the first process /!\
-    print("module name : ", module)
-    
-    if module in ["CrownSegmentationcli", "ALI_IOS"]:
-      self.ui.CancelButton.setEnabled(False)
-      if "CrownSegmentationcli" in module:
-        self.run_conda_tool("seg")
-      else:
-        self.run_conda_tool("ali")
-      
-    self.ui.CancelButton.setEnabled(True)
-    self.process = slicer.cli.run(
-      self.list_Processes_Parameters[0]["Process"],
-      None,
-      self.list_Processes_Parameters[0]["Parameter"],
-    )
     self.module_name = self.list_Processes_Parameters[0]["Module"]
     self.displayModule = self.list_Processes_Parameters[0]["Display"]
-    self.processObserver = self.process.AddObserver(
-      "ModifiedEvent", self.onProcessUpdate
-    )
     
-    del self.list_Processes_Parameters[0]
+
+    if "CrownSegmentationcli" in self.module_name:
+      self.ui.CancelButton.setEnabled(False)
+      print("module name : ", self.module_name)
+      self.run_conda_tool("seg")
+      self.module_name = self.list_Processes_Parameters[0]["Module"]
+    if "ALI_IOS" in self.module_name:
+      self.ui.CancelButton.setEnabled(False)
+      print("module name : ", self.module_name)
+      self.run_conda_tool("ali")
+      self.OnEndProcess()
+        
+     
+    else: 
+      self.ui.CancelButton.setEnabled(True)
+      self.process = slicer.cli.run(
+        self.list_Processes_Parameters[0]["Process"],
+        None,
+        self.list_Processes_Parameters[0]["Parameter"],
+      )
+      self.processObserver = self.process.AddObserver(
+        "ModifiedEvent", self.onProcessUpdate
+      )
+    
+      del self.list_Processes_Parameters[0]
     
   def onProcessStarted(self):
     self.ui.label_LibsInstallation.setHidden(True)
@@ -1125,12 +1129,13 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       print("command : ",command)
 
       # running in // to not block Slicer
-      process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
-      process.start()
+      self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+      self.process.start()
+      self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
       self.ui.TimerLabel.setHidden(False)
       self.ui.TimerLabel.setText(f"Time : 0.00s")
       previous_time = self.startTime
-      while process.is_alive():
+      while self.process.is_alive():
         slicer.app.processEvents()
         current_time = time.time()
         gap=current_time-previous_time
@@ -1148,7 +1153,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
       del self.list_Processes_Parameters[0]
     
-    else:
+    elif type == "ali":
       args = self.list_Processes_Parameters[0]["Parameter"]
       print("args : ", args)
       conda_exe = self.logic.conda.getCondaExecutable()
@@ -1163,8 +1168,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       # running in // to not block Slicer
       self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
       self.process.start()
-      self.ui.LabelTimer.setHidden(False)
-      self.ui.LabelTimer.setText(f"time : 0.00s")
+      self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
+      self.ui.TimerLabel.setHidden(False)
+      self.ui.TimerLabel.setText(f"time : 0.00s")
       previous_time = self.startTime
       while self.process.is_alive():
         slicer.app.processEvents()
@@ -1180,7 +1186,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           else:
             timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
             
-          self.ui.LabelTimer.setText(timer)
+          self.ui.TimerLabel.setText(timer)
 
       del self.list_Processes_Parameters[0]
       

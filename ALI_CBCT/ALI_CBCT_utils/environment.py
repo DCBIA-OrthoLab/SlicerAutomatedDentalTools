@@ -5,8 +5,8 @@ import torch
 import SimpleITK as sitk
 from monai.transforms import Compose, AddChannel, BorderPad, ScaleIntensity, SpatialCrop
 
-from .constants import LABELS, LABEL_GROUPS, SCALE_KEYS, DEVICE, bcolors
-from .io import WriteJson, GenControlPoint
+from ALI_CBCT_utils.constants import LABELS, LABEL_GROUPS, SCALE_KEYS, DEVICE, bcolors
+from ALI_CBCT_utils.io import WriteJson, GenControlPoint
 
 class Environment :
     def __init__(

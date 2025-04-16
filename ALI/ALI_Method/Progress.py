@@ -50,11 +50,10 @@ class DisplayALIIOS(Display):
     def __init__(self, nb_landmark, nb_scan) -> None:
         self.nb_landmark = nb_landmark
         self.nb_scan_total = nb_scan
-        self.pred_step = 0
         super().__init__()
 
     def __call__(self) -> Tuple[float, str]:
-        self.progress += 0.07
+        self.progress += 1
         self.progress_bar = (
             self.progress / (self.nb_landmark * self.nb_scan_total)
         ) * 100
@@ -64,11 +63,8 @@ class DisplayALIIOS(Display):
 
     def isProgress(self, **kwds) -> bool:
         out = False
-        if kwds["progress"] == 200:
-            self.pred_step += 1
         if kwds["progress"] == 100 and kwds["updateProgessBar"] == False:
-            if self.pred_step > 1:
-                out = True
+            out = True
         return out
 
 

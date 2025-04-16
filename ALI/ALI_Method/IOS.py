@@ -245,8 +245,8 @@ class Auto_IOS(Method):
         parameter_ali = {
             "input": path_seg,
             "dir_models": kwargs["dir_models"],
-            "lm_type": kwargs["lm_type"].split(" "),
-            "teeth": kwargs["teeth"].split(" "),
+            "lm_type": kwargs["lm_type"],
+            "teeth": kwargs["teeth"],
             "output_dir": kwargs["output_dir"],
             "image_size": "224",
             "blur_radius": "0",
