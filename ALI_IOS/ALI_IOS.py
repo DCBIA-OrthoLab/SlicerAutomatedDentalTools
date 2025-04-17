@@ -31,7 +31,7 @@ def check_platform():
     if platform.system() == 'Windows':
         return "Windows"
     elif platform.system() == 'Linux':
-        if 'Microsoft' in platform.release():
+        if 'microsoft' in platform.release().lower():
             return "WSL"
         else:
             return "Linux"

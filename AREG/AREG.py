@@ -1366,7 +1366,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AREG_IOS"]
             for key, value in args.items():
                 print("key : ",key)
-                if Path(value).is_file() or Path(value).is_dir() :
+                if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
                     value = self.logic.windows_to_linux_path(value)
                 command.append(f"\"{value}\"")
             print("command : ",command)
@@ -1516,7 +1516,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.label_LibsInstallation.setHidden(False)
             self.ui.label_LibsInstallation.setText(f"Checking if wsl is installed, this task may take a moments")
             
-            if self.logic.testWslAvailable():
+            if self.logic.conda.testWslAvailable():
                 self.ui.label_LibsInstallation.setText(f"WSL installed")
                 if not self.logic.check_lib_wsl():
                     self.ui.label_LibsInstallation.setText(f"Checking if the required librairies are installed, this task may take a moments")
@@ -1923,35 +1923,3 @@ class AREGLogic(ScriptedLoadableModuleLogic):
             self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
     
         self.stdout, self.stderr = self.subpro.communicate()
-        
-    # def process(self, parameters):
-    #     """
-    #     Run the processing algorithm.
-    #     Can be used without GUI widget.
-    #     :param inputVolume: volume to be thresholded
-
-    #     """
-
-    #     # import time
-    #     # startTime = time.time()
-
-    #     logging.info("Processing started")
-
-    #     PredictProcess = slicer.modules.aso_ios
-
-    #     self.cliNode = slicer.cli.run(PredictProcess, None, parameters)
-
-    #     return PredictProcess
-
-    # def iterillimeted(self, iter):
-    #     out = []
-    #     if isinstance(iter, dict):
-    #         iter = list(iter.values())
-
-    #     for thing in iter:
-    #         if isinstance(thing, (dict, list, set)):
-    #             out += self.iterillimeted(thing)
-    #         else:
-    #             out.append(thing)
-
-    #     return out

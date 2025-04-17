@@ -63,9 +63,9 @@ class Auto_IOS(Method):
     def TestScan(self, scan_folder: str):
         out = None
         if scan_folder == "":
-            out = "Please select folder with vtk files"
+            out = "Please select folder with vtk or stl files"
         elif self.NumberScan(scan_folder) == 0:
-            out = "Please select folder with vkt files"
+            out = "Please select folder with vkt or stl files"
         return out
 
     def TestModel(self, model_folder: str, lineEditName) -> str:
@@ -189,12 +189,12 @@ class Auto_IOS(Method):
             basename = os.path.basename(file)
             name, extension = os.path.splitext(basename)
             if self.__isSegmented__(file):
-
-                shutil.copy(file, os.path.join(folder_bypass, basename))
+                new_name = f"{name}_Seg{extension}"
+                print("new_name : ",new_name)
+                shutil.copy(file, os.path.join(folder_bypass, new_name))
 
             else:
-                if extension != ".vtk":
-                    # convert file in vtk because croan segmentation take only vtk file
+                if extension != ".vtk" and extension != ".stl":
                     surf = ReadSurf(file)
                     WriteSurf(surf, folder_toseg, file)
                 else:
@@ -205,7 +205,17 @@ class Auto_IOS(Method):
 
     def __isSegmented__(self, path):
         properties = ["PredictedID", "UniversalID", "Universal_ID"]
-        surf = ReadSurf(path)
+        extension = os.path.splitext(path)[-1].lower()
+        if extension == ".stl":
+            reader = vtk.vtkSTLReader()
+        elif extension == ".vtk":
+            reader = vtk.vtkPolyDataReader()
+        else:
+            return False
+        
+        reader.SetFileName(path)
+        reader.Update()
+        surf = reader.GetOutput()
         list_label = [
             surf.GetPointData().GetArrayName(i)
             for i in range(surf.GetPointData().GetNumberOfArrays())
@@ -482,6 +492,23 @@ class Auto_IOS(Method):
 
         return teeth, jaw, occlusion
     
+    def is_wsl(self):
+        return platform.system() == "Linux" and "microsoft" in platform.release().lower()
+    
+    def windows_to_linux_path(self,windows_path):
+        '''
+        convert a windows path to a wsl path
+        '''
+        windows_path = windows_path.strip()
+
+        path = windows_path.replace('\\', '/')
+
+        if ':' in path:
+            drive, path_without_drive = path.split(':', 1)
+            path = "/mnt/" + drive.lower() + path_without_drive
+
+        return path
+    
     def create_csv(self,input_dir,name_csv):
         '''
         create a csv with the complete path of the files in the folder (used for segmentation only)
@@ -499,9 +526,9 @@ class Auto_IOS(Method):
                 for file in files:
                     if file.endswith(".vtk") or file.endswith(".stl"):
                         # Écrire le chemin complet du fichier dans le CSV
-                        if platform.system() != "Windows" :    
+                        if platform.system() != "Windows" and not self.is_wsl():    
                             writer.writerow([os.path.join(root, file)])
-                        else :
+                        else:
                             file_path = os.path.join(root, file)
                             norm_file_path = os.path.normpath(file_path)
                             writer.writerow([self.windows_to_linux_path(norm_file_path)])

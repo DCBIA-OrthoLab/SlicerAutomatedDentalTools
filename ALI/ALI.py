@@ -584,7 +584,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
           nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],[])
       else:
-        nbr_scans = self.CountFileWithExtention(scan_folder, [".vtk"],[])
+        nbr_scans = self.CountFileWithExtention(scan_folder, [".vtk", ".stl"],[])
 
       if nbr_scans == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
@@ -1159,9 +1159,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       conda_exe = self.logic.conda.getCondaExecutable()
       command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"ALI_IOS"]
       for key, value in args.items():
-        print("key : ",key)
-        if Path(value).is_file() or Path(value).is_dir() :
-          value = self.logic.windows_to_linux_path(value)
+        print("key : ", key)
+        if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+            value = self.logic.windows_to_linux_path(value)
         command.append(f"\"{value}\"")
       print("command : ",command)
 
@@ -1205,7 +1205,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.ui.label_LibsInstallation.setHidden(False)
       self.ui.label_LibsInstallation.setText(f"Checking if wsl is installed, this task may take a moments")
       
-      if self.logic.testWslAvailable():
+      if self.logic.conda.testWslAvailable():
         self.ui.label_LibsInstallation.setText(f"WSL installed")
         if not self.logic.check_lib_wsl():
           self.ui.label_LibsInstallation.setText(f"Checking if the required librairies are installed, this task may take a moments")

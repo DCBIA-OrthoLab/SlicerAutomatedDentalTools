@@ -80,6 +80,9 @@ class Auto_IOS(Method):
 
         return out
     
+    def is_wsl(self):
+        return platform.system() == "Linux" and "microsoft" in platform.release().lower()
+    
     def create_csv(self, input_dir, name_csv):
         file_path = os.path.abspath(__file__)
         folder_path = os.path.dirname(file_path)
@@ -91,7 +94,7 @@ class Auto_IOS(Method):
             for root, dirs, files in os.walk(input_dir):
                 for file in files:
                     if file.endswith(".vtk") or file.endswith(".stl"):
-                        if platform.system() != "Windows":
+                        if platform.system() != "Windows" and not self.is_wsl():
                             writer.writerow([os.path.join(root, file)])
                         else:
                             norm_file_path = os.path.normpath(os.path.join(root, file))
