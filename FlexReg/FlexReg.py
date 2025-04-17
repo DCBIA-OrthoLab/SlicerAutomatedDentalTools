@@ -1067,7 +1067,6 @@ class WidgetParameter:
                 slicer.app.applicationName + "Downloads",
             )
         self.logic = FlexRegLogic()
-        self.booting = True
 
     def setup(self,layout,title):
         '''
@@ -1468,10 +1467,12 @@ class WidgetParameter:
         '''
         Display the scan in the correct window. If scan already loaded, delete it and display the new one
         '''
-        if self.booting:
+        
+        # Install the libraries only if it's the first time
+        if not FlexRegBootManager.booted:
             check_env = self.onCheckRequirements()
             is_installed = False
-
+            print(check_env)
             if check_env:
                 if platform.system() == "Windows":
                     list_libs_windows = [('numpy',"<2.0",None),('itk',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
@@ -1485,7 +1486,8 @@ class WidgetParameter:
                 qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
                 return
             
-            self.booting = False
+            FlexRegBootManager.booted = True
+            self.label_time.setHidden(True)
         
         
         if self.surf == None :
@@ -1704,7 +1706,6 @@ class WidgetParameter:
           return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
             
     def shapeaxi_conda(self):
-        self.label_time.setHidden(False)
         slicer.app.processEvents()
         
         output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
@@ -1770,6 +1771,8 @@ class WidgetParameter:
               self.label_time.setText(f"{message}\ntime: {elapsed_time:.1f}s")
               
     def onCheckRequirements(self):
+        self.label_time.setHidden(False)
+        
         if not self.logic.isCondaSetUp:
             messageBox = qt.QMessageBox()
             text = textwrap.dedent("""
@@ -1780,8 +1783,12 @@ class WidgetParameter:
             return False
         
         if platform.system() == "Windows":
+            self.label_time.setText(f"Checking if wsl is installed, this task may take a moments")
+            
             if self.logic.conda.testWslAvailable():
+                self.label_time.setText(f"WSL installed")
                 if not self.logic.check_lib_wsl():
+                    self.label_time.setText(f"Checking if the required librairies are installed, this task may take a moments")
                     messageBox = qt.QMessageBox()
                     text = textwrap.dedent("""
                         WSL doesn't have all the necessary libraries, please download the installer 
@@ -1806,6 +1813,7 @@ class WidgetParameter:
         ## MiniConda
         
         
+        self.label_time.setText(f"Checking if miniconda is installed")
         if "Error" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
             messageBox = qt.QMessageBox()
             text = textwrap.dedent("""
@@ -1818,28 +1826,38 @@ class WidgetParameter:
         ## shapeAXI
 
 
+        self.label_time.setText(f"Checking if environnement exists")
         if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
             userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
             if userResponse :
                 start_time = time.time()
                 previous_time = start_time
                 formatted_time = self.format_time(0)
+                self.label_time.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
                 process = self.logic.install_shapeaxi()
                 
                 while self.logic.process.is_alive():
                     slicer.app.processEvents()
+                    formatted_time = self.update_ui_time(start_time, previous_time)
+                    self.label_time.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
             
                 start_time = time.time()
                 previous_time = start_time
                 formatted_time = self.format_time(0)
+                text = textwrap.dedent(f"""
+                Installation of librairies into the new environnement. 
+                This task may take a few minutes.\ntime: {formatted_time}""").strip()
+                self.label_time.setText(text)
             else:
                 return False
-        else:(f"Ennvironnement already exists")
+        else:
+            self.label_time.setText(f"Ennvironnement already exists")
             
         
         ## pytorch3d
 
 
+        self.label_time.setText(f"Checking if pytorch3d is installed")
         if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed 
             process = self.logic.install_pytorch3d()
             start_time = time.time()
@@ -1847,11 +1865,34 @@ class WidgetParameter:
             
             while self.logic.process.is_alive():
                 slicer.app.processEvents()
+                formatted_time = self.update_ui_time(start_time, previous_time)
+                text = textwrap.dedent(f"""
+                Installation of pytorch into the new environnement. 
+                This task may take a few minutes.\ntime: {formatted_time}
+                """).strip()
+                self.label_time.setText(text)
         else:
+            self.label_time.setText(f"pytorch3d is already installed")
             print("pytorch3d already installed")
 
         self.all_installed = True   
         return True
+            
+    def format_time(self,seconds):
+        """ Convert seconds to H:M:S format. """
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        return f"{hours:02}:{minutes:02}:{secs:02}"
+    
+    def update_ui_time(self, start_time, previous_time):
+        current_time = time.time()
+        gap=current_time-previous_time
+        if gap>0.3:
+            previous_time = current_time
+            self.elapsed_time = current_time - start_time
+            formatted_time = self.format_time(self.elapsed_time)
+            return formatted_time
 
     def shapeaxi(self):
         '''
@@ -2351,3 +2392,6 @@ class WidgetParameter:
 class DummyFile(io.IOBase):
         def close(self):
             pass
+        
+class FlexRegBootManager:
+    booted = False
