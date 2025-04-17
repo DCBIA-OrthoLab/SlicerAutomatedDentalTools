@@ -423,7 +423,9 @@ class Auto_CBCT(Semi_CBCT):
                 "Process": AMASSSProcess,
                 "Parameter": parameter_amasss_mask_t1,
                 "Module": "AMASSS_CBCT - Masks Generation for T1",
-                "Display": DisplayAMASSS(nb_scan, len(full_reg_struct)),
+                "Display": DisplayAMASSS(
+                    nb_scan, len(full_reg_struct)
+                ),
             },
         ]
 
@@ -447,7 +449,9 @@ class Auto_CBCT(Semi_CBCT):
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso,
                 "Module": "Centering T2",
-                "Display": DisplayASOCBCT(nb_scan),
+                "Display": DisplayASOCBCT(
+                    nb_scan
+                ),
             }
         )
 
@@ -474,7 +478,9 @@ class Auto_CBCT(Semi_CBCT):
                     "Process": AREGProcess,
                     "Parameter": parameter_areg_cbct,
                     "Module": "AREG_CBCT for {}".format(full_reg_struct[i]),
-                    "Display": DisplayAREGCBCT(nb_scan),
+                    "Display": DisplayAREGCBCT(
+                        nb_scan
+                    ),
                 }
             )
 
@@ -519,13 +525,16 @@ class Auto_CBCT(Semi_CBCT):
             "SegmentInput": False,
             "DCMInput": False,
         }
+        
         if len(full_seg_struct) > 0:
             list_process.append(
                 {
                     "Process": AMASSSProcess,
                     "Parameter": parameter_amasss_seg_t1,
                     "Module": "AMASSS_CBCT Segmentation for T1",
-                    "Display": DisplayAMASSS(nb_scan, len(full_seg_struct)),
+                    "Display": DisplayAMASSS(
+                        nb_scan, len(full_seg_struct)
+                    ),
                 }
             )
             list_process.append(
@@ -642,6 +651,14 @@ class Or_Auto_CBCT(Semi_CBCT):
             out = None
 
         return out
+    
+    def format_lm_string(self, lm_str: str) -> str:
+        """
+        Convert a space-separated string of landmarks into a string format like:
+        "'Ba', 'LPo', 'N', 'RPo', 'S', 'LOr', 'ROr'"
+        """
+        lms = lm_str.strip().split()
+        return ", ".join(f"'{lm}'" for lm in lms)
 
     def Process(self, **kwargs):
 
@@ -672,11 +689,14 @@ class Or_Auto_CBCT(Semi_CBCT):
         parameter_ali = {
             "input": temp_folder,
             "dir_models": kwargs["model_folder_3"],
-            "landmarks": list_lmrk_str,
-            "save_in_folder": False,
+            "lm_type": self.format_lm_string(list_lmrk_str),
             "output_dir": temp_folder,
             "temp_fold": self.tempALI_folder,
             "DCMInput": False,
+            "spacing": "[1,0.3]",
+            "speed_per_scale": "[1,1]",
+            "agent_FOV": "[64,64,64]",
+            "spawn_radius": "10",
         }
         ALIProcess = slicer.modules.ali_cbct
 

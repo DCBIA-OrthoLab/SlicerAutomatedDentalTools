@@ -1,8 +1,8 @@
 import os
 import vtk
 import numpy as np
-from .utils import ReadSurf, LoadJsonLandmarks, VTKMatrixToNumpy
-from .transformation import ApplyTransform
+from FlexReg_Method.utils import ReadSurf, LoadJsonLandmarks, VTKMatrixToNumpy
+from FlexReg_Method.transformation import ApplyTransform
 
 
 class ICP:
@@ -60,8 +60,6 @@ class ICP:
         matrix_final = np.identity(4)
 
         source_icp = self.copy(source_int)
-        # print(f'source {source_icp}')
-        # print(f'target {target_int}')
         for icp in self.list_icp:
             source_icp, matrix = icp(source_icp, target_int)
             matrix_final = matrix_final @ matrix

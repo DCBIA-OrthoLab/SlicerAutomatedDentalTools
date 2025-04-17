@@ -7,13 +7,13 @@
     <x>0</x>
     <y>0</y>
     <width>570</width>
-    <height>978</height>
+    <height>1124</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text">
       <string>Inputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_16">
@@ -126,11 +126,11 @@
              </widget>
             </item>
             <item>
-             <widget class="qMRMLNodeComboBox" name="MRMLNodeComboBox_file" native="true">
+             <widget class="qMRMLNodeComboBox" name="MRMLNodeComboBox_file">
               <property name="enabled">
                <bool>true</bool>
               </property>
-              <property name="nodeTypes" stdset="0">
+              <property name="nodeTypes">
                <stringlist>
                 <string>vtkMRMLVolumeNode</string>
                </stringlist>
@@ -227,8 +227,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton">
+     <property name="text">
       <string>Segmentation selection</string>
      </property>
      <layout class="QFormLayout" name="formLayout_1">
@@ -266,8 +266,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton">
+     <property name="text">
       <string>Outputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -428,8 +428,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton">
+     <property name="text">
       <string>Advanced</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -728,8 +728,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton">
+     <property name="text">
       <string>Compute</string>
      </property>
      <layout class="QFormLayout" name="formLayout_1">

@@ -2,7 +2,7 @@ import torch
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 import numpy as np
 
-from .propagation import Dilation
+from FlexReg_Method.propagation import Dilation
 
 def drawPatch(outlinePoints: list,polydata,mid,index:int):
     step = 0.2
@@ -20,11 +20,6 @@ def drawPatch(outlinePoints: list,polydata,mid,index:int):
 
     P = P.view(Pshape[0]*Pshape[1],3)
 
-    # if polydata.GetPointData().HasArray("Butterfly"):
-    #     butterfly_array = polydata.GetPointData().GetArray("Butterfly")
-    #     V_label=torch.tensor(vtk_to_numpy(butterfly_array)).to(torch.float32).cuda()
-    # else :
-    #     V_label = torch.zeros((V.shape[0])).cuda()
          
 
     V = torch.tensor(vtk_to_numpy(polydata.GetPoints().GetData())).to(torch.float32).cuda()
