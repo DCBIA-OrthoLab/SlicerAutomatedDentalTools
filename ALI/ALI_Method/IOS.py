@@ -16,11 +16,12 @@ class Auto_IOS(Method):
 
     def NumberScan(self, scan_folder: str):
         if os.path.isfile(scan_folder):
-            if scan_folder.endswith(".vtk"):
+            if scan_folder.endswith(".vtk") or scan_folder.endswith(".stl"):
                 return 1
         elif os.path.isdir(scan_folder):
-            files = self.search(scan_folder, ".vtk")[".vtk"]
-            return len(files)
+            files = self.search(scan_folder, ".vtk", ".stl")
+            all_files = files[".vtk"] + files[".stl"]
+            return len(all_files)
         return 0
     
     def NumberLandmark(self, landmarks: str):
@@ -36,11 +37,13 @@ class Auto_IOS(Method):
             out = out + "Please select folder with vtk file \n"
             
         if os.path.isfile(scan_folder):
-            if not scan_folder.endswith(".vtk"):
+            if not scan_folder.endswith(".vtk") or not scan_folder.endswith(".stl"):
                 out = out + "Please select a vtk file \n"
         elif os.path.isdir(scan_folder):
-            if len(super().search(scan_folder, ".vtk")[".vtk"]) == 0:
-                out = out + "Please select folder with vkt files \n"
+            files = self.search(scan_folder, ".vtk", ".stl")
+            all_files = files[".vtk"] + files[".stl"]
+            if len(all_files) == 0:
+                out = out + "Please select folder with vkt or stl files \n"
 
         if out == "":
             out = None
@@ -52,6 +55,9 @@ class Auto_IOS(Method):
             out = "Please five folder with one .pht file"
         
         return out
+    
+    def is_wsl(self):
+        return platform.system() == "Linux" and "microsoft" in platform.release().lower()
     
     def create_csv(self,input_dir,name_csv):
         '''
@@ -70,7 +76,7 @@ class Auto_IOS(Method):
                 for file in files:
                     if file.endswith(".vtk") or file.endswith(".stl"):
                         # Écrire le chemin complet du fichier dans le CSV
-                        if platform.system() != "Windows" :    
+                        if platform.system() != "Windows" and not self.is_wsl():    
                             writer.writerow([os.path.join(root, file)])
                         else :
                             file_path = os.path.join(root, file)
@@ -166,9 +172,10 @@ class Auto_IOS(Method):
         return out
 
     def __BypassCrownseg__(self, folder, folder_toseg, folder_bypass):
-        files = self.search(folder, ".vtk")[".vtk"]
+        files = self.search(folder, ".vtk", ".stl")
+        all_files = files[".vtk"] + files[".stl"]
         toseg = 0
-        for file in files:
+        for file in all_files:
             base_name  = os.path.basename(file)
             if self.__isSegmented__(file):
                 name, ext = os.path.splitext(base_name)
@@ -184,7 +191,14 @@ class Auto_IOS(Method):
 
     def __isSegmented__(self, path):
         properties = ["PredictedID", "UniversalID", "Universal_ID"]
-        reader = vtk.vtkPolyDataReader()
+        extension = os.path.splitext(path)[-1].lower()
+        if extension == ".stl":
+            reader = vtk.vtkSTLReader()
+        elif extension == ".vtk":
+            reader = vtk.vtkPolyDataReader()
+        else:
+            return False
+        
         reader.SetFileName(path)
         reader.Update()
         surf = reader.GetOutput()
@@ -196,6 +210,7 @@ class Auto_IOS(Method):
         if True in [label in properties for label in list_label]:
             out = True
 
+        print("segmented", out, path)
         return out
 
     def Process(self, **kwargs):
