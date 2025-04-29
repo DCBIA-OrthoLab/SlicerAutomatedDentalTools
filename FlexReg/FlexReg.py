@@ -660,9 +660,9 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         self.run_conda_command(target=self.condaRunCommand, command=(command,))
         
     def check_lib_wsl(self) -> bool:
-        # Ubuntu versions under 24.04
+        # Ubuntu versions < 24.04
         required_libs_old = ["libxrender1", "libgl1-mesa-glx"]
-        # Ubuntu versions after 24.04
+        # Ubuntu versions >= 24.04
         required_libs_new = ["libxrender1", "libgl1", "libglx-mesa0"]
 
 
