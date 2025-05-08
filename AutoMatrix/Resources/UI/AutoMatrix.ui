@@ -12,8 +12,8 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text">
       <string>Inputs</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
@@ -98,8 +98,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton">
+     <property name="text">
       <string>Output</string>
      </property>
      <layout class="QFormLayout" name="formLayout_21">
@@ -139,9 +139,13 @@
            </widget>
           </item>
           <item row="1" column="2">
-           <widget class="QPushButton" name="ButtonAutoFill">
+           <widget class="QCheckBox" name="checkBoxMatrixName">
             <property name="text">
-             <string>AutoFill</string>
+             <string>Add matrix name
+after the suffix</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
             </property>
            </widget>
           </item>

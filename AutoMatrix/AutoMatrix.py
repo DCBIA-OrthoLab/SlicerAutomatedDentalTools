@@ -157,7 +157,6 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SearchButtonMatrix.connect("clicked(bool)",partial(self.openFinder,"Matrix"))
         self.ui.SearchButtonPatient.connect("clicked(bool)",partial(self.openFinder,"Patient"))
         self.ui.SearchButtonOutput.connect("clicked(bool)",partial(self.openFinder,"Output"))
-        self.ui.ButtonAutoFill.connect("clicked(bool)",self.Autofill)
         self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
         self.ui.CheckBoxMirror.connect('clicked(bool)', self.Mirror)
 
@@ -175,7 +174,6 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ComboBoxPatient.setCurrentIndex(1)
         self.ui.ComboBoxMatrix.setCurrentIndex(1)
 
-        self.ui.ButtonAutoFill.setVisible(False)
 
         self.timer_should_continue = True
 
@@ -186,6 +184,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.ComboBoxMatrix.setCurrentIndex(0)
             self.ui.ComboBoxMatrix.setEnabled(False)
             self.ui.LineEditSuffix.setText("_mir")
+            self.ui.checkBoxMatrixName.setChecked(False)
             self.DownloadMirror()
 
         else :
@@ -275,22 +274,6 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 else os.path.join(name),
             )
         self.ui.LineEditMatrix.setText(os.path.join(scan_folder,"Mirror/Matrix_mirror.tfm"))
-
-    def Autofill(self):
-
-        #SEG 47
-        self.ui.LineEditPatient.setText("/home/luciacev/Desktop/AutoMatrix/AutoMatrixRelease4/r_2_patient_files")
-
-
-        #MATRIX 47
-        self.ui.LineEditMatrix.setText("/home/luciacev/Desktop/AutoMatrix/AutoMatrixRelease4/r_2_matrix")
-
-
-
-        self.ui.LineEditOutput.setText("/home/luciacev/Desktop/AutoMatrix/output")
-
-        self.ui.ComboBoxPatient.setCurrentIndex(1)
-        self.ui.ComboBoxMatrix.setCurrentIndex(1)
 
 
     def openFinder(self,nom : str,_) -> None :
@@ -514,7 +497,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                         print(f"Warning: Reference image not found at {reference_path}")
                                         continue
                                     output_image = self.ResampleImage(sitk.ReadImage(scan), tfm_sitk, reference_image)
-                                    sitk.WriteImage(output_image, outpath.split(extension_scan)[0] + self.ui.LineEditSuffix.text + extension_scan)
+                                    sitk.WriteImage(output_image, outpath.split(extension_scan)[0] + self.ui.LineEditSuffix.text + (matrix_name if self.ui.checkBoxMatrixName.isChecked() else "") + extension_scan)
                                     continue
                                 elif isinstance(tfm_sitk, sitk.AffineTransform):
                                     mat = np.eye(4)
@@ -544,7 +527,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                 for i, mark in enumerate(landmark_data['markups'][0]['controlPoints']):
                                     mark['position'] = transformed_points[i].tolist()
 
-                                out_file = outpath.split(".mrk.json")[0] + self.ui.LineEditSuffix.text + ".mrk.json"
+                                out_file = outpath.split(".mrk.json")[0] + self.ui.LineEditSuffix.text + (matrix_name if self.ui.checkBoxMatrixName.isChecked() else "") + ".mrk.json"
                                 with open(out_file, 'w') as f:
                                     json.dump(landmark_data, f, indent=2)
 
@@ -560,7 +543,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             sys.stdin = DummyFile()
                             process = threading.Thread(
                                 target=self.saveOutput,
-                                args=(model, outpath.split(extension_scan)[0] + self.ui.LineEditSuffix.text + extension_scan,)
+                                args=(model, outpath.split(extension_scan)[0] + self.ui.LineEditSuffix.text + (matrix_name if self.ui.checkBoxMatrixName.isChecked() else "") + extension_scan,)
                             )
                             process.start()
 
@@ -659,12 +642,6 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.progressBar.setVisible(False)
             self.ui.label_info.setVisible(False)
             self.ui.label_time.setVisible(False)
-            self.ui.LineEditOutput.setText("")
-            self.ui.LineEditPatient.setText("")
-            if not self.ui.CheckBoxMirror.isChecked():
-                self.ui.LineEditMatrix.setText("")
-            self.ui.ComboBoxMatrix.setCurrentIndex(1)
-            self.ui.ComboBoxPatient.setCurrentIndex(1)
 
 
 
