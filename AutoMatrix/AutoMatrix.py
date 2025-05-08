@@ -185,6 +185,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.LineEditMatrix.setEnabled(False)
             self.ui.ComboBoxMatrix.setCurrentIndex(0)
             self.ui.ComboBoxMatrix.setEnabled(False)
+            self.ui.LineEditSuffix.setText("_mir")
             self.DownloadMirror()
 
         else :
@@ -192,6 +193,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.LineEditMatrix.setEnabled(True)
             self.ui.ComboBoxMatrix.setCurrentIndex(1)
             self.ui.ComboBoxMatrix.setEnabled(True)
+            self.ui.LineEditSuffix.setText("_apply")
             self.ui.LineEditMatrix.setText("")
 
 
@@ -450,39 +452,29 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 
-    def ProcessVolume(self)-> None:
+    def ProcessVolume(self) -> None:
         '''
-        Function that will apply the matrix to all the files
+        Function that will apply the matrix to all the files, including landmark files (.mrk.json)
         '''
-        patients,nb_files = GetPatients(self.ui.LineEditPatient.text,self.ui.LineEditMatrix.text)
+        import json  # Required to handle .mrk.json
+        patients, nb_files = GetPatients(self.ui.LineEditPatient.text, self.ui.LineEditMatrix.text)
 
-
-        if nb_files!=0:
-            for key,values in patients.items():
+        if nb_files != 0:
+            for key, values in patients.items():
                 for scan in values['scan']:
-                    # try loaders until one succeeds. if none succeed, log and skip the case.
-                    for loader in (
-                            slicer.util.loadModel,
-                            slicer.util.loadVolume,
-                    ):
-                        try:
-                            model = loader(scan)
-                            break
-                        except RuntimeError:
-                            # slicer.util.load* give no finer indication of failure; so catch all.
-                            pass
-                    else:
-                        print("Can't load the scan:", scan)
-                        continue
+                    model = None
+                    is_landmark = scan.endswith(".mrk.json")
 
-                    # sanity check on the result type
-                    assert isinstance(model, (
-                        slicer.vtkMRMLModelNode,
-                        slicer.vtkMRMLVolumeNode,
-                    ))
+                    # Try to load as model/volume first
+                    if not is_landmark:
+                        for loader in (slicer.util.loadModel, slicer.util.loadVolume):
+                            try:
+                                model = loader(scan)
+                                break
+                            except RuntimeError:
+                                pass
 
                     extension_scan = ''.join(Path(scan).suffixes)
-                    print("extension_scan : ",extension_scan)
                     self.UpdateTime()
 
                     for matrix in values['matrix']:
@@ -491,60 +483,85 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             fname, extension_mat = os.path.splitext(os.path.basename(matrix))
 
                             if Path(self.ui.LineEditPatient.text).is_dir():
-                                    outpath = scan.replace(self.ui.LineEditPatient.text,self.ui.LineEditOutput.text)
-                            else :
-                                outpath = scan.replace(os.path.dirname(self.ui.LineEditPatient.text),self.ui.LineEditOutput.text)
+                                outpath = scan.replace(self.ui.LineEditPatient.text, self.ui.LineEditOutput.text)
+                            else:
+                                outpath = scan.replace(os.path.dirname(self.ui.LineEditPatient.text), self.ui.LineEditOutput.text)
 
-                            try :
+                            try:
                                 if Path(self.ui.LineEditMatrix.text).is_dir():
                                     matrix_name = os.path.basename(matrix).split(extension_mat)[0].split(key)[1]
-                                else :
+                                else:
                                     matrix_name = os.path.basename(matrix).split(extension_mat)[0]
-                            except :
+                            except:
                                 print('Impossible to extract the name of the matrix')
-                                matrix_name="matrix_name"
-                                
-                            print("matrix_name : ",matrix_name)
+                                matrix_name = "matrix_name"
 
                             if not os.path.exists(os.path.dirname(outpath)):
                                 os.makedirs(os.path.dirname(outpath))
-                                
-                            if extension_mat==".npy":
-                                array = np.load(matrix)
-                                tform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
-                                tform.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(array))
 
-                            elif extension_mat==".tfm":
-                                tform = sitk.ReadTransform(matrix)
-                                if isinstance(tform, sitk.CompositeTransform):
-                                    reference_path = matrix.replace("_transform.tfm",".nii.gz")
+                            # Load the transform
+                            if extension_mat == ".npy":
+                                array = np.load(matrix)
+                                tform_matrix = array
+                                tform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
+                                tform_node.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(array))
+                            elif extension_mat == ".tfm":
+                                tfm_sitk = sitk.ReadTransform(matrix)
+                                if isinstance(tfm_sitk, sitk.CompositeTransform):
+                                    reference_path = matrix.replace("_transform.tfm", ".nii.gz")
                                     reference_image = sitk.ReadImage(reference_path)
-                                    
                                     if not reference_image:
                                         print(f"Warning: Reference image not found at {reference_path}")
                                         continue
-                                    
-                                    print(f"Resampling using reference image: {reference_path}")
-                                    output_image = self.ResampleImage(sitk.ReadImage(scan), tform, reference_image)
-                                    
-                                    sitk.WriteImage(output_image, outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan)
+                                    output_image = self.ResampleImage(sitk.ReadImage(scan), tfm_sitk, reference_image)
+                                    sitk.WriteImage(output_image, outpath.split(extension_scan)[0] + self.ui.LineEditSuffix.text + extension_scan)
                                     continue
-
+                                elif isinstance(tfm_sitk, sitk.AffineTransform):
+                                    mat = np.eye(4)
+                                    mat[:3, :3] = np.array(tfm_sitk.GetMatrix()).reshape(3, 3)
+                                    mat[:3, 3] = np.array(tfm_sitk.GetTranslation())
+                                    tform_matrix = mat
+                                    tform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
+                                    tform_node.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(tform_matrix))
                                 else:
-                                    tform = slicer.util.loadTransform(matrix)
-                                                    
-                            else :
-                                tform = slicer.util.loadTransform(matrix)
+                                    tform_node = slicer.util.loadTransform(matrix)
+                                    tform_matrix = slicer.util.arrayFromTransformMatrix(tform_node.GetMatrixTransformToParent())
+                            else:
+                                tform_node = slicer.util.loadTransform(matrix)
+                                tform_matrix = slicer.util.arrayFromTransformMatrix(tform_node.GetMatrixTransformToParent())
 
+                            # Handle landmarks
+                            if is_landmark:
+                                with open(scan, 'r') as f:
+                                    landmark_data = json.load(f)
+
+                                landmark_points = []
+                                for mark in landmark_data['markups'][0]['controlPoints']:
+                                    landmark_points.append([mark['position'][0], mark['position'][1], mark['position'][2], 1.0])
+                                landmark_array = np.array(landmark_points).T  # shape: (4, N)
+
+                                transformed_points = (tform_matrix @ landmark_array).T[:, :3]
+                                for i, mark in enumerate(landmark_data['markups'][0]['controlPoints']):
+                                    mark['position'] = transformed_points[i].tolist()
+
+                                out_file = outpath.split(".mrk.json")[0] + self.ui.LineEditSuffix.text + ".mrk.json"
+                                with open(out_file, 'w') as f:
+                                    json.dump(landmark_data, f, indent=2)
+
+                                continue  # skip rest of loop
+                            
+                            # Regular model/volume
                             self.UpdateTime()
-                            model.SetAndObserveTransformNodeID(tform.GetID())
+                            model.SetAndObserveTransformNodeID(tform_node.GetID())
                             model.HardenTransform()
                             self.UpdateTime()
 
                             original_stdin = sys.stdin
                             sys.stdin = DummyFile()
-
-                            process =  threading.Thread(target=self.saveOutput, args=(model,outpath.split(extension_scan)[0]+self.ui.LineEditSuffix.text+matrix_name+extension_scan,))
+                            process = threading.Thread(
+                                target=self.saveOutput,
+                                args=(model, outpath.split(extension_scan)[0] + self.ui.LineEditSuffix.text + extension_scan,)
+                            )
                             process.start()
 
                             while process.is_alive():
@@ -554,15 +571,16 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             sys.stdin = original_stdin
                             self.UpdateTime()
 
-
-
                         except Exception as e:
-                            print("An issue occured : ",e)
+                            print("An issue occurred:", e)
                             pass
+
                     self.UpdateProgressBar(False)
                     self.UpdateTime()
-                    slicer.mrmlScene.RemoveNode(model)
+                    if model:
+                        slicer.mrmlScene.RemoveNode(model)
                     self.UpdateTime()
+
 
 
     def ResampleImage(self, image, transform, reference_image, is_segmentation=False):
@@ -656,7 +674,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Initialize the variables and progress bar.
         """
         if os.path.isdir(self.ui.LineEditPatient.text):
-            self.nbFiles = len(self.dico_patient[".vtk"]) + len(self.dico_patient['.vtp']) + len(self.dico_patient['.stl']) + len(self.dico_patient['.off']) + len(self.dico_patient['.obj']) + len(self.dico_patient['.nii.gz']) + len(self.dico_patient['nrrd'])
+            self.nbFiles = len(self.dico_patient[".vtk"]) + len(self.dico_patient['.vtp']) + len(self.dico_patient['.stl']) + len(self.dico_patient['.off']) + len(self.dico_patient['.obj']) + len(self.dico_patient['.nii.gz']) + len(self.dico_patient['.nrrd']) + len(self.dico_patient['.mrk.json'])
         else:
             self.nbFiles = 1
         self.ui.progressBar.setValue(0)
@@ -685,10 +703,10 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 warning_text = warning_text + "Enter file patient" + "\n"
         else :
             if self.ui.ComboBoxPatient.currentIndex==1 : #folder option
-                self.dico_patient=search(self.ui.LineEditPatient.text,'.vtk','.vtp','.stl','.off','.obj','.nii.gz','nrrd')
-                if len(self.dico_patient['.vtk'])==0 and len(self.dico_patient['.vtp']) and len(self.dico_patient['.stl']) and len(self.dico_patient['.off']) and len(self.dico_patient['.obj']) and len(self.dico_patient['.nii.gz']) and len(self.dico_patient['.nrrd']) :
+                self.dico_patient=search(self.ui.LineEditPatient.text,'.vtk','.vtp','.stl','.off','.obj','.nii.gz','.nrrd','.mrk.json')
+                if len(self.dico_patient['.vtk'])==0 and len(self.dico_patient['.vtp']) and len(self.dico_patient['.stl']) and len(self.dico_patient['.off']) and len(self.dico_patient['.obj']) and len(self.dico_patient['.nii.gz']) and len(self.dico_patient['.nrrd']) and len(self.dico_patient['.mrk.json']):
                     warning_text = warning_text + "Folder empty or wrong type of file patient" + "\n"
-                    warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz / .nrrd" + "\n"
+                    warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz / .nrrd / .mrk.json" + "\n"
             elif self.ui.ComboBoxPatient.currentIndex==0 : # file option
                 fname, extension = os.path.splitext(os.path.basename(self.ui.LineEditPatient.text))
                 try :
@@ -696,9 +714,9 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     extension = extension2+extension
                 except :
                     print("not a .nii.gz")
-                if extension != ".vtk" and extension != ".vtp" and extension != ".stl" and extension != ".off" and extension != ".obj" and extension != ".nii.gz" and extension != ".nrrd":
+                if extension != ".vtk" and extension != ".vtp" and extension != ".stl" and extension != ".off" and extension != ".obj" and extension != ".nii.gz" and extension != ".nrrd" and extension != ".mrk.json":
                         warning_text = warning_text + "Wrong type of file patient detected" + "\n"
-                        warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz / .nrrd" + "\n"
+                        warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz / .nrrd / .mrk.json" + "\n"
 
 
         if self.ui.LineEditMatrix.text=="":
