@@ -136,7 +136,6 @@ def GetPatients(file_path:str,matrix_path:str):
                     patients[matrix_pat]['matrix'].append(matrix)
 
         else :
-            print(matrix_path)
             for key in patients.keys() :
                 patients[key]['matrix'].append(matrix_path)
 

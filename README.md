@@ -365,14 +365,17 @@ The AutoMatrix module provides a user interface to apply a matrix to a folder fo
 ## How the module works?
 
 ### How to name the new files and where they are stored
-The module will create the same path you had in the input folder in the output folder.
-The new files will be named by the name of the original file + the suffix you entered + the name of the matrix files that were applied.
+The module will replicate the folder structure from your input folder inside the output folder.
+Each new file will keep the original filename, followed by the suffix you specify.
+If the "Add matrix name to filename" option is enabled, the matrix filename will also be appended.
 
-Example :
-Input file : patient1_T1_MA.nii.gz
-Input matrix : patient1_matrix1.tfm
-Input suffix : _apply
-Output file : patient1_T1_MA_apply_matrix1.nii.gz
+Example:  
+| With matrix name | Without matrix name |
+| ----------- | ----------- |
+| **Input file:** patient1_T1_MA.nii.gz | **Input file:** patient1_T1_MA.nii.gz
+| **Input matrix:** patient1_matrix1.tfm | **Input matrix:** Matrix_mirror.tfm
+| **Suffix:** _apply | **Suffix:** _mir
+| **Output file:** patient1_T1_MA_apply_matrix1.nii.gz | **Output file:** patient1_T1_MA_mir.nii.gz
 
 
 ### 4 Modes available
@@ -399,6 +402,7 @@ There is button "Mirror" that will automatically download the matrix mirror and 
 | ----------- | ----------- | ----------- |
 | **CBCT** | .nii.gz | .tfm .npy .h5 .mat .txt |
 | **IOS** | .vtk .stl .vtp .off .obj | .tfm .npy .h5 .mat .txt|
+| **Landmark** | .mrk.json | .tfm .npy .h5 .mat .txt|
 
 ## MRI2CBCT Module
 
