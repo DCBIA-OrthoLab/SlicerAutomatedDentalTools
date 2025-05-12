@@ -14,7 +14,7 @@ def hasInternetConnection(timeOut_sec=2) -> bool:
     """
     import requests
     try:
-        requests.get("https://www.google.com", timeout=timeOut_sec)
+        requests.get("https://www.github.com", timeout=timeOut_sec)
         return True
     except requests.ConnectionError:
         return False
