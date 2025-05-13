@@ -21,19 +21,39 @@ def resample_fn(img, args):
         - linear (bool): Flag to use linear interpolation.
         - spacing (tuple): Desired spacing of the output image (optional).
         - origin (tuple): Desired origin of the output image (optional).
+        - norm (int): Flag to normalize the image (optional).
     '''
     output_size = args['size'] 
     fit_spacing = args['fit_spacing']
     iso_spacing = args['iso_spacing']
     pixel_dimension = args['pixel_dimension']
     center = args['center']
+    normalize = args['norm']
 
     if args['linear']:
         InterpolatorType = sitk.sitkLinear
     else:
         InterpolatorType = sitk.sitkNearestNeighbor
 
-    
+    if (normalize):
+        img_array = sitk.GetArrayFromImage(img).astype(np.float32)
+        min_val = np.min(img_array)
+        max_val = np.max(img_array)
+        if max_val - min_val > 0:
+            img_array = (img_array - min_val) / (max_val - min_val)
+        else:
+            img_array[:] = 0.0  # Constant image
+
+        # Preserve spacing, origin, direction
+        spacing_original = img.GetSpacing()
+        origin_original = img.GetOrigin()
+        direction_original = img.GetDirection()
+
+        img = sitk.GetImageFromArray(img_array)
+        img.SetSpacing(spacing_original)
+        img.SetOrigin(origin_original)
+        img.SetDirection(direction_original)
+        print("→ Normalization applied")
 
     spacing = img.GetSpacing()  
     size = img.GetSize()
@@ -196,7 +216,7 @@ def resample_images(args):
     
 def run_resample(img=None, dir=None, csv=None, csv_column='image', csv_root_path=None, csv_use_spc=0,
                      csv_column_spcx=None, csv_column_spcy=None, csv_column_spcz=None, ref=None, size=None,
-                     img_spacing=None, spacing=None, origin=None, linear=False, center=0, fit_spacing=False,
+                     img_spacing=None, spacing=None, origin=None, linear=False, center=0, norm=0, fit_spacing=False,
                      iso_spacing=False, image_dimension=2, pixel_dimension=1, rgb=False, ow=1, out="./out.nrrd",
                      out_ext=None):
     '''
@@ -219,6 +239,7 @@ def run_resample(img=None, dir=None, csv=None, csv_column='image', csv_root_path
         'origin': origin,                # Origin of the output image
         'linear': linear,                # Flag to use linear interpolation
         'center': center,                # Flag to center the image
+        'norm': norm,                # Flag to normalize the image
         'fit_spacing': fit_spacing,      # Flag to fit spacing
         'iso_spacing': iso_spacing,      # Flag for isotropic spacing
         'image_dimension': image_dimension,  # Dimension of the image
@@ -254,6 +275,7 @@ if __name__ == "__main__":
     transform_group.add_argument('--origin', nargs="+", type=float, default=None, help='Output origin')
     transform_group.add_argument('--linear', type=bool, help='Use linear interpolation.', default=False)
     transform_group.add_argument('--center', type=int, help='Center the image in the space', default=0)
+    transform_group.add_argument('--norm', type=int, help='Normalize the image', default=0)
     transform_group.add_argument('--fit_spacing', type=bool, help='Fit spacing to output', default=False)
     transform_group.add_argument('--iso_spacing', type=bool, help='Same spacing for resampled output', default=False)
 

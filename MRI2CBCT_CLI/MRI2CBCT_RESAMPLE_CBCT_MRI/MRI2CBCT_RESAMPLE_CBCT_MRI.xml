@@ -85,5 +85,13 @@
       <description>Center the image</description>
     </string>
 
+    <string>
+      <name>norm</name>
+      <label>norm</label>
+      <index>10</index>
+      <description>Normalize the image</description>
+    </string>
+
+
   </parameters>
 </executable>
