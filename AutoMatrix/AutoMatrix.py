@@ -508,10 +508,14 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                     tform_node.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(tform_matrix))
                                 else:
                                     tform_node = slicer.util.loadTransform(matrix)
-                                    tform_matrix = slicer.util.arrayFromTransformMatrix(tform_node.GetMatrixTransformToParent())
+                                    matrix = vtk.vtkMatrix4x4()
+                                    tform_node.GetMatrixTransformToParent(matrix)
+                                    tform_matrix = slicer.util.arrayFromTransformMatrix(tform_node)
                             else:
                                 tform_node = slicer.util.loadTransform(matrix)
-                                tform_matrix = slicer.util.arrayFromTransformMatrix(tform_node.GetMatrixTransformToParent())
+                                matrix = vtk.vtkMatrix4x4()
+                                tform_node.GetMatrixTransformToParent(matrix)
+                                tform_matrix = slicer.util.arrayFromTransformMatrix(tform_node)
 
                             # Handle landmarks
                             if is_landmark:
