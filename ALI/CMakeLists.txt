@@ -4,12 +4,12 @@ set(MODULE_NAME ALI)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  ALI_METHOD/__init__.py
-  ALI_METHOD/CBCT.py
-  ALI_METHOD/IOS.py
-  ALI_METHOD/Method.py
-  ALI_METHOD/Progress.py
-  ALI_METHOD/install_pytorch.py
+  ALI_Method/__init__.py
+  ALI_Method/CBCT.py
+  ALI_Method/IOS.py
+  ALI_Method/Method.py
+  ALI_Method/Progress.py
+  ALI_Method/install_pytorch.py
 )
 
 set(MODULE_PYTHON_RESOURCES
