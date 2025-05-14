@@ -100,7 +100,6 @@ class Preprocess_CBCT_MRI(Method):
             "resample_size": kwargs["resample_size"],
             "spacing": kwargs["spacing"],
             "center": kwargs["center"],
-            "norm": kwargs["norm"],
         }
         
         list_process.append(
