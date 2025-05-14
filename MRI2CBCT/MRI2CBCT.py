@@ -1177,7 +1177,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "resample_size": self.get_resample_values()[0],
             "spacing": self.get_resample_values()[1],
             "center": str(self.ui.checkBoxCenterImage.isChecked()),
-            "norm": str(self.ui.checkBoxNorm.isChecked()),
         }
             
         ok,mess = self.preprocess_mri_cbct.TestProcess(**param) 

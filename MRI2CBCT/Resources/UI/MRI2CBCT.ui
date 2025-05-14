@@ -578,16 +578,6 @@
           </property>
          </widget>
         </item>
-        <item>
-         <widget class="QCheckBox" name="checkBoxNorm">
-          <property name="text">
-           <string>Normalize</string>
-          </property>
-          <property name="checked">
-           <bool>true</bool>
-          </property>
-         </widget>
-        </item>
        </layout>
       </item>
       <item row="18" column="1">
