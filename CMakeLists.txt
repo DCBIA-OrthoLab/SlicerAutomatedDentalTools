@@ -38,6 +38,7 @@ add_subdirectory(FlexReg)
 add_subdirectory(FlexReg_CLI)
 add_subdirectory(MRI2CBCT)
 add_subdirectory(MRI2CBCT_CLI)
+add_subdirectory(BATCHDENTALSEG)
 add_subdirectory(DOCShapeAXI)
 add_subdirectory(DOCShapeAXI_CLI)
 ## NEXT_MODULE
