@@ -41,7 +41,7 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [MRI2CBCT](#mri2cbct-module) | Contains the steps to perform the registration of MRI and CBCT scans.|
 | [FlexReg](#flex-reg) | Registration of IOS patient per patient with customizable patch creation. |
 | [DOCShapeAXI](#doc-shapeaxi) | Automatic classification of 3D Shape. DOC-ShapeAXI is an acronym for Dental Oral and Craniofacial Shape Analysis eXplainability and Interpretability. |
-| [BatchDentalSegmentator](#BatchDentalSegmentator) | DentalSegmentator in batch for mixed or permanent dentition |
+| [BatchDentalSegmentator](#BatchDentalSeg) | DentalSegmentator in batch for mixed or permanent dentition |
 | [CLI-C](#CLI-C-module) |Classification and Localization of Impacted Canines |
 
 
@@ -74,8 +74,8 @@ Additionally, the following modules are implemented as python scripted command-l
 | [MRI2CBCT_REG](MRI2CBCT_REG) | Perform registration of MRI-CBCT scans |
 | [FlexReg_CLI](FlexReg_CLI) | Perform creation of patch and registration on IOS scans. |
 | [DOCShapeAXI](DOCShapeAXI_CLI) | Perform automatic classification of 3D Shape. |
-| [BatchDentalSegmentator](BatchDentalSegmentator) | DentalSegmentator in batch for mixed or permanent dentition |
-| [CLI-C](CLI-C) |Classification and Localization of Impacted Canines |
+| [BatchDentalSegmentator](BATCHDENTALSEG) | DentalSegmentator in batch for mixed or permanent dentition |
+| [CLI-C](CLIC) |Classification and Localization of Impacted Canines |
 
 
 ## Requirements
@@ -667,13 +667,6 @@ The module checks and automatically installs these dependencies upon first usage
 
 
 
-## Contributing
-
-
-
-We welcome contributions! Please open issues or pull requests for enhancements and bug fixes.
-
----
 # Acknowledgements
 
 Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin (UoM), Enzo Tulissi (UoM), Alban Gaydamour (UoM), Jeanne Claret (UoM),Gaelle Leroux (UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
