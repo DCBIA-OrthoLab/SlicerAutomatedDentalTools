@@ -300,8 +300,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.vtk_output_folder = None
 
 
-    self.model_folder = None # path to the folder containing the models
-
     self.use_small_FOV = False # use high resolution model
 
 
@@ -642,8 +640,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         qt.QMessageBox.warning(self.parent, 'Warning', 'No models found in the selected folder\nPlease select a folder containing .pth files\nYou can download the latest models with\n  "Download latest models" button')
 
       else:
-        self.model_folder = model_folder
-        self.ui.lineEditModelPath.setText(self.model_folder)
+        self.ui.lineEditModelPath.setText(model_folder)
         self.model_ready = True
 
   def onDownloadButton(self):
@@ -763,7 +760,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     ready = True
 
     if self.folder_as_input:
-      if self.input_path == None:
+      if self.ui.lineEditScanPath.text == "":
         qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a scan folder')
         ready = False
     else:
@@ -771,18 +768,12 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         qt.QMessageBox.warning(self.parent, 'Warning', 'Please select an input file')
         ready = False
 
-    if self.model_folder == None and not self.isSegmentInput:
+    if self.ui.lineEditModelPath.text == "" and not self.isSegmentInput:
       qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a model folder')
       ready = False
 
     if not ready:
       return
-
-    # scan_folder = self.ui.lineEditScanPath.text
-    # self.input_path =  '/home/luciacev/Desktop/REQUESTED_SEG/BAMP_SegPred'
-    # self.input_path = '/home/luciacev/Desktop/TEST_SEG/TEMP/AnaJ_Scan_T1_OR.gipl.gz'
-    # self.model_folder = '/home/luciacev/Desktop/Maxime_Gillot/Data/AMASSS/FULL_FACE_MODELS'
-
 
     selected_seg = []
     for struct in self.seg_tab.GetSelected():
@@ -797,12 +788,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     param = {}
 
-    param["inputVolume"] = self.input_path
+    param["inputVolume"] = self.ui.lineEditScanPath.text if self.folder_as_input else self.input_path
 
-    if self.isSegmentInput:
-      self.model_folder = '/'
-
-    param["modelDirectory"] = self.model_folder
+    param["modelDirectory"] = '/' if self.isSegmentInput else self.ui.lineEditModelPath.text
     param["highDefinition"] = self.use_small_FOV
 
     param["skullStructure"] = " ".join(selected_seg)

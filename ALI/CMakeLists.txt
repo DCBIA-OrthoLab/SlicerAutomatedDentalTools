@@ -4,9 +4,12 @@ set(MODULE_NAME ALI)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  ALI_IOS_utils/__init__.py
-  ALI_IOS_utils/ALI_IOS_WSL.py
-  ALI_IOS_utils/requirement.py
+  ALI_Method/__init__.py
+  ALI_Method/CBCT.py
+  ALI_Method/IOS.py
+  ALI_Method/Method.py
+  ALI_Method/Progress.py
+  ALI_Method/install_pytorch.py
 )
 
 set(MODULE_PYTHON_RESOURCES
@@ -29,5 +32,5 @@ if (BUILD_TESTING)
   # Note that the test will also be available at runtime.
   slicer_add_python_unittest(SCRIPT ${MODULE_NAME}.py)
 
-
+  add_subdirectory(Testing)
 endif ()

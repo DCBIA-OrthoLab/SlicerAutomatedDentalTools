@@ -29,10 +29,12 @@ class CBCT(Method):
                 patient = (
                     file_name.split("_scan")[0]
                     .split("_Scanreg")[0]
+                    .split("_Scan")[0]
+                    .split("_Or")[0]
+                    .split("_OR")[0]
                     .split("_lm")[0]
                     .split("_T1")[0]
                     .split("_T2")[0]
-                    .split("_Scan")[0]
                     .split(".")[0]
                 )
 
@@ -390,12 +392,19 @@ class Semi_CBCT(CBCT):
         print("parameter", parameter_semi_aso)
 
         OrientProcess = slicer.modules.semi_aso_cbct
-        list_process = [{"Process": OrientProcess, "Parameter": parameter_semi_aso}]
-
+        
         nb_scan = self.NumberScan(kwargs["input_folder"])
-        display = {"SEMI_ASO_CBCT": DisplayASOCBCT(nb_scan)}
+        list_process = [
+            {
+                "Process": OrientProcess,
+                "Parameter": parameter_semi_aso,
+                "Module": "SEMI_ASO_CBCT",
+                "Display": DisplayASOCBCT(
+                    nb_scan
+                ),
+            },]
 
-        return list_process, display
+        return list_process
 
 
 class Auto_CBCT(CBCT):
@@ -460,6 +469,14 @@ class Auto_CBCT(CBCT):
             out = {**available, **not_available}
 
         return out
+    
+    def format_lm_string(self, lm_str: str) -> str:
+        """
+        Convert a space-separated string of landmarks into a string format like:
+        "'Ba', 'LPo', 'N', 'RPo', 'S', 'LOr', 'ROr'"
+        """
+        lms = lm_str.strip().split()
+        return ", ".join(f"'{lm}'" for lm in lms)
 
     def Process(self, **kwargs):
 
@@ -467,82 +484,90 @@ class Auto_CBCT(CBCT):
         temp_folder = slicer.util.tempDirectory()
         time.sleep(0.01)
         tempPREASO_folder = slicer.util.tempDirectory()
-        parameter_pre_aso = {
-            "input": kwargs["input_folder"],
-            "output_folder": temp_folder,  # kwargs['input_folder'],
-            "model_folder": kwargs["model_folder_segor"],
-            "SmallFOV": kwargs["smallFOV"],
-            "temp_folder": tempPREASO_folder,
-            "DCMInput": kwargs["isDCMInput"],
-        }
-
-        PreOrientProcess = slicer.modules.pre_aso_cbct
-
-        list_lmrk_str = self.CheckboxisChecked(kwargs["dic_checkbox"], in_str=True)
-        nb_landmark = len(list_lmrk_str.split(" "))
-
-        print("PRE_ASO param:", parameter_pre_aso)
-        print()
-
+        
         # ALI CBCT
         documentsLocation = qt.QStandardPaths.DocumentsLocation
         documents = qt.QStandardPaths.writableLocation(documentsLocation)
         tempALI_folder = os.path.join(
             documents, slicer.app.applicationName + "_temp_ALI"
         )
-
+        
+        list_lmrk_str = self.CheckboxisChecked(kwargs["dic_checkbox"], in_str=True)
+        nb_landmark = len(list_lmrk_str.split(" "))
+        
+        parameter_pre_aso = {
+            "input": kwargs["input_folder"],
+            "output_folder": temp_folder,
+            "model_folder": kwargs["model_folder_segor"],
+            "SmallFOV": kwargs["smallFOV"],
+            "temp_folder": tempPREASO_folder,
+            "DCMInput": kwargs["isDCMInput"],
+        }
+        
         parameter_ali = {
             "input": temp_folder,
             "dir_models": kwargs["model_folder_ali"],
-            "landmarks": list_lmrk_str,
-            "save_in_folder": False,
+            "lm_type": self.format_lm_string(list_lmrk_str),
             "output_dir": temp_folder,
             "temp_fold": tempALI_folder,
             "DCMInput": False,
+            "spacing": "[1,0.3]",
+            "speed_per_scale": "[1,1]",
+            "agent_FOV": "[64,64,64]",
+            "spawn_radius": "10",
         }
-        ALIProcess = slicer.modules.ali_cbct
-
-        print("ALI param:", parameter_ali)
-        print()
-        # SEMI ASO CBCT
-
+        
         parameter_semi_aso = {
-            "input": temp_folder,  # kwargs['input_folder'],
+            "input": temp_folder,
             "gold_folder": kwargs["gold_folder"],
             "output_folder": kwargs["folder_output"],
             "add_inname": kwargs["add_in_namefile"],
             "list_landmark": list_lmrk_str,
         }
-        OrientProcess = slicer.modules.semi_aso_cbct
-
-        print("SEMI_ASO param:", parameter_semi_aso)
-
-        list_process = [
-            {
-                "Process": PreOrientProcess,
-                "Parameter": parameter_pre_aso,
-                "Name": "PRE_ASO_CBCT",
-            },
-            {"Process": ALIProcess, "Parameter": parameter_ali, "Name": "ALI_CBCT"},
-            {
-                "Process": OrientProcess,
-                "Parameter": parameter_semi_aso,
-                "Name": "SEMI_ASO_CBCT",
-            },
-        ]
-
+        
         nb_scan = (
             self.NumberScan(kwargs["input_folder"])
             if not kwargs["isDCMInput"]
             else self.NumberScanDCM(kwargs["input_folder"])
         )
 
-        print("nb_scan", nb_scan)
+        print('-' * 70)
+        print("parameter PRE_ASO : ", parameter_pre_aso)
+        print('-' * 70)
+        print("parameter ALI : ", parameter_ali)
+        print('-' * 70)
+        print("parameter SEMI_ASO : ", parameter_semi_aso)
+        print('-' * 70)
+        
+        PreOrientProcess = slicer.modules.pre_aso_cbct
+        ALIProcess = slicer.modules.ali_cbct
+        OrientProcess = slicer.modules.semi_aso_cbct
+        
+        list_process = [
+            {
+                "Process": PreOrientProcess,
+                "Parameter": parameter_pre_aso,
+                "Module": "PRE_ASO_CBCT",
+                "Display": DisplayASOCBCT(
+                    nb_scan
+                ),
+            },
+            {
+                "Process": ALIProcess,
+                "Parameter": parameter_ali,
+                "Module": "ALI_CBCT",
+                "Display": DisplayALICBCT(
+                    nb_landmark, nb_scan
+                ),
+            },
+            {
+                "Process": OrientProcess,
+                "Parameter": parameter_semi_aso,
+                "Module": "SEMI_ASO_CBCT",
+                "Display": DisplayASOCBCT(
+                    nb_scan
+                ),
+            },
+        ]
 
-        display = {
-            "ALI_CBCT": DisplayALICBCT(nb_landmark, nb_scan),
-            "SEMI_ASO_CBCT": DisplayASOCBCT(nb_scan),
-            "PRE_ASO_CBCT": DisplayASOCBCT(nb_scan),
-        }
-
-        return list_process, display
+        return list_process

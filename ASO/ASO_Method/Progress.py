@@ -130,7 +130,7 @@ class DisplayALICBCT(Display):
             self.progress / (self.nb_landmark * self.nb_scan_total)
         ) * 100
         nb_scan_treat = int(self.progress // self.nb_landmark)
-        self.message = f"Scan : {nb_scan_treat} / {self.nb_scan_total}"
+        self.message = f"Landmarks : {round(self.progress)} / {self.nb_landmark * self.nb_scan_total} | Patient : {nb_scan_treat} / {self.nb_scan_total}"
         return self.progress_bar, self.message
 
     def isProgress(self, **kwds) -> bool:

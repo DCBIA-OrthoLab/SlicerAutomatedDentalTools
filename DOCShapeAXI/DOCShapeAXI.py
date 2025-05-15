@@ -657,19 +657,21 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
 
     self.run_conda_command(target=self.condaRunCommand, command=(command,))
 
-  def check_lib_wsl(self)->bool:
-    '''
-    Check if wsl contains the require librairies
-    '''
-    result1 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libxrender1\"", capture_output=True, text=True)
-    output1 = result1.stdout.encode('utf-16-le').decode('utf-8')
-    clean_output1 = output1.replace('\x00', '')
+  def check_lib_wsl(self) -> bool:
+    # Ubuntu versions < 24.04
+    required_libs_old = ["libxrender1", "libgl1-mesa-glx"]
+    # Ubuntu versions >= 24.04
+    required_libs_new = ["libxrender1", "libgl1", "libglx-mesa0"]
 
-    result2 = subprocess.run("wsl -- bash -c \"dpkg -l | grep libgl1-mesa-glx\"", capture_output=True, text=True)
-    output2 = result2.stdout.encode('utf-16-le').decode('utf-8')
-    clean_output2 = output2.replace('\x00', '')
 
-    return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
+    all_installed = lambda libs: all(
+        subprocess.run(
+            f"wsl -- bash -c \"dpkg -l | grep {lib}\"", capture_output=True, text=True
+        ).stdout.encode("utf-16-le").decode("utf-8").replace("\x00", "").find(lib) >= 0
+        for lib in libs
+    )
+
+    return all_installed(required_libs_old) or all_installed(required_libs_new)
 
   def check_pythonpath_windows(self,file):
       '''

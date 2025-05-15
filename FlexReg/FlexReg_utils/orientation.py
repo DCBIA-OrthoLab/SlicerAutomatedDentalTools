@@ -1,6 +1,6 @@
 import numpy as np
-from .util import vtkMeanTeeth
 import vtk
+from FlexReg_utils.util import vtkMeanTeeth
 from FlexReg_utils.transform import RotationMatrix, TransformSurf
 
 cross = lambda a,b: np.cross(a,b)
