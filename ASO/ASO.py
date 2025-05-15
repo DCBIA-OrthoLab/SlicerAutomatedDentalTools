@@ -1,4 +1,4 @@
-import os, sys, time, logging, zipfile, urllib.request, shutil, glob
+import os, sys, re, time, logging, zipfile, urllib.request, shutil, glob
 import vtk, qt, slicer
 from qt import (
     QWidget,
@@ -19,6 +19,9 @@ import pkg_resources
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin,pip_install
 from functools import partial
+import subprocess
+import threading
+import textwrap
 import platform
 
 from ASO_Method.IOS import Auto_IOS, Semi_IOS
@@ -37,7 +40,7 @@ def check_lib_installed(lib_name, required_version=None):
 
 # import csv
     
-def install_function():
+def install_function(self):
     libs = [('itk', None), ('torch', None), ('monai', '0.7.0'),('pytorch_lightning',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2')]
     libs_to_install = []
     for lib, version in libs:
@@ -51,6 +54,7 @@ def install_function():
         user_choice = slicer.util.confirmYesNoDisplay(message)
 
         if user_choice:
+            self.ui.label_LibsInstallation.setVisible(True)
             for lib, version in libs_to_install:
                 lib_version = f'{lib}=={version}' if version else lib
                 pip_install(lib_version)
@@ -319,12 +323,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ActualMeth = Method
         self.ActualMeth = self.MethodDic["Auto_CBCT"]
         self.type = "CBCT"
+        self.display = Display
         self.nb_scan = 0
         self.startprocess = 0
         self.patient_process = 0
         self.dicchckbox = {}
         self.dicchckbox2 = {}
-        self.display = Display
         self.isDCMInput = False
         """
         exemple dic = {'teeth'=['A,....],'Type'=['O',...]}
@@ -480,10 +484,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.label_7.setVisible(True)
                 self.ui.lineEditModelSegOr.setVisible(True)
                 self.ui.ButtonSearchModelSegOr.setVisible(True)
+                self.ui.label_CBCTInputType.setVisible(False)
             else:
                 self.ui.label_7.setVisible(False)
                 self.ui.lineEditModelSegOr.setVisible(False)
                 self.ui.ButtonSearchModelSegOr.setVisible(False)
+                self.ui.label_CBCTInputType.setVisible(True)
 
     def SwitchType(self):
         """Function to change the UI and the Method in ASO depending on the selected type (Semi CBCT, Fully CBCT...)"""
@@ -494,6 +500,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ActualMeth = self.MethodDic["Semi_CBCT"]
             self.ui.CbCBCTInputType.setVisible(True)
             self.ui.stackedWidget.setCurrentIndex(0)
+            self.ui.label_LibsInstallation.setVisible(False)
             self.type = "CBCT"
 
         elif (
@@ -503,6 +510,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ActualMeth = self.MethodDic["Auto_CBCT"]
             self.ui.stackedWidget.setCurrentIndex(1)
             self.ui.CbCBCTInputType.setVisible(True)
+            self.ui.label_LibsInstallation.setVisible(False)
             self.type = "CBCT"
             self.ui.label_7.setText("Orientation Model Folder")
 
@@ -513,6 +521,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ActualMeth = self.MethodDic["Semi_IOS"]
             self.ui.stackedWidget.setCurrentIndex(2)
             self.ui.CbCBCTInputType.setVisible(False)
+            self.ui.label_LibsInstallation.setVisible(False)
             self.type = "IOS"
 
         elif (
@@ -522,6 +531,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ActualMeth = self.MethodDic["Auto_IOS"]
             self.ui.stackedWidget.setCurrentIndex(3)
             self.ui.CbCBCTInputType.setVisible(False)
+            self.ui.label_LibsInstallation.setVisible(False)
             self.type = "IOS"
             self.ui.label_7.setText("Segmentation Model Folder")
         # UI Changes
@@ -850,8 +860,25 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
 
     def onPredictButton(self):
-        install_function()
         """Function to launch the prediction"""
+        
+        if self.type == "IOS":
+            is_installed = False
+            check_env = self.onCheckRequirements()
+            print("seg_env: ", check_env)
+            
+            if check_env:
+                is_installed = install_function(self)
+        else:
+            is_installed = install_function(self)
+            
+        if not is_installed:
+            qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
+            return
+        
+        self.logic.check_cli_script()
+        
+        self.ui.label_LibsInstallation.setVisible(False)
         error = self.ActualMeth.TestProcess(
             input_folder=self.ui.lineEditScanLmPath.text,
             gold_folder=self.ui.lineEditRefFolder.text,
@@ -868,7 +895,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             qt.QMessageBox.warning(self.parent, "Warning", error.replace(",", "\n"))
 
         else:
-            self.list_Processes_Parameters, self.display = self.ActualMeth.Process(
+            self.list_Processes_Parameters = self.ActualMeth.Process(
                 input_folder=self.ui.lineEditScanLmPath.text,
                 gold_folder=self.ui.lineEditRefFolder.text,
                 folder_output=self.ui.lineEditOutputPath.text,
@@ -883,6 +910,11 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             self.nb_extension_launch = len(self.list_Processes_Parameters)
             self.onProcessStarted()
+            
+            module = self.list_Processes_Parameters[0]["Module"]
+            print("module name : ", module)
+            if module == "CrownSegmentationcli":
+                self.run_conda_tool()
 
             # /!\ Launch of the first process /!\
             self.process = slicer.cli.run(
@@ -890,6 +922,8 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 None,
                 self.list_Processes_Parameters[0]["Parameter"],
             )
+            self.module_name = self.list_Processes_Parameters[0]["Module"]
+            self.displayModule = self.list_Processes_Parameters[0]["Display"]
             self.processObserver = self.process.AddObserver(
                 "ModifiedEvent", self.onProcessUpdate
             )
@@ -897,6 +931,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             del self.list_Processes_Parameters[0]
 
     def onProcessStarted(self):
+        self.ui.label_LibsInstallation.setHidden(True)
         self.startTime = time.time()
 
         # self.ui.progressBar.setMaximum(self.nb_patient)
@@ -944,10 +979,10 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if progress == 0:
             self.updateProgessBar = False
 
-        if self.display[self.module_name].isProgress(
+        if self.displayModule.isProgress(
             progress=progress, updateProgessBar=self.updateProgessBar
         ):
-            progress_bar, message = self.display[self.module_name]()
+            progress_bar, message = self.displayModule()
             self.ui.progressBar.setValue(progress_bar)
             self.ui.LabelProgressPatient.setText(message)
             self.nb_change_bystep += 1
@@ -977,6 +1012,8 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         None,
                         self.list_Processes_Parameters[0]["Parameter"],
                     )
+                    self.module_name = self.list_Processes_Parameters[0]["Module"]
+                    self.displayModule = self.list_Processes_Parameters[0]["Display"]
                     self.processObserver = self.process.AddObserver(
                         "ModifiedEvent", self.onProcessUpdate
                     )
@@ -1041,6 +1078,53 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.LabelTimer.setVisible(run)
 
         self.HideComputeItems(run)
+        
+    def run_conda_tool(self):
+        output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
+        clean_output = re.search(r"Result: (.+)", output_command)
+        if clean_output:
+            dentalmodelseg_path = clean_output.group(1).strip()
+            dentalmodelseg_path_clean = dentalmodelseg_path.replace("\\n","")
+        else:
+            print("Error: Unable to find dentalmodelseg path.")
+            return
+        
+        args = self.list_Processes_Parameters[0]["Parameter"]
+        print("args : ",args)
+        conda_exe = self.logic.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
+        for key, value in args.items():
+            if key in ["out","input_csv","vtk_folder","dentalmodelseg_path"]:
+                value = self.logic.windows_to_linux_path(value)
+            if key == "dentalmodelseg_path":
+                value = dentalmodelseg_path_clean
+            command.append(f"\"{value}\"")
+        print("*"*50)
+        print("command : ",command)
+
+        # running in // to not block Slicer
+        process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+        process.start()
+        self.ui.LabelTimer.setHidden(False)
+        self.ui.LabelTimer.setText(f"Time : 0.00s")
+        previous_time = self.startTime
+        while process.is_alive():
+            slicer.app.processEvents()
+            current_time = time.time()
+            gap=current_time-previous_time
+            if gap>0.3:
+                currentTime = time.time() - self.startTime
+                previous_time = currentTime
+                if currentTime < 60:
+                    timer = f"Time : {int(currentTime)}s"
+                elif currentTime < 3600:
+                    timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                else:
+                    timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                
+                self.ui.LabelTimer.setText(timer)
+
+        del self.list_Processes_Parameters[0]
 
     """
 
@@ -1372,6 +1456,113 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                           "Y88888P"      888     888    888 8888888888 888   T88b  "Y8888P"
     """
 
+    def onCheckRequirements(self):
+        if not self.logic.isCondaSetUp:
+            messageBox = qt.QMessageBox()
+            text = textwrap.dedent("""
+            SlicerConda is not set up, please click 
+            <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
+            """).strip()
+            messageBox.information(None, "Information", text)
+            return False
+        
+        if platform.system() == "Windows":
+            self.ui.label_LibsInstallation.setHidden(False)
+            self.ui.label_LibsInstallation.setText(f"Checking if wsl is installed, this task may take a moments")
+            
+            if self.logic.testWslAvailable():
+                self.ui.label_LibsInstallation.setText(f"WSL installed")
+                if not self.logic.check_lib_wsl():
+                    self.ui.label_LibsInstallation.setText(f"Checking if the required librairies are installed, this task may take a moments")
+                    messageBox = qt.QMessageBox()
+                    text = textwrap.dedent("""
+                        WSL doesn't have all the necessary libraries, please download the installer 
+                        and follow the instructions 
+                        <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+                        for installation. The link may be blocked by Chrome, just authorize it.""").strip()
+
+                    messageBox.information(None, "Information", text)
+                    return False
+                
+            else : # if wsl not install, ask user to install it ans stop process
+                messageBox = qt.QMessageBox()
+                text = textwrap.dedent("""
+                    WSL is not installed, please download the installer and follow the instructions 
+                    <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+                    for installation. The link may be blocked by Chrome, just authorize it.""").strip()        
+
+                messageBox.information(None, "Information", text)
+                return False
+            
+        
+        ## MiniConda
+        
+        
+        self.ui.label_LibsInstallation.setText(f"Checking if miniconda is installed")
+        if "Error" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
+            messageBox = qt.QMessageBox()
+            text = textwrap.dedent("""
+            Code can't be launch. \nConda is not setup. 
+            Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
+            messageBox.information(None, "Information", text)
+            return False
+        
+        
+        ## shapeAXI
+
+
+        self.ui.label_LibsInstallation.setText(f"Checking if environnement exists")
+        if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
+            userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+            if userResponse :
+                start_time = time.time()
+                previous_time = start_time
+                formatted_time = self.format_time(0)
+                self.ui.label_LibsInstallation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
+                process = self.logic.install_shapeaxi()
+                
+                while self.logic.process.is_alive():
+                    slicer.app.processEvents()
+                    formatted_time = self.update_ui_time(start_time, previous_time)
+                    self.ui.label_LibsInstallation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
+            
+                start_time = time.time()
+                previous_time = start_time
+                formatted_time = self.format_time(0)
+                text = textwrap.dedent(f"""
+                Installation of librairies into the new environnement. 
+                This task may take a few minutes.\ntime: {formatted_time}""").strip()
+                self.ui.label_LibsInstallation.setText(text)
+            else:
+                return False
+        else:
+            self.ui.label_LibsInstallation.setText(f"Ennvironnement already exists")
+            
+        
+        ## pytorch3d
+
+
+        self.ui.label_LibsInstallation.setText(f"Checking if pytorch3d is installed")
+        if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed 
+            process = self.logic.install_pytorch3d()
+            start_time = time.time()
+            previous_time = start_time
+            
+            while self.logic.process.is_alive():
+                slicer.app.processEvents()
+                formatted_time = self.update_ui_time(start_time, previous_time)
+                text = textwrap.dedent(f"""
+                Installation of pytorch into the new environnement. 
+                This task may take a few minutes.\ntime: {formatted_time}
+                """).strip()
+                self.ui.label_LibsInstallation.setText(text)
+        else:
+            self.ui.label_LibsInstallation.setText(f"pytorch3d is already installed")
+            print("pytorch3d already installed")
+
+        self.all_installed = True   
+        return True
+    
     def cleanup(self):
         """
         Called when the application closes and the module widget is destroyed.
@@ -1546,27 +1737,176 @@ class ASOLogic(ScriptedLoadableModuleLogic):
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
         ScriptedLoadableModuleLogic.__init__(self)
-
+        self.isCondaSetUp = False
+        self.conda = self.init_conda()
+        self.name_env = "shapeaxi"
         self.cliNode = None
+        
+    def init_conda(self):
+        # check if CondaSetUp exists
+        try:
+            import CondaSetUp
+        except:
+            return False
+        self.isCondaSetUp = True
+        
+        # set up conda on windows with WSL
+        if platform.system() == "Windows":
+            from CondaSetUp import CondaSetUpCallWsl
+            return CondaSetUpCallWsl()
+        else:
+            from CondaSetUp import CondaSetUpCall
+            return CondaSetUpCall()
+        
+    def run_conda_command(self, target, command):
+        self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
+        self.process.start()
+        
+    def install_shapeaxi(self):
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+        
+    def check_if_pytorch3d(self):
+        conda_exe = self.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import pytorch3d;import pytorch3d.renderer\""]
+        return self.conda.condaRunCommand(command)
+    
+    def install_pytorch3d(self):
+        result_pythonpath = self.check_pythonpath_windows("ASO_Method.install_pytorch")
+        if not result_pythonpath :
+            self.give_pythonpath_windows()
+            result_pythonpath = self.check_pythonpath_windows("ASO_Method.install_pytorch")
+        
+        if result_pythonpath : 
+            conda_exe = self.conda.getCondaExecutable()
+            path_pip = self.conda.getCondaPath()+f"/envs/{self.name_env}/bin/pip"
+            command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"ASO_Method.install_pytorch",path_pip]
 
-    def process(self, parameters):
-        """
-        Run the processing algorithm.
-        Can be used without GUI widget.
-        :param inputVolume: volume to be thresholded
+        self.run_conda_command(target=self.conda.condaRunCommand, command=(command,))
+        
+    def check_lib_wsl(self) -> bool:
+        # Ubuntu versions < 24.04
+        required_libs_old = ["libxrender1", "libgl1-mesa-glx"]
+        # Ubuntu versions >= 24.04
+        required_libs_new = ["libxrender1", "libgl1", "libglx-mesa0"]
 
-        """
 
-        # import time
-        # startTime = time.time()
+        all_installed = lambda libs: all(
+            subprocess.run(
+                f"wsl -- bash -c \"dpkg -l | grep {lib}\"", capture_output=True, text=True
+            ).stdout.encode("utf-16-le").decode("utf-8").replace("\x00", "").find(lib) >= 0
+            for lib in libs
+        )
 
-        logging.info("Processing started")
+        return all_installed(required_libs_old) or all_installed(required_libs_new)
+    
+    def check_pythonpath_windows(self,file):
+        '''
+        Check if the environment env_name in wsl know the path to a specific file (ex : Crownsegmentationcli.py)
+        return : bool
+        '''
+        conda_exe = self.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
+        result = self.conda.condaRunCommand(command)
+        print("output CHECK python path: ", result)
+        if "True" in result :
+            return True
+        return False
+    
+    def give_pythonpath_windows(self):
+        '''
+        take the pythonpath of Slicer and give it to the environment name_env in wsl.
+        '''
+        paths = slicer.app.moduleManager().factoryManager().searchPaths
+        mnt_paths = []
+        for path in paths :
+            mnt_paths.append(f"\"{self.windows_to_linux_path(path)}\"")
+        pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
+        conda_exe = self.conda.getCondaExecutable()
+        argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
+        results = self.conda.condaRunCommand(argument)
+        print("output GIVE python path: ", results)
+        
+    def windows_to_linux_path(self,windows_path):
+        '''
+        convert a windows path to a wsl path
+        '''
+        windows_path = windows_path.strip()
 
-        PredictProcess = slicer.modules.aso_ios
+        path = windows_path.replace('\\', '/')
 
-        self.cliNode = slicer.cli.run(PredictProcess, None, parameters)
+        if ':' in path:
+            drive, path_without_drive = path.split(':', 1)
+            path = "/mnt/" + drive.lower() + path_without_drive
 
-        return PredictProcess
+        return path
+    
+    def check_cli_script(self):
+        if not self.check_pythonpath_windows("PRE_ASO_IOS"): 
+            self.give_pythonpath_windows()
+            results = self.check_pythonpath_windows("PRE_ASO_IOS")
+            
+        if not self.check_pythonpath_windows("SEMI_ASO_IOS"): 
+            self.give_pythonpath_windows()
+            results = self.check_pythonpath_windows("SEMI_ASO_IOS")
+            
+        if not self.check_pythonpath_windows("CrownSegmentationcli"):
+            self.give_pythonpath_windows()
+            results = self.check_pythonpath_windows("CrownSegmentationcli")
+            
+    def condaRunCommand(self, command: list[str]):
+        '''
+        Runs a command in a specified Conda environment, handling different operating systems.
+        
+        copy paste from SlicerConda and change the process line to be able to get the stderr/stdout 
+        and cancel the process without blocking slicer
+        '''
+        path_activate = self.conda.getActivateExecutable()
+
+        if path_activate=="None":
+            return "Path to conda no setup"
+
+        if platform.system() == "Windows":
+            command_execute = f"source {path_activate} {self.name_env} &&"
+            for com in command :
+                command_execute = command_execute+ " "+com
+
+            user = self.conda.getUser()
+            command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
+            print("command_to_execute in condaRunCommand : ",command_to_execute)
+
+            self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                                    text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
+                                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
+                                    )
+        else:
+            path_conda_exe = self.conda.getCondaExecutable()
+            command_execute = f"{path_conda_exe} run -n {self.name_env}"
+            for com in command :
+                command_execute = command_execute+ " "+com
+
+            print("command_to_execute in conda run : ",command_execute)
+            self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
+    
+        self.stdout, self.stderr = self.subpro.communicate()
+
+    # def process(self, parameters):
+    #     """
+    #     Run the processing algorithm.
+    #     Can be used without GUI widget.
+    #     :param inputVolume: volume to be thresholded
+
+    #     """
+
+    #     # import time
+    #     # startTime = time.time()
+
+    #     logging.info("Processing started")
+
+    #     PredictProcess = slicer.modules.aso_ios
+
+    #     self.cliNode = slicer.cli.run(PredictProcess, None, parameters)
+
+    #     return PredictProcess
 
     def iterillimeted(self, iter):
         out = []

@@ -7,7 +7,8 @@ import SimpleITK as sitk
 import torch.nn.functional as F
 from sklearn.model_selection import ParameterSampler
 from torchreg import AffineRegistration
-from .nmi import NMI
+
+from MRI2CBCT_CLI_utils.nmi import NMI
 
 def save_as_nifti(moving_tensor, static_path, output_path):
     """

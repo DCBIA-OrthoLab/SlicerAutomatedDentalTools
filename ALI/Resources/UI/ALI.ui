@@ -12,8 +12,8 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text">
       <string>Inputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_16">
@@ -47,14 +47,14 @@
             <item>
              <widget class="QLabel" name="label_8">
               <property name="text">
-               <string>Input type</string>
+               <string>Input type:</string>
               </property>
              </widget>
             </item>
             <item>
              <widget class="QLabel" name="ExtensionLabel">
               <property name="text">
-               <string>Extension</string>
+               <string>Extension:</string>
               </property>
              </widget>
             </item>
@@ -77,14 +77,14 @@
             <item>
              <widget class="QLabel" name="label_11">
               <property name="text">
-               <string>Input</string>
+               <string>Input:</string>
               </property>
              </widget>
             </item>
             <item>
              <widget class="QLabel" name="SelectNodeLabel">
               <property name="text">
-               <string>Select node</string>
+               <string>Select node:</string>
               </property>
              </widget>
             </item>
@@ -163,22 +163,22 @@
              <widget class="QComboBox" name="InputComboBox">
               <item>
                <property name="text">
-                <string>File as input</string>
+                <string>Folder as input</string>
                </property>
               </item>
               <item>
                <property name="text">
-                <string>Folder as input</string>
+                <string>File as input</string>
                </property>
               </item>
              </widget>
             </item>
             <item>
-             <widget class="qMRMLNodeComboBox" name="MRMLNodeComboBox" native="true">
+             <widget class="qMRMLNodeComboBox" name="MRMLNodeComboBox">
               <property name="enabled">
                <bool>true</bool>
               </property>
-              <property name="nodeTypes" stdset="0">
+              <property name="nodeTypes">
                <stringlist>
                 <string>vtkMRMLVolumeNode</string>
                </stringlist>
@@ -255,7 +255,7 @@
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="SearchModelFolder">
+             <widget class="QPushButton" name="SearchModelsFolder">
               <property name="text">
                <string>Search</string>
               </property>
@@ -265,35 +265,26 @@
           </item>
          </layout>
         </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_8">
-          <property name="topMargin">
-           <number>0</number>
+         <widget class="QPushButton" name="DownloadTestPushButton">
+          <property name="toolTip">
+           <string>Initiate download of a test scan (~ 100MB) using an URL opened in default system browser</string>
           </property>
-          <item>
-           <widget class="QPushButton" name="DownloadTestPushButton">
-            <property name="toolTip">
-             <string>Initiate download of a test scan (~ 100MB) using an URL opened in default system browser</string>
-            </property>
-            <property name="text">
-             <string>Download test file</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="DownloadModelPushButton">
-            <property name="toolTip">
-             <string>Open a GitHub realease to download the trained models using an URL opened in default system browser</string>
-            </property>
-            <property name="statusTip">
-             <string/>
-            </property>
-            <property name="text">
-             <string>Download latest models</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
+          <property name="text">
+           <string>Download Test file</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="SearchModelFolder">
+          <property name="text">
+           <string>Download Models</string>
+          </property>
+         </widget>
         </item>
        </layout>
       </item>
@@ -301,8 +292,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="optionsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="optionsCollapsibleButton">
+     <property name="text">
       <string>Options</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_10">
@@ -327,8 +318,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton">
+     <property name="text">
       <string>Outputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -370,7 +361,7 @@
              <string>Save prediction in scan folder</string>
             </property>
             <property name="checked">
-             <bool>true</bool>
+             <bool>false</bool>
             </property>
            </widget>
           </item>
@@ -458,14 +449,14 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="advancedCollapsibleButton" native="true">
+    <widget class="ctkCollapsibleButton" name="advancedCollapsibleButton">
      <property name="enabled">
       <bool>false</bool>
      </property>
-     <property name="text" stdset="0">
+     <property name="text">
       <string>Advanced</string>
      </property>
-     <property name="collapsed" stdset="0">
+     <property name="collapsed">
       <bool>true</bool>
      </property>
      <layout class="QHBoxLayout" name="horizontalLayout">
@@ -489,8 +480,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton">
+     <property name="text">
       <string>Compute</string>
      </property>
      <layout class="QFormLayout" name="formLayout_1">
@@ -509,9 +500,16 @@
          <number>10</number>
         </property>
         <item>
-         <widget class="QLabel" name="PrePredInfo">
+         <widget class="QLabel" name="LabelNameExtension">
           <property name="text">
-           <string>Number of scans to process : 0</string>
+           <string>Running CrownSegmentationcli</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="LabelProgressExtension">
+          <property name="text">
+           <string>Extension</string>
           </property>
          </widget>
         </item>
@@ -529,28 +527,21 @@
          </widget>
         </item>
         <item>
-         <widget class="QLabel" name="PredScanLabel">
+         <widget class="QLabel" name="LabelInfoPreProc">
           <property name="text">
-           <string>Scan ready for segmentation : 0 / X</string>
+           <string>Number of Patients to process :</string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QProgressBar" name="PredScanProgressBar">
-          <property name="value">
-           <number>0</number>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="PredSegLabel">
+         <widget class="QLabel" name="LabelProgressPatient">
           <property name="text">
-           <string>Segmented structures : 0 / X</string>
+           <string>Patient</string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QProgressBar" name="PredSegProgressBar">
+         <widget class="QProgressBar" name="progressBar">
           <property name="value">
            <number>0</number>
           </property>
@@ -563,6 +554,13 @@
           </property>
           <property name="text">
            <string>Cancel prediction</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_LibsInstallation">
+          <property name="text">
+           <string>Checking libraries</string>
           </property>
          </widget>
         </item>

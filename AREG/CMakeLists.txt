@@ -10,6 +10,7 @@ set(MODULE_PYTHON_SCRIPTS
   AREG_Method/IOSCBCT.py
   AREG_Method/Method.py
   AREG_Method/Progress.py
+  AREG_Method/install_pytorch.py
 )
 
 set(MODULE_PYTHON_RESOURCES

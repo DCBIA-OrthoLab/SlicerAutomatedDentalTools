@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import argparse
+import platform
 import numpy as np
 
 from tqdm import tqdm
@@ -17,28 +18,34 @@ from itertools import chain
 fpath = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(fpath)
 
-from ASO_IOS_utils import (
-    UpperOrLower,
-    search,
-    ReadSurf,
-    WriteSurf,
-    PatientNumber,
-    ICP,
-    InitIcp,
-    vtkICP,
-    vtkMeanTeeth,
-    TransformSurf,
-    Files_vtk_link,
-    Jaw,
-    Upper,
-    Lower,
-    ToothNoExist,
-    vtkMeshTeeth,
-    WritefileError,
-    NoSegmentationSurf,
-    PrePreAso,
-)
+def check_platform():
+    if platform.system() == 'Windows':
+        return "Windows"
+    elif platform.system() == 'Linux':
+        if 'microsoft' in platform.release().lower():
+            return "WSL"
+        else:
+            return "Linux"
+    else:
+        return "Unknown"
 
+# Import from utils
+if check_platform()=="WSL":
+    from ASO_IOS_utils.utils import UpperOrLower, search, ReadSurf, WriteSurf, WritefileError
+    from ASO_IOS_utils.icp import vtkICP, vtkMeanTeeth, InitIcp, ICP, ToothNoExist, NoSegmentationSurf
+    from ASO_IOS_utils.data_file import Files_vtk_link, Jaw, Lower, Upper
+    from ASO_IOS_utils.transformation import TransformSurf
+    from ASO_IOS_utils.pre_icp import PrePreAso
+    
+else:
+    from ASO_IOS_utils import (
+        UpperOrLower, search, ReadSurf, WriteSurf, WritefileError,
+        vtkICP, vtkMeanTeeth, InitIcp, ICP, ToothNoExist, NoSegmentationSurf,
+        Files_vtk_link, Jaw, Lower, Upper,
+        TransformSurf,
+        PrePreAso,
+    )
+    
 # import ASO_IOS_utils
 
 
