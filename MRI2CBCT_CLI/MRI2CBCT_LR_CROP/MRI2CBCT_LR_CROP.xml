@@ -2,7 +2,7 @@
 <executable>
   <category>Automated Dental Tools.Advanced</category>
   <index>2</index>
-  <title>MRI2CBCT_ORIENT_CENTER_MRI</title>
+  <title>MRI2CBCT_LR_CROP</title>
   <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
   <version>0.0.1</version>
   <documentation-url>https://github.com/username/project</documentation-url>
@@ -16,31 +16,24 @@
     <description><![CDATA[Input/output parameters]]></description>
 
     <string>
-      <name>input_folder</name>
-      <label>input_folder</label>
+      <name>input_folder_CBCT</name>
+      <label>input_folder_CBCT</label>
       <index>0</index>
-      <description>Path for the input folder.</description>
+      <description>Path for the input CBCT</description>
     </string>
 
     <string>
-      <name>direction</name>
-      <label>direction</label>
+      <name>input_folder_MRI</name>
+      <label>input_folder_MRI</label>
       <index>1</index>
-      <description>Direction for the new orientation of the scan</description>
+      <description>Path for the input MRI</description>
     </string>
 
     <string>
       <name>output_folder</name>
       <label>output_folder</label>
       <index>2</index>
-      <description>Output Path</description>
-    </string>
-
-    <string>
-      <name>acquisition_z_spacing</name>
-      <label>acquisition_z_spacing</label>
-      <index>3</index>
-      <description>Spacing used during the aquisition on the Z axis</description>
+      <description>output folder</description>
     </string>
 
   </parameters>
