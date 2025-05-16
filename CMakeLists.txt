@@ -12,7 +12,8 @@ set(EXTENSION_ICONURL "https://raw.githubusercontent.com/DCBIA-OrthoLab/SlicerAu
 set(EXTENSION_SCREENSHOTURLS "https://raw.githubusercontent.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/main/ADT-exemple.png")
 set(EXTENSION_DEPENDS 
     SlicerDentalModelSeg
-    SlicerConda)# Specified as a list or "NA" if no dependencies
+    SlicerConda
+    NNUNet)# Specified as a list or "NA" if no dependencies
 
 #-----------------------------------------------------------------------------
 # Extension dependencies
@@ -38,6 +39,7 @@ add_subdirectory(FlexReg)
 add_subdirectory(FlexReg_CLI)
 add_subdirectory(MRI2CBCT)
 add_subdirectory(MRI2CBCT_CLI)
+add_subdirectory(BATCHDENTALSEG)
 add_subdirectory(DOCShapeAXI)
 add_subdirectory(DOCShapeAXI_CLI)
 ## NEXT_MODULE
