@@ -39,9 +39,9 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [AutoCrop3D](#autocrop3d-module) | Automatically crop a folder of CBCT scans with the same region of interest. |
 | [AutoMatrix](#automatrix-module)| Automatically apply one or different matrix to a folder of IOS or CBCT scans. |
 | [MRI2CBCT](#mri2cbct-module) | Contains the steps to perform the registration of MRI and CBCT scans.|
-| [FlexReg](#flex-reg) | Registration of IOS patient per patient with customizable patch creation. |
-| [DOCShapeAXI](#doc-shapeaxi) | Automatic classification of 3D Shape. DOC-ShapeAXI is an acronym for Dental Oral and Craniofacial Shape Analysis eXplainability and Interpretability. |
-| [BatchDentalSegmentator](#BatchDentalSegmentator) | DentalSegmentator in batch for mixed or permanent dentition |
+| [FlexReg](#flexreg-module) | Registration of IOS patient per patient with customizable patch creation. |
+| [DOCShapeAXI](#docshapeaxi-module) | Automatic classification of 3D Shape. DOC-ShapeAXI is an acronym for Dental Oral and Craniofacial Shape Analysis eXplainability and Interpretability. |
+| [BatchDentalSegmentator](#batchdentalseg) | DentalSegmentator in batch for mixed or permanent dentition |
 
 
 These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
