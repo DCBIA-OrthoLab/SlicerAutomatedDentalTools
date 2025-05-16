@@ -13,7 +13,7 @@ set(EXTENSION_SCREENSHOTURLS "https://raw.githubusercontent.com/DCBIA-OrthoLab/S
 set(EXTENSION_DEPENDS 
     SlicerDentalModelSeg
     SlicerConda
-    SlicerNNUNet)# Specified as a list or "NA" if no dependencies
+    NNUNet)# Specified as a list or "NA" if no dependencies
 
 #-----------------------------------------------------------------------------
 # Extension dependencies
