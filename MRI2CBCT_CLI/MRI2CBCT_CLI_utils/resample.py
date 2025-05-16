@@ -6,6 +6,12 @@ import glob
 import sys
 import csv
 
+def mirror_image_flip(img):
+    # Flip along Z axis only
+    flipped = sitk.Flip(img, [False, False, True], flipAboutOrigin=False)
+    return flipped
+
+
 def resample_fn(img, args):
     '''
     Resamples the given image based on the specified arguments.
@@ -21,12 +27,22 @@ def resample_fn(img, args):
         - linear (bool): Flag to use linear interpolation.
         - spacing (tuple): Desired spacing of the output image (optional).
         - origin (tuple): Desired origin of the output image (optional).
+        - rightSide (bool): Flag to shift the image to the right side.
+        - mri (bool): Flag to indicate if the image is an MRI.
     '''
     output_size = args['size'] 
     fit_spacing = args['fit_spacing']
     iso_spacing = args['iso_spacing']
     pixel_dimension = args['pixel_dimension']
     center = args['center']
+    rightSide = args['rightSide']
+    isMRI = args['mri']
+    print("Right side:", rightSide)
+    print("Is MRI:", isMRI)
+    
+    if isMRI and rightSide and not center:
+        print("[INFO] Mirroring input image before resampling (index-space flip).")
+        img = mirror_image_flip(img)
 
     if args['linear']:
         InterpolatorType = sitk.sitkLinear
@@ -57,10 +73,20 @@ def resample_fn(img, args):
     if(args['origin'] is not None):
         output_origin = args['origin']
 
-    if(center):
-        output_physical_size = np.array(output_size)*np.array(output_spacing)
-        input_physical_size = np.array(size)*np.array(spacing)
-        output_origin = np.array(output_origin) - (output_physical_size - input_physical_size)/2.0
+    output_physical_size = np.array(output_size) * np.array(output_spacing)
+    input_physical_size = np.array(size) * np.array(spacing)
+
+    if center:
+        if isMRI:
+            direction = np.array(img.GetDirection()).reshape(3, 3)
+            # Custom center logic for right-side (Z axis only, direction-aware)
+            offset = (output_physical_size - input_physical_size) / 2.0
+            offset_vector = np.dot(direction, offset)
+            output_origin = np.array(output_origin) - offset_vector
+        else:
+            # Normal centering for CBCT and left MRI
+            offset = (output_physical_size - input_physical_size) / 2.0
+            output_origin = np.array(output_origin) - offset
 
     img_array = sitk.GetArrayFromImage(img)
     min_pixel_value = float(np.min(img_array))
@@ -74,7 +100,13 @@ def resample_fn(img, args):
     resampleImageFilter.SetDefaultPixelValue(min_pixel_value)
     
 
-    return resampleImageFilter.Execute(img)
+    resampled = resampleImageFilter.Execute(img)
+    
+    if isMRI and rightSide and not center:
+        print("[INFO] Mirroring resampled image back (index-space flip).")
+        resampled = mirror_image_flip(resampled)
+
+    return resampled
 
 
 def Resample(img_filename, args):
@@ -196,7 +228,7 @@ def resample_images(args):
     
 def run_resample(img=None, dir=None, csv=None, csv_column='image', csv_root_path=None, csv_use_spc=0,
                      csv_column_spcx=None, csv_column_spcy=None, csv_column_spcz=None, ref=None, size=None,
-                     img_spacing=None, spacing=None, origin=None, linear=False, center=0, fit_spacing=False,
+                     img_spacing=None, spacing=None, origin=None, linear=False, center=0, rightSide=0,mri=0,fit_spacing=False,
                      iso_spacing=False, image_dimension=2, pixel_dimension=1, rgb=False, ow=1, out="./out.nrrd",
                      out_ext=None):
     '''
@@ -219,6 +251,8 @@ def run_resample(img=None, dir=None, csv=None, csv_column='image', csv_root_path
         'origin': origin,                # Origin of the output image
         'linear': linear,                # Flag to use linear interpolation
         'center': center,                # Flag to center the image
+        'rightSide': rightSide,             # Flag to shift the image to the right side
+        'mri': mri,                       # Flag to indicate if the image is an MRI
         'fit_spacing': fit_spacing,      # Flag to fit spacing
         'iso_spacing': iso_spacing,      # Flag for isotropic spacing
         'image_dimension': image_dimension,  # Dimension of the image
@@ -254,6 +288,8 @@ if __name__ == "__main__":
     transform_group.add_argument('--origin', nargs="+", type=float, default=None, help='Output origin')
     transform_group.add_argument('--linear', type=bool, help='Use linear interpolation.', default=False)
     transform_group.add_argument('--center', type=int, help='Center the image in the space', default=0)
+    transform_group.add_argument('--rightSide', type=int, help='Shift the image to the right side', default=0)
+    transform_group.add_argument('--mri', type=bool, help='Use MRI type pixel', default=0)
     transform_group.add_argument('--fit_spacing', type=bool, help='Fit spacing to output', default=False)
     transform_group.add_argument('--iso_spacing', type=bool, help='Same spacing for resampled output', default=False)
 
