@@ -44,7 +44,7 @@ class BATCHDENTALSEGWidget(ScriptedLoadableModuleWidget):
         self.layout.addStretch()
 
 
-class DentalSegmentatorTest(ScriptedLoadableModuleTest):
+class BATCHDENTALSEGTest(ScriptedLoadableModuleTest):
     def runTest(self):
         try:
             from SlicerPythonTestRunnerLib import RunnerLogic, RunnerWidget, RunSettings, isRunningInTestMode
