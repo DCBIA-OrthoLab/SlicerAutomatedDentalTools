@@ -4,7 +4,7 @@ from slicer.ScriptedLoadableModule import *
 from BATCHDENTALSEGLib import SegmentationWidget
 
 
-class DentalSegmentator(ScriptedLoadableModule):
+class BATCHDENTALSEG(ScriptedLoadableModule):
     def __init__(self, parent):
         from slicer.i18n import tr, translate
         ScriptedLoadableModule.__init__(self, parent)
@@ -30,7 +30,7 @@ class DentalSegmentator(ScriptedLoadableModule):
         )
 
 
-class DentalSegmentatorWidget(ScriptedLoadableModuleWidget):
+class BATCHDENTALSEGWidget(ScriptedLoadableModuleWidget):
     def __init__(self, parent=None) -> None:
         ScriptedLoadableModuleWidget.__init__(self, parent)
         self.logic = None
@@ -44,7 +44,7 @@ class DentalSegmentatorWidget(ScriptedLoadableModuleWidget):
         self.layout.addStretch()
 
 
-class DentalSegmentatorTest(ScriptedLoadableModuleTest):
+class BATCHDENTALSEGTest(ScriptedLoadableModuleTest):
     def runTest(self):
         try:
             from SlicerPythonTestRunnerLib import RunnerLogic, RunnerWidget, RunSettings, isRunningInTestMode
