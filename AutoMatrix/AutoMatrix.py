@@ -11,13 +11,17 @@ from slicer.util import VTKObservationMixin
 import qt
 import glob
 import numpy as np
-from qt import QFileDialog,QMessageBox
+from qt import QFileDialog,QMessageBox,QGridLayout,QWidget
 from functools import partial
 import SimpleITK as sitk
-from pathlib import Path
+
 
 # import AutoMatrix_Method.General_tools as gt
-from AutoMatrix_Method.General_tools import search, GetPatients
+from AutoMatrix_Method.General_tools import search
+
+from AutoMatrix_Method.applyMatrix import Automatrix_Method
+from AutoMatrix_Method.Method import Method
+from AutoMatrix_Method.Progress import Display
 
 
 
@@ -107,6 +111,98 @@ def registerSampleData():
     )
 
 
+class PopUpWindow(qt.QDialog):
+    """Class to generate a popup window with text and button (either radio or checkbox)"""
+
+    def __init__(
+        self,
+        title="Title",
+        text=None,
+        listename=["1", "2", "3"],
+        type=None,
+        tocheck=None,
+    ):
+        QWidget.__init__(self)
+        self.setWindowTitle(title)
+        layout = QGridLayout()
+        self.setLayout(layout)
+        self.ListButtons = []
+        self.listename = listename
+        self.type = type
+
+        if self.type == "radio":
+            self.radiobutton(layout)
+
+        elif self.type == "checkbox":
+            self.checkbox(layout)
+            if tocheck is not None:
+                self.toCheck(tocheck)
+
+        elif text is not None:
+            label = qt.QLabel(text)
+            layout.addWidget(label)
+            # add ok button to close the window
+            button = qt.QPushButton("OK")
+            button.connect("clicked()", self.onClickedOK)
+            layout.addWidget(button)
+
+    def checkbox(self, layout):
+        j = 0
+        for i in range(len(self.listename)):
+            button = qt.QCheckBox(self.listename[i])
+            self.ListButtons.append(button)
+            if i % 20 == 0:
+                j += 1
+            layout.addWidget(button, i % 20, j)
+        # Add a button to select and deselect all
+        button = qt.QPushButton("Select All")
+        button.connect("clicked()", self.onClickedSelectAll)
+        layout.addWidget(button, len(self.listename) + 1, j - 2)
+        button = qt.QPushButton("Deselect All")
+        button.connect("clicked()", self.onClickedDeselectAll)
+        layout.addWidget(button, len(self.listename) + 1, j - 1)
+
+        # Add a button to close the dialog
+        button = qt.QPushButton("OK")
+        button.connect("clicked()", self.onClickedCheckbox)
+        layout.addWidget(button, len(self.listename) + 1, j)
+
+    def toCheck(self, tocheck):
+        for i in range(len(self.listename)):
+            if self.listename[i] in tocheck:
+                self.ListButtons[i].setChecked(True)
+
+    def onClickedSelectAll(self):
+        for button in self.ListButtons:
+            button.setChecked(True)
+
+    def onClickedDeselectAll(self):
+        for button in self.ListButtons:
+            button.setChecked(False)
+
+    def onClickedCheckbox(self):
+        TrueFalse = [button.isChecked() for button in self.ListButtons]
+        self.checked = [
+            self.listename[i] for i in range(len(self.listename)) if TrueFalse[i]
+        ]
+        self.accept()
+
+    def radiobutton(self, layout):
+        for i in range(len(self.listename)):
+            radiobutton = qt.QRadioButton(self.listename[i])
+            self.ListButtons.append(radiobutton)
+            radiobutton.connect("clicked(bool)", self.onClickedRadio)
+            layout.addWidget(radiobutton, i, 0)
+
+    def onClickedRadio(self):
+        self.checked = self.listename[
+            [button.isChecked() for button in self.ListButtons].index(True)
+        ]
+        self.accept()
+
+    def onClickedOK(self):
+        self.accept()
+
 #
 # AutoMatrixWidget
 #
@@ -152,6 +248,16 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # These connections ensure that we update parameter node when scene is closed
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
+        
+        self.MethodDict = {
+            "AutoMatrix": Automatrix_Method(self),
+        }
+        self.ActualMeth = Method
+        self.ActualMeth = self.MethodDict["AutoMatrix"]
+        self.display = Display
+        self.nb_scans = 0
+        
+        self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
 
         # BUTTONS
         self.ui.SearchButtonMatrix.connect("clicked(bool)",partial(self.openFinder,"Matrix"))
@@ -159,6 +265,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SearchButtonOutput.connect("clicked(bool)",partial(self.openFinder,"Output"))
         self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
         self.ui.CheckBoxMirror.connect('clicked(bool)', self.Mirror)
+        self.ui.ButtonCancel.connect("clicked(bool)", self.onCancel)
 
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
@@ -173,6 +280,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.label_time.setVisible(False)
         self.ui.ComboBoxPatient.setCurrentIndex(1)
         self.ui.ComboBoxMatrix.setCurrentIndex(1)
+        self.ui.ButtonCancel.setVisible(False)
 
 
         self.timer_should_continue = True
@@ -427,157 +535,116 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.label_time.setVisible(True)
             self.ui.label_time.setText(f"time : 0.0s")
 
-            self.onProcessStarted()
-            self.start_time = time.time()
-            self.previous_time = time.time()
-            self.ProcessVolume()
-            self.UpdateProgressBar(True)
+            self.onPredictButton()
 
 
 
-    def ProcessVolume(self) -> None:
-        '''
-        Function that will apply the matrix to all the files, including landmark files (.mrk.json)
-        '''
-        import json  # Required to handle .mrk.json
-        patients, nb_files = GetPatients(self.ui.LineEditPatient.text, self.ui.LineEditMatrix.text)
+    def onPredictButton(self)->None:
+        error = self.ActualMeth.TestProcess(
+            input_patient=self.ui.LineEditPatient.text,
+            input_matrix=self.ui.LineEditMatrix.text,
+            output_folder=self.ui.LineEditOutput.text,
+        )
 
-        if nb_files != 0:
-            for key, values in patients.items():
-                for scan in values['scan']:
-                    model = None
-                    is_landmark = scan.endswith(".mrk.json")
+        # print('error',error)
+        if isinstance(error, str):
+            qt.QMessageBox.warning(self.parent, "Warning", error.replace(",", "\n"))
 
-                    # Try to load as model/volume first
-                    if not is_landmark:
-                        for loader in (slicer.util.loadModel, slicer.util.loadVolume):
-                            try:
-                                model = loader(scan)
-                                break
-                            except RuntimeError:
-                                pass
+        self.list_Processes_Parameters = self.ActualMeth.Process(
+            input_patient=self.ui.LineEditPatient.text,
+            input_matrix=self.ui.LineEditMatrix.text,
+            suffix=self.ui.LineEditSuffix.text,
+            matrix_name=self.ui.checkBoxMatrixName.isChecked(),
+            fromAreg=self.ui.CheckBoxSuffixBased.isChecked(),
+            output_folder=self.ui.LineEditOutput.text,
+            log_path=self.log_path,
+        )
+        self.nb_scans = self.ActualMeth.NbScan(self.ui.LineEditPatient.text, self.ui.LineEditMatrix.text)
+        
+        self.nb_extension_launch = len(self.list_Processes_Parameters)
+        self.onProcessStarted()
+        
+        module = self.list_Processes_Parameters[0]["Module"]
+        # /!\ Launch of the first process /!\
+        print("module name : ", module)
+        
+        self.ui.applyButton.setEnabled(False)
+        self.ui.ButtonCancel.setVisible(True)
+        self.process = slicer.cli.run(
+            self.list_Processes_Parameters[0]["Process"],
+            None,
+            self.list_Processes_Parameters[0]["Parameter"],
+        )
+        
+        self.module_name = self.list_Processes_Parameters[0]["Module"]
+        self.displayModule = self.list_Processes_Parameters[0]["Display"]
+        self.processObserver = self.process.AddObserver(
+            "ModifiedEvent", self.onProcessUpdate
+        )
 
-                    extension_scan = ''.join(Path(scan).suffixes)
-                    self.UpdateTime()
+        del self.list_Processes_Parameters[0]
+        
+    def onProcessUpdate(self, caller, event):
+        # timer = f"Time : {time.time()-self.startTime:.2f}s"
+        currentTime = time.time() - self.startTime
+        if currentTime < 60:
+            timer = f"Time : {int(currentTime)}s"
+        elif currentTime < 3600:
+            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+        else:
+            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
 
-                    for matrix in values['matrix']:
-                        try:
-                            self.UpdateTime()
-                            fname, extension_mat = os.path.splitext(os.path.basename(matrix))
+        self.ui.label_time.setText(timer)
+        progress = caller.GetProgress()
+        self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
+        
+        if progress == 0:
+            self.updateProgessBar = False
+            
+        if self.displayModule.isProgress(
+            progress=progress, updateProgessBar=self.updateProgessBar
+        ):
+            progress_bar, message = self.displayModule()
+            self.ui.progressBar.setValue(progress_bar)
+            self.ui.progressBar.setFormat(f"{progress_bar:.2f}%")
+            self.ui.label_info.setText(message)
+            
+        if caller.GetStatus() & caller.Completed:
+            if caller.GetStatus() & caller.ErrorsMask:
+                # error
+                print("\n\n ========= PROCESSED ========= \n")
 
-                            if Path(self.ui.LineEditPatient.text).is_dir():
-                                outpath = scan.replace(self.ui.LineEditPatient.text, self.ui.LineEditOutput.text)
-                            else:
-                                outpath = scan.replace(os.path.dirname(self.ui.LineEditPatient.text), self.ui.LineEditOutput.text)
+                print(self.process.GetOutputText())
+                print("\n\n ========= ERROR ========= \n")
+                errorText = self.process.GetErrorText()
+                print("CLI execution failed: \n \n" + errorText)
+                # error
+                # errorText = caller.GetErrorText()
+                # print("\n"+ 70*"=" + "\n\n" + errorText)
+                # print(70*"=")
+                self.onCancel()
 
-                            try:
-                                if Path(self.ui.LineEditMatrix.text).is_dir():
-                                    matrix_name = os.path.basename(matrix).split(extension_mat)[0].split(key)[1]
-                                else:
-                                    matrix_name = os.path.basename(matrix).split(extension_mat)[0]
-                            except:
-                                print('Impossible to extract the name of the matrix')
-                                matrix_name = "matrix_name"
+            else:
+                print("\n\n ========= PROCESSED ========= \n")
+                # print("PROGRESS :",self.displayModule.progress)
 
-                            if not os.path.exists(os.path.dirname(outpath)):
-                                os.makedirs(os.path.dirname(outpath))
-
-                            # Load the transform
-                            if extension_mat == ".npy":
-                                array = np.load(matrix)
-                                tform_matrix = array
-                                tform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
-                                tform_node.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(array))
-                            elif extension_mat == ".tfm":
-                                tfm_sitk = sitk.ReadTransform(matrix)
-                                if isinstance(tfm_sitk, sitk.CompositeTransform):
-                                    reference_path = matrix.replace("_transform.tfm", ".nii.gz")
-                                    reference_image = sitk.ReadImage(reference_path)
-                                    if not reference_image:
-                                        print(f"Warning: Reference image not found at {reference_path}")
-                                        continue
-                                    output_image = self.ResampleImage(sitk.ReadImage(scan), tfm_sitk, reference_image)
-                                    sitk.WriteImage(output_image, outpath.split(extension_scan)[0] + self.ui.LineEditSuffix.text + (matrix_name if self.ui.checkBoxMatrixName.isChecked() else "") + extension_scan)
-                                    continue
-                                elif isinstance(tfm_sitk, sitk.AffineTransform):
-                                    mat = np.eye(4)
-                                    mat[:3, :3] = np.array(tfm_sitk.GetMatrix()).reshape(3, 3)
-                                    mat[:3, 3] = np.array(tfm_sitk.GetTranslation())
-                                    tform_matrix = mat
-                                    tform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
-                                    tform_node.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(tform_matrix))
-                                else:
-                                    tform_node = slicer.util.loadTransform(matrix)
-                                    matrix = vtk.vtkMatrix4x4()
-                                    tform_node.GetMatrixTransformToParent(matrix)
-                                    tform_matrix = slicer.util.arrayFromTransformMatrix(tform_node)
-                            else:
-                                tform_node = slicer.util.loadTransform(matrix)
-                                matrix = vtk.vtkMatrix4x4()
-                                tform_node.GetMatrixTransformToParent(matrix)
-                                tform_matrix = slicer.util.arrayFromTransformMatrix(tform_node)
-
-                            # Handle landmarks
-                            if is_landmark:
-                                with open(scan, 'r') as f:
-                                    landmark_data = json.load(f)
-
-                                landmark_points = []
-                                for mark in landmark_data['markups'][0]['controlPoints']:
-                                    landmark_points.append([mark['position'][0], mark['position'][1], mark['position'][2], 1.0])
-                                landmark_array = np.array(landmark_points).T  # shape: (4, N)
-
-                                transformed_points = (tform_matrix @ landmark_array).T[:, :3]
-                                for i, mark in enumerate(landmark_data['markups'][0]['controlPoints']):
-                                    mark['position'] = transformed_points[i].tolist()
-
-                                out_file = outpath.split(".mrk.json")[0] + self.ui.LineEditSuffix.text + (matrix_name if self.ui.checkBoxMatrixName.isChecked() else "") + ".mrk.json"
-                                with open(out_file, 'w') as f:
-                                    json.dump(landmark_data, f, indent=2)
-
-                                continue  # skip rest of loop
-                            
-                            # Regular model/volume
-                            self.UpdateTime()
-                            model.SetAndObserveTransformNodeID(tform_node.GetID())
-                            model.HardenTransform()
-                            self.UpdateTime()
-
-                            original_stdin = sys.stdin
-                            sys.stdin = DummyFile()
-                            process = threading.Thread(
-                                target=self.saveOutput,
-                                args=(model, outpath.split(extension_scan)[0] + self.ui.LineEditSuffix.text + (matrix_name if self.ui.checkBoxMatrixName.isChecked() else "") + extension_scan,)
-                            )
-                            process.start()
-
-                            while process.is_alive():
-                                slicer.app.processEvents()
-                                self.UpdateTime()
-
-                            sys.stdin = original_stdin
-                            self.UpdateTime()
-
-                        except Exception as e:
-                            print("An issue occurred:", e)
-                            pass
-
-                    self.UpdateProgressBar(False)
-                    self.UpdateTime()
-                    if model:
-                        slicer.mrmlScene.RemoveNode(model)
-                    self.UpdateTime()
-
-
-
-    def ResampleImage(self, image, transform, reference_image, is_segmentation=False):
-        resampler = sitk.ResampleImageFilter()
-        resampler.SetReferenceImage(reference_image)
-        resampler.SetInterpolator(sitk.sitkNearestNeighbor if is_segmentation else sitk.sitkLinear)
-        resampler.SetDefaultPixelValue(0)
-        resampler.SetTransform(transform)
-        return resampler.Execute(image)
-
+                print(self.process.GetOutputText())
+                try:
+                    print("name process : ",self.list_Processes_Parameters[0]["Process"])
+                    self.process = slicer.cli.run(
+                            self.list_Processes_Parameters[0]["Process"],
+                            None,
+                            self.list_Processes_Parameters[0]["Parameter"],
+                    )
+                    self.module_name = self.list_Processes_Parameters[0]["Module"]
+                    self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                    self.processObserver = self.process.AddObserver(
+                        "ModifiedEvent", self.onProcessUpdate
+                    )
+                    del self.list_Processes_Parameters[0]
+                    # self.displayModule.progress = 0
+                except IndexError:
+                    self.OnEndProcess()
 
     def saveOutput(self, outputVolumeNode, outputFilePath)->None:
         """
@@ -654,6 +721,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Initialize the variables and progress bar.
         """
+        self.startTime = time.time()
         if os.path.isdir(self.ui.LineEditPatient.text):
             self.nbFiles = len(self.dico_patient[".vtk"]) + len(self.dico_patient['.vtp']) + len(self.dico_patient['.stl']) + len(self.dico_patient['.off']) + len(self.dico_patient['.obj']) + len(self.dico_patient['.nii.gz']) + len(self.dico_patient['.nrrd']) + len(self.dico_patient['.mrk.json'])
         else:
@@ -661,12 +729,59 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setValue(0)
         self.progress = 0
         self.ui.label_info.setText("Number of processed files : "+str(self.progress)+"/"+str(self.nbFiles))
+        self.ui.CheckBoxSuffixBased.setVisible(False)
+        
+        self.RunningUI(True)
         self.ui.progressBar.setEnabled(True)
         self.ui.progressBar.setHidden(False)
         self.ui.progressBar.setTextVisible(True)
         self.ui.progressBar.setFormat("0%")
+        
+        
+    def OnEndProcess(self):
+        total_time = time.time() - self.startTime
+        average_time = total_time / self.nb_scans
+        print("PROCESS DONE.")
+        print(
+            "Done in {} min and {} sec".format(
+                int(total_time / 60), int(total_time % 60)
+            )
+        )
+        print(
+            "Average time per patient : {} min and {} sec".format(
+                int(average_time / 60), int(average_time % 60)
+            )
+        )
+        self.RunningUI(False)
 
+        stopTime = time.time()
 
+        logging.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+
+        s = PopUpWindow(
+            title="Process Done",
+            text="Successfully done in {} min and {} sec \nAverage time per Patient: {} min and {} sec".format(
+                int(total_time / 60),
+                int(total_time % 60),
+                int(average_time / 60),
+                int(average_time % 60),
+            ),
+        )
+        s.exec_()
+
+    def RunningUI(self,run:bool)->None:
+        self.ui.LabelNameExtension.setVisible(run)
+        self.ui.label_info.setVisible(run)
+        self.ui.ButtonCancel.setVisible(run)
+        self.ui.progressBar.setVisible(run)
+        self.ui.label_time.setVisible(run)
+        self.ui.applyButton.setEnabled(not run)
+        
+    def onCancel(self):
+        self.process.Cancel()
+        print("\n\n ========= PROCESS CANCELED ========= \n")
+        
+        self.RunningUI(False)
 
     def CheckGoodEntre(self)->bool:
         """

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <index>1</index>
+  <title>Automatrix_CLI</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/username/project</documentation-url>
+  <license>Slicer</license>
+  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>input_patient</name>
+      <label>input_patient</label>
+      <index>0</index>
+      <description>Path for the input folder with t1 scans and segmentation</description>
+    </string>
+
+    <string>
+      <name>input_matrix</name>
+      <label>input_matrix</label>
+      <index>1</index>
+      <description>Path for the matrix input folder</description>
+    </string>
+
+    <string>
+      <name>suffix</name>
+      <label>suffix</label>
+      <index>2</index>
+      <description>Suffix to be added</description>
+    </string>
+
+    <string>
+      <name>matrix_name</name>
+      <label>matrix_name</label>
+      <index>3</index>
+      <description>Wether or not to add the matrix name to the file name</description>
+    </string>
+
+    <string>
+      <name>fromAreg</name>
+      <label>fromAreg</label>
+      <index>4</index>
+      <description>If files come from AReg</description>
+    </string>
+
+    <string>
+      <name>output_folder</name>
+      <label>output_folder</label>
+      <index>5</index>
+      <description>Output path</description>
+    </string>
+
+    <string>
+      <name>log_path</name>
+      <label>log_path</label>
+      <index>6</index>
+      <description>Log path</description>
+    </string>
+  </parameters>
+</executable>
