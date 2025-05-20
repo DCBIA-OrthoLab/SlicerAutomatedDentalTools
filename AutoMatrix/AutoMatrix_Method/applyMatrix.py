@@ -56,6 +56,7 @@ class Automatrix_Method(Method):
         parameter_automatrix = {
             "input_patient": kwargs["input_patient"],
             "input_matrix": kwargs["input_matrix"],
+            "reference_file": kwargs["reference_file"],
             "suffix": kwargs["suffix"],
             "matrix_name": str(kwargs["matrix_name"]),
             "fromAreg": str(kwargs["fromAreg"]),

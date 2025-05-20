@@ -30,37 +30,44 @@
     </string>
 
     <string>
+      <name>reference_file</name>
+      <label>reference_file</label>
+      <index>2</index>
+      <description>Path for the reference file</description>
+    </string>
+
+    <string>
       <name>suffix</name>
       <label>suffix</label>
-      <index>2</index>
+      <index>3</index>
       <description>Suffix to be added</description>
     </string>
 
     <string>
       <name>matrix_name</name>
       <label>matrix_name</label>
-      <index>3</index>
+      <index>4</index>
       <description>Wether or not to add the matrix name to the file name</description>
     </string>
 
     <string>
       <name>fromAreg</name>
       <label>fromAreg</label>
-      <index>4</index>
+      <index>5</index>
       <description>If files come from AReg</description>
     </string>
 
     <string>
       <name>output_folder</name>
       <label>output_folder</label>
-      <index>5</index>
+      <index>6</index>
       <description>Output path</description>
     </string>
 
     <string>
       <name>log_path</name>
       <label>log_path</label>
-      <index>6</index>
+      <index>7</index>
       <description>Log path</description>
     </string>
   </parameters>
