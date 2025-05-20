@@ -90,6 +90,13 @@
             </property>
            </widget>
           </item>
+          <item row="2" column="0">
+           <widget class="QCheckBox" name="CheckBoxSuffixBased">
+            <property name="text">
+             <string>From AReg</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </item>
        </layout>
@@ -173,7 +180,21 @@ after the suffix</string>
     <layout class="QVBoxLayout" name="verticalLayout_3">
      <item>
       <layout class="QGridLayout" name="gridLayout_6">
+       <item row="3" column="0">
+        <widget class="QLabel" name="label_time">
+         <property name="text">
+          <string>time : </string>
+         </property>
+        </widget>
+       </item>
        <item row="1" column="0">
+        <widget class="QLabel" name="label_info">
+         <property name="text">
+          <string>Number of processed files : </string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0">
         <widget class="QProgressBar" name="progressBar">
          <property name="enabled">
           <bool>true</bool>
@@ -187,22 +208,22 @@ after the suffix</string>
         </widget>
        </item>
        <item row="0" column="0">
-        <widget class="QLabel" name="label_info">
+        <widget class="QLabel" name="LabelNameExtension">
          <property name="text">
-          <string>Number of processed files : </string>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="0">
-        <widget class="QLabel" name="label_time">
-         <property name="text">
-          <string>time : </string>
+          <string>Running</string>
          </property>
         </widget>
        </item>
       </layout>
      </item>
     </layout>
+   </item>
+   <item>
+    <widget class="QPushButton" name="ButtonCancel">
+     <property name="text">
+      <string>Cancel</string>
+     </property>
+    </widget>
    </item>
    <item>
     <spacer name="verticalSpacer">
