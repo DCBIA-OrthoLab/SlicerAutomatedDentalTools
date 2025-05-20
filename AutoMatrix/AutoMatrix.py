@@ -263,6 +263,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SearchButtonMatrix.connect("clicked(bool)",partial(self.openFinder,"Matrix"))
         self.ui.SearchButtonPatient.connect("clicked(bool)",partial(self.openFinder,"Patient"))
         self.ui.SearchButtonOutput.connect("clicked(bool)",partial(self.openFinder,"Output"))
+        self.ui.SearchReference.connect("clicked(bool)",partial(self.openFinder,"Reference"))
         self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
         self.ui.CheckBoxMirror.connect('clicked(bool)', self.Mirror)
         self.ui.ButtonCancel.connect("clicked(bool)", self.onCancel)
@@ -281,25 +282,31 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ComboBoxPatient.setCurrentIndex(1)
         self.ui.ComboBoxMatrix.setCurrentIndex(1)
         self.ui.ButtonCancel.setVisible(False)
+        self.ui.CheckBoxSuffixBased.setVisible(False)
+        self.ui.LabelNameExtension.setVisible(False)
 
 
         self.timer_should_continue = True
 
     def Mirror(self):
-        if self.ui.CheckBoxMirror.isChecked():
-            self.ui.SearchButtonMatrix.setEnabled(False)
-            self.ui.LineEditMatrix.setEnabled(False)
+        run = self.ui.CheckBoxMirror.isChecked()
+        
+        self.ui.SearchButtonMatrix.setEnabled(not run)
+        self.ui.LineEditMatrix.setEnabled(not run)
+        self.ui.labelInputMatrix.setEnabled(not run)
+        self.ui.ComboBoxMatrix.setEnabled(not run)
+        self.ui.labelReference.setEnabled(not run)
+        self.ui.LineEditReference.setEnabled(not run)
+        self.ui.SearchReference.setEnabled(not run)
+        
+        if run:
             self.ui.ComboBoxMatrix.setCurrentIndex(0)
-            self.ui.ComboBoxMatrix.setEnabled(False)
             self.ui.LineEditSuffix.setText("_mir")
             self.ui.checkBoxMatrixName.setChecked(False)
             self.DownloadMirror()
 
-        else :
-            self.ui.SearchButtonMatrix.setEnabled(True)
-            self.ui.LineEditMatrix.setEnabled(True)
+        else:
             self.ui.ComboBoxMatrix.setCurrentIndex(1)
-            self.ui.ComboBoxMatrix.setEnabled(True)
             self.ui.LineEditSuffix.setText("_apply")
             self.ui.LineEditMatrix.setText("")
 
@@ -408,6 +415,10 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         elif nom=="Output":
             surface_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
             self.ui.LineEditOutput.setText(surface_folder)
+            
+        elif nom=="Reference":
+            surface_folder = qt.QFileDialog.getOpenFileName(self.parent,'Open a file',)
+            self.ui.LineEditReference.setText(surface_folder)
 
 
     def cleanup(self):
@@ -553,6 +564,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.list_Processes_Parameters = self.ActualMeth.Process(
             input_patient=self.ui.LineEditPatient.text,
             input_matrix=self.ui.LineEditMatrix.text,
+            reference_file=self.ui.LineEditReference.text,
             suffix=self.ui.LineEditSuffix.text,
             matrix_name=self.ui.checkBoxMatrixName.isChecked(),
             fromAreg=self.ui.CheckBoxSuffixBased.isChecked(),
@@ -729,7 +741,6 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setValue(0)
         self.progress = 0
         self.ui.label_info.setText("Number of processed files : "+str(self.progress)+"/"+str(self.nbFiles))
-        self.ui.CheckBoxSuffixBased.setVisible(False)
         
         self.RunningUI(True)
         self.ui.progressBar.setEnabled(True)

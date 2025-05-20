@@ -1,10 +1,9 @@
 #!/usr/bin/env python-real
 import argparse
-import sys, os, time
-import numpy as np
-import SimpleITK as sitk
 import json
 import glob
+import sys, os, time
+import SimpleITK as sitk
 
 from pathlib import Path
 
@@ -151,49 +150,92 @@ def GetPatients(file_path:str,matrix_path:str):
 
         return patients,len(files)
 
+def apply_transform_to_landmarks(scan_path, transform, output_path):
+    with open(scan_path, 'r') as f:
+        lm_data = json.load(f)
 
-def ResampleImage(image, transform, reference_image, is_segmentation=False):
-        resampler = sitk.ResampleImageFilter()
-        resampler.SetReferenceImage(reference_image)
-        resampler.SetInterpolator(sitk.sitkNearestNeighbor if is_segmentation else sitk.sitkLinear)
-        resampler.SetDefaultPixelValue(0)
-        resampler.SetTransform(transform)
-        return resampler.Execute(image)
+    try:
+        tfm_inverted = transform.GetInverse()
+    except RuntimeError:
+        print(f"WARNING: Could not invert transform for {scan_path}. Skipping.")
+        return
 
-def main(patient_lineEdit, matrix_lineEdit, suffix, add_matrix_name, fromAreg, output_folder, log_path):
+    for point in lm_data['markups'][0]['controlPoints']:
+        point['position'] = list(tfm_inverted.TransformPoint(point['position']))
+
+    with open(output_path, 'w') as f:
+        json.dump(lm_data, f, indent=2)
+        
+
+def apply_transform_to_image(image, transform, reference, output_path, scan_path):
+    if isinstance(transform, sitk.CompositeTransform):
+        ref_guess = scan_path.replace("_transform.tfm", ".nii.gz")
+        if os.path.exists(ref_guess):
+            reference = sitk.ReadImage(ref_guess)
+        else:
+            print(f"WARNING: CompositeTransform but no reference found at {ref_guess}. Using image as fallback.")
+            reference = image
     
-    patients, nb_files = GetPatients(patient_lineEdit, matrix_lineEdit)
+    resampled_image = ResampleImage(image, transform, reference)
+    sitk.WriteImage(resampled_image, output_path)
+
+def ResampleImage(image, transform, reference=None, is_seg=False):
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetTransform(transform)
+    resampler.SetInterpolator(sitk.sitkNearestNeighbor if is_seg else sitk.sitkLinear)
+    resampler.SetDefaultPixelValue(0)
+
+    if reference is not None:
+        resampler.SetReferenceImage(reference)
+    else:
+        # mimic the behavior of ResampleScalarVectorDWIVolume without reference
+        resampler.SetSize(image.GetSize())
+        resampler.SetOutputSpacing(image.GetSpacing())
+        resampler.SetOutputDirection(image.GetDirection())
+        new_origin = transform.TransformPoint(image.GetOrigin())
+        resampler.SetOutputOrigin(new_origin)
+
+    return resampler.Execute(image)
+
+def main(args):
+    patients, _ = GetPatients(args.input_patient, args.input_matrix)
     suffix_map = {
         "_CB": ("Cranial Base", "CBReg_matrix.tfm"),
         "_L": ("Maxilla", "MAXReg_matrix.tfm"),
         "_U": ("Mandible", "MANDReg_matrix.tfm"),
     }
+    
+    reference_image = None
+    if (args.reference_file != "None") and Path(args.reference_file).exists():
+        try:
+            reference_image = sitk.ReadImage(args.reference_file)
+        except Exception as e:
+            print(f"WARNING: Could not read reference image: {e}")
+            reference_image = None
+    else:
+        print(f"INFO: No valid reference image provided. Will use each scan's geometry.")
 
     for key, values in patients.items():
         for scan in values['scan']:
             is_landmark = scan.endswith(".mrk.json")
             extension_scan = ''.join(Path(scan).suffixes)
             
-            
-
-            if Path(patient_lineEdit).is_dir():
-                outpath = scan.replace(patient_lineEdit, output_folder)
+            if Path(args.input_patient).is_dir():
+                outpath = scan.replace(args.input_patient, args.output_folder)
             else:
-                outpath = scan.replace(os.path.dirname(patient_lineEdit), output_folder)
+                outpath = scan.replace(os.path.dirname(args.input_patient), args.output_folder)
 
-            if not os.path.exists(os.path.dirname(outpath)):
-                os.makedirs(os.path.dirname(outpath))
+            os.makedirs(os.path.dirname(outpath), exist_ok=True)
                 
-
             # Find matrix
             matrix_candidates = []
-            if fromAreg == "True" and is_landmark:
+            if args.fromAreg == "True" and is_landmark:
                 matched = False
                 for suffix, (subdir, matrix_filename) in suffix_map.items():
                     if suffix in os.path.basename(scan):
                         patient_id = os.path.basename(scan).split('_')[0]
                         matrix_path = os.path.join(
-                            matrix_lineEdit,
+                            args.matrix_lineEdit,
                             subdir,
                             f"{patient_id}_OutReg",
                             f"{patient_id}_{matrix_filename}"
@@ -212,55 +254,36 @@ def main(patient_lineEdit, matrix_lineEdit, suffix, add_matrix_name, fromAreg, o
                 matrix_candidates = values['matrix']
 
             for matrix in matrix_candidates:
-                tfm = sitk.ReadTransform(matrix)
-                matrix_suffix = f"_{Path(matrix).stem}" if add_matrix_name == "True" else ""
+                try:
+                    tfm = sitk.ReadTransform(matrix)
+                except Exception as e:
+                    print(f"ERROR reading transform {matrix}: {e}")
+                    continue
+
+                matrix_suffix = f"_{Path(matrix).stem}" if args.matrix_name == "True" else ""
+                out_suffix = f"{args.suffix}{matrix_suffix}"
                 
-                image = None if is_landmark else sitk.ReadImage(scan)
-
+                # For landmarks
                 if is_landmark:
-                    with open(scan, 'r') as f:
-                        lm_data = json.load(f)
-
-                    points = np.array([p['position'] + [1.0] for p in lm_data['markups'][0]['controlPoints']]).T
-
-                    if isinstance(tfm, sitk.AffineTransform):
-                        mat = np.eye(4)
-                        mat[:3, :3] = np.array(tfm.GetMatrix()).reshape(3, 3)
-                        mat[:3, 3] = np.array(tfm.GetTranslation())
-                        transformed = (mat @ points).T[:, :3]
-                        for i, p in enumerate(lm_data['markups'][0]['controlPoints']):
-                            p['position'] = transformed[i].tolist()
-
-                        out_file = outpath.replace(".mrk.json", f"{suffix}{matrix_suffix}.mrk.json")
-                        with open(out_file, 'w') as f:
-                            json.dump(lm_data, f, indent=2)
-                    else:
-                        print(f"WARNING: Landmark transform is not affine. Skipping {matrix}")
+                    out_file = outpath.split(".mrk.json")[0] + out_suffix + ".mrk.json"
+                    apply_transform_to_landmarks(scan, tfm, out_file)
                     continue
 
                 # For volumes
                 try:
-                    if isinstance(tfm, sitk.CompositeTransform):
-                        # Require reference image with matching shape
-                        ref_guess = matrix.replace("_transform.tfm", ".nii.gz")
-                        if os.path.exists(ref_guess):
-                            reference_image = sitk.ReadImage(ref_guess)
-                        else:
-                            print(f"WARNING: CompositeTransform but no reference image found at {ref_guess}. Using scan as fallback.")
-                            reference_image = image
+                    image = sitk.ReadImage(scan)
+                    if "mirror" in os.path.basename(matrix).lower():
+                        local_reference = image
                     else:
-                        reference_image = image
-
-                    output_image = ResampleImage(image, tfm, reference_image)
-                    out_file = outpath.replace(extension_scan, f"{suffix}{matrix_suffix}{extension_scan}")
-                    sitk.WriteImage(output_image, out_file)
+                        local_reference = reference_image if reference_image is not None else image
                     
-                        
+                    out_file = outpath.split(extension_scan)[0] + out_suffix + extension_scan
+                    apply_transform_to_image(image, tfm, local_reference, out_file, matrix)
                 except Exception as e:
                     print(f"ERROR processing {scan} with matrix {matrix}: {e}")
                     continue
         
-            with open(log_path, "a") as log_f:
+            with open(args.log_path, "a") as log_f:
                 log_f.write(str(1))
                             
             print(f"""<filter-progress>{0}</filter-progress>""")
@@ -280,6 +303,7 @@ if __name__ == "__main__":
 
     parser.add_argument("input_patient", type=str)
     parser.add_argument("input_matrix", type=str)
+    parser.add_argument("reference_file", type=str)
     parser.add_argument("suffix", type=str)
     parser.add_argument("matrix_name", type=str)
     parser.add_argument("fromAreg", type=str)
@@ -288,4 +312,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    main(args.input_patient, args.input_matrix, args.suffix, args.matrix_name, args.fromAreg, args.output_folder, args.log_path)
+    main(args)
