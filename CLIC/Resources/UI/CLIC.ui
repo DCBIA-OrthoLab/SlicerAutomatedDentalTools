@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CLIC</class>
+ <widget class="qMRMLWidget" name="CLIC">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>600</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text">
+      <string>Inputs</string>
+     </property>
+     <layout class="QVBoxLayout" name="inputLayout">
+      <item>
+       <layout class="QHBoxLayout" name="inputTypeLayout"/>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="scanPathLayout">
+        <item>
+         <widget class="QLabel" name="ScanPathLabel">
+          <property name="text">
+           <string>Select Scan File/Folder</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="fileSelectionLayout">
+        <item>
+         <widget class="QLineEdit" name="lineEditScanPath"/>
+        </item>
+        <item>
+         <widget class="QPushButton" name="SearchScanFolder">
+          <property name="text">
+           <string>Browse</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="extensionLayout"/>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="nodeSelectionLayout"/>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="modelSelectionLayout"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="modelsCollapsibleButton">
+     <property name="text">
+      <string>Models</string>
+     </property>
+     <layout class="QVBoxLayout" name="modelsLayout">
+      <item>
+       <layout class="QHBoxLayout" name="downloadModelsLayout">
+        <item>
+         <widget class="QPushButton" name="DownloadModelPushButton">
+          <property name="text">
+           <string>Download Model</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QProgressBar" name="PredScanProgressBar">
+        <property name="value">
+         <number>0</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="modelPathLabel">
+        <property name="text">
+         <string>Model Folder</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="lineEditModelPath"/>
+      </item>
+      <item>
+       <widget class="QPushButton" name="SearchModelFolder">
+        <property name="text">
+         <string>Choose</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton">
+     <property name="text">
+      <string>Outputs</string>
+     </property>
+     <layout class="QVBoxLayout" name="outputsLayout">
+      <item>
+       <layout class="QHBoxLayout" name="saveOptionsLayout">
+        <item>
+         <widget class="QCheckBox" name="SavePredictCheckBox">
+          <property name="text">
+           <string>Save Predictions in Input Folder</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="SearchSaveFolder">
+          <property name="text">
+           <string>Choose Save Folder</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <!-- Nouvel item pour saisir le suffixe avant la sélection du dossier de sortie -->
+      <item>
+       <layout class="QHBoxLayout" name="suffixSelectionLayout">
+        <item>
+         <widget class="QLabel" name="SuffixLabel">
+          <property name="text">
+           <string>Suffix:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="suffixLineEdit">
+          <property name="placeholderText">
+           <string>Enter suffix</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="predictFolderLayout">
+        <item>
+         <widget class="QLabel" name="PredictFolderLabel">
+          <property name="text">
+           <string>Prediction Folder</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="SaveFolderLineEdit"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="computeCollapsibleButton">
+     <property name="text">
+      <string>Compute</string>
+     </property>
+     <layout class="QVBoxLayout" name="computeLayout">
+      <item>
+       <widget class="QPushButton" name="PredictionButton">
+        <property name="text">
+         <string>Run</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QProgressBar" name="progressBar">
+        <property name="value">
+         <number>0</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="PredScanLabel">
+        <property name="text">
+         <string>Status: Idle</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="TimerLabel">
+        <property name="text">
+         <string>Time elapsed: 0.00s</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="CancelButton">
+        <property name="text">
+         <string>Cancel</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTextEdit" name="logTextEdit">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTextEdit" name="logTextEdit">
+     <property name="readOnly">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ctkCollapsibleButton</class>
+   <extends>QWidget</extends>
+   <header>ctkCollapsibleButton.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>qMRMLWidget</class>
+   <extends>QWidget</extends>
+   <header>qMRMLWidget.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>
