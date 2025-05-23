@@ -40,13 +40,19 @@ def calculate_new_origin(image):
     # new_origin = [-new_origin[0]*1,new_origin[1],-new_origin[2]*1] # SAVE INSIDE BUT NOT CENTER
     return tuple(new_origin)
 
-def modify_image_properties(nifti_file_path, new_direction, output_file_path=None):
+def modify_image_properties(nifti_file_path, new_direction, output_file_path=None, acquisition_z_spacing=3.0):
     """
     Read a NIfTI file, change its Direction and optionally center and save the modified image.
     """
     image = sitk.ReadImage(nifti_file_path)
     # Set the new direction
     image.SetDirection(new_direction)
+    spacing = list(image.GetSpacing())
+    
+    # Update only Z spacing (index 2)
+    if acquisition_z_spacing != "None":
+        spacing[2] = float(acquisition_z_spacing)
+        image.SetSpacing(tuple(spacing))
 
     # Calculate and set the new origin
     new_origin = calculate_new_origin(image)
@@ -84,7 +90,7 @@ def main(args):
             output_file_path = os.path.join(output_folder, f"{file_id}_OR.nii")
         else :
             output_file_path = os.path.join(output_folder, f"{file_id}_OR.nii.gz")
-        modify_image_properties(file_path, new_direction, output_file_path)
+        modify_image_properties(file_path, new_direction, output_file_path, args.acquisition_z_spacing)
         
         if total_patients > 0:
             patient_count += 1
@@ -98,6 +104,7 @@ if __name__ == "__main__":
     parser.add_argument('input_folder', default = '.', help='Path to the input folder containing NIfTI files.')
     parser.add_argument('direction', default = "-1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0",  help='New direction for the NIfTI files, specified as a comma-separated string of floats. ')
     parser.add_argument('output_folder', default = '.', help='Path to the output folder where modified NIfTI files will be saved.')
+    parser.add_argument('acquisition_z_spacing', default = "3.0", help='New Z spacing for the NIfTI files.')
     args = parser.parse_args()
     main(args)
 

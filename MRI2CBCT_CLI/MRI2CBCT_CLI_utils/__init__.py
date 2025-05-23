@@ -12,3 +12,4 @@ from .AREG_MRI import registration
 from .approximate import approximation
 from .nmi import NMI
 from .crop_approximation import get_transformation, crop_volume
+from .LR_crop import crop_mri, crop_cbct

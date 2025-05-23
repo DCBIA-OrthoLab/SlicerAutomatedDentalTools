@@ -5,7 +5,10 @@ set(FOLDER_LIBRARY AutoMatrix_Method)
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   ${FOLDER_LIBRARY}/__init__.py
+  ${FOLDER_LIBRARY}/applyMatrix.py
   ${FOLDER_LIBRARY}/General_tools.py
+  ${FOLDER_LIBRARY}/Method.py
+  ${FOLDER_LIBRARY}/Progress.py
 )
 
 set(MODULE_PYTHON_RESOURCES

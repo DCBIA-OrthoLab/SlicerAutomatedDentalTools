@@ -8,6 +8,7 @@ from MRI2CBCT_utils.Preprocess_MRI import Process_MRI
 from MRI2CBCT_utils.Preprocess_CBCT_MRI import Preprocess_CBCT_MRI
 from MRI2CBCT_utils.Reg_MRI2CBCT import Registration_MRI2CBCT
 from MRI2CBCT_utils.Approx_MRI2CBCT import Approximation_MRI2CBCT
+from MRI2CBCT_utils.LR_crop import LR_CROP_MRI2CBCT
 import time 
 
 
@@ -191,6 +192,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._parameterNode = None
         self._parameterNodeGuiTag = None
         self.processWasCanceled = False
+        self.observerTags = []
         
         
 
@@ -226,6 +228,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.preprocess_mri_cbct = Preprocess_CBCT_MRI(self)
         self.registration_mri2cbct = Registration_MRI2CBCT(self)
         self.approximate_mri2cbct = Approximation_MRI2CBCT(self)
+        self.lr_crop_mri2cbct = LR_CROP_MRI2CBCT(self)
 
         # Connections
         #        LineEditOutputReg
@@ -234,28 +237,40 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
 
         # Buttons
-        self.ui.pushButtonApproximateMRI.connect("clicked(bool)", self.approximateMRI)
+        
+        ### Frames ###
+        self.ui.resampleCollapsibleButton.toggled.connect(partial(self.onCollapsibleToggled, "Resample"))
+        self.ui.inputsCollapsibleButton.toggled.connect(partial(self.onCollapsibleToggled, "Inputs"))
+        self.ui.approxCollapsibleButton.toggled.connect(partial(self.onCollapsibleToggled, "Approx"))
+        
+        
+        
+        ### Approximation ###
         self.ui.SearchButtonApproxCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCTApprox"))
         self.ui.SearchButtonApproxMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRIApprox"))
         self.ui.SearchButtonOutputApprox.connect("clicked(bool)",partial(self.openFinder,"OutputApprox"))
-        # self.ui.SearchButtonMeanCBCT.connect("clicked(bool)",partial(self.openFinder,"MeanCBCTApprox"))
-        # self.ui.SearchButtonROI.connect("clicked(bool)",partial(self.openFinder,"ROIApprox"))
-        # self.ui.DownloadButtonMeanCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditMeanCBCT, "MeanCBCT", True))
-        # self.ui.DownloadButtonROI.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditROI, "ROI", True))
-        self.ui.pushButtonCancelProcess.connect("clicked(bool)", self.onCancel)
+        self.ui.pushButtonApproximateMRI.connect("clicked(bool)", self.approximateMRI)
         
-        self.ui.registrationButton.connect("clicked(bool)", self.registration_MR2CBCT)
-        self.ui.SearchButtonCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCT"))
-        self.ui.SearchButtonMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRI"))
-        self.ui.SearchButtonRegMRI.connect("clicked(bool)",partial(self.openFinder,"InputRegMRI"))
-        self.ui.SearchButtonRegCBCT.connect("clicked(bool)",partial(self.openFinder,"InputRegCBCT"))
-        self.ui.SearchButtonRegLabel.connect("clicked(bool)",partial(self.openFinder,"InputRegLabel"))
+        
+        
+        ### L/R Cropping ###
+        self.ui.SearchButtonSepCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCTSep"))
+        self.ui.SearchButtonSepMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRISep"))
+        self.ui.SearchButtonSepOut.connect("clicked(bool)",partial(self.openFinder,"OutputSep"))
+        self.ui.lineEditSepCBCT.textChanged.connect(self.updateSepLabel)
+        self.ui.lineEditSepMRI.textChanged.connect(self.updateSepLabel)
+        self.ui.pushButtonCropLR.connect("clicked(bool)", self.lrCropMRI2CBCT)
+        
+        
+        
+        ### Resampling ###
         self.ui.SearchButtonResampleCBCT.connect("clicked(bool)",partial(self.openFinder,"InputResampleCBCT"))
         self.ui.SearchButtonResampleMRI.connect("clicked(bool)",partial(self.openFinder,"InputResampleMRI"))
         self.ui.SearchButtonResampleSeg.connect("clicked(bool)",partial(self.openFinder,"InputResampleSeg"))
         self.ui.SearchButtonResampleT2CBCT.connect("clicked(bool)",partial(self.openFinder,"InputResampleT2CBCT"))
         self.ui.SearchButtonResampleT2MRI.connect("clicked(bool)",partial(self.openFinder,"InputResampleT2MRI"))
         self.ui.SearchButtonResampleT2Seg.connect("clicked(bool)",partial(self.openFinder,"InputResampleT2Seg"))
+        self.ui.SearchOutputFolderResample.connect("clicked(bool)",partial(self.openFinder,"OutputOrientResample"))
         self.ui.lineEditResampleCBCT.textChanged.connect(self.updateResamplingLabel)
         self.ui.lineEditResampleT2CBCT.textChanged.connect(self.updateResamplingLabel)
         self.ui.lineEditResampleMRI.textChanged.connect(self.updateResamplingLabel)
@@ -267,21 +282,48 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.CheckBoxT2MRI.connect("clicked(bool)",self.toggleT2)
         self.ui.CheckBoxT2Seg.connect("clicked(bool)",self.toggleT2)
         
-        self.ui.SearchOutputFolderOrientCBCT.connect("clicked(bool)",partial(self.openFinder,"OutputOrientCBCT"))
-        self.ui.SearchOutputFolderOrientMRI.connect("clicked(bool)",partial(self.openFinder,"OutputOrientMRI"))
-        self.ui.SearchOutputFolderResample.connect("clicked(bool)",partial(self.openFinder,"OutputOrientResample"))
-        self.ui.SearchButtonOutput.connect("clicked(bool)",partial(self.openFinder,"OutputReg"))
-        self.ui.pushButtonOrientCBCT.connect("clicked(bool)",self.orientCBCT)
         self.ui.pushButtonResample.connect("clicked(bool)",self.resampleMRICBCT)
+        
+        
+        
+        ### MRI Orientation ###
+        self.ui.comboBoxDICOMVolumes.currentIndexChanged.connect(self.onDICOMSelectionChanged)
+        self.addSceneObservers()
+        self.updateDICOMComboBox()
+        self.ui.checkBoxBilateralMRI.connect("clicked(bool)",self.toggleBilateral)
+        self.toggleBilateral()
+        
+        self.ui.SearchButtonMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRI"))
+        self.ui.SearchOutputFolderOrientMRI.connect("clicked(bool)",partial(self.openFinder,"OutputOrientMRI"))
         self.ui.pushButtonOrientMRI.connect("clicked(bool)",self.orientCenterMRI)
+        
+        
+        
+        ### CBCT Orientation ###
+        self.ui.SearchButtonCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCT"))
+        self.ui.pushButtonTestFilePreCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.LineEditCBCT, "MRI2CBCT", True))
+        self.ui.SearchOutputFolderOrientCBCT.connect("clicked(bool)",partial(self.openFinder,"OutputOrientCBCT"))
         self.ui.pushButtonDownloadOrientCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditOrientCBCT, "Orientation", True))
         self.ui.pushButtonDownloadSegCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditSegCBCT, "Segmentation", True))
-        self.ui.pushButtonTestFilePreCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.LineEditCBCT, "MRI2CBCT", True))
+        self.ui.pushButtonOrientCBCT.connect("clicked(bool)",self.orientCBCT)
+        
+        
+        
+        ### Registration ###
+        self.ui.SearchButtonOutput.connect("clicked(bool)",partial(self.openFinder,"OutputReg"))
         self.ui.pushButtonTestFilePreMRI.connect("clicked(bool)",partial(self.downloadModel,self.ui.LineEditMRI, "MRI2CBCT", True))
         self.ui.pushButtonTestFileRegMRI.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegMRI, "MRI2CBCT", True))
         self.ui.pushButtonTestFileRegCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegCBCT, "MRI2CBCT", True))
         self.ui.pushButtonTestFileRegSeg.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegLabel, "MRI2CBCT", True))
+        self.ui.SearchButtonRegMRI.connect("clicked(bool)",partial(self.openFinder,"InputRegMRI"))
+        self.ui.SearchButtonRegCBCT.connect("clicked(bool)",partial(self.openFinder,"InputRegCBCT"))
+        self.ui.SearchButtonRegLabel.connect("clicked(bool)",partial(self.openFinder,"InputRegLabel"))
+        self.ui.registrationButton.connect("clicked(bool)", self.registration_MR2CBCT)
         
+        
+        
+        
+        self.ui.pushButtonCancelProcess.connect("clicked(bool)", self.onCancel)
 
         # Make sure parameter node is initialized (needed for module reload) 
         self.initializeParameterNode()
@@ -320,10 +362,12 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.outputCollapsibleButton.setText("Registration")
         self.ui.inputsCollapsibleButton.setText("Preprocess")
         self.ui.approxCollapsibleButton.setText("Approximate")
+        self.ui.resampleCollapsibleButton.setText("Resample")
         
         self.ui.outputCollapsibleButton.setChecked(True)  # True to expand, False to collapse
         self.ui.inputsCollapsibleButton.setChecked(False)
-        self.ui.approxCollapsibleButton.setChecked(True)
+        self.ui.approxCollapsibleButton.setChecked(False)
+        self.ui.resampleCollapsibleButton.setChecked(True)
         
         self.ui.pushButtonCancelProcess.setVisible(False)
         ##################################################################################################
@@ -516,9 +560,70 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             ]
 
         return resample_values_row1, resample_values_row2
-
-                
+    
+    def addSceneObservers(self):
+        # Remove any existing observers first
+        self.removeSceneObservers()
+        self.observerTags.append(slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeAddedEvent, self.onSceneNodeChanged))
+        self.observerTags.append(slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeRemovedEvent, self.onSceneNodeChanged))
         
+    def removeSceneObservers(self):
+        # Remove all observers and clear the list
+        for tag in self.observerTags:
+            slicer.mrmlScene.RemoveObserver(tag)
+        self.observerTags = []
+
+    def onSceneNodeChanged(self, caller=None, event=None):
+        self.updateDICOMComboBox()
+
+    def updateDICOMComboBox(self):
+        currentID = self.ui.comboBoxDICOMVolumes.itemData(self.ui.comboBoxDICOMVolumes.currentIndex) if self.ui.comboBoxDICOMVolumes.currentIndex > 0 else None
+        self.ui.comboBoxDICOMVolumes.blockSignals(True)
+        self.ui.comboBoxDICOMVolumes.clear()
+        self.ui.comboBoxDICOMVolumes.addItem("Select DICOM node")
+        
+        volumes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
+        for volume in volumes:
+            if volume.GetAttribute("DICOM.instanceUIDs"):
+                self.ui.comboBoxDICOMVolumes.addItem(volume.GetName(), volume.GetID())
+        
+        if currentID:
+            index = self.ui.comboBoxDICOMVolumes.findData(currentID)
+            if index != -1:
+                self.ui.comboBoxDICOMVolumes.setCurrentIndex(index)
+        self.ui.comboBoxDICOMVolumes.blockSignals(False)
+
+    def onDICOMSelectionChanged(self):
+        if self.ui.comboBoxDICOMVolumes.currentIndex == 0:
+            self.ui.labelDICOMSpacing.text = "Acquisition Spacing: None"
+            return
+        
+        volumeID = self.ui.comboBoxDICOMVolumes.itemData(self.ui.comboBoxDICOMVolumes.currentIndex)
+        volumeNode = slicer.mrmlScene.GetNodeByID(volumeID)
+        if not volumeNode:
+            return
+        
+        instanceUIDs = volumeNode.GetAttribute("DICOM.instanceUIDs").split()
+        if not instanceUIDs:
+            self.ui.labelDICOMSpacing.text = "Acquisition Spacing: N/A (No DICOM metadata)"
+            return
+        
+        firstInstanceUID = instanceUIDs[0]
+        db = slicer.dicomDatabase
+        if not db:
+            self.ui.labelDICOMSpacing.text = "DICOM database not available"
+            return
+        
+        # Get spacing values from DICOM tags
+        spacing = db.instanceValue(firstInstanceUID, "0018,0088")  # Spacing Between Slices
+        if not spacing:
+            spacing = db.instanceValue(firstInstanceUID, "0018,0050")  # Slice Thickness
+        
+        if spacing:
+            self.ui.labelDICOMSpacing.text = f"Acquisition Spacing: {float(spacing):.2f} mm"
+        else:
+            self.ui.labelDICOMSpacing.text = "Acquisition Spacing: Not found in DICOM tags"
+
     def onCheckboxOrientClicked(self, row, col, state):
         """
         Handle the click event of the orientation checkboxes in the table.
@@ -767,13 +872,20 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 spinBox.setValue(default_values[row][col])
                 self.tableWidgetNorm.setCellWidget(row, col, spinBox)
                 
+    def onCollapsibleToggled(self, name: str, expanded: bool) -> None:
+        if name == "Resample":
+            self.ui.frame.setVisible(expanded)
+        elif name == "Inputs":
+            self.ui.frame_4.setVisible(expanded)
+        elif name == "Approx":
+            self.ui.frame_5.setVisible(expanded)
+                
     def openFinder(self,nom : str,_) -> None : 
         """
          Open finder to let the user choose is files or folder
         """
         if nom=="InputMRI":
             if self.ui.ComboBoxMRI.currentIndex==1:
-                  print("oui")
                   surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
             else :
                   surface_folder = QFileDialog.getOpenFileName(self.parent,'Open a file',)
@@ -857,17 +969,21 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
             self.ui.lineEditApproxMRI.setText(surface_folder)
             
-        # elif nom=="MeanCBCTApprox":
-        #     surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-        #     self.ui.lineEditMeanCBCT.setText(surface_folder)
-            
-        # elif nom=="ROIApprox":
-        #     surface_folder = QFileDialog.getOpenFileName(self.parent,'Open a file',)
-        #     self.ui.lineEditROI.setText(surface_folder)
-            
         elif nom=="OutputApprox":
             surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
             self.ui.lineEditOutputApprox.setText(surface_folder)
+            
+        elif nom=="InputCBCTSep":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditSepCBCT.setText(surface_folder)
+        
+        elif nom=="InputMRISep":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditSepMRI.setText(surface_folder)
+        
+        elif nom=="OutputSep":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditSepOut.setText(surface_folder)
 
         
         
@@ -1046,6 +1162,63 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         return out_path
     
+    def lrCropMRI2CBCT(self)->None:
+        """
+        This function is called when the button "pushButtonCropLR" is clicked.
+        It crops the Right and Left of MRI and CBCT images and initiates the processing pipeline.
+        This function sets up the parameters for MRI and CBCT separation, tests the process and scan,
+        and starts the processing pipeline if all checks pass. It handles the initial setup,
+        parameter passing, and process initiation, including setting up observers for process updates.
+        """
+        
+        install_function()
+        LinEditMRISep = "None"
+        LinEditCBCTSep = "None"
+        
+        if self.ui.lineEditSepMRI.text != "":
+            LinEditMRISep = self.ui.lineEditSepMRI.text
+        if self.ui.lineEditSepCBCT.text != "":
+            LinEditCBCTSep = self.ui.lineEditSepCBCT.text
+        param = {
+            "input_folder_CBCT": LinEditCBCTSep,
+            "input_folder_MRI": LinEditMRISep,
+            "output_folder": self.ui.lineEditSepOut.text,
+        }
+        
+        ok,mess = self.lr_crop_mri2cbct.TestProcess(**param)
+        if not ok :
+            self.showMessage(mess)
+            return
+        
+        ok,mess = self.lr_crop_mri2cbct.TestScan(param["input_folder_CBCT"])
+        if not ok :
+            self.showMessage(mess)
+            return
+        ok,mess = self.lr_crop_mri2cbct.TestScan(param["input_folder_MRI"])
+        if not ok :
+            self.showMessage(mess)
+            return
+        
+        self.list_Processes_Parameters = self.lr_crop_mri2cbct.Process(**param)
+        
+        self.onProcessStarted()
+        
+        # /!\ Launch of the first process /!\
+        print("module name : ",self.list_Processes_Parameters[0]["Module"])
+        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        
+        self.process = slicer.cli.run(
+                self.list_Processes_Parameters[0]["Process"],
+                None,
+                self.list_Processes_Parameters[0]["Parameter"],
+            )
+        
+        self.module_name = self.list_Processes_Parameters[0]["Module"]
+        self.processObserver = self.process.AddObserver(
+            "ModifiedEvent", self.onProcessUpdate
+        )
+        del self.list_Processes_Parameters[0]
+
     def orientCBCT(self)->None:
         """
         This function is called when the button "pushButtonOrientCBCT" is click.
@@ -1104,9 +1277,17 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         and process initiation, including setting up observers for process updates.
         """
         install_function()
-        param = {"input_folder":self.ui.LineEditMRI.text,
-                "direction":self.getCheckboxValuesOrient(),
-                "output_folder":self.ui.lineEditOutputOrientMRI.text}
+        if self.ui.checkBoxBilateralMRI.isChecked():
+            z_spacing = self.ui.AcquisitionSpacing.value
+        else:
+            z_spacing = "None"
+            
+        param = {
+            "input_folder":self.ui.LineEditMRI.text,
+            "direction":self.getCheckboxValuesOrient(),
+            "output_folder":self.ui.lineEditOutputOrientMRI.text,
+            "acquisition_z_spacing": z_spacing,
+        }
         
         ok,mess = self.preprocess_mri.TestProcess(**param) 
         if not ok : 
@@ -1251,6 +1432,21 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         del self.list_Processes_Parameters[0]
         
+    def updateSepLabel(self):
+        """
+        Updates the 'labelCropLR' text dynamically based on which input folders are set.
+        """
+        selected = []
+        if self.ui.lineEditSepCBCT.text.strip():
+            selected.append("CBCT")
+        if self.ui.lineEditSepMRI.text.strip():
+            selected.append("MRI")
+                
+        if selected:
+            self.ui.labelCropLR.setText(f"<b>Running cropping for: {', '.join(selected)}</b>")
+        else:
+            self.ui.labelCropLR.setText("No folder selected")
+        
         
     def updateResamplingLabel(self):
         """
@@ -1319,7 +1515,16 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditResampleT2Seg.setVisible(is_visible)
             self.ui.SearchButtonResampleT2Seg.setVisible(is_visible)
             
-            
+    def toggleBilateral(self):
+        """
+        Toggle the visibility of the bilateral resampling options based on the state of the checkbox.
+        """
+        is_visible = self.ui.checkBoxBilateralMRI.isChecked()
+        self.ui.comboBoxDICOMVolumes.setVisible(is_visible)
+        self.ui.labelDICOMSpacing.setVisible(is_visible)
+        self.ui.labelOutSpacing.setVisible(is_visible)
+        self.ui.AcquisitionSpacing.setVisible(is_visible)
+        self.ui.labelmm.setVisible(is_visible)
         
     def registration_MR2CBCT(self) -> None:
         """
@@ -1409,8 +1614,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         ok1,mess = self.approximate_mri2cbct.TestScan(param["cbct_folder"])
         ok2,mess2 = self.approximate_mri2cbct.TestScan(param["mri_folder"])
-        # ok3,mess3 = self.approximate_mri2cbct.TestScan(param["mean_folder"])
-        # ok4,mess4 = self.approximate_mri2cbct.TestScan(param["ROI_file"])
         
         error_messages = []
 
@@ -1418,10 +1621,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             error_messages.append("CBCT folder")
         if not ok2:
             error_messages.append("MRI folder")
-        # if not ok3:
-        #     error_messages.append("Mean folder")
-        # if not ok4:
-        #     error_messages.append("ROI file")
 
         if error_messages:
             error_message = "No files to run has been found in the following folders: " + ", ".join(error_messages)

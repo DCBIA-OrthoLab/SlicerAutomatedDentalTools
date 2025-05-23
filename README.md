@@ -39,9 +39,9 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [AutoCrop3D](#autocrop3d-module) | Automatically crop a folder of CBCT scans with the same region of interest. |
 | [AutoMatrix](#automatrix-module)| Automatically apply one or different matrix to a folder of IOS or CBCT scans. |
 | [MRI2CBCT](#mri2cbct-module) | Contains the steps to perform the registration of MRI and CBCT scans.|
-| [FlexReg](#flex-reg) | Registration of IOS patient per patient with customizable patch creation. |
-| [DOCShapeAXI](#doc-shapeaxi) | Automatic classification of 3D Shape. DOC-ShapeAXI is an acronym for Dental Oral and Craniofacial Shape Analysis eXplainability and Interpretability. |
-| [BatchDentalSegmentator](#BatchDentalSegmentator) | DentalSegmentator in batch for mixed or permanent dentition |
+| [FlexReg](#flexreg-module) | Registration of IOS patient per patient with customizable patch creation. |
+| [DOCShapeAXI](#docshapeaxi-module) | Automatic classification of 3D Shape. DOC-ShapeAXI is an acronym for Dental Oral and Craniofacial Shape Analysis eXplainability and Interpretability. |
+| [BatchDentalSegmentator](#batchdentalseg) | DentalSegmentator in batch for mixed or permanent dentition |
 
 
 These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
@@ -367,14 +367,17 @@ The AutoMatrix module provides a user interface to apply a matrix to a folder fo
 ## How the module works?
 
 ### How to name the new files and where they are stored
-The module will create the same path you had in the input folder in the output folder.
-The new files will be named by the name of the original file + the suffix you entered + the name of the matrix files that were applied.
+The module will replicate the folder structure from your input folder inside the output folder.
+Each new file will keep the original filename, followed by the suffix you specify.
+If the "Add matrix name to filename" option is enabled, the matrix filename will also be appended.
 
-Example :
-Input file : patient1_T1_MA.nii.gz
-Input matrix : patient1_matrix1.tfm
-Input suffix : _apply
-Output file : patient1_T1_MA_apply_matrix1.nii.gz
+Example:  
+| With matrix name | Without matrix name |
+| ----------- | ----------- |
+| **Input file:** patient1_T1_MA.nii.gz | **Input file:** patient1_T1_MA.nii.gz
+| **Input matrix:** patient1_matrix1.tfm | **Input matrix:** Matrix_mirror.tfm
+| **Suffix:** _apply | **Suffix:** _mir
+| **Output file:** patient1_T1_MA_apply_matrix1.nii.gz | **Output file:** patient1_T1_MA_mir.nii.gz
 
 
 ### 4 Modes available
@@ -401,8 +404,11 @@ There is button "Mirror" that will automatically download the matrix mirror and 
 | ----------- | ----------- | ----------- |
 | **CBCT** | .nii.gz | .tfm .npy .h5 .mat .txt |
 | **IOS** | .vtk .stl .vtp .off .obj | .tfm .npy .h5 .mat .txt|
+| **Landmark** | .mrk.json | .tfm .npy .h5 .mat .txt|
 
 ## MRI2CBCT Module
+
+<img src="MRI2CBCT/Resources/Icons/MRI2CBCT.png" alt="Extension Logo" width="70"/>
 
 The MRI2CBCT module provides a user interface to perform the registration between MRI and CBCT scans.
 
@@ -415,23 +421,38 @@ The MRI2CBCT module provides a user interface to perform the registration betwee
    - **Download Models:** You can download the models required for segmentation and orientation by clicking on "Download."
 
 2. **Orient and Center MRI:**
+   - **Bilateral mode:** When enabled, additional options become available:  
+   This option is intended for bilateral TMJ scans, which contains two slices between left and right separated by a large distance.When such DICOM volumes are saved as NIfTI, the original slice spacing is lost or misrepresented, which distorts the image.  
+   <br>
+   Enabling bilateral mode lets you select a loaded DICOM node to automatically retrieve the true acquisition spacing (from DICOM metadata) and apply it before orientation. This ensures that the image is correctly resampled and anatomically accurate.
+   > If **Bilateral** is disabled, the spacing from the input scan is used as-is.  
    - **Input:** MRI folder path
    - **Axis Direction:** You need to choose the new direction for each axis.
 
-3. **Resample:**
-   - **Options:** You can choose to resample both MRI and CBCT, just MRI, or just CBCT.
+3. **Left and Right Cropping:**
+   - **Inputs:** Folder paths for CBCT and/or MRI.
+
+#### Resampling Step:
+   - **Options:** You can resample T1 and/or T2 scans for **MRI**, **CBCT**, and **Segmentation** independently.
    - **Slice/Number of Slices:** Decide the new slices/number of slices or retain the same size as before running it.
    - **Spacing:** Choose the new spacing or keep the same spacing as in the input.
+   - **Center Image:** When enabled, padding is added equally in all directions to center the content.
 
-#### Manual Approximation and Cropping:
-Before running the normalization, the user needs to perform a manual approximation and cropping on the same region for the MRI, CBCT, and CBCT segmentation.
-For the cropping, the user can use AutoCrop3D available in this extension.
+#### Approximation:
+This step aligns the MRI and CBCT volumes to prepare for precise registration.
+- **Inputs:** Resampled MRI and CBCT volumes.
+
+#### Cropping (TMJ Region):
+Currently, cropping is done using the AutoCrop method. In the future, this step will be replaced by a trained model that automatically identifies and extracts the TMJ region of interest.
 
 #### Registration:
 - **Inputs:** CBCT, CBCT segmentation, and MRI scans after completing the preprocessing steps, including manual approximation and cropping.
 - **Normalization Options:** Select the normalization method and specify the percentile to apply to both MRI and CBCT scans. Default values are provided for convenience.
   
 ## FlexReg Module
+
+<img src="FlexReg/Resources/Icons/FlexReg.png" alt="Extension Logo" width="70"/>
+
 FlexReg is a module that allows you to register patient-specific Intra Oral Scans. It lets you create custom patches for registration.
 
 ### How does the module work?
