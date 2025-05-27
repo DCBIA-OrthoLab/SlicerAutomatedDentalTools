@@ -1,6 +1,6 @@
 from enum import Flag, auto
 from pathlib import Path
-
+import vtk
 import SegmentEditorEffects
 import ctk
 import numpy as np
@@ -17,58 +17,100 @@ from .Utils import (
     setBoxAndTextVisibilityOnThreeDViews,
 )
 
+# ─── Model descriptions ──────────────────────────────────────────────────────
+
+MODEL_DESCRIPTIONS = {
+    "DentalSegmentator": (
+        "<b>DentalSegmentator</b><br>"
+        "→ Segments: Upper Skull (includes Maxilla), Mandible, Mandibular Canal, Upper Teeth, Lower Teeth<br>"
+        "→ Designed for <b>permanent dentition</b>."
+    ),
+    "PediatricDentalsegmentator": (
+        "<b>PediatricDentalsegmentator</b><br>"
+        "→ Segments: Upper Skull (includes Maxilla), Mandible, Mandibular Canal, Upper Teeth, Lower Teeth<br>"
+        "→ Designed for <b>mixed dentition</b> (baby and permanent teeth)."
+    ),
+    "NasoMaxillaDentSeg": (
+        "<b>NasoMaxillaDentSeg</b><br>"
+        "→ Segments: Upper Skull, <u>separate</u> Maxilla, Mandible, Mandibular Canal, Upper Teeth, Lower Teeth<br>"
+        "→ Designed for <b>permanent dentition</b> ."
+    ),
+    "UniversalLabDentalsegmentator": (
+        "<b>UniversalLabDentalsegmentator</b><br>"
+        "→ Segments: Upper Skull, Mandibular Canal,All teeth<br>"
+        "→ Designed for <b>mixed and Permanent dentition</b> ."
+    ),
+}
+
+# ─── Export formats enumeration ───────────────────────────────────────────────
 
 class ExportFormat(Flag):
     OBJ = auto()
     STL = auto()
     NIFTI = auto()
     GLTF = auto()
+    VTK = auto()
 
+# ─── Segmentation Widget Class ────────────────────────────────────────────────
 
 class SegmentationWidget(qt.QWidget):
+
+    # ─── Initialization ─────────────────────────────────────────────────────────
     def __init__(self, logic=None, parent=None):
         super().__init__(parent)
         self.logic = logic or self._createSlicerSegmentationLogic()
         self._prevSegmentationNode = None
         self._minimumIslandSize_mm3 = 60
 
-        # ================================================
-        # Pour le mode folder, on ne sélectionne plus le volume via un Node,
-        # mais on utilise la sélection d'un dossier.
-        # ================================================
-        self.folderPath = ""         # Chemin du dossier sélectionné
-        self.folderFiles = []        # Liste des fichiers volume trouvés dans le dossier
-        self.currentFileIndex = 0    # Index du fichier en cours de traitement
-        self.currentVolumeNode = None  # Volume actuellement chargé
+        self.folderPath = ""
+        self.folderFiles = []
+        self.currentFileIndex = 0
+        self.currentVolumeNode = None
 
-        # Widget de sélection de dossier
+        # INPUT folder selection widget
         self.folderPathLineEdit = qt.QLineEdit(self)
         self.folderPathLineEdit.setReadOnly(True)
         folderSelectButton = createButton("Select Folder", callback=self.selectFolder)
 
-        # Création d’un widget d’input pour la sélection du dossier
+        # OUTPUT folder selection widget
+        self.outputFolderPath = ""
+        self.outputFolderLineEdit = qt.QLineEdit(self)
+        self.outputFolderLineEdit.setReadOnly(True)
+        outputFolderSelectButton = createButton("Select Output Folder", callback=self.selectOutputFolder)
+
         self.inputWidget = qt.QWidget(self)
         inputLayout = qt.QFormLayout(self.inputWidget)
         inputLayout.setContentsMargins(0, 0, 0, 0)
         inputLayout.addRow("Input Folder:", self.folderPathLineEdit)
         inputLayout.addRow("", folderSelectButton)
+        inputLayout.addRow("Output Folder:", self.outputFolderLineEdit)
+        inputLayout.addRow("", outputFolderSelectButton)
 
-        # ================================================
-        # Combobox pour le choix du device
-        # ================================================
+        # Device selection combo box
         self.deviceComboBox = qt.QComboBox()
         self.deviceComboBox.addItems(["cuda", "cpu", "mps"])
 
-        # ================================================
-        # Nouveau menu déroulant pour sélectionner le modèle
-        # ================================================
+        # Model selection combo box
         self.modelComboBox = qt.QComboBox()
-        # Vous pouvez ajouter ici les deux options souhaitées
-        self.modelComboBox.addItems(["DentalSegmentator", "PediatricDentalsegmentator"])
+        self.modelComboBox.addItems([
+            "DentalSegmentator", "PediatricDentalsegmentator",
+            "NasoMaxillaDentSeg", "UniversalLabDentalsegmentator"
+        ])
 
-        # ================================================
-        # Sélecteur de segmentation (inchangé)
-        # ================================================
+        # ► 1) Create Resolve Mirroring button BEFORE connecting signals
+        self.resolveMirroringButton = createButton(
+            "Resolve Mirroring",
+            callback=self.onResolveMirroring,
+            toolTip="Automatically mirrors labeled segments",
+            parent=self
+        )
+        self.resolveMirroringButton.setVisible(False)  # hidden by default
+
+        # Connect signal to show/hide resolve mirroring button
+        self.modelComboBox.currentTextChanged.connect(self._updateResolveButtonVisibility)
+        self._updateResolveButtonVisibility(self.modelComboBox.currentText)
+
+        # Segmentation selector widget
         self.segmentationNodeSelector = slicer.qMRMLNodeComboBox(self)
         self.segmentationNodeSelector.nodeTypes = ["vtkMRMLSegmentationNode"]
         self.segmentationNodeSelector.selectNodeUponCreation = True
@@ -77,13 +119,14 @@ class SegmentationWidget(qt.QWidget):
         self.segmentationNodeSelector.showHidden = False
         self.segmentationNodeSelector.renameEnabled = True
         self.segmentationNodeSelector.setMRMLScene(slicer.mrmlScene)
-        self.segmentationNodeSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateSegmentEditorWidget)
+        self.segmentationNodeSelector.connect(
+            "currentNodeChanged(vtkMRMLNode*)",
+            self.updateSegmentEditorWidget
+        )
         segmentationSelectorComboBox = self.segmentationNodeSelector.findChild("ctkComboBox")
         segmentationSelectorComboBox.defaultText = "Create new Segmentation on Apply"
 
-        # ================================================
-        # Création de l'éditeur de segmentation
-        # ================================================
+        # Create segment editor widget
         self.segmentEditorWidget = slicer.qMRMLSegmentEditorWidget(self)
         self.segmentEditorWidget.setMRMLScene(slicer.mrmlScene)
         self.segmentEditorWidget.setSegmentationNodeSelectorVisible(False)
@@ -91,6 +134,7 @@ class SegmentationWidget(qt.QWidget):
         self.segmentEditorWidget.layout().setContentsMargins(0, 0, 0, 0)
         self.segmentEditorNode = None
 
+        # Surface smoothing slider setup
         self.show3DButton = slicer.util.findChild(self.segmentEditorWidget, "Show3DButton")
         smoothingSlider = self.show3DButton.findChild("ctkSliderWidget")
         self.surfaceSmoothingSlider = ctk.ctkSliderWidget(self)
@@ -104,9 +148,7 @@ class SegmentationWidget(qt.QWidget):
         self.surfaceSmoothingSlider.tracking = False
         self.surfaceSmoothingSlider.valueChanged.connect(smoothingSlider.setValue)
 
-        # ================================================
-        # Export Widget (inchangé)
-        # ================================================
+        # Export widget setup
         exportWidget = qt.QWidget()
         exportLayout = qt.QFormLayout(exportWidget)
         self.stlCheckBox = qt.QCheckBox(exportWidget)
@@ -114,34 +156,34 @@ class SegmentationWidget(qt.QWidget):
         self.objCheckBox = qt.QCheckBox(exportWidget)
         self.niftiCheckBox = qt.QCheckBox(exportWidget)
         self.gltfCheckBox = qt.QCheckBox(exportWidget)
+        self.vtkCheckBox = qt.QCheckBox(exportWidget)
+
         self.reductionFactorSlider = ctk.ctkSliderWidget()
         self.reductionFactorSlider.maximum = 1.0
         self.reductionFactorSlider.value = 0.9
         self.reductionFactorSlider.singleStep = 0.01
         self.reductionFactorSlider.toolTip = (
-            "Decimation factor determining how much the mesh complexity will be reduced. "
-            "Higher value means stronger reduction (smaller files, less details preserved)."
+            "Decimation factor determining how much the mesh complexity will be reduced."
         )
         exportLayout.addRow("Export STL", self.stlCheckBox)
         exportLayout.addRow("Export OBJ", self.objCheckBox)
         exportLayout.addRow("Export NIFTI", self.niftiCheckBox)
         exportLayout.addRow("Export glTF", self.gltfCheckBox)
+        exportLayout.addRow("Export VTK", self.vtkCheckBox)
         exportLayout.addRow("glTF reduction factor :", self.reductionFactorSlider)
         exportLayout.addRow(createButton("Export", callback=self.onExportClicked, parent=exportWidget))
 
-        # ================================================
-        # Mise en page principale
-        # ================================================
+        # Main layout setup
         layout = qt.QVBoxLayout(self)
         self.mainInputWidget = qt.QWidget(self)
         mainInputLayout = qt.QFormLayout(self.mainInputWidget)
         mainInputLayout.setContentsMargins(0, 0, 0, 0)
-        mainInputLayout.addRow(self.inputWidget)                   # Sélection du dossier
+        mainInputLayout.addRow(self.inputWidget)
         mainInputLayout.addRow(self.segmentationNodeSelector)
         mainInputLayout.addRow("Device:", self.deviceComboBox)
-        # Ajout du menu déroulant pour le modèle
         mainInputLayout.addRow("Model:", self.modelComboBox)
         layout.addWidget(self.mainInputWidget)
+        self._addModelScopeDescription()
 
         self.applyButton = createButton(
             "Apply",
@@ -149,13 +191,11 @@ class SegmentationWidget(qt.QWidget):
             toolTip="Click to run the segmentation.",
             icon=icon("start_icon.png")
         )
-
         self.currentInfoTextEdit = qt.QTextEdit()
         self.currentInfoTextEdit.setReadOnly(True)
         self.currentInfoTextEdit.setLineWrapMode(qt.QTextEdit.NoWrap)
         self.fullInfoLogs = []
         self.stopWidget = qt.QVBoxLayout()
-
         self.stopButton = createButton(
             "Stop",
             callback=self.onStopClicked,
@@ -183,6 +223,13 @@ class SegmentationWidget(qt.QWidget):
 
         layout.addWidget(self.applyWidget)
         layout.addWidget(self.stopWidgetContainer)
+        layout.addWidget(self.resolveMirroringButton)
+        self.mirroringProgressBar = qt.QProgressBar()
+        self.mirroringProgressBar.setMinimum(0)
+        self.mirroringProgressBar.setMaximum(100)
+        self.mirroringProgressBar.setVisible(False)
+        layout.addWidget(self.mirroringProgressBar)
+
         layout.addWidget(self.segmentEditorWidget)
 
         surfaceSmoothingLayout = qt.QFormLayout()
@@ -194,16 +241,279 @@ class SegmentationWidget(qt.QWidget):
         layout.addStretch()
 
         self.isStopping = False
-
         self._dependencyChecker = PythonDependencyChecker()
         self.processedVolumes = {}
 
-        # Pour le mode folder, aucun volume n'est sélectionné manuellement.
         self.onInputChangedForLoadedVolume(None)
         self.updateSegmentEditorWidget()
-        self.sceneCloseObserver = slicer.mrmlScene.AddObserver(slicer.mrmlScene.EndCloseEvent, self.onSceneChanged)
+        self.sceneCloseObserver = slicer.mrmlScene.AddObserver(
+            slicer.mrmlScene.EndCloseEvent, self.onSceneChanged
+        )
         self.onSceneChanged(doStopInference=False)
         self._connectSegmentationLogic()
+
+    # ─── Resolve Mirroring Button Visibility ────────────────────────────────────
+
+    def _updateResolveButtonVisibility(self, model_name):
+        self.resolveMirroringButton.setVisible(model_name == "UniversalLabDentalsegmentator")
+
+    # ─── Resolve Mirroring Function ─────────────────────────────────────────────
+
+    def onResolveMirroring(self):
+        """
+        Detects and corrects mirrored segments while preserving
+        the Mandible (53), Maxilla (54), and Mandibular Canal (55).
+
+        The function first reconstructs a label map containing the official
+        values, then applies the mirror correction to these same values.
+        """
+        import numpy as np, vtk, slicer
+
+        # ─── UI Pre-settings ────────────────────────────────────────────────
+        self.mirroringProgressBar.setVisible(True)
+        self.mirroringProgressBar.setValue(0)
+        slicer.app.processEvents()
+
+        segmentationNode = self.getCurrentSegmentationNode()
+        volumeNode       = self.getCurrentVolumeNode()
+        if not segmentationNode or not volumeNode:
+            slicer.util.warningDisplay("Missing volume or segmentation.")
+            return
+
+        logic = slicer.modules.segmentations.logic()
+        seg   = segmentationNode.GetSegmentation()
+
+        # ─── Official label map dictionary (values ↔ names) ───────────────
+
+        full_label_map = {
+            "Upper-right third molar": 1, "Upper-right second molar": 2, "Upper-right first molar": 3,
+            "Upper-right second premolar": 4, "Upper-right first premolar": 5, "Upper-right canine": 6,
+            "Upper-right lateral incisor": 7, "Upper-right central incisor": 8, "Upper-left central incisor": 9,
+            "Upper-left lateral incisor": 10, "Upper-left canine": 11, "Upper-left first premolar": 12,
+            "Upper-left second premolar": 13, "Upper-left first molar": 14, "Upper-left second molar": 15,
+            "Upper-left third molar": 16, "Lower-left third molar": 17, "Lower-left second molar": 18,
+            "Lower-left first molar": 19, "Lower-left second premolar": 20, "Lower-left first premolar": 21,
+            "Lower-left canine": 22, "Lower-left lateral incisor": 23, "Lower-left central incisor": 24,
+            "Lower-right central incisor": 25, "Lower-right lateral incisor": 26, "Lower-right canine": 27,
+            "Lower-right first premolar": 28, "Lower-right second premolar": 29, "Lower-right first molar": 30,
+            "Lower-right second molar": 31, "Lower-right third molar": 32, "Upper-right second molar (baby)": 33,
+            "Upper-right first molar (baby)": 34, "Upper-right canine (baby)": 35,
+            "Upper-right lateral incisor (baby)": 36, "Upper-right central incisor (baby)": 37,
+            "Upper-left central incisor (baby)": 38, "Upper-left lateral incisor (baby)": 39,
+            "Upper-left canine (baby)": 40, "Upper-left first molar (baby)": 41,
+            "Upper-left second molar (baby)": 42, "Lower-left second molar (baby)": 43,
+            "Lower-left first molar (baby)": 44, "Lower-left canine (baby)": 45,
+            "Lower-left lateral incisor (baby)": 46, "Lower-left central incisor (baby)": 47,
+            "Lower-right central incisor (baby)": 48, "Lower-right lateral incisor (baby)": 49,
+            "Lower-right canine (baby)": 50, "Lower-right first molar (baby)": 51,
+            "Lower-right second molar (baby)": 52,
+            "Mandible": 53, "Maxilla": 54, "Mandibular canal": 55
+        }
+        reverse_full_map = {v: k for k, v in full_label_map.items()}
+
+        # ─── 1. Create an empty label map (correct geometry) ────────────────
+        geomLM = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+        logic.ExportAllSegmentsToLabelmapNode(
+            segmentationNode, geomLM, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY)
+
+        ijkToRAS = vtk.vtkMatrix4x4(); geomLM.GetIJKToRASMatrix(ijkToRAS)
+        spacing, origin = geomLM.GetSpacing(), geomLM.GetOrigin()
+        array_shape     = slicer.util.arrayFromVolume(geomLM).shape
+        labelArray      = np.zeros(array_shape, dtype=np.uint16)
+        slicer.mrmlScene.RemoveNode(geomLM)  # Remove temporary node
+
+        # ─── 2. Rebuild label map with correct values ───────────────────────
+        for segId in seg.GetSegmentIDs():
+            segment = seg.GetSegment(segId)
+
+            # a. Get official scalar label value
+            tag_val = vtk.mutable("")
+            if segment.GetTag("LabelValue", tag_val) and tag_val.get():
+                val = int(tag_val.get())
+            else:
+                val = full_label_map.get(segment.GetName())
+                if val is None:
+                    print(f"[WARN] Unknown LabelValue for «{segment.GetName()}» — ignored.")
+                    continue
+
+            # b. Export THIS segment to a temporary label map
+            tmpLM = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+            ids   = vtk.vtkStringArray(); ids.InsertNextValue(segId)
+            logic.ExportSegmentsToLabelmapNode(
+                segmentationNode, ids, tmpLM, volumeNode,
+                slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY)
+
+            arr = slicer.util.arrayFromVolume(tmpLM)
+            labelArray[arr > 0] = val
+            slicer.mrmlScene.RemoveNode(tmpLM)
+
+        # ─── 3. Protected mask & mirror table ───────────────────────────────
+        protected_vals = {53, 54, 55}
+        protected_mask = np.isin(labelArray, list(protected_vals))
+
+        mirror_label_map = {}
+        for name, val in full_label_map.items():
+            if val in protected_vals:
+                continue
+            if "left" in name.lower():
+                mirror_name = name.replace("Left", "Right").replace("left", "right")
+            elif "right" in name.lower():
+                mirror_name = name.replace("Right", "Left").replace("right", "left")
+            else:
+                continue
+            mirror_val = full_label_map.get(mirror_name)
+            if mirror_val:
+                mirror_label_map[val] = mirror_val
+
+        # ─── 4. Mirror plane based on incisors ──────────────────────────────
+        def centroid(val):
+            pts = np.argwhere(labelArray == val)
+            if pts.size == 0:
+                return None
+            ras_sum = np.zeros(3)
+            for z, y, x in pts:
+                ras = [0]*4; ijkToRAS.MultiplyPoint([x, y, z, 1.0], ras)
+                ras_sum += ras[:3]
+            return ras_sum / len(pts)
+
+        incisive_vals = (8, 9, 24, 25)
+        inc_centroids = [centroid(v) for v in incisive_vals]
+        if any(c is None for c in inc_centroids):
+            slicer.util.warningDisplay("Missing central incisors, unable to calculate mirror plane.")
+            return
+        mirror_x_ras = np.mean([c[0] for c in inc_centroids])
+
+        # ─── 5. Perform mirror correction ────────────────────────────────────
+        changed = []
+        unique_vals = np.unique(labelArray)
+        for i, val in enumerate(unique_vals):
+            self.mirroringProgressBar.setValue(int(100 * (i + 1) / len(unique_vals)))
+            slicer.app.processEvents()
+
+            if val == 0 or val in protected_vals or val not in mirror_label_map:
+                continue
+
+            name        = reverse_full_map.get(val, f"label_{val}")
+            mirror_val  = mirror_label_map[val]
+            is_left     = "left" in name.lower()
+
+            coords = np.argwhere(labelArray == val)
+            fixed  = 0
+            for z, y, x in coords:
+                if protected_mask[z, y, x]:
+                    continue
+                ras = [0]*4; ijkToRAS.MultiplyPoint([x, y, z, 1.0], ras)
+                if (is_left and ras[0] > mirror_x_ras) or (not is_left and ras[0] < mirror_x_ras):
+                    labelArray[z, y, x] = mirror_val; fixed += 1
+            if fixed:
+                changed.append(f"{name} → {reverse_full_map.get(mirror_val, mirror_val)} ({fixed} vox)")
+
+        self.mirroringProgressBar.setValue(100)
+
+        # ─── 6. Rebuild corrected segmentation ──────────────────────────────
+        correctedLM = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+        slicer.util.updateVolumeFromArray(correctedLM, labelArray)
+        correctedLM.SetSpacing(spacing)
+        correctedLM.SetOrigin(origin)
+        correctedLM.SetIJKToRASMatrix(ijkToRAS)
+
+        # ► New name: original segmentation name + suffix
+        baseName = segmentationNode.GetName() if segmentationNode else "Segmentation"
+        suffix   = "_Mirrored"                           # choose your suffix here
+        correctedSeg = slicer.mrmlScene.AddNewNodeByClass(
+            "vtkMRMLSegmentationNode",
+            baseName + suffix
+        )
+
+        correctedSeg.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
+        logic.ImportLabelmapToSegmentationNode(correctedLM, correctedSeg)
+        correctedSeg.CreateClosedSurfaceRepresentation()
+
+        # (Optional) Automatically select corrected node
+        self.segmentationNodeSelector.setCurrentNode(correctedSeg)
+
+        # ─── 7. Rename + tag segments (by creation order) ──────────────────
+        unique_vals      = sorted(np.unique(labelArray[labelArray > 0]))      # [1,2,…,55]
+        segIds_sorted    = list(correctedSeg.GetSegmentation().GetSegmentIDs())
+
+        if len(unique_vals) != len(segIds_sorted):
+            print("[WARN] Number of values ​​≠ number of segments — check import.")
+
+        for val, segId in zip(unique_vals, segIds_sorted):
+            segment = correctedSeg.GetSegmentation().GetSegment(segId)
+            segment.SetName(reverse_full_map.get(val, f"label_{val}"))
+            segment.SetTag("LabelValue", str(val))
+
+        # DEBUG: Show unique labels after correction
+        corr_arr = slicer.util.arrayFromVolume(correctedLM)
+        print("Unique labels AFTER correction:", sorted(np.unique(corr_arr[corr_arr > 0])))
+
+        # Cleanup
+        slicer.mrmlScene.RemoveNode(correctedLM)
+        self.mirroringProgressBar.setVisible(False)
+
+        msg = ("✅ Corrected voxels:\n" + "\n".join(changed)) if changed else "✅ No mirrored voxels detected."
+        slicer.util.infoDisplay(msg)
+
+    # ─── Model scope description ──────────────────────────────────────────────
+
+    def _addModelScopeDescription(self):
+        self.modelDescriptionLabel = qt.QLabel(self)
+        self.modelDescriptionLabel.setTextFormat(qt.Qt.RichText)
+        self.modelDescriptionLabel.setWordWrap(True)
+        self.modelComboBox.currentTextChanged.connect(self._updateModelDescription)
+        self._updateModelDescription(self.modelComboBox.currentText)
+        self.mainInputWidget.layout().addRow("Model Scope:", self.modelDescriptionLabel)
+
+    def _updateModelDescription(self, model_name):
+        self.modelDescriptionLabel.setText(MODEL_DESCRIPTIONS.get(model_name, "No description available."))
+
+    # ─── Folder and output selection ───────────────────────────────────────────
+
+    def selectOutputFolder(self):
+        folderPath = qt.QFileDialog.getExistingDirectory(self, "Select Folder to Save Segmentations")
+        if folderPath:
+            self.outputFolderPath = folderPath
+            self.outputFolderLineEdit.setText(folderPath)
+
+    def _saveSegmentationAsNifti(self, segmentationNode, volumeNode):
+        # ADDED: Start message
+        self.onProgressInfo("=== Start of saving the segmentation in NIfTI ===")
+        # Preliminary checks
+        if not segmentationNode:
+            self.onProgressInfo("ERROR: segmentationNode is invalid or not provided.")
+            return
+        if not volumeNode:
+            self.onProgressInfo("WARNING: VolumeNode not provided, using default segmentation geometry.")
+        else:
+            # Set segmentation reference geometry from input volume if needed
+            segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
+        self.onProgressInfo(f"Using segmentation'{segmentationNode.GetName()}'for export. Output folder ={self.outputFolderPath}")
+        
+        # Create labelmap node for export
+        labelmapVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+        self.onProgressInfo("Labelmap node created to receive segmentation data.")
+        
+        # Export all segments to labelmap (using reference geometry of volume if available)
+        success = slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
+                    segmentationNode, labelmapVolumeNode, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY)
+        if not success:
+            self.onProgressInfo("ERROR: Exporting segments to the labelmap failed.")
+            return
+        self.onProgressInfo("Exporting segments to labelmap completed successfully.")
+        
+        # Build output NIfTI filepath
+        filename = segmentationNode.GetName() + ".nii.gz"
+        output_path = os.path.join(self.outputFolderPath, filename)
+        self.onProgressInfo(f"Saving the labelmap in NIfTI format:{output_path}")
+        
+        # Save labelmap as .nii.gz
+        saved = slicer.util.saveNode(labelmapVolumeNode, output_path)
+        if saved:
+            self.onProgressInfo(f"✅ Segmentation saved in{output_path}")
+        else:
+            self.onProgressInfo(f"❌ Failed to save segmentation in {output_path}")
+    
 
     def __del__(self):
         slicer.mrmlScene.RemoveObserver(self.sceneCloseObserver)
@@ -215,11 +525,13 @@ class SegmentationWidget(qt.QWidget):
             self.folderPath = folderPath
             self.folderPathLineEdit.text = folderPath
             folder = Path(folderPath)
-            # Filtrer ici selon vos formats, par exemple tous les fichiers NIfTI
+            # Filter here according to your formats, e.g., all NIfTI files
             self.folderFiles = list(folder.glob("*.nii*")) + list(folder.glob("*.gipl")) + list(folder.glob("*.gipl.gz"))
 
             self.currentFileIndex = 0
             self.onProgressInfo(f"Found {len(self.folderFiles)} file(s) in the folder.")
+
+    # ─── Scene change handling ────────────────────────────────────────────────
 
     def onSceneChanged(self, *_, doStopInference=True):
         if doStopInference:
@@ -236,6 +548,8 @@ class SegmentationWidget(qt.QWidget):
         setConventionalWideScreenView()
         setBoxAndTextVisibilityOnThreeDViews(False)
 
+    # ─── UI helpers ────────────────────────────────────────────────────────────
+
     def _updateStopIcon(self):
         self.stopButton.setIcon(qt.QIcon(self.loading.currentPixmap()))
 
@@ -247,19 +561,21 @@ class SegmentationWidget(qt.QWidget):
         self.isStopping = False
         self._setApplyVisible(True)
 
+    # ─── Apply segmentation ─────────────────────────────────────────────────────
+
     def onApplyClicked(self, *_):
         """
-        Pour le mode folder, on lance le traitement sur l'ensemble des fichiers présents dans le dossier sélectionné.
+        For folder mode, launch processing on all files in the selected folder.
         """
         if not self.folderPath:
-            slicer.util.errorDisplay("Veuillez sélectionner un dossier contenant des volumes.")
+            slicer.util.errorDisplay("Please select a folder containing volumes.")
             return
 
         self.currentInfoTextEdit.clear()
         self._setApplyVisible(False)
 
         if not self.folderFiles:
-            slicer.util.errorDisplay("Aucun fichier volume valide trouvé dans le dossier.")
+            slicer.util.errorDisplay("No valid volume file found in the folder.")
             self._setApplyVisible(True)
             return
 
@@ -277,21 +593,22 @@ class SegmentationWidget(qt.QWidget):
             self._setApplyVisible(True)
             return
 
-        # Lancer le traitement sur le premier fichier du dossier
+        # Start processing first file in folder
         self.processNextFile()
+
 
     def processNextFile(self):
         if self.currentFileIndex >= len(self.folderFiles):
-            self.onProgressInfo("Tous les fichiers du dossier ont été traités.")
+            self.onProgressInfo("All files in the folder have been processed.")
             self._setApplyVisible(True)
             return
 
         filePath = self.folderFiles[self.currentFileIndex]
-        self.onProgressInfo(f"Traitement du fichier : {filePath}")
+        self.onProgressInfo(f"File processing: {filePath}")
 
         loadedVolume = slicer.util.loadVolume(str(filePath))
         if not loadedVolume:
-            self.onProgressInfo(f"Erreur lors du chargement de {filePath}. Passage au suivant.")
+            self.onProgressInfo(f"Error loading {filePath}. Moving on to the next one.")
             self.currentFileIndex += 1
             self.processNextFile()
             return
@@ -299,6 +616,9 @@ class SegmentationWidget(qt.QWidget):
         self.currentVolumeNode = loadedVolume
         self.onInputChangedForLoadedVolume(loadedVolume)
         self.onApplyClickedForVolume(loadedVolume)
+
+# ─── Volume input change handling ──────────────────────────────────────────
+
 
     def onInputChangedForLoadedVolume(self, volumeNode):
         if volumeNode:
@@ -310,63 +630,86 @@ class SegmentationWidget(qt.QWidget):
         segmentationNode = self.processedVolumes.get(volumeNode)
         self.segmentationNodeSelector.setCurrentNode(segmentationNode)
 
+# ─── Apply segmentation for a given volume ────────────────────────────────
+
     def onApplyClickedForVolume(self, volumeNode):
         from SlicerNNUNetLib import Parameter
         selectedModel = self.modelComboBox.currentText
         if selectedModel == "PediatricDentalsegmentator":
             print("Selected Model : ",selectedModel)
-            # Chemin de base où le modèle complet doit être installé
+            # Base path where full model must be installed
             basePath = Path(__file__).parent.joinpath("..", "Resources", "ML", "Dataset001_380CT", "nnUNetTrainer__nnUNetPlans__3d_fullres").resolve()
-            # On choisit fold_0 (vous pouvez adapter par fold_1 si nécessaire)
+            # Choose fold_0 (you can adapt for fold_1 if needed)
             fold_path = basePath.joinpath("fold_0")
             if not fold_path.exists():
                 fold_path.mkdir(parents=True, exist_ok=True)
-            # Chemin du checkpoint dans le dossier fold_0
+            # Checkpoint path inside fold_0
             pediatricCheckpoint = fold_path.joinpath("checkpoint_final.pth")
-            # Si le checkpoint n'existe pas, télécharger le checkpoint ainsi que dataset.json et plans.json dans le répertoire basePath
+            # If checkpoint doesn't exist, download checkpoint and dataset.json and plans.json inside basePath
             if not pediatricCheckpoint.exists():
                 url_checkpoint = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/PEDIATRICDENTALSEG_MODEL/checkpoint_final.pth"
                 url_dataset = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/PEDIATRICDENTALSEG_MODEL/dataset.json"
                 url_plans = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/PEDIATRICDENTALSEG_MODEL/plans.json"
-                self.onProgressInfo("Téléchargement du modèle pediatricdentalseg...")
-                # Télécharger le checkpoint ; on convertit le Path en string pour downloadFile
+                self.onProgressInfo("Downloading pediatricdentalseg model...")
+                # Download checkpoint; convert Path to string for downloadFile
                 slicer.util.downloadFile(url_checkpoint, str(pediatricCheckpoint))
-                # Télécharger dataset.json et plans.json dans basePath
+                # Download dataset.json and plans.json in basePath
                 slicer.util.downloadFile(url_dataset, str(basePath.joinpath("dataset.json")))
                 slicer.util.downloadFile(url_plans, str(basePath.joinpath("plans.json")))
-            # Pour nnUNet, le modelPath doit pointer sur le dossier contenant dataset.json et fold_x
+            # For nnUNet, modelPath must point to folder containing dataset.json and fold_x
+            parameter = Parameter(folds="0", modelPath=basePath, device=self.deviceComboBox.currentText)
+
+        elif selectedModel == "NasoMaxillaDentSeg":
+            print("Selected Model : ",selectedModel)
+            # Base path where full model must be installed
+            basePath = Path(__file__).parent.joinpath("..", "Resources", "ML", "Dataset001_max4", "nnUNetTrainer__nnUNetPlans__3d_fullres").resolve()
+            # Choose fold_0 (you can adapt for fold_1 if needed)
+            fold_path = basePath.joinpath("fold_0")
+            if not fold_path.exists():
+                fold_path.mkdir(parents=True, exist_ok=True)
+            # Checkpoint path inside fold_0
+            NasoMaxillaDentSegCheckpoint = fold_path.joinpath("checkpoint_final.pth")
+            # If checkpoint doesn't exist, download checkpoint and dataset.json and plans.json inside basePath
+            if not NasoMaxillaDentSegCheckpoint .exists():
+                url_checkpoint = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENT_SEG/checkpoint_final.pth"
+                url_dataset = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENT_SEG/dataset.json"
+                url_plans = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENT_SEG/plans.json"
+                self.onProgressInfo("Downloading NasoMaxillaDentSeg model...")
+                # Download checkpoint; convert Path to string for downloadFile
+                slicer.util.downloadFile(url_checkpoint, str(NasoMaxillaDentSegCheckpoint))
+                # Download dataset.json and plans.json in basePath
+                slicer.util.downloadFile(url_dataset, str(basePath.joinpath("dataset.json")))
+                slicer.util.downloadFile(url_plans, str(basePath.joinpath("plans.json")))
+            # For nnUNet, modelPath must point to folder containing dataset.json and fold_x
             parameter = Parameter(folds="0", modelPath=basePath, device=self.deviceComboBox.currentText)
 
 
-########################################################################  AVAILABLE SOON ###############################################################################################################
+        elif selectedModel == "UniversalLabDentalsegmentator":
+            print("Selected Model : ",selectedModel)
+            # Base path where full model must be installed
+            basePath = Path(__file__).parent.joinpath("..", "Resources", "ML", "Dataset002_380CT", "nnUNetTrainer__nnUNetPlans__3d_fullres").resolve()
+            # Choose fold_0 (you can adapt for fold_1 if needed)
+            fold_path = basePath.joinpath("fold_0")
+            if not fold_path.exists():
+                fold_path.mkdir(parents=True, exist_ok=True)
+            # Checkpoint path inside fold_0
+            pediatricCheckpoint = fold_path.joinpath("checkpoint_final.pth")
+            # If checkpoint doesn't exist, download checkpoint and dataset.json and plans.json inside basePath
+            if not pediatricCheckpoint.exists():
+                url_checkpoint = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/UNIVERSALLAB_MODEL/checkpoint_final.pth"
+                url_dataset = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/UNIVERSALLAB_MODEL/dataset.json"
+                url_plans = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/UNIVERSALLAB_MODEL/plans.json"
+                self.onProgressInfo("Downloading pediatricdentalseg model...")
+                # Download checkpoint; convert Path to string for downloadFile
+                slicer.util.downloadFile(url_checkpoint, str(pediatricCheckpoint))
+                # Download dataset.json and plans.json in basePath
+                slicer.util.downloadFile(url_dataset, str(basePath.joinpath("dataset.json")))
+                slicer.util.downloadFile(url_plans, str(basePath.joinpath("plans.json")))
+            # For nnUNet, modelPath must point to folder containing dataset.json and fold_x
+            parameter = Parameter(folds="0", modelPath=basePath, device=self.deviceComboBox.currentText)
 
 
-        # if selectedModel == "UniversalLabDentalsegmentator":
-        #     print("Selected Model : ",selectedModel)
-        #     # Chemin de base où le modèle complet doit être installé
-        #     basePath = Path(__file__).parent.joinpath("..", "Resources", "ML", "Dataset002_380CT", "nnUNetTrainer__nnUNetPlans__3d_fullres").resolve()
-        #     # On choisit fold_0 (vous pouvez adapter par fold_1 si nécessaire)
-        #     fold_path = basePath.joinpath("fold_0")
-        #     if not fold_path.exists():
-        #         fold_path.mkdir(parents=True, exist_ok=True)
-        #     # Chemin du checkpoint dans le dossier fold_0
-        #     pediatricCheckpoint = fold_path.joinpath("checkpoint_final.pth")
-        #     # Si le checkpoint n'existe pas, télécharger le checkpoint ainsi que dataset.json et plans.json dans le répertoire basePath
-        #     if not pediatricCheckpoint.exists():
-        #         url_checkpoint = "https://github.com/ashmoy/tooth_seg/releases/download/model_ULab/checkpoint_final.pth"
-        #         url_dataset = "https://github.com/ashmoy/tooth_seg/releases/download/model_ULab/dataset.json"
-        #         url_plans = "https://github.com/ashmoy/tooth_seg/releases/download/model_ULab/plans.json"
-        #         self.onProgressInfo("Téléchargement du modèle pediatricdentalseg...")
-        #         # Télécharger le checkpoint ; on convertit le Path en string pour downloadFile
-        #         slicer.util.downloadFile(url_checkpoint, str(pediatricCheckpoint))
-        #         # Télécharger dataset.json et plans.json dans basePath
-        #         slicer.util.downloadFile(url_dataset, str(basePath.joinpath("dataset.json")))
-        #         slicer.util.downloadFile(url_plans, str(basePath.joinpath("plans.json")))
-        #     # Pour nnUNet, le modelPath doit pointer sur le dossier contenant dataset.json et fold_x
-        #     parameter = Parameter(folds="0", modelPath=basePath, device=self.deviceComboBox.currentText)
 
-
-#########################################################################################################################################################################################################
 
         else:
             print("Selected Model : ",selectedModel)
@@ -388,6 +731,7 @@ class SegmentationWidget(qt.QWidget):
         self.logic.setParameter(parameter)
         self.logic.startSegmentation(volumeNode)
 
+    # ─── Inference finished callback ──────────────────────────────────────────
 
     def onInferenceFinished(self, *_):
         if self.isStopping:
@@ -396,7 +740,13 @@ class SegmentationWidget(qt.QWidget):
 
         try:
             self.onProgressInfo("Loading inference results...")
+            # Load segmentation results into memory
             self._loadSegmentationResults()
+
+            segmentationNode = self.getCurrentSegmentationNode()
+            volumeNode = self.getCurrentVolumeNode()
+            self._saveSegmentationAsNifti(segmentationNode, volumeNode)
+
             self.onProgressInfo("Inference ended successfully.")
         except RuntimeError as e:
             slicer.util.errorDisplay(e)
@@ -407,10 +757,12 @@ class SegmentationWidget(qt.QWidget):
                 if self.currentFileIndex < len(self.folderFiles):
                     self.processNextFile()
                 else:
-                    self.onProgressInfo("Tous les fichiers du dossier ont été traités.")
+                    self.onProgressInfo("All files in the folder have been processed.")
                     self._setApplyVisible(True)
             else:
                 self._setApplyVisible(True)
+                
+    # ─── Load segmentation results ────────────────────────────────────────────
 
     def _loadSegmentationResults(self):
         currentSegmentation = self.getCurrentSegmentationNode()
@@ -424,6 +776,8 @@ class SegmentationWidget(qt.QWidget):
         self._updateSegmentationDisplay()
         # self._postProcessSegments()
         self._storeProcessedSegmentation()
+
+    # ─── Helper to copy segmentation results ──────────────────────────────────
 
     @staticmethod
     def _copySegmentationResultsToExistingNode(currentSegmentation, segmentationNode):
@@ -444,217 +798,233 @@ class SegmentationWidget(qt.QWidget):
         self._initializeSegmentationNodeDisplay(segmentationNode)
         segmentation = segmentationNode.GetSegmentation()
         selectedModel = self.modelComboBox.currentText
-################################################################################# AVAILABLE SOON #####################################################################################################
        
-        # if selectedModel == "UniversalLabDentalsegmentator":
-        #                 # Pour le modèle UniversalLabDentalsegmentator,
-        #     # on considère 55 labels (on ignore "background")
-        #     UNIVERSAL_LABELS = [
-        #         "Upper-right third molar",
-        #         "Upper-right second molar",
-        #         "Upper-right first molar",
-        #         "Upper-right second premolar",
-        #         "Upper-right first premolar",
-        #         "Upper-right canine",
-        #         "Upper-right lateral incisor",
-        #         "Upper-right central incisor",
-        #         "Upper-left central incisor",
-        #         "Upper-left lateral incisor",
-        #         "Upper-left canine",
-        #         "Upper-left first premolar",
-        #         "Upper-left second premolar",
-        #         "Upper-left first molar",
-        #         "Upper-left second molar",
-        #         "Upper-left third molar",
-        #         "Lower-left third molar",
-        #         "Lower-left second molar",
-        #         "Lower-left first molar",
-        #         "Lower-left second premolar",
-        #         "Lower-left first premolar",
-        #         "Lower-left canine",
-        #         "Lower-left lateral incisor",
-        #         "Lower-left central incisor",
-        #         "Lower-right central incisor",
-        #         "Lower-right lateral incisor",
-        #         "Lower-right canine",
-        #         "Lower-right first premolar",
-        #         "Lower-right second premolar",
-        #         "Lower-right first molar",
-        #         "Lower-right second molar",
-        #         "Lower-right third molar",
-        #         "Upper-right second molar (baby)",
-        #         "Upper-right first molar (baby)",
-        #         "Upper-right canine (baby)",
-        #         "Upper-right lateral incisor (baby)",
-        #         "Upper-right central incisor (baby)",
-        #         "Upper-left central incisor (baby)",
-        #         "Upper-left lateral incisor (baby)",
-        #         "Upper-left canine (baby)",
-        #         "Upper-left first molar (baby)",
-        #         "Upper-left second molar (baby)",
-        #         "Lower-left second molar (baby)",
-        #         "Lower-left first molar (baby)",
-        #         "Lower-left canine (baby)",
-        #         "Lower-left lateral incisor (baby)",
-        #         "Lower-left central incisor (baby)",
-        #         "Lower-right central incisor (baby)",
-        #         "Lower-right lateral incisor (baby)",
-        #         "Lower-right canine (baby)",
-        #         "Lower-right first molar (baby)",
-        #         "Lower-right second molar (baby)",
-        #         "Mandible",
-        #         "Maxilla",
-        #         "Mandibular canal"
-        #     ]
+        if selectedModel == "UniversalLabDentalsegmentator":
+            # For UniversalLabDentalsegmentator model,
+            # we consider 55 labels (ignore "background")
+            UNIVERSAL_LABELS = [
+                "Upper-right third molar",
+                "Upper-right second molar",
+                "Upper-right first molar",
+                "Upper-right second premolar",
+                "Upper-right first premolar",
+                "Upper-right canine",
+                "Upper-right lateral incisor",
+                "Upper-right central incisor",
+                "Upper-left central incisor",
+                "Upper-left lateral incisor",
+                "Upper-left canine",
+                "Upper-left first premolar",
+                "Upper-left second premolar",
+                "Upper-left first molar",
+                "Upper-left second molar",
+                "Upper-left third molar",
+                "Lower-left third molar",
+                "Lower-left second molar",
+                "Lower-left first molar",
+                "Lower-left second premolar",
+                "Lower-left first premolar",
+                "Lower-left canine",
+                "Lower-left lateral incisor",
+                "Lower-left central incisor",
+                "Lower-right central incisor",
+                "Lower-right lateral incisor",
+                "Lower-right canine",
+                "Lower-right first premolar",
+                "Lower-right second premolar",
+                "Lower-right first molar",
+                "Lower-right second molar",
+                "Lower-right third molar",
+                "Upper-right second molar (baby)",
+                "Upper-right first molar (baby)",
+                "Upper-right canine (baby)",
+                "Upper-right lateral incisor (baby)",
+                "Upper-right central incisor (baby)",
+                "Upper-left central incisor (baby)",
+                "Upper-left lateral incisor (baby)",
+                "Upper-left canine (baby)",
+                "Upper-left first molar (baby)",
+                "Upper-left second molar (baby)",
+                "Lower-left second molar (baby)",
+                "Lower-left first molar (baby)",
+                "Lower-left canine (baby)",
+                "Lower-left lateral incisor (baby)",
+                "Lower-left central incisor (baby)",
+                "Lower-right central incisor (baby)",
+                "Lower-right lateral incisor (baby)",
+                "Lower-right canine (baby)",
+                "Lower-right first molar (baby)",
+                "Lower-right second molar (baby)",
+                "Mandible",
+                "Maxilla",
+                "Mandibular canal"
+            ]
 
-        #     # Une palette de 55 couleurs en hexadécimal (vous pouvez adapter les codes)
-        #     UNIVERSAL_COLORS = [
-        #         "#FF0000",  # Upper-right third molar
-        #         "#00FF00",  # Upper-right second molar
-        #         "#0000FF",  # Upper-right first molar
-        #         "#FFFF00",  # Upper-right second premolar
-        #         "#FF00FF",  # Upper-right first premolar
-        #         "#00FFFF",  # Upper-right canine
-        #         "#800000",  # Upper-right lateral incisor
-        #         "#008000",  # Upper-right central incisor
-        #         "#000080",  # Upper-left central incisor
-        #         "#808000",  # Upper-left lateral incisor
-        #         "#800080",  # Upper-left canine
-        #         "#008080",  # Upper-left first premolar
-        #         "#C0C0C0",  # Upper-left second premolar
-        #         "#808080",  # Upper-left first molar
-        #         "#FFA500",  # Upper-left second molar
-        #         "#F0E68C",  # Upper-left third molar
-        #         "#B22222",  # Lower-left third molar
-        #         "#8FBC8F",  # Lower-left second molar
-        #         "#483D8B",  # Lower-left first molar
-        #         "#2F4F4F",  # Lower-left second premolar
-        #         "#00CED1",  # Lower-left first premolar
-        #         "#9400D3",  # Lower-left canine
-        #         "#FF1493",  # Lower-left lateral incisor
-        #         "#7FFF00",  # Lower-left central incisor
-        #         "#1E90FF",  # Lower-right central incisor
-        #         "#FF4500",  # Lower-right lateral incisor
-        #         "#DA70D6",  # Lower-right canine
-        #         "#EEE8AA",  # Lower-right first premolar
-        #         "#98FB98",  # Lower-right second premolar
-        #         "#AFEEEE",  # Lower-right first molar
-        #         "#DB7093",  # Lower-right second molar
-        #         "#FFE4E1",  # Lower-right third molar
-        #         "#FFDAB9",  # Upper-right second molar (baby)
-        #         "#CD5C5C",  # Upper-right first molar (baby)
-        #         "#F08080",  # Upper-right canine (baby)
-        #         "#E9967A",  # Upper-right lateral incisor (baby)
-        #         "#FA8072",  # Upper-right central incisor (baby)
-        #         "#FF7F50",  # Upper-left central incisor (baby)
-        #         "#FF6347",  # Upper-left lateral incisor (baby)
-        #         "#00FA9A",  # Upper-left canine (baby)
-        #         "#00FF7F",  # Upper-left first molar (baby)
-        #         "#4682B4",  # Upper-left second molar (baby)
-        #         "#87CEEB",  # Lower-left second molar (baby)
-        #         "#6A5ACD",  # Lower-left first molar (baby)
-        #         "#7B68EE",  # Lower-left canine (baby)
-        #         "#4169E1",  # Lower-left lateral incisor (baby)
-        #         "#6495ED",  # Lower-left central incisor (baby)
-        #         "#B0C4DE",  # Lower-right central incisor (baby)
-        #         "#008080",  # Lower-right lateral incisor (baby)
-        #         "#ADFF2F",  # Lower-right canine (baby)
-        #         "#FF69B4",  # Lower-right first molar (baby)
-        #         "#CD853F",  # Lower-right second molar (baby)
-        #         "#D2691E",  # Mandible
-        #         "#B8860B",  # Maxilla
-        #         "#A0522D"   # Mandibular canal
-        #     ]
+            # A palette of 55 hex colors (you can adapt the codes)
+            UNIVERSAL_COLORS = [
+                "#FF0000",  # Upper-right third molar
+                "#00FF00",  # Upper-right second molar
+                "#0000FF",  # Upper-right first molar
+                "#FFFF00",  # Upper-right second premolar
+                "#FF00FF",  # Upper-right first premolar
+                "#00FFFF",  # Upper-right canine
+                "#800000",  # Upper-right lateral incisor
+                "#008000",  # Upper-right central incisor
+                "#000080",  # Upper-left central incisor
+                "#808000",  # Upper-left lateral incisor
+                "#800080",  # Upper-left canine
+                "#008080",  # Upper-left first premolar
+                "#C0C0C0",  # Upper-left second premolar
+                "#808080",  # Upper-left first molar
+                "#FFA500",  # Upper-left second molar
+                "#F0E68C",  # Upper-left third molar
+                "#B22222",  # Lower-left third molar
+                "#8FBC8F",  # Lower-left second molar
+                "#483D8B",  # Lower-left first molar
+                "#2F4F4F",  # Lower-left second premolar
+                "#00CED1",  # Lower-left first premolar
+                "#9400D3",  # Lower-left canine
+                "#FF1493",  # Lower-left lateral incisor
+                "#7FFF00",  # Lower-left central incisor
+                "#1E90FF",  # Lower-right central incisor
+                "#FF4500",  # Lower-right lateral incisor
+                "#DA70D6",  # Lower-right canine
+                "#EEE8AA",  # Lower-right first premolar
+                "#98FB98",  # Lower-right second premolar
+                "#AFEEEE",  # Lower-right first molar
+                "#DB7093",  # Lower-right second molar
+                "#FFE4E1",  # Lower-right third molar
+                "#FFDAB9",  # Upper-right second molar (baby)
+                "#CD5C5C",  # Upper-right first molar (baby)
+                "#F08080",  # Upper-right canine (baby)
+                "#E9967A",  # Upper-right lateral incisor (baby)
+                "#FA8072",  # Upper-right central incisor (baby)
+                "#FF7F50",  # Upper-left central incisor (baby)
+                "#FF6347",  # Upper-left lateral incisor (baby)
+                "#00FA9A",  # Upper-left canine (baby)
+                "#00FF7F",  # Upper-left first molar (baby)
+                "#4682B4",  # Upper-left second molar (baby)
+                "#87CEEB",  # Lower-left second molar (baby)
+                "#6A5ACD",  # Lower-left first molar (baby)
+                "#7B68EE",  # Lower-left canine (baby)
+                "#4169E1",  # Lower-left lateral incisor (baby)
+                "#6495ED",  # Lower-left central incisor (baby)
+                "#B0C4DE",  # Lower-right central incisor (baby)
+                "#008080",  # Lower-right lateral incisor (baby)
+                "#ADFF2F",  # Lower-right canine (baby)
+                "#FF69B4",  # Lower-right first molar (baby)
+                "#CD853F",  # Lower-right second molar (baby)
+                "#D2691E",  # Mandible
+                "#B8860B",  # Maxilla
+                "#A0522D"   # Mandibular canal
+            ]
 
-        #     # Pour une opacité uniforme, par exemple à 1.0 pour chaque segment
-        #     UNIVERSAL_OPACITIES = [
-        #         1.0,  # Upper-right third molar
-        #         1.0,  # Upper-right second molar
-        #         1.0,  # Upper-right first molar
-        #         1.0,  # Upper-right second premolar
-        #         1.0,  # Upper-right first premolar
-        #         1.0,  # Upper-right canine
-        #         1.0,  # Upper-right lateral incisor
-        #         1.0,  # Upper-right central incisor
-        #         1.0,  # Upper-left central incisor
-        #         1.0,  # Upper-left lateral incisor
-        #         1.0,  # Upper-left canine
-        #         1.0,  # Upper-left first premolar
-        #         1.0,  # Upper-left second premolar
-        #         1.0,  # Upper-left first molar
-        #         1.0,  # Upper-left second molar
-        #         1.0,  # Upper-left third molar
-        #         1.0,  # Lower-left third molar
-        #         1.0,  # Lower-left second molar
-        #         1.0,  # Lower-left first molar
-        #         1.0,  # Lower-left second premolar
-        #         1.0,  # Lower-left first premolar
-        #         1.0,  # Lower-left canine
-        #         1.0,  # Lower-left lateral incisor
-        #         1.0,  # Lower-left central incisor
-        #         1.0,  # Lower-right central incisor
-        #         1.0,  # Lower-right lateral incisor
-        #         1.0,  # Lower-right canine
-        #         1.0,  # Lower-right first premolar
-        #         1.0,  # Lower-right second premolar
-        #         1.0,  # Lower-right first molar
-        #         1.0,  # Lower-right second molar
-        #         1.0,  # Lower-right third molar
-        #         1.0,  # Upper-right second molar (baby)
-        #         1.0,  # Upper-right first molar (baby)
-        #         1.0,  # Upper-right canine (baby)
-        #         1.0,  # Upper-right lateral incisor (baby)
-        #         1.0,  # Upper-right central incisor (baby)
-        #         1.0,  # Upper-left central incisor (baby)
-        #         1.0,  # Upper-left lateral incisor (baby)
-        #         1.0,  # Upper-left canine (baby)
-        #         1.0,  # Upper-left first molar (baby)
-        #         1.0,  # Upper-left second molar (baby)
-        #         1.0,  # Lower-left second molar (baby)
-        #         1.0,  # Lower-left first molar (baby)
-        #         1.0,  # Lower-left canine (baby)
-        #         1.0,  # Lower-left lateral incisor (baby)
-        #         1.0,  # Lower-left central incisor (baby)
-        #         1.0,  # Lower-right central incisor (baby)
-        #         1.0,  # Lower-right lateral incisor (baby)
-        #         1.0,  # Lower-right canine (baby)
-        #         1.0,  # Lower-right first molar (baby)
-        #         1.0,  # Lower-right second molar (baby)
-        #         0.45,  # Mandible
-        #         0.45,  # Maxilla
-        #         0.45   # Mandibular canal
-        #     ]
-        #     labels = UNIVERSAL_LABELS
-        #     colors = UNIVERSAL_COLORS
-        #     opacities = UNIVERSAL_OPACITIES
-        #     # On crée des identifiants de segment de la même manière qu'avant, par exemple "Segment_1", "Segment_2", ...
-        #     segmentIds = [f"Segment_{i+1}" for i in range(len(labels))]
-        #     segmentationDisplayNode = segmentationNode.GetDisplayNode()
-        #     for segmentId, label, color, opacity in zip(segmentIds, labels, colors, opacities):
-        #         segment = segmentation.GetSegment(segmentId)
-        #         if segment is None:
-        #             continue
-        #         segment.SetName(label)
-        #         segment.SetColor(*self.toRGB(color))
-        #         segmentationDisplayNode.SetSegmentOpacity3D(segmentId, opacity)
-       # else:
-########################################################################################################################################################################################################
+            # Uniform opacity, for example 1.0 for each segment
+            UNIVERSAL_OPACITIES = [
+                1.0,  # Upper-right third molar
+                1.0,  # Upper-right second molar
+                1.0,  # Upper-right first molar
+                1.0,  # Upper-right second premolar
+                1.0,  # Upper-right first premolar
+                1.0,  # Upper-right canine
+                1.0,  # Upper-right lateral incisor
+                1.0,  # Upper-right central incisor
+                1.0,  # Upper-left central incisor
+                1.0,  # Upper-left lateral incisor
+                1.0,  # Upper-left canine
+                1.0,  # Upper-left first premolar
+                1.0,  # Upper-left second premolar
+                1.0,  # Upper-left first molar
+                1.0,  # Upper-left second molar
+                1.0,  # Upper-left third molar
+                1.0,  # Lower-left third molar
+                1.0,  # Lower-left second molar
+                1.0,  # Lower-left first molar
+                1.0,  # Lower-left second premolar
+                1.0,  # Lower-left first premolar
+                1.0,  # Lower-left canine
+                1.0,  # Lower-left lateral incisor
+                1.0,  # Lower-left central incisor
+                1.0,  # Lower-right central incisor
+                1.0,  # Lower-right lateral incisor
+                1.0,  # Lower-right canine
+                1.0,  # Lower-right first premolar
+                1.0,  # Lower-right second premolar
+                1.0,  # Lower-right first molar
+                1.0,  # Lower-right second molar
+                1.0,  # Lower-right third molar
+                1.0,  # Upper-right second molar (baby)
+                1.0,  # Upper-right first molar (baby)
+                1.0,  # Upper-right canine (baby)
+                1.0,  # Upper-right lateral incisor (baby)
+                1.0,  # Upper-right central incisor (baby)
+                1.0,  # Upper-left central incisor (baby)
+                1.0,  # Upper-left lateral incisor (baby)
+                1.0,  # Upper-left canine (baby)
+                1.0,  # Upper-left first molar (baby)
+                1.0,  # Upper-left second molar (baby)
+                1.0,  # Lower-left second molar (baby)
+                1.0,  # Lower-left first molar (baby)
+                1.0,  # Lower-left canine (baby)
+                1.0,  # Lower-left lateral incisor (baby)
+                1.0,  # Lower-left central incisor (baby)
+                1.0,  # Lower-right central incisor (baby)
+                1.0,  # Lower-right lateral incisor (baby)
+                1.0,  # Lower-right canine (baby)
+                1.0,  # Lower-right first molar (baby)
+                1.0,  # Lower-right second molar (baby)
+                0.45,  # Mandible
+                0.45,  # Maxilla
+                0.45   # Mandibular canal
+            ]
+            labels = UNIVERSAL_LABELS
+            colors = UNIVERSAL_COLORS
+            opacities = UNIVERSAL_OPACITIES
+            # Create segment IDs as before, e.g. "Segment_1", "Segment_2", ...
+            segmentIds = [f"Segment_{i+1}" for i in range(len(labels))]
+            segmentationDisplayNode = segmentationNode.GetDisplayNode()
+            for segmentId, label, color, opacity in zip(segmentIds, labels, colors, opacities):
+                segment = segmentation.GetSegment(segmentId)
+                if segment is None:
+                    continue
+                segment.SetName(label)
+                segment.SetColor(*self.toRGB(color))
+                segmentationDisplayNode.SetSegmentOpacity3D(segmentId, opacity)
 
+            self.show3DButton.setChecked(True)
+            slicer.util.resetThreeDViews()
 
-        labels = ["Maxilla & Upper Skull", "Mandible", "Upper Teeth", "Lower Teeth", "Mandibular canal"]
-        colors = [self.toRGB(c) for c in ["#E3DD90", "#D4A1E6", "#DC9565", "#EBDFB4", "#D8654F"]]
-        opacities = [0.45, 0.45, 1.0, 1.0, 1.0]
-        segmentIds = [f"Segment_{i + 1}" for i in range(len(labels))]
-        segmentationDisplayNode = self.getCurrentSegmentationNode().GetDisplayNode()
-        for segmentId, label, color, opacity in zip(segmentIds, labels, colors, opacities):
-            segment = segmentation.GetSegment(segmentId)
-            if segment is None:
-                continue
-            segment.SetName(label)
-            segment.SetColor(*color)
-            segmentationDisplayNode.SetSegmentOpacity3D(segmentId, opacity)
-        self.show3DButton.setChecked(True)
-        slicer.util.resetThreeDViews()
+        elif selectedModel == "NasoMaxillaDentSeg":
+            labels = ["Upper Skull", "Mandible", "Upper Teeth", "Lower Teeth", "Mandibular canal","Maxilla "]
+            colors = [self.toRGB(c) for c in ["#E3DD90", "#D4A1E6","#DC9565", "#EBDFB4", "#D8654F", "#6AC4A4"]]
+            opacities = [0.65, 0.65,1.0, 1.0, 1.0, 0.65]
+            segmentIds = [f"Segment_{i + 1}" for i in range(len(labels))]
+            segmentationDisplayNode = self.getCurrentSegmentationNode().GetDisplayNode()
+            for segmentId, label, color, opacity in zip(segmentIds, labels, colors, opacities):
+                segment = segmentation.GetSegment(segmentId)
+                if segment is None:
+                    continue
+                segment.SetName(label)
+                segment.SetColor(*color)
+                segmentationDisplayNode.SetSegmentOpacity3D(segmentId, opacity)
+            self.show3DButton.setChecked(True)
+            slicer.util.resetThreeDViews()
+
+        else:
+            labels = ["Upper Skull", "Mandible", "Upper Teeth", "Lower Teeth", "Mandibular canal"]
+            colors = [self.toRGB(c) for c in ["#E3DD90", "#D4A1E6","#DC9565", "#EBDFB4", "#D8654F"]]
+            opacities = [0.65, 0.65,1.0, 1.0, 1.0]
+            segmentIds = [f"Segment_{i + 1}" for i in range(len(labels))]
+            segmentationDisplayNode = self.getCurrentSegmentationNode().GetDisplayNode()
+            for segmentId, label, color, opacity in zip(segmentIds, labels, colors, opacities):
+                segment = segmentation.GetSegment(segmentId)
+                if segment is None:
+                    continue
+                segment.SetName(label)
+                segment.SetColor(*color)
+                segmentationDisplayNode.SetSegmentOpacity3D(segmentId, opacity)
+            self.show3DButton.setChecked(True)
+            slicer.util.resetThreeDViews()
 
     def _initializeSegmentationNodeDisplay(self, segmentationNode):
         if not segmentationNode:
@@ -671,9 +1041,9 @@ class SegmentationWidget(qt.QWidget):
 
     def _postProcessSegments(self):
         self.onProgressInfo("Post processing results...")
-        self._keepLargestIsland("Segment_1")
-        self._removeSmallIsland("Segment_3")
-        self._removeSmallIsland("Segment_4")
+        # self._keepLargestIsland("Segment_1")
+        # self._removeSmallIsland("Segment_3")
+        # self._removeSmallIsland("Segment_4")
         self.onProgressInfo("Post processing done.")
 
     def _keepLargestIsland(self, segmentId):
@@ -761,8 +1131,9 @@ class SegmentationWidget(qt.QWidget):
         if volumeNode and segmentationNode:
             self.processedVolumes[volumeNode] = segmentationNode
     def updateSegmentEditorWidget(self, *_):
+
         """
-        Met à jour le widget d'édition de segmentation en fonction du nœud actuellement sélectionné.
+        Updates the segmentation editor widget based on the currently selected node.
         """
         if self._prevSegmentationNode:
             self._prevSegmentationNode.SetDisplayVisibility(False)
@@ -778,7 +1149,9 @@ class SegmentationWidget(qt.QWidget):
             self.objCheckBox: ExportFormat.OBJ,
             self.stlCheckBox: ExportFormat.STL,
             self.niftiCheckBox: ExportFormat.NIFTI,
-            self.gltfCheckBox: ExportFormat.GLTF
+            self.gltfCheckBox: ExportFormat.GLTF,
+            self.vtkCheckBox: ExportFormat.VTK
+
         }
         for checkBox, exportFormat in checkBoxes.items():
             if checkBox.isChecked():
@@ -816,6 +1189,105 @@ class SegmentationWidget(qt.QWidget):
                     1.0,
                     False
                 )
+        if selectedFormats & ExportFormat.VTK:
+            import vtk, os, numpy as np
+            from vtk.util.numpy_support import vtk_to_numpy
+
+            refVolume = self.getCurrentVolumeNode()
+
+            # 1. temporary labelmap
+            labelmapNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+            slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
+                segmentationNode, labelmapNode
+            )
+            imageData = labelmapNode.GetImageData()
+
+            # 2. marching-cubes
+            mc = vtk.vtkDiscreteMarchingCubes()
+            mc.SetInputData(imageData)
+            for l in np.unique(vtk_to_numpy(imageData.GetPointData().GetScalars())):
+                if l: mc.SetValue(int(l), int(l))
+            mc.Update()
+
+            # 3. cleaning
+            clean = vtk.vtkCleanPolyData()
+            clean.SetInputConnection(mc.GetOutputPort())
+            clean.Update()
+
+            # 4. Windowed-Sinc smoothing
+            ws = vtk.vtkWindowedSincPolyDataFilter()
+            ws.SetInputConnection(clean.GetOutputPort())
+            ws.SetNumberOfIterations(60)
+            ws.SetPassBand(0.05)
+            ws.BoundarySmoothingOn()
+            ws.FeatureEdgeSmoothingOn()
+            ws.NonManifoldSmoothingOn()
+            ws.NormalizeCoordinatesOn()
+            ws.Update()
+
+            # 5. flat normals
+            flatN = vtk.vtkPolyDataNormals()
+            flatN.SetInputConnection(ws.GetOutputPort())
+            flatN.ComputePointNormalsOff()
+            flatN.ComputeCellNormalsOn()
+            flatN.SplittingOff()
+            flatN.AutoOrientNormalsOn()
+            flatN.ConsistencyOn()
+            flatN.SetFeatureAngle(180)
+            flatN.Update()
+
+            # 6. IJK→RAS matrix of labelmap
+            ijk2ras = vtk.vtkMatrix4x4()
+            labelmapNode.GetIJKToRASMatrix(ijk2ras)
+
+            # 7. possible parent transform
+            parentMat = vtk.vtkMatrix4x4(); parentMat.Identity()
+            for node in (segmentationNode, refVolume):
+                tr = node.GetParentTransformNode()
+                if tr:
+                    tr.GetMatrixTransformToWorld(parentMat)
+                    break
+
+            # 8. RAS chain = parent * ijk2ras
+            rasMat = vtk.vtkMatrix4x4()
+            vtk.vtkMatrix4x4.Multiply4x4(parentMat, ijk2ras, rasMat)
+
+            # 9. apply RAS
+            rasT = vtk.vtkTransform(); rasT.SetMatrix(rasMat)
+            rasFilter = vtk.vtkTransformPolyDataFilter()
+            rasFilter.SetInputConnection(flatN.GetOutputPort())
+            rasFilter.SetTransform(rasT)
+            rasFilter.Update()
+
+            # 10. convert RAS → LPS  (diag(-1,-1,1))
+            ras2lps = vtk.vtkTransform(); ras2lps.Scale(-1, -1, 1)
+            lpsFilter = vtk.vtkTransformPolyDataFilter()
+            lpsFilter.SetInputConnection(rasFilter.GetOutputPort())
+            lpsFilter.SetTransform(ras2lps)
+            lpsFilter.Update()
+            polyOut = lpsFilter.GetOutput()
+
+            # 11. write VTP
+            vtp_path = os.path.join(folderPath,
+                                    f"{segmentationNode.GetName()}_merged_flat.vtp")
+            wxml = vtk.vtkXMLPolyDataWriter()
+            wxml.SetFileName(vtp_path)
+            wxml.SetInputData(polyOut)
+            wxml.SetDataModeToBinary()
+            wxml.Write()
+
+            # 12. (optional) legacy .vtk
+            wvtk = vtk.vtkPolyDataWriter()
+            wvtk.SetFileName(vtp_path.replace(".vtp", ".vtk"))
+            wvtk.SetInputData(polyOut)
+            wvtk.SetFileTypeToBinary()
+            wvtk.Write()
+
+            slicer.mrmlScene.RemoveNode(labelmapNode)
+
+
+
+
 
         if selectedFormats & ExportFormat.NIFTI:
             slicer.vtkSlicerSegmentationsModuleLogic.ExportSegmentsBinaryLabelmapRepresentationToFiles(
