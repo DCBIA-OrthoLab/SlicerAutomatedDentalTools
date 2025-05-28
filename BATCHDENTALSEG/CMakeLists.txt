@@ -68,4 +68,4 @@ if (BUILD_TESTING)
   # Enregistre les tests Python en CTest
   slicer_add_python_unittest(SCRIPT ${MODULE_NAME}.py)
 endif()
------------------------------------------------------------------
+#-----------------------------------------------------------------------------
