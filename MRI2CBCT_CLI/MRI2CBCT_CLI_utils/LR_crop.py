@@ -46,8 +46,9 @@ def crop_cbct(img_path, output_folder):
         base = base[:-4]
         ext = ".nii.gz"
 
-    out_left = os.path.join(output_folder, f"{base}_cropLeft{ext}")
-    out_right = os.path.join(output_folder, f"{base}_cropRight{ext}")
+    # TODO: Check why left is right and why right is left
+    out_left = os.path.join(output_folder, f"{base}_cropRight{ext}")
+    out_right = os.path.join(output_folder, f"{base}_cropLeft{ext}")
 
     sitk.WriteImage(left, out_left)
     sitk.WriteImage(right, out_right)
