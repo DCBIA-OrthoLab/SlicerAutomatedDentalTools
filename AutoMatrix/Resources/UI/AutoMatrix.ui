@@ -12,8 +12,8 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text">
       <string>Inputs</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
@@ -21,6 +21,23 @@
        <layout class="QVBoxLayout" name="verticalLayout_2">
         <item>
          <layout class="QGridLayout" name="gridLayout_2">
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="LineEditMatrix"/>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_3">
+            <property name="text">
+             <string>Input file(s) patient(s) :</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="labelInputMatrix">
+            <property name="text">
+             <string>Input file(s) matrix :</string>
+            </property>
+           </widget>
+          </item>
           <item row="1" column="3">
            <widget class="QPushButton" name="SearchButtonMatrix">
             <property name="text">
@@ -28,11 +45,18 @@
             </property>
            </widget>
           </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="label_4">
-            <property name="text">
-             <string>Input file(s) matrix :</string>
-            </property>
+          <item row="0" column="2">
+           <widget class="QComboBox" name="ComboBoxPatient">
+            <item>
+             <property name="text">
+              <string>File</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Folder</string>
+             </property>
+            </item>
            </widget>
           </item>
           <item row="0" column="3">
@@ -56,32 +80,36 @@
             </item>
            </widget>
           </item>
-          <item row="0" column="0">
-           <widget class="QLabel" name="label_3">
-            <property name="text">
-             <string>Input file(s) patient(s) :</string>
-            </property>
-           </widget>
-          </item>
           <item row="0" column="1">
            <widget class="QLineEdit" name="LineEditPatient"/>
           </item>
-          <item row="0" column="2">
-           <widget class="QComboBox" name="ComboBoxPatient">
-            <item>
-             <property name="text">
-              <string>File</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>Folder</string>
-             </property>
-            </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="labelReference">
+            <property name="text">
+             <string>Reference file:</string>
+            </property>
            </widget>
           </item>
-          <item row="1" column="1">
-           <widget class="QLineEdit" name="LineEditMatrix"/>
+          <item row="2" column="0">
+           <widget class="QCheckBox" name="CheckBoxSuffixBased">
+            <property name="text">
+             <string>From AReg</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="LineEditReference">
+            <property name="text">
+             <string>None</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="2">
+           <widget class="QPushButton" name="SearchReference">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
           </item>
           <item row="2" column="3">
            <widget class="QCheckBox" name="CheckBoxMirror">
@@ -98,8 +126,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton">
+     <property name="text">
       <string>Output</string>
      </property>
      <layout class="QFormLayout" name="formLayout_21">
@@ -139,9 +167,13 @@
            </widget>
           </item>
           <item row="1" column="2">
-           <widget class="QPushButton" name="ButtonAutoFill">
+           <widget class="QCheckBox" name="checkBoxMatrixName">
             <property name="text">
-             <string>AutoFill</string>
+             <string>Add matrix name
+after the suffix</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
             </property>
            </widget>
           </item>
@@ -169,7 +201,21 @@
     <layout class="QVBoxLayout" name="verticalLayout_3">
      <item>
       <layout class="QGridLayout" name="gridLayout_6">
+       <item row="3" column="0">
+        <widget class="QLabel" name="label_time">
+         <property name="text">
+          <string>time : </string>
+         </property>
+        </widget>
+       </item>
        <item row="1" column="0">
+        <widget class="QLabel" name="label_info">
+         <property name="text">
+          <string>Number of processed files : </string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0">
         <widget class="QProgressBar" name="progressBar">
          <property name="enabled">
           <bool>true</bool>
@@ -183,22 +229,22 @@
         </widget>
        </item>
        <item row="0" column="0">
-        <widget class="QLabel" name="label_info">
+        <widget class="QLabel" name="LabelNameExtension">
          <property name="text">
-          <string>Number of processed files : </string>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="0">
-        <widget class="QLabel" name="label_time">
-         <property name="text">
-          <string>time : </string>
+          <string>Running</string>
          </property>
         </widget>
        </item>
       </layout>
      </item>
     </layout>
+   </item>
+   <item>
+    <widget class="QPushButton" name="ButtonCancel">
+     <property name="text">
+      <string>Cancel</string>
+     </property>
+    </widget>
    </item>
    <item>
     <spacer name="verticalSpacer">
