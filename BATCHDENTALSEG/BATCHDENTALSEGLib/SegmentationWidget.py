@@ -418,7 +418,7 @@ class SegmentationWidget(qt.QWidget):
         correctedLM.SetIJKToRASMatrix(ijkToRAS)
 
         # ► New name: original segmentation name + suffix
-        baseName = segmentationNode.GetName() if segmentationNode else "Segmentation"
+        baseName = segmentationNode.GetName() if segmentationNode else "seg"
         suffix   = "_Mirrored"                           # choose your suffix here
         correctedSeg = slicer.mrmlScene.AddNewNodeByClass(
             "vtkMRMLSegmentationNode",
@@ -671,9 +671,9 @@ class SegmentationWidget(qt.QWidget):
             NasoMaxillaDentSegCheckpoint = fold_path.joinpath("checkpoint_final.pth")
             # If checkpoint doesn't exist, download checkpoint and dataset.json and plans.json inside basePath
             if not NasoMaxillaDentSegCheckpoint .exists():
-                url_checkpoint = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENT_SEG/checkpoint_final.pth"
-                url_dataset = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENT_SEG/dataset.json"
-                url_plans = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENT_SEG/plans.json"
+                url_checkpoint = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENTSEG_MODEL/checkpoint_final.pth"
+                url_dataset = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENTSEG_MODEL/dataset.json"
+                url_plans = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENTSEG_MODEL/plans.json"
                 self.onProgressInfo("Downloading NasoMaxillaDentSeg model...")
                 # Download checkpoint; convert Path to string for downloadFile
                 slicer.util.downloadFile(url_checkpoint, str(NasoMaxillaDentSegCheckpoint))
@@ -767,7 +767,7 @@ class SegmentationWidget(qt.QWidget):
     def _loadSegmentationResults(self):
         currentSegmentation = self.getCurrentSegmentationNode()
         segmentationNode = self.logic.loadSegmentation()
-        segmentationNode.SetName(self.currentVolumeNode.GetName() + "_Segmentation")
+        segmentationNode.SetName(self.currentVolumeNode.GetName() + "_seg")
         if currentSegmentation is not None:
             self._copySegmentationResultsToExistingNode(currentSegmentation, segmentationNode)
         else:
