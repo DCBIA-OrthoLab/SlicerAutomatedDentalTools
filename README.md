@@ -536,15 +536,48 @@ B. a folder named **Explainability** containing the visualization results:
 
 
 ## BatchDentalSeg
-3D Slicer extension for fully-automatic segmentation of CT and CBCT dental volumes in batch using Dentalsegmentator model (for adults scans)  or PediatricDentalsegmentator model (for children scans).
+3D Slicer extension for fully-automatic segmentation of CT and CBCT dental volumes in batch using Dentalsegmentator model (for adults scans), PediatricDentalsegmentator model (for children scans), UniversalLabDentalSegmentator (for labeling all the teeth), NasoMaxillaDentalSegmentator (for segment separatly the upper skull and the Naso Maxillary Complex.
 
 ![image](https://github.com/user-attachments/assets/240928bd-6551-46db-8688-7b6b581f5d70)
-After selecting the folder with the volumes to process and the model that fit better your scans, this module generates the following segmentations for each volumes: 
-* Maxilla & Upper Skull
-* Mandible
-* Upper Teeth
-* Lower Teeth
-* Mandibular canal
+After selecting the following:
+
+1. **Input folder** (containing volumes to process)  
+2. **Output folder** (where segmentations will be saved)  
+3. **Model** (the pretrained network that best fits your scans)  
+
+this module generates the following labeled regions for each volume:
+
+### PediatricDentalSegmentator  
+*(Identical to DentalSegmentator)*  
+- **Maxilla & Upper Skull**  
+- **Mandible**  
+- **Upper Teeth**  
+- **Lower Teeth**  
+- **Mandibular canal**  
+
+### DentalSegmentator  
+- **Maxilla & Upper Skull**  
+- **Mandible**  
+- **Upper Teeth**  
+- **Lower Teeth**  
+- **Mandibular canal**  
+
+### NasoMaxillaDentalSegmentator  
+This model splits the upper skull into two regions and also segments teeth and mandible:  
+- **Upper Skull** (excluding nasal/maxillary complex)  
+- **Naso-Maxilla Complex**  
+- **Mandible**  
+- **Upper Teeth**  
+- **Lower Teeth**  
+- **Mandibular canal**  
+
+### UniversalLabeling  
+Same as DentalSegmentator, but each tooth receives its own unique label:  
+- **Maxilla & Upper Skull**  
+- **Mandible**  
+- **Upper Teeth** (each tooth labeled separately)  
+- **Lower Teeth** (each tooth labeled separately)  
+- **Mandibular canal**  
 
 ### DentalSegmentator model
 
@@ -558,6 +591,13 @@ DentalSegmentator is based on nnU-Net framework. It has been trained on 470 dent
 
 As DentalSegmentator, PediatricDentalSegmentator is also based on nnUnet. It has been trained on 513 dento-maxillo-facial CBCT scans including scans withs primary teeth.
 
+### UniversalLabDentalSegmentator model
+
+As PediatricDentalSegmentator, UniversalLabDentalSegmentator is also based on nnUnet. It has been trained on 513 dento-maxillo-facial CBCT scans including scans withs primary teeth
+
+### NasoMaxillayDentalSegmentator model
+
+As DentalSegmentator, NasoMaxillaryDentalSegmentator is also based on nnUnet. It has been trained on 135 dento-maxillo-facial CBCT scans including scans withs primary teeth.
 
 ### Using the extension
 
@@ -570,17 +610,22 @@ It's a module in the Automated Dental Tools extension so it can be can be found 
 After the installation process and restart of Slicer, the extension can be found in the module file explorer under `Automated Dental Tools>BatchDentalSegmentator`.
 It can also be found by using the `find` module button and searching for the keyword `BatchDentalSegmentator`.
 
-To use the extension, click on `Select Folder` to select the folder where your scans are.
+You will also need to install the `NNUNet` extension, you can find it by using the `find` module button and searching for the keyword `NNUNet`
 
-![image](https://github.com/user-attachments/assets/72bb7c14-6ed7-4036-a2e5-e76633f03c44)
+To use the extension, click on `Select Folder` to select the folder where your scans are and  click on `Select Output Folder` to select the folder where your segmentations will be save.
 
-Then choose the model that you want to use (DentalSegmentator for scans of subjects with permanent dentition) or PediatricDentalSegmentator (for scans of subjects with mixed dentition)
+![image](https://github.com/user-attachments/assets/a7482f69-8494-43d9-afed-226d7eef963a)
 
-![image](https://github.com/user-attachments/assets/c4529265-3dcc-4deb-b835-4988630100e2)
+
+Then choose the model that you want to use :
+
+![image](https://github.com/user-attachments/assets/5b7a18ea-bec5-48c4-9fc6-f769e3515f3f)
+
 
 Finally click on the `Apply` button to start the segmentations.
 
-![image](https://github.com/user-attachments/assets/3c03bc13-cfc6-4b37-b743-13d30a8c1107)
+![image](https://github.com/user-attachments/assets/6629f097-c342-454c-bd98-326d6a49d7c6)
+
 
 If your device doesn't include CUDA, the processing may be very long and a dialog will ask for confirmation before
 starting the segmentation process.
@@ -594,7 +639,8 @@ The progress will be reported in the console logs.
 After the segmentation process has run, the segmentation will be loaded into the application.
 The segmentation results can be modified using the `Segment Editor` tools.
 
-![Screencast from 04-22-2025 11_01_23 AM](https://github.com/user-attachments/assets/df2ba70d-bd36-46f4-8ab2-a9dfabc68874)
+![Screencast from 06-02-2025 11_29_42 AM (1)](https://github.com/user-attachments/assets/9c5fcf21-39d0-4c30-963b-218c077db7af)
+
 
 The segmentation can be exported using the `Export segmentation` menu and selecting the export format to use.
 
@@ -602,7 +648,9 @@ The `Surface smoothing` slider allows to change the 3D view surface smoothing al
 
 ### Exemple of using 
 
-![exemple_use3](https://github.com/user-attachments/assets/19ec5b61-9733-4749-99ca-a9ce748df811)
+![Screencast from 06-02-2025 11_36_38 AM (1)](https://github.com/user-attachments/assets/d8ea03e4-53b5-450e-a8f1-6bde5d72ccd7)
+
+
 # Acknowledgements
 
 Authors: Maxime Gillot (University of Michigan), Baptiste Baquero (UoM), Luc Anchling (UoM), Nathan Hutin (UoM),Jeanne Claret (UoM),Gaelle Leroux (UoM), Enzo Tulissi (UoM), Alban Gaydamour (UoM),Gauthier Dot(AP-HP),Laurent GAJNY (ENSAM), Roman FENIOUX (KITWARE SAS), Thibault PELLETIER (KITWARE SAS), Lucia Cevidanes (UoM), Juan Carlos Prieto (UNC), David Allemang (Kitware), Jean-Christophe Fillion-Robin (Kitware), Connor Bowley (Kitware), James Butler (Kitware).
