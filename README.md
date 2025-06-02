@@ -624,8 +624,6 @@ Then choose the model that you want to use :
 
 Finally click on the `Apply` button to start the segmentations.
 
-![image](https://github.com/user-attachments/assets/6629f097-c342-454c-bd98-326d6a49d7c6)
-
 
 If your device doesn't include CUDA, the processing may be very long and a dialog will ask for confirmation before
 starting the segmentation process.
