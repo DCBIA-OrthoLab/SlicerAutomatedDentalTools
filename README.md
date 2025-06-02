@@ -564,7 +564,8 @@ this module generates the following labeled regions for each volume:
 
 ### NasoMaxillaDentalSegmentator  
 This model splits the upper skull into two regions and also segments teeth and mandible:  
-- **Upper Skull** (excluding nasal/maxillary complex)  
+- **Upper Skull**
+- **Naso-maxillary complex**
 - **Naso-Maxilla Complex**  
 - **Mandible**  
 - **Upper Teeth**  
