@@ -63,7 +63,6 @@ def install_function():
           return False
     import vtk
     import itk
-    import cc3d
     return True
 #
 # MRI2CBCT
