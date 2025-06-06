@@ -6,6 +6,7 @@ set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   ASO_Method/__init__.py
   ASO_Method/CBCT.py
+  ASO_Method/install_pytorch.py
   ASO_Method/IOS.py
   ASO_Method/IOS_utils/__init__.py
   ASO_Method/IOS_utils/Reader.py
