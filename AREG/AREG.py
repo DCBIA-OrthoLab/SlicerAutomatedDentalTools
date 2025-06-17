@@ -1018,35 +1018,15 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
 
     def onPredictButton(self):
-        if self.type == "CBCT":
-            if platform.system() == "Windows":
-                list_libs_CBCT_windows = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
-                            ('pandas',None,None),('torch',None,"https://download.pytorch.org/whl/cu118"),('monai','==0.7.0',None)] #(lib_name, version, url)
-
-                is_installed = install_function(self,list_libs_CBCT_windows)
-            else:
-                # libraries and versions compatibility to use AREG_CBCT
-                list_libs_CBCT = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
-                            ('pandas',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
-
-                is_installed = install_function(self,list_libs_CBCT)
-                
-        if self.type == "IOS":
-            is_installed = False
-            check_env = self.onCheckRequirements()
-            print("seg_env : ",check_env)
-            
-            if check_env:
-                list_libs_IOS = [("tqdm",None,None),('vtk',None,None),('pandas',None,None),('monai','==0.7.0',None)]
-
-                is_installed = install_function(self,list_libs_IOS)
+        check_env = self.onCheckRequirements()
+        print("seg_env : ",check_env)
+        is_installed = check_env
 
         # If the user didn't accept the installation, the module doesn't run
         if not is_installed:
             qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
             return
         
-        self.logic.check_cli_script()
 
         self.ui.label_LibsInstallation.setVisible(False)
         error = self.ActualMeth.TestProcess(
@@ -1097,39 +1077,45 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             )
 
             self.nb_extension_launch = len(self.list_Processes_Parameters)
-            self.onProcessStarted()
-
-            module = self.list_Processes_Parameters[0]["Module"]
-            # /!\ Launch of the first process /!\
-            print("module name : ", module)
-            # if we are on windows, crownsegmentation and areg ios need to be run in wsl because of Pytorch3D
-            if module in ["CrownSegmentationcli T1", "AREG_IOS"]:
-                self.ui.ButtonCancel.setEnabled(False)
-                if "CrownSegmentationcli" in module:
-                    self.run_conda_tool("seg")
-                else :
-                    self.run_conda_tool("areg")
-              
-            self.ui.ButtonCancel.setEnabled(True)
-            self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
             self.module_name = self.list_Processes_Parameters[0]["Module"]
-            self.displayModule = self.list_Processes_Parameters[0]["Display"]
-            self.processObserver = self.process.AddObserver(
-                "ModifiedEvent", self.onProcessUpdate
-            )
-
-            del self.list_Processes_Parameters[0]
-
+            self.onProcessStarted()
+            # /!\ Launch of the first process /!\
+            print("module name : ", self.module_name)
+            self.ui.ButtonCancel.setEnabled(False)
+            num_processes = len(self.list_Processes_Parameters)
+            for num_process in range(num_processes):
+                command = self.run_conda_tool(num_process)
+                # running in // to not block Slicer
+                self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+                self.process.start()
+                self.ui.LabelTimer.setHidden(False)
+                self.ui.LabelTimer.setText(f"time : 0.00s")
+                previous_time = self.startTime
+                self.onProcessStarted()
+                while self.process.is_alive():
+                    slicer.app.processEvents()
+                    current_time = time.time()
+                    gap=current_time-previous_time
+                    if gap>0.3:
+                        currentTime = time.time() - self.startTime
+                        previous_time = currentTime
+                        if currentTime < 60:
+                            timer = f"Time : {int(currentTime)}s"
+                        elif currentTime < 3600:
+                            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                        else:
+                            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                        
+                        self.ui.LabelTimer.setText(timer)
+                # #del self.list_Processes_Parameters[0]
+                    
     def onProcessStarted(self):
         self.ui.label_LibsInstallation.setHidden(True)
         self.startTime = time.time()
 
         # self.ui.progressBar.setMaximum(self.nb_patient)
         self.ui.progressBar.setValue(0)
+        self.ui.LabelNameExtension.setText(self.module_name)
 
         self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
         self.ui.LabelProgressExtension.setText(
@@ -1153,7 +1139,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
 
         self.ui.LabelTimer.setText(timer)
-        progress = caller.GetProgress()
+        # progress = caller.GetProgress()
         # self.module_name = caller.GetModuleTitle() if self.module_name_bis is None else self.module_name_bis
         self.ui.LabelNameExtension.setText(self.module_name)
         # self.displayModule = self.displayModule_bis if self.displayModule_bis is not None else self.display[self.module_name.split(' ')[0]]
@@ -1216,10 +1202,11 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     )
                     self.module_name = self.list_Processes_Parameters[0]["Module"]
                     self.displayModule = self.list_Processes_Parameters[0]["Display"]
-                    self.processObserver = self.process.AddObserver(
-                        "ModifiedEvent", self.onProcessUpdate
-                    )
-                    del self.list_Processes_Parameters[0]
+                    self.run_conda_tool()
+                    # self.processObserver = self.process.AddObserver(
+                    #     "ModifiedEvent", self.onProcessUpdate
+                    # )
+                    #del self.list_Processes_Parameters[0]
                     # self.displayModule.progress = 0
                 except IndexError:
                     self.OnEndProcess()
@@ -1310,8 +1297,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             return formatted_time
         
         
-    def run_conda_tool(self,type):
-        if type=="seg":
+    def run_conda_tool(self,process_id):
+        module=self.list_Processes_Parameters[process_id]['Module']
+
+        print(f"in conda tool: {module} wants to run")
+        if "CrownSegmentationcli" in module:
+            self.logic.check_cli_script("CrownSegmentationcli")
             output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
             clean_output = re.search(r"Result: (.+)", output_command)
             if clean_output:
@@ -1322,7 +1313,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 return
             
             for i in range(2):
-                args = self.list_Processes_Parameters[0]["Parameter"]
+                args = self.list_Processes_Parameters[process_id]["Parameter"]
                 print("args : ",args)
                 conda_exe = self.logic.conda.getCondaExecutable()
                 command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
@@ -1357,44 +1348,75 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         
                         self.ui.LabelTimer.setText(timer)
 
-                del self.list_Processes_Parameters[0]
+                # #del self.list_Processes_Parameters[0]
                 
-        elif type=="areg":
-            args = self.list_Processes_Parameters[0]["Parameter"]
+        elif module=="areg":
+            args = self.list_Processes_Parameters[process_id]["Parameter"]
+            self.logic.check_cli_script("AREG_IOS")
+
             print("args : ", args)
             conda_exe = self.logic.conda.getCondaExecutable()
             command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AREG_IOS"]
-            for key, value in args.items():
-                print("key : ",key)
-                if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
-                    value = self.logic.windows_to_linux_path(value)
-                command.append(f"\"{value}\"")
-            print("command : ",command)
+        
+        elif "AMASSS" in module:
+            args = self.list_Processes_Parameters[process_id]["Parameter"]
+            print("args : ", args)
+            self.logic.check_cli_script("AMASSS_CLI")
 
-            # running in // to not block Slicer
-            self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
-            self.process.start()
-            self.ui.LabelTimer.setHidden(False)
-            self.ui.LabelTimer.setText(f"time : 0.00s")
-            previous_time = self.startTime
-            while self.process.is_alive():
-                slicer.app.processEvents()
-                current_time = time.time()
-                gap=current_time-previous_time
-                if gap>0.3:
-                    currentTime = time.time() - self.startTime
-                    previous_time = currentTime
-                    if currentTime < 60:
-                        timer = f"Time : {int(currentTime)}s"
-                    elif currentTime < 3600:
-                        timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-                    else:
-                        timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
-                    
-                    self.ui.LabelTimer.setText(timer)
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AMASSS_CLI"]
 
-            del self.list_Processes_Parameters[0]
-            
+        elif "AREG_CBCT" in module:
+            args = self.list_Processes_Parameters[process_id]["Parameter"]
+            print("args : ", args)
+            self.logic.check_cli_script("AREG_CBCT")
+
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AREG_CBCT"]
+
+        elif "AREG_IOS" in module:
+            args = self.list_Processes_Parameters[process_id]["Parameter"]
+            print("args : ", args)
+            self.logic.check_cli_script("AREG_IOS")
+
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AREG_IOS"]
+
+        elif "Centering" in module:
+            args = self.list_Processes_Parameters[process_id]["Parameter"]
+            print("args : ", args)
+            self.logic.check_cli_script("PRE_ASO_CBCT")
+
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"PRE_ASO_CBCT"]
+
+        elif "PRE_ASO_IOS" in module:
+            args = self.list_Processes_Parameters[process_id]["Parameter"]
+            print("args : ", args)
+            self.logic.check_cli_script("PRE_ASO_IOS")
+
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"PRE_ASO_IOS"]
+
+
+        else: # module=="SEMI_ASO_CBCT":
+            args = self.list_Processes_Parameters[process_id]["Parameter"]
+            print("args : ", args)
+            self.logic.check_cli_script(f"{module}")
+
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{module}"]
+
+        # elif module=="PRE_ASO_CBCT":
+
+        for key, value in args.items():
+            print("key : ",key)
+            if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+                value = self.logic.windows_to_linux_path(value)
+            command.append(f"\"{value}\"")
+        print("command : ",command)
+        return command
+
 
     """
 
@@ -1817,10 +1839,10 @@ class AREGLogic(ScriptedLoadableModuleLogic):
 
         self.run_conda_command(target=self.conda.condaRunCommand, command=(command,))
         
-    def setup_cli_command(self):
+    def setup_cli_command(self,file):
         args = self.find_cli_parameters()
         conda_exe = self.conda.getCondaExecutable()
-        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"AREG_IOS"]
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"{file}"]
         for arg in args :
             command.append("\""+arg+"\"")
 
@@ -1881,14 +1903,10 @@ class AREGLogic(ScriptedLoadableModuleLogic):
 
         return path
     
-    def check_cli_script(self):
-        if not self.check_pythonpath_windows("AREG_IOS"): 
+    def check_cli_script(self, name):
+        if not self.check_pythonpath_windows(f"{name}"): 
             self.give_pythonpath_windows()
-            results = self.check_pythonpath_windows("AREG_IOS")
-            
-        if not self.check_pythonpath_windows("CrownSegmentationcli"):
-            self.give_pythonpath_windows()
-            results = self.check_pythonpath_windows("CrownSegmentationcli")
+            results = self.check_pythonpath_windows(f"{name}")
             
     def condaRunCommand(self, command: list[str]):
         '''
