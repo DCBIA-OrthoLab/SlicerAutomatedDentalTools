@@ -16,7 +16,6 @@ import SimpleITK as sitk
 import glob
 import os
 import shutil
-from slicer.util import pip_install
 
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import (
