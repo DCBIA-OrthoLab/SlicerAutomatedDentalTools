@@ -277,12 +277,12 @@ class Semi_CBCT(Method):
         }
 
         # PreOrientProcess = slicer.modules.pre_aso_cbct
-        PreOrientProcess = "ASO_CBCT.PRE_ASO_CBCT"
+        PreOrientProcess = "PRE_ASO_CBCT"
         list_process = [
             {
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso,
-                "Module": "Centering T2",
+                "Module": "PRE_ASO_CBCT",
                 "Display": DisplayASOCBCT(nb_scan),
             }
         ]
@@ -306,7 +306,7 @@ class Semi_CBCT(Method):
                 {
                     "Process": AREGProcess,
                     "Parameter": parameter_areg_cbct,
-                    "Module": "AREG_CBCT for {}".format(full_reg_struct[i]),
+                    "Module": "AREG_CBCT",
                     "Display": DisplayAREGCBCT(nb_scan),
                 }
             )
@@ -354,7 +354,7 @@ class Semi_CBCT(Method):
                 {
                     "Process": AMASSSProcess,
                     "Parameter": parameter_amasss_seg_t1,
-                    "Module": "AMASSS_CBCT Segmentation of T1",
+                    "Module": "AMASSS_CLI",
                     "Display": DisplayAMASSS(nb_scan, len(full_seg_struct)),
                 }
             )
@@ -362,7 +362,7 @@ class Semi_CBCT(Method):
                 {
                     "Process": AMASSSProcess,
                     "Parameter": parameter_amasss_seg_t2,
-                    "Module": "AMASSS_CBCT Segmentation of T2",
+                    "Module": "AMASSS_CLI",
                     "Display": DisplayAMASSS(
                         nb_scan, len(full_seg_struct), len(full_reg_struct)
                     ),
@@ -417,7 +417,7 @@ class Auto_CBCT(Semi_CBCT):
             {
                 "Process": AMASSSProcess,
                 "Parameter": parameter_amasss_mask_t1,
-                "Module": "AMASSS_CBCT - Masks Generation for T1",
+                "Module": "AMASSS_CLI",
                 "Display": DisplayAMASSS(
                     nb_scan, len(full_reg_struct)
                 ),
@@ -439,12 +439,12 @@ class Auto_CBCT(Semi_CBCT):
         }
 
         # PreOrientProcess = slicer.modules.pre_aso_cbct
-        PreOrientProcess = "ASO_CBCT.PRE_ASO_CBCT"
+        PreOrientProcess = "PRE_ASO_CBCT"
         list_process.append(
             {
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso,
-                "Module": "Centering T2",
+                "Module": "PRE_ASO_CBCT",
                 "Display": DisplayASOCBCT(
                     nb_scan
                 ),
@@ -474,7 +474,7 @@ class Auto_CBCT(Semi_CBCT):
                 {
                     "Process": AREGProcess,
                     "Parameter": parameter_areg_cbct,
-                    "Module": "AREG_CBCT for {}".format(full_reg_struct[i]),
+                    "Module": "AREG_CBCT",
                     "Display": DisplayAREGCBCT(
                         nb_scan
                     ),
@@ -529,7 +529,7 @@ class Auto_CBCT(Semi_CBCT):
                 {
                     "Process": AMASSSProcess,
                     "Parameter": parameter_amasss_seg_t1,
-                    "Module": "AMASSS_CBCT Segmentation for T1",
+                    "Module": "AMASSS_CLI",
                     "Display": DisplayAMASSS(
                         nb_scan, len(full_seg_struct)
                     ),
@@ -539,7 +539,7 @@ class Auto_CBCT(Semi_CBCT):
                 {
                     "Process": AMASSSProcess,
                     "Parameter": parameter_amasss_seg_t2,
-                    "Module": "AMASSS_CBCT Segmentation for T2",
+                    "Module": "AMASSS_CLI",
                     "Display": DisplayAMASSS(
                         nb_scan, len(full_seg_struct), len(full_reg_struct)
                     ),
@@ -675,7 +675,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         }
 
         # PreOrientProcess = slicer.modules.pre_aso_cbct
-        PreOrientProcess = "ASO_CBCT_PRE_ASO_CBCT"
+        PreOrientProcess = "PRE_ASO_CBCT"
 
         OrientationReference = kwargs["OrientReference"]
 
@@ -712,7 +712,7 @@ class Or_Auto_CBCT(Semi_CBCT):
             "list_landmark": list_lmrk_str,
         }
         # OrientProcess = slicer.modules.semi_aso_cbct
-        OrientProcess = "ASO_CBCT.SEMI_ASO_CBCT"
+        OrientProcess = "SEMI_ASO_CBCT"
 
         print("SEMI_ASO param:", parameter_semi_aso)
 
@@ -774,7 +774,7 @@ class Or_Auto_CBCT(Semi_CBCT):
             {
                 "Process": AMASSSProcess,
                 "Parameter": parameter_amasss_mask_t1,
-                "Module": "AMASSS_CBCT - Masks Generation for T1",
+                "Module": "AMASSS_CLI",
                 "Display": DisplayAMASSS(nb_scan, len(full_reg_struct)),
             }
         ]
@@ -791,12 +791,12 @@ class Or_Auto_CBCT(Semi_CBCT):
             "DCMInput": kwargs["isDCMInput"],
         }
 
-        PreOrientProcess = "ASO_CBCT.PRE_ASO_CBCT"
+        PreOrientProcess = "PRE_ASO_CBCT"
         list_process.append(
             {
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso,
-                "Module": "Centering T2",
+                "Module": "PRE_ASO_CBCT",
                 "Display": DisplayASOCBCT(nb_scan),
             }
         )
@@ -823,7 +823,7 @@ class Or_Auto_CBCT(Semi_CBCT):
                 {
                     "Process": AREGProcess,
                     "Parameter": parameter_areg_cbct,
-                    "Module": "AREG_CBCT for {}".format(full_reg_struct[i]),
+                    "Module": "AREG_CBCT",
                     "Display": DisplayAREGCBCT(nb_scan),
                 }
             )
@@ -874,7 +874,7 @@ class Or_Auto_CBCT(Semi_CBCT):
                 {
                     "Process": AMASSSProcess,
                     "Parameter": parameter_amasss_seg_t1,
-                    "Module": "AMASSS_CBCT Segmentation for T1",
+                    "Module": "AMASSS_CLI",
                     "Display": DisplayAMASSS(nb_scan, len(full_seg_struct)),
                 }
             )
@@ -882,7 +882,7 @@ class Or_Auto_CBCT(Semi_CBCT):
                 {
                     "Process": AMASSSProcess,
                     "Parameter": parameter_amasss_seg_t2,
-                    "Module": "AMASSS_CBCT Segmentation for T2",
+                    "Module": "AMASSS_CLI",
                     "Display": DisplayAMASSS(
                         nb_scan, len(full_seg_struct), len(full_reg_struct)
                     ),
