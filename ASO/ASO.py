@@ -264,6 +264,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = None
         self._parameterNode = None
         self._updatingGUIFromParameterNode = False
+        self.all_installed = False
 
         self.nb_patient = 0  # number of scans in the input folder
 
@@ -401,6 +402,8 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # self.SwitchMode(0)
         self.SwitchType()
+
+        qt.QTimer.singleShot(100, self.onCheckRequirements)
 
         """
 
@@ -862,21 +865,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onPredictButton(self):
         """Function to launch the prediction"""
         
-        if self.type == "IOS":
-            is_installed = False
-            check_env = self.onCheckRequirements()
-            print("seg_env: ", check_env)
-            
-            if check_env:
-                is_installed = install_function(self)
-        else:
-            is_installed = install_function(self)
+        is_installed = self.all_installed
             
         if not is_installed:
             qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
             return
         
-        self.logic.check_cli_script()
         
         self.ui.label_LibsInstallation.setVisible(False)
         error = self.ActualMeth.TestProcess(
@@ -890,7 +884,6 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             smallFOV=str(self.ui.checkBoxSmallFOV.isChecked()),
             isDCMInput=self.isDCMInput,
         )
-        # print('error',error)
         if isinstance(error, str):
             qt.QMessageBox.warning(self.parent, "Warning", error.replace(",", "\n"))
 
@@ -913,20 +906,20 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             
             module = self.list_Processes_Parameters[0]["Module"]
             print("module name : ", module)
-            if module == "CrownSegmentationcli":
-                self.run_conda_tool()
+            # if module == "CrownSegmentationcli":
+            self.run_conda_tool()
 
-            # /!\ Launch of the first process /!\
-            self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-            self.module_name = self.list_Processes_Parameters[0]["Module"]
-            self.displayModule = self.list_Processes_Parameters[0]["Display"]
-            self.processObserver = self.process.AddObserver(
-                "ModifiedEvent", self.onProcessUpdate
-            )
+            # # /!\ Launch of the first process /!\
+            # self.process = slicer.cli.run(
+            #     self.list_Processes_Parameters[0]["Process"],
+            #     None,
+            #     self.list_Processes_Parameters[0]["Parameter"],
+            # )
+            # self.module_name = self.list_Processes_Parameters[0]["Module"]
+            # self.displayModule = self.list_Processes_Parameters[0]["Display"]
+            # self.processObserver = self.process.AddObserver(
+            #     "ModifiedEvent", self.onProcessUpdate
+            # )
 
             del self.list_Processes_Parameters[0]
 
@@ -1007,17 +1000,57 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
                 print(self.process.GetOutputText())
                 try:
-                    self.process = slicer.cli.run(
-                        self.list_Processes_Parameters[0]["Process"],
-                        None,
-                        self.list_Processes_Parameters[0]["Parameter"],
-                    )
-                    self.module_name = self.list_Processes_Parameters[0]["Module"]
-                    self.displayModule = self.list_Processes_Parameters[0]["Display"]
-                    self.processObserver = self.process.AddObserver(
-                        "ModifiedEvent", self.onProcessUpdate
-                    )
-                    del self.list_Processes_Parameters[0]
+                    # self.process = slicer.cli.run(
+                    #     self.list_Processes_Parameters[0]["Process"],
+                    #     None,
+                    #     self.list_Processes_Parameters[0]["Parameter"],
+                    # )
+                    # self.module_name = self.list_Processes_Parameters[0]["Module"]
+                    # self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                    # self.processObserver = self.process.AddObserver(
+                    #     "ModifiedEvent", self.onProcessUpdate
+                    # )
+
+                        module=self.list_Processes_Parameters[0]['Module']
+                        print(f"in conda tool: {module} wants to run", )
+
+                        args = self.list_Processes_Parameters[0]["Parameter"]
+                        self.logic.check_cli_script(f"{module}")
+
+                        conda_exe = self.logic.conda.getCondaExecutable()
+                        command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{module}"]
+
+                        for key, value in args.items():
+                            print("key : ",key)
+                            if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+                                value = self.logic.windows_to_linux_path(value)
+                            command.append(f"\"{value}\"")
+                        print("command : ",command)
+                        return command
+
+                        # running in // to not block Slicer
+                        process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+                        process.start()
+                        self.ui.LabelTimer.setHidden(False)
+                        self.ui.LabelTimer.setText(f"Time : 0.00s")
+                        previous_time = self.startTime
+                        while process.is_alive():
+                            slicer.app.processEvents()
+                            current_time = time.time()
+                            gap=current_time-previous_time
+                            if gap>0.3:
+                                currentTime = time.time() - self.startTime
+                                previous_time = currentTime
+                                if currentTime < 60:
+                                    timer = f"Time : {int(currentTime)}s"
+                                elif currentTime < 3600:
+                                    timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                                else:
+                                    timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                                
+                                self.ui.LabelTimer.setText(timer)
+
+                        del self.list_Processes_Parameters[0]
                 except IndexError:
                     self.OnEndProcess()
 
@@ -1080,27 +1113,47 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.HideComputeItems(run)
         
     def run_conda_tool(self):
-        output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
-        clean_output = re.search(r"Result: (.+)", output_command)
-        if clean_output:
-            dentalmodelseg_path = clean_output.group(1).strip()
-            dentalmodelseg_path_clean = dentalmodelseg_path.replace("\\n","")
-        else:
-            print("Error: Unable to find dentalmodelseg path.")
-            return
-        
-        args = self.list_Processes_Parameters[0]["Parameter"]
-        print("args : ",args)
-        conda_exe = self.logic.conda.getCondaExecutable()
-        command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
-        for key, value in args.items():
-            if key in ["out","input_csv","vtk_folder","dentalmodelseg_path"]:
-                value = self.logic.windows_to_linux_path(value)
-            if key == "dentalmodelseg_path":
-                value = dentalmodelseg_path_clean
-            command.append(f"\"{value}\"")
-        print("*"*50)
-        print("command : ",command)
+        if "CrownSegmentationcli" in self.list_Processes_Parameters[0]['Module']:
+
+            output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
+            clean_output = re.search(r"Result: (.+)", output_command)
+            if clean_output:
+                dentalmodelseg_path = clean_output.group(1).strip()
+                dentalmodelseg_path_clean = dentalmodelseg_path.replace("\\n","")
+            else:
+                print("Error: Unable to find dentalmodelseg path.")
+                return
+            
+            args = self.list_Processes_Parameters[0]["Parameter"]
+            print("args : ",args)
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
+            for key, value in args.items():
+                if key in ["out","input_csv","vtk_folder","dentalmodelseg_path"]:
+                    value = self.logic.windows_to_linux_path(value)
+                if key == "dentalmodelseg_path":
+                    value = dentalmodelseg_path_clean
+                command.append(f"\"{value}\"")
+            print("*"*50)
+            print("command : ",command)
+
+        else: 
+            module=self.list_Processes_Parameters[0]['Module']
+            print(f"in conda tool: {module} wants to run", )
+
+            args = self.list_Processes_Parameters[0]["Parameter"]
+            self.logic.check_cli_script(f"{module}")
+
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{module}"]
+
+            for key, value in args.items():
+                print("key : ",key)
+                if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+                    value = self.logic.windows_to_linux_path(value)
+                command.append(f"\"{value}\"")
+            print("command : ",command)
+            return command
 
         # running in // to not block Slicer
         process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
@@ -1840,19 +1893,11 @@ class ASOLogic(ScriptedLoadableModuleLogic):
 
         return path
     
-    def check_cli_script(self):
-        if not self.check_pythonpath_windows("PRE_ASO_IOS"): 
+    def check_cli_script(self,file):
+        if not self.check_pythonpath_windows(f"{file}"): 
             self.give_pythonpath_windows()
-            results = self.check_pythonpath_windows("PRE_ASO_IOS")
-            
-        if not self.check_pythonpath_windows("SEMI_ASO_IOS"): 
-            self.give_pythonpath_windows()
-            results = self.check_pythonpath_windows("SEMI_ASO_IOS")
-            
-        if not self.check_pythonpath_windows("CrownSegmentationcli"):
-            self.give_pythonpath_windows()
-            results = self.check_pythonpath_windows("CrownSegmentationcli")
-            
+            results = self.check_pythonpath_windows(f"{file}")
+                        
     def condaRunCommand(self, command: list[str]):
         '''
         Runs a command in a specified Conda environment, handling different operating systems.
