@@ -342,6 +342,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # in batch mode, without a graphical user interface.
         self.logic = AREGLogic()
 
+        # self.check_env = self.onCheckRequirements()
+        qt.QTimer.singleShot(100, self.onCheckRequirements)
+
         # Connections
 
         # These connections ensure that we update parameter node when scene is closed
@@ -1018,9 +1021,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
 
     def onPredictButton(self):
-        check_env = self.onCheckRequirements()
-        print("seg_env : ",check_env)
-        is_installed = check_env
+        # self.check_env = self.onCheckRequirements()
+        is_installed = self.all_installed #self.check_env
 
         # If the user didn't accept the installation, the module doesn't run
         if not is_installed:
@@ -1298,10 +1300,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         
     def run_conda_tool(self,process_id):
-        module=self.list_Processes_Parameters[process_id]['Module']
 
-        print(f"in conda tool: {module} wants to run")
-        if "CrownSegmentationcli" in module:
+        if "CrownSegmentationcli" in self.list_Processes_Parameters[process_id]['Module']:
             self.logic.check_cli_script("CrownSegmentationcli")
             output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
             clean_output = re.search(r"Result: (.+)", output_command)
@@ -1349,59 +1349,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         self.ui.LabelTimer.setText(timer)
 
                 # #del self.list_Processes_Parameters[0]
-                
-        elif module=="areg":
-            args = self.list_Processes_Parameters[process_id]["Parameter"]
-            self.logic.check_cli_script("AREG_IOS")
-
-            print("args : ", args)
-            conda_exe = self.logic.conda.getCondaExecutable()
-            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AREG_IOS"]
-        
-        elif "AMASSS" in module:
-            args = self.list_Processes_Parameters[process_id]["Parameter"]
-            print("args : ", args)
-            self.logic.check_cli_script("AMASSS_CLI")
-
-            conda_exe = self.logic.conda.getCondaExecutable()
-            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AMASSS_CLI"]
-
-        elif "AREG_CBCT" in module:
-            args = self.list_Processes_Parameters[process_id]["Parameter"]
-            print("args : ", args)
-            self.logic.check_cli_script("AREG_CBCT")
-
-            conda_exe = self.logic.conda.getCondaExecutable()
-            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AREG_CBCT"]
-
-        elif "AREG_IOS" in module:
-            args = self.list_Processes_Parameters[process_id]["Parameter"]
-            print("args : ", args)
-            self.logic.check_cli_script("AREG_IOS")
-
-            conda_exe = self.logic.conda.getCondaExecutable()
-            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AREG_IOS"]
-
-        elif "Centering" in module:
-            args = self.list_Processes_Parameters[process_id]["Parameter"]
-            print("args : ", args)
-            self.logic.check_cli_script("PRE_ASO_CBCT")
-
-            conda_exe = self.logic.conda.getCondaExecutable()
-            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"PRE_ASO_CBCT"]
-
-        elif "PRE_ASO_IOS" in module:
-            args = self.list_Processes_Parameters[process_id]["Parameter"]
-            print("args : ", args)
-            self.logic.check_cli_script("PRE_ASO_IOS")
-
-            conda_exe = self.logic.conda.getCondaExecutable()
-            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"PRE_ASO_IOS"]
-
 
         else: # module=="SEMI_ASO_CBCT":
+            module=self.list_Processes_Parameters[process_id]['Module']
+            print(f"in conda tool: {module} wants to run", )
+
             args = self.list_Processes_Parameters[process_id]["Parameter"]
-            print("args : ", args)
             self.logic.check_cli_script(f"{module}")
 
             conda_exe = self.logic.conda.getCondaExecutable()
@@ -1635,9 +1588,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called when the application closes and the module widget is destroyed.
         """
-        if self.logic.cliNode is not None:
-            # if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
-            self.logic.cliNode.Cancel()
+        # if self.logic.cliNode is not None:
+        #     # if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
+        #     self.logic.cliNode.Cancel()
 
         self.removeObservers()
 
