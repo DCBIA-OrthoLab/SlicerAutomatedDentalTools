@@ -1163,6 +1163,50 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         return out_path
     
+    def run_conda_tool(self):
+        module=self.list_Processes_Parameters[0]['Module']
+        print(f"in conda tool: {module} wants to run", )
+
+        args = self.list_Processes_Parameters[0]["Parameter"]
+        self.logic.check_cli_script(f"{module}")
+
+        conda_exe = self.logic.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{module}"]
+
+        for key, value in args.items():
+            print("key : ",key)
+            if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+                value = self.logic.windows_to_linux_path(value)
+            command.append(f"\"{value}\"")
+        print("command : ",command)
+        return command
+
+        # running in // to not block Slicer
+        process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+        process.start()
+        self.ui.LabelTimer.setHidden(False)
+        self.ui.LabelTimer.setText(f"Time : 0.00s")
+        previous_time = self.startTime
+        while process.is_alive():
+            slicer.app.processEvents()
+            current_time = time.time()
+            gap=current_time-previous_time
+            if gap>0.3:
+                currentTime = time.time() - self.startTime
+                previous_time = currentTime
+                if currentTime < 60:
+                    timer = f"Time : {int(currentTime)}s"
+                elif currentTime < 3600:
+                    timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                else:
+                    timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                
+                self.ui.LabelTimer.setText(timer)
+
+        del self.list_Processes_Parameters[0]
+
+
+
     def lrCropMRI2CBCT(self)->None:
         """
         This function is called when the button "pushButtonCropLR" is clicked.
@@ -1207,17 +1251,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("module name : ",self.list_Processes_Parameters[0]["Module"])
         print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
         
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-        del self.list_Processes_Parameters[0]
+        self.process = self.run_conda_tool()
 
     def orientCBCT(self)->None:
         """
@@ -1253,18 +1287,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("module name : ",self.list_Processes_Parameters[0]["Module"])
         print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
         
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-
-        del self.list_Processes_Parameters[0]
+        self.process = self.run_conda_tool()
     
     def orientCenterMRI(self):
         """
@@ -1304,18 +1327,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("module name : ",self.list_Processes_Parameters[0]["Module"])
         print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
         
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-
-        del self.list_Processes_Parameters[0]
+        self.process = self.run_conda_tool()
         
     def resampleMRICBCT(self):
         """
@@ -1416,18 +1428,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("module name : ",self.list_Processes_Parameters[0]["Module"])
         print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
         
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-
-        del self.list_Processes_Parameters[0]
+        self.process = self.run_conda_tool()
         
     def updateSepLabel(self):
         """
@@ -1574,19 +1575,10 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # /!\ Launch of the first process /!\
         print("module name : ",self.list_Processes_Parameters[0]["Module"])
         print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        print()
+        print()
         
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-
-        del self.list_Processes_Parameters[0]
+        self.process = self.run_conda_tool()
         
     def approximateMRI(self) -> None:
         """
@@ -1630,18 +1622,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("module name : ",self.list_Processes_Parameters[0]["Module"])
         print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
         
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-
-        del self.list_Processes_Parameters[0]   
+        self.process = self.run_conda_tool()
         
     def onProcessStarted(self):
         """
@@ -1731,16 +1712,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 print(self.process.GetOutputText())
                 try:
                     print("name process : ",self.list_Processes_Parameters[0]["Process"])
-                    self.process = slicer.cli.run(
-                        self.list_Processes_Parameters[0]["Process"],
-                        None,
-                        self.list_Processes_Parameters[0]["Parameter"],
-                    )
-                    self.module_name = self.list_Processes_Parameters[0]["Module"]
-                    self.processObserver = self.process.AddObserver(
-                        "ModifiedEvent", self.onProcessUpdate
-                    )
-                    del self.list_Processes_Parameters[0]
+                    self.process = self.run_conda_tool()
                     # self.displayModule.progress = 0
                 except IndexError:
                     self.OnEndProcess()
