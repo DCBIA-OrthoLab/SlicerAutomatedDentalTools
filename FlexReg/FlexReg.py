@@ -603,11 +603,21 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         
         parameters["lower_arch"] = self.lower_arch
 
+        module='FlexReg_CLI'
 
+        self.check_cli_script(module)
+        conda_exe = self.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"{module}"]
 
-        flybyProcess = slicer.modules.flexreg_cli
-        self.cliNode = slicer.cli.run(flybyProcess,None, parameters)  
-        return flybyProcess
+        for key, value in parameters.items():
+            print("key : ", key)
+            if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+                value = self.windows_to_linux_path(value)
+            command.append(f"\"{value}\"")
+        print("command : ",command)
+
+        return command
+
     
     def init_conda(self):
         # check if CondaSetUp exists
@@ -716,15 +726,11 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
 
         return path
     
-    def check_cli_script(self):
-        if not self.check_pythonpath_windows("FlexReg_CLI"): 
+    def check_cli_script(self,file):
+        if not self.check_pythonpath_windows(f"{file}"): 
             self.give_pythonpath_windows()
-            results = self.check_pythonpath_windows("FlexReg_CLI")
-            
-        if not self.check_pythonpath_windows("CrownSegmentationcli"):
-            self.give_pythonpath_windows()
-            results = self.check_pythonpath_windows("CrownSegmentationcli")
-            
+            results = self.check_pythonpath_windows(f"{file}")
+                        
     def condaRunCommand(self, command: list[str]):
         '''
         Runs a command in a specified Conda environment, handling different operating systems.
@@ -910,11 +916,25 @@ class Reg:
                             suffix,
                             0,
                             lower_arch)
-                self.logic.process()
+                command = self.logic.process()
 
-                self.start_time = time.time()
-                self.timer.timeout.connect(self.onProcessUpdateICP)
-                self.timer.start(500)
+                self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+                self.process.start()
+                previous_time = self.start_time
+                while self.process.is_alive():
+                    slicer.app.processEvents()
+                    current_time = time.time()
+                    gap=current_time-previous_time
+                    if gap>0.3:
+                        currentTime = time.time() - self.start_time
+                        previous_time = currentTime
+                        if currentTime < 60:
+                            timer = f"Time : {int(currentTime)}s"
+                        elif currentTime < 3600:
+                            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                        else:
+                            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                        
 
             else:
                 slicer.util.infoDisplay("Create patch on T1 and T2 before registration")
@@ -1240,6 +1260,9 @@ class WidgetParameter:
         self.layout_label_display.addWidget(self.label_sep)
         self.label_sep.setVisible(True)
 
+
+        qt.QTimer.singleShot(100, self.onCheckRequirements)
+
         
 
     def handleStackedWidgetChange(self, index):
@@ -1318,10 +1341,31 @@ class WidgetParameter:
                         "None",
                         "None",
                         index)
-        self.logic.process()
+        command = self.logic.process()
+
+
+        self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+        self.process.start()
+        self.label_time.setHidden(False)
+        self.label_time.setText(f"time : 0.00s")
         self.start_time = time.time()
-        self.timer.timeout.connect(self.onProcessUpdateDelete)
-        self.timer.start(500)
+
+        previous_time = self.start_time
+        while self.process.is_alive():
+            slicer.app.processEvents()
+            current_time = time.time()
+            gap=current_time-previous_time
+            if gap>0.3:
+                currentTime = time.time() - self.start_time
+                previous_time = currentTime
+                if currentTime < 60:
+                    timer = f"Time : {int(currentTime)}s"
+                elif currentTime < 3600:
+                    timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                else:
+                    timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                
+                self.label_time.setText(timer)
         
     def DownloadUnzip(
         self, url, directory, folder_name=None, num_downl=1, total_downloads=1
@@ -1474,19 +1518,7 @@ class WidgetParameter:
         
         # Install the libraries only if it's the first time
         if not FlexRegBootManager.booted:
-            check_env = self.onCheckRequirements()
-            is_installed = False
-            print(check_env)
-            if check_env:
-                if platform.system() == "Windows":
-                    list_libs_windows = [('numpy',"<2.0",None),('itk',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
-                    is_installed = install_function(self,list_libs_windows)
-                    
-                else:
-                    list_libs_linux = [('numpy',"<2.0",None),('itk',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
-                    is_installed = install_function(self,list_libs_linux)
-                    
-            if not is_installed:
+            if not self.all_installed:
                 qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
                 return
             
@@ -1741,15 +1773,15 @@ class WidgetParameter:
         process.start()
         self.label_time.setVisible(True)
         self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: 0.0s")
-        start_time = time.time()
-        previous_time = start_time
+        self.start_time = time.time()
+        previous_time = self.start_time
         while process.is_alive():
             slicer.app.processEvents()
             current_time = time.time()
             gap=current_time-previous_time
             if gap>0.3:
                 previous_time = current_time
-                elapsed_time = current_time - start_time
+                elapsed_time = current_time - self.start_time
                 self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
         
         self.viewScan()
@@ -1995,14 +2027,29 @@ class WidgetParameter:
                             "None",
                             index,
                             "None")
-                self.logic.process()
+                command = self.logic.process()
+
+                self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+                self.process.start()
+                self.label_time.setHidden(False)
+                self.label_time.setText(f"time : 0.00s")
                 self.start_time = time.time()
-                try:
-                    self.timer.timeout.disconnect()
-                except TypeError:
-                    pass
-                self.timer.timeout.connect(self.onProcessUpdateButterfly)
-                self.timer.start(500)
+                previous_time = self.start_time
+                while self.process.is_alive():
+                    slicer.app.processEvents()
+                    current_time = time.time()
+                    gap=current_time-previous_time
+                    if gap>0.3:
+                        currentTime = time.time() - self.start_time
+                        previous_time = currentTime
+                        if currentTime < 60:
+                            timer = f"Time : {int(currentTime)}s"
+                        elif currentTime < 3600:
+                            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                        else:
+                            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                        
+                        self.label_time.setText(timer)
         else :
             slicer.util.infoDisplay(f"Load a vtk file in window number : {self.title} \nTo do this, enter the path to a vtk file and click on view.")
 
@@ -2252,15 +2299,29 @@ class WidgetParameter:
                         "None",
                         index,
                         "None")
-            self.logic.process()
+            command = self.logic.process()
 
+            self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+            self.process.start()
+            self.label_time.setHidden(False)
+            self.label_time.setText(f"time : 0.00s")
             self.start_time = time.time()
-            try:
-                self.timer.timeout.disconnect()
-            except TypeError:
-                pass
-            self.timer.timeout.connect(self.onProcessUpdateCurve)
-            self.timer.start(500)
+            previous_time = self.start_time
+            while self.process.is_alive():
+                slicer.app.processEvents()
+                current_time = time.time()
+                gap=current_time-previous_time
+                if gap>0.3:
+                    currentTime = time.time() - self.start_time
+                    previous_time = currentTime
+                    if currentTime < 60:
+                        timer = f"Time : {int(currentTime)}s"
+                    elif currentTime < 3600:
+                        timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                    else:
+                        timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                    
+                    self.label_time.setText(timer)
 
         else :
             slicer.util.infoDisplay(f"Load a vtk file in window number : {self.title} \nTo do this, enter the path to a vtk file and click on view.")
