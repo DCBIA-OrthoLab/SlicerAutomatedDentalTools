@@ -996,7 +996,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.ButtonCancel.setEnabled(False)
             num_processes = len(self.list_Processes_Parameters)
             for num_process in range(num_processes):
-                command = self.run_conda_tool()
+                command = self.run_conda_tool(0)
                 # running in // to not block Slicer
                 self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
                 self.process.start()
@@ -1234,7 +1234,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.process.start()
                 self.ui.LabelTimer.setHidden(False)
                 self.ui.LabelTimer.setText(f"Time : 0.00s")
-                previous_time = self.startTime
+                start_time = time.time()
+                previous_time = start_time
                 while self.process.is_alive():
                     slicer.app.processEvents()
                     formatted_time = self.update_ui_time(start_time, previous_time)
