@@ -17,7 +17,7 @@ from qt import (
 )
 import pkg_resources
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin,pip_install
+from slicer.util import VTKObservationMixin
 from functools import partial
 import subprocess
 import threading
@@ -29,38 +29,6 @@ from ASO_Method.CBCT import Semi_CBCT, Auto_CBCT
 from ASO_Method.Method import Method
 from ASO_Method.Progress import Display
 
-def check_lib_installed(lib_name, required_version=None):
-    try:
-        installed_version = pkg_resources.get_distribution(lib_name).version
-        if required_version and installed_version != required_version:
-            return False
-        return True
-    except pkg_resources.DistributionNotFound:
-        return False
-
-# import csv
-    
-def install_function(self):
-    libs = [('itk', None), ('torch', None), ('monai', '0.7.0'),('pytorch_lightning',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2')]
-    libs_to_install = []
-    for lib, version in libs:
-        if not check_lib_installed(lib, version):
-            libs_to_install.append((lib, version))
-
-    if libs_to_install:
-        message = "The following libraries are not installed or need updating:\n"
-        message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
-        message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
-        user_choice = slicer.util.confirmYesNoDisplay(message)
-
-        if user_choice:
-            self.ui.label_LibsInstallation.setVisible(True)
-            for lib, version in libs_to_install:
-                lib_version = f'{lib}=={version}' if version else lib
-                pip_install(lib_version)
-        else :
-          return False
-    return True
 
 class ASO(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -906,20 +874,8 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             
             module = self.list_Processes_Parameters[0]["Module"]
             print("module name : ", module)
-            # if module == "CrownSegmentationcli":
             self.run_conda_tool()
 
-            # # /!\ Launch of the first process /!\
-            # self.process = slicer.cli.run(
-            #     self.list_Processes_Parameters[0]["Process"],
-            #     None,
-            #     self.list_Processes_Parameters[0]["Parameter"],
-            # )
-            # self.module_name = self.list_Processes_Parameters[0]["Module"]
-            # self.displayModule = self.list_Processes_Parameters[0]["Display"]
-            # self.processObserver = self.process.AddObserver(
-            #     "ModifiedEvent", self.onProcessUpdate
-            # )
 
             del self.list_Processes_Parameters[0]
 
@@ -1933,25 +1889,6 @@ class ASOLogic(ScriptedLoadableModuleLogic):
             self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
     
         self.stdout, self.stderr = self.subpro.communicate()
-
-    # def process(self, parameters):
-    #     """
-    #     Run the processing algorithm.
-    #     Can be used without GUI widget.
-    #     :param inputVolume: volume to be thresholded
-
-    #     """
-
-    #     # import time
-    #     # startTime = time.time()
-
-    #     logging.info("Processing started")
-
-    #     PredictProcess = slicer.modules.aso_ios
-
-    #     self.cliNode = slicer.cli.run(PredictProcess, None, parameters)
-
-    #     return PredictProcess
 
     def iterillimeted(self, iter):
         out = []
