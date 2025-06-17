@@ -2424,7 +2424,8 @@ class WidgetParameter:
         '''
         Check if a Butterfly1 exist, if no disable the display of the combobox
         '''
-        import torch
+        # import torch
+        import numpy as np
         index = 1
         final_array = None
 
@@ -2433,13 +2434,13 @@ class WidgetParameter:
             
             if self.isButterflyPatchAvailable(polydata,array_name):
                 current_array = polydata.GetPointData().GetArray(array_name)
-                current_tensor = torch.tensor(vtk_to_numpy(current_array)).to(torch.float32).cuda()
+                current_tensor = vtk_to_numpy(current_array)
                 
                 if final_array is None:
                     final_array = current_tensor
                 else:
                     # Utiliser une opération OR pour combiner les patches
-                    final_array = torch.logical_or(final_array, current_tensor).to(torch.float32)
+                    final_array = np.logical_or(final_array, current_tensor)
                 
                 index += 1
             else:
