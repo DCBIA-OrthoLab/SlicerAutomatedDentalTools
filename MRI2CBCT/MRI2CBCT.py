@@ -31,39 +31,6 @@ import importlib.metadata
 
 from slicer import vtkMRMLScalarVolumeNode
 import platform
-def check_lib_installed(lib_name, required_version=None):
-    try:
-        installed_version = importlib.metadata.version(lib_name)
-        if required_version and installed_version != required_version:
-            return False
-        return True
-    except importlib.metadata.PackageNotFoundError:
-        return False
-
-# import csv
-    
-def install_function():
-    libs = [('itk',None),('monai','0.7.0'),('einops',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2'),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1'),("pandas",None),("scikit-learn",None),("torch",None),("torchreg",None),("SimpleITK",None)]
-    libs_to_install = []
-    for lib, version in libs:
-        if not check_lib_installed(lib, version):
-            libs_to_install.append((lib, version))
-
-    if libs_to_install:
-        message = "The following libraries are not installed or need updating:\n"
-        message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
-        message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
-        user_choice = slicer.util.confirmYesNoDisplay(message)
-
-        if user_choice:
-            for lib, version in libs_to_install:
-                lib_version = f'{lib}=={version}' if version else lib
-                pip_install(lib_version)
-        else :
-          return False
-    import vtk
-    import itk
-    return True
 #
 # MRI2CBCT
 #

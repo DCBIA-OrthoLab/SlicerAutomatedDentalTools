@@ -2,7 +2,6 @@
 import argparse
 import sys, os, time
 import numpy as np
-import slicer
 import SimpleITK as sitk
 
 fpath = os.path.join(os.path.dirname(__file__), "..")

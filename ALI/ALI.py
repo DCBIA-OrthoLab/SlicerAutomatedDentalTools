@@ -23,37 +23,6 @@ from ALI_Method.Method import Method
 from ALI_Method.Progress import Display
 
 
-def check_lib_installed(lib_name, required_version=None):
-  try:
-    installed_version =importlib.metadata.version(lib_name)
-    if required_version and installed_version != required_version:
-      return False
-    return True
-  except importlib.metadata.PackageNotFoundError:
-    return False
-
-# import csv
-def install_function(self, libs=None):
-  libs_to_install = []
-  for lib, version in libs:
-    if not check_lib_installed(lib, version):
-      libs_to_install.append((lib, version))
-
-  if libs_to_install:
-    message = "The following libraries are not installed or need updating:\n"
-    message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
-    message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
-    user_choice = slicer.util.confirmYesNoDisplay(message)
-
-    if user_choice:
-      self.ui.label_LibsInstallation.setVisible(True)
-      for lib, version in libs_to_install:
-        lib_version = f'{lib}=={version}' if version else lib
-        pip_install(lib_version)
-    else:
-      return False
-  return True
-
 #region ========== FUNCTIONS ==========
 
 def PathFromNode(node):

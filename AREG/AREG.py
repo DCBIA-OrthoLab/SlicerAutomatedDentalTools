@@ -25,96 +25,6 @@ import subprocess
 import re
 
 
-def check_lib_installed(lib_name, required_version=None):
-    '''
-    Check if the library is installed and meets the required version constraint (if any).
-    - lib_name: "torch"
-    - required_version: ">=1.10.0", "==0.7.0", "<2.0.0", etc.
-    '''
-    try:
-        if required_version:
-            # Use full requirement spec (e.g., "torch>=1.10.0")
-            pkg_resources.require(f"{lib_name}{required_version}")
-        else:
-            # Just check if it's installed
-            pkg_resources.get_distribution(lib_name)
-        return True
-    except (pkg_resources.DistributionNotFound, pkg_resources.VersionConflict) as e:
-        print(f"Version check failed: {e}")
-        return False
-
-# import csv
-
-def install_function(self,list_libs:list):
-    '''
-    Test the necessary libraries and install them with the specific version if needed
-    User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
-    '''
-    libs = list_libs
-    libs_to_install = []
-    libs_to_update = []
-    installation_errors = []
-    for lib, version_constraint,url in libs:
-        if not check_lib_installed(lib, version_constraint):
-            try:
-            # check if the library is already installed
-                if pkg_resources.get_distribution(lib).version:
-                    libs_to_update.append((lib, version_constraint))
-            except:
-                libs_to_install.append((lib, version_constraint))
-
-    if libs_to_install or libs_to_update:
-          message = "The following changes are required for the libraries:\n"
-
-          #Specify which libraries will be updated with a new version
-          #and which libraries will be installed for the first time
-          if libs_to_update:
-              message += "\n --- Libraries to update (version mismatch): \n"
-              message += "\n".join([f"{lib} (current: {pkg_resources.get_distribution(lib).version}) -> {version_constraint.replace('==','').replace('<=','').replace('>=','').replace('<','').replace('>','')}" for lib, version_constraint in libs_to_update])
-              message += "\n"
-          if libs_to_install:
-
-              message += "\n --- Libraries to install:  \n"
-          message += "\n".join([f"{lib}{version_constraint}" if version_constraint else lib for lib, version_constraint in libs_to_install])
-
-          message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
-          message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
-
-          user_choice = slicer.util.confirmYesNoDisplay(message)
-
-          if user_choice:
-            self.ui.label_LibsInstallation.setVisible(True)
-            try:
-                for lib, version_constraint in libs_to_install + libs_to_update:
-                    # if lib == "pytorch3d":
-                    #     install_pytorch3d()
-                    #     continue
-                    if not version_constraint:
-                        pip_install(lib)
-
-                    elif "https:/" in version_constraint:
-                        print("version_constraint", version_constraint)
-                        # download the library from the url
-                        pip_install(version_constraint)
-                    else:
-                        print("version_constraint else", version_constraint)
-                        lib_version = f'{lib}{version_constraint}' if version_constraint else lib
-                        pip_install(lib_version)
-
-                return True
-            except Exception as e:
-                    installation_errors.append((lib, str(e)))
-
-            if installation_errors:
-                error_message = "The following errors occured during installation:\n"
-                error_message += "\n".join([f"{lib}: {error}" for lib, error in installation_errors])
-                slicer.util.errorDisplay(error_message)
-                return False
-          else :
-            return False
-
-    else:
-        return True
 
 class AREG(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -1359,8 +1269,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             conda_exe = self.logic.conda.getCondaExecutable()
             command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{module}"]
-
-        # elif module=="PRE_ASO_CBCT":
 
         for key, value in args.items():
             print("key : ",key)
