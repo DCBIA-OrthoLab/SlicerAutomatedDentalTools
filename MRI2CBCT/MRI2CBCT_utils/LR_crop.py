@@ -77,7 +77,7 @@ class LR_CROP_MRI2CBCT(Method):
             {
                 "Process": MRI2CBCT_LR_CROP,
                 "Parameter": parameter_mri2cbct_lr_crop,
-                "Module": "MRI2CBCT R/L Crop",
+                "Module": "MRI2CBCT_LR_CROP",
             }
         )
            

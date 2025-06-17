@@ -74,7 +74,7 @@ class Process_MRI(Method):
             {
                 "Process": MRI2CBCT_ORIENT_CENTER_MRI,
                 "Parameter": parameter_mri2cbct_orient_center_mri,
-                "Module": "Orientation and Centering of the MRI",
+                "Module": "MRI2CBCT_ORIENT_CENTER_MRI",
             }
         )
            

@@ -77,7 +77,7 @@ class Approximation_MRI2CBCT(Method):
             {
                 "Process": MRI2CBCT_APPROX,
                 "Parameter": parameter_mri2cbct_approx,
-                "Module": "MRI2CBCT approximation",
+                "Module": "MRI2CBCT_APPROX",
             }
         )
            
