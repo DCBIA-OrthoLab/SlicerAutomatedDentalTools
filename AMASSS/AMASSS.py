@@ -19,7 +19,8 @@ from slicer.util import VTKObservationMixin, pip_install
 import webbrowser
 import pkg_resources
 import importlib
-
+import platform
+import threading
 def check_lib_installed(lib_name, required_version=None,system="Windows"):
     '''
     Check if the library with the good version (if needed) is already installed in the slicer environment
@@ -298,6 +299,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.output_folder = None # path to the folder where the segmentations will be saved
     self.vtk_output_folder = None
+    self.all_installed = False
 
 
     self.use_small_FOV = False # use high resolution model
@@ -471,6 +473,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
+    qt.QTimer.singleShot(100, self.onCheckRequirements)
+
 
 
   #region ====== FUNCTIONS ======
@@ -739,18 +743,100 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.horizontalSliderCPU.value = self.ui.spinBoxCPU.value
 
 
-    #region == RUN ==
+    #region == Requirements ==
+
+  def onCheckRequirements(self):
+    if not self.logic.isCondaSetUp:
+        messageBox = qt.QMessageBox()
+        text = textwrap.dedent("""
+        SlicerConda is not set up, please click 
+        <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
+        """).strip()
+        messageBox.information(None, "Information", text)
+        return False
+    
+    if platform.system() == "Windows":
+        self.ui.label_installation.setHidden(False)
+        self.ui.label_installation.setText(f"Checking if wsl is installed, this task may take a moments")
+        
+        if self.logic.conda.testWslAvailable():
+            self.ui.label_installation.setText(f"WSL installed")
+            if not self.logic.check_lib_wsl():
+                self.ui.label_installation.setText(f"Checking if the required librairies are installed, this task may take a moments")
+                messageBox = qt.QMessageBox()
+                text = textwrap.dedent("""
+                    WSL doesn't have all the necessary libraries, please download the installer 
+                    and follow the instructions 
+                    <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+                    for installation. The link may be blocked by Chrome, just authorize it.""").strip()
+
+                messageBox.information(None, "Information", text)
+                return False
+            
+        else : # if wsl not install, ask user to install it ans stop process
+            messageBox = qt.QMessageBox()
+            text = textwrap.dedent("""
+                WSL is not installed, please download the installer and follow the instructions 
+                <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+                for installation. The link may be blocked by Chrome, just authorize it.""").strip()        
+
+            messageBox.information(None, "Information", text)
+            return False
+        
+    
+    ## MiniConda
+    
+    
+    self.ui.label_installation.setText(f"Checking if miniconda is installed")
+    if "Error" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
+        messageBox = qt.QMessageBox()
+        text = textwrap.dedent("""
+        Code can't be launch. \nConda is not setup. 
+        Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
+        messageBox.information(None, "Information", text)
+        return False
+    
+    
+    ## shapeAXI
+
+
+    self.ui.label_installation.setText(f"Checking if environnement exists")
+    if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
+        userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+        if userResponse :
+            start_time = time.time()
+            previous_time = start_time
+            formatted_time = self.format_time(0)
+            self.ui.label_installation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
+            process = self.logic.install_shapeaxi()
+            
+            while self.logic.process.is_alive():
+                slicer.app.processEvents()
+                formatted_time = self.update_ui_time(start_time, previous_time)
+                self.ui.label_installation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
+        
+            start_time = time.time()
+            previous_time = start_time
+            formatted_time = self.format_time(0)
+            text = textwrap.dedent(f"""
+            Installation of librairies into the new environnement. 
+            This task may take a few minutes.\ntime: {formatted_time}""").strip()
+            self.ui.label_installation.setText(text)
+        else:
+            return False
+    else:
+        self.ui.label_installation.setText(f"Ennvironnement already exists")
+        
+    self.all_installed = True   
+    return True
+
     #endregion
 
 
     #region == RUN ==
   def onPredictButton(self):
-    import platform
-    # first, install the required libraries and their version
-    list_libs = [('torch', None),('torchvision', None),('torchaudio',None),('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2'), ('monai', '0.7.0'),('einops',None),('nibabel',None),('connected-components-3d','3.9.1')]
 
-    libs_installation = install_function(self,list_libs,platform.system())
-    if not libs_installation:
+    if not self.all_installed:
       qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
       return  # stop the function
 
@@ -850,10 +936,43 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     param["DCMInput"] = self.isDCMInput
 
-    self.logic.process(param)
-    self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
-    self.onProcessStarted()
+    # self.logic.process(param)
+    # self.processObserver = self.logic.cliNode.AddObserver('ModifiedEvent',self.onProcessUpdate)
+    # self.onProcessStarted()
 
+    self.logic.check_cli_script(f"AMASSS_CLI")
+
+    conda_exe = self.logic.conda.getCondaExecutable()
+    command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", "AMASSS_CLI"]
+
+    for key, value in param.items():
+        print("key : ",key)
+        if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+            value = self.logic.windows_to_linux_path(value)
+        command.append(f"\"{value}\"")
+    print("command : ",command)
+
+    self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+    self.process.start()
+    # self.ui.TimerLabel.setHidden(False)
+    self.ui.TimerLabel.setText(f"time : 0.00s")
+    previous_time = self.startTime
+    self.onProcessStarted()
+    while self.process.is_alive():
+        slicer.app.processEvents()
+        current_time = time.time()
+        gap=current_time-previous_time
+        if gap>0.3:
+            currentTime = time.time() - self.startTime
+            previous_time = currentTime
+            if currentTime < 60:
+                timer = f"Time : {int(currentTime)}s"
+            elif currentTime < 3600:
+                timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+            else:
+                timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+            
+            self.ui.TimerLabel.setText(timer)
 
     # self.OnEndProcess()
 
@@ -1084,9 +1203,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("Error: %s : %s" % (temp_fold, e.strerror))
 
 
-    if self.logic.cliNode is not None:
-      if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
-        self.logic.cliNode.Cancel()
+    # if self.logic.cliNode is not None:
+    #   if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
+    #     self.logic.cliNode.Cancel()
     self.removeObservers()
 
 
@@ -1126,13 +1245,13 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Parameter node stores all user choices in parameter values, node selections, etc.
     # so that when the scene is saved and reloaded, these settings are restored.
 
-    self.setParameterNode(self.logic.getParameterNode())
+    # self.setParameterNode(self.logic.getParameterNode())
 
     # Select default input nodes if nothing is selected yet to save a few clicks for the user
-    if not self._parameterNode.GetNodeReference("InputVolume"):
-      firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-      if firstVolumeNode:
-        self._parameterNode.SetNodeReferenceID("InputVolume", firstVolumeNode.GetID())
+    # if not self._parameterNode.GetNodeReference("InputVolume"):
+    #   firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+    #   if firstVolumeNode:
+    #     self._parameterNode.SetNodeReferenceID("InputVolume", firstVolumeNode.GetID())
 
   def setParameterNode(self, inputParameterNode):
     """
@@ -1371,32 +1490,162 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
     """
     ScriptedLoadableModuleLogic.__init__(self)
     self.cliNode = None
+    self.isCondaSetUp = False
+    self.conda = self.init_conda()
+    self.name_env = "shapeaxi"
+
+  def init_conda(self):
+        # check if CondaSetUp exists
+        try:
+            import CondaSetUp
+        except:
+            return False
+        self.isCondaSetUp = True
+        
+        # set up conda on windows with WSL
+        if platform.system() == "Windows":
+            from CondaSetUp import CondaSetUpCallWsl
+            return CondaSetUpCallWsl()
+        else:
+            from CondaSetUp import CondaSetUpCall
+            return CondaSetUpCall()
+        
+  def run_conda_command(self, target, command):
+      self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
+      self.process.start()
+      
+  def install_shapeaxi(self):
+      self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+
+  def setup_cli_command(self,file):
+      args = self.find_cli_parameters()
+      conda_exe = self.conda.getCondaExecutable()
+      command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"{file}"]
+      for arg in args :
+          command.append("\""+arg+"\"")
+
+      self.run_conda_command(target=self.condaRunCommand, command=(command,))
+      
+  def check_lib_wsl(self) -> bool:
+      # Ubuntu versions < 24.04
+      required_libs_old = ["libxrender1", "libgl1-mesa-glx"]
+      # Ubuntu versions >= 24.04
+      required_libs_new = ["libxrender1", "libgl1", "libglx-mesa0"]
 
 
-  def process(self, parameters, showResult=True):
-    """
-    Run the processing algorithm.
-    Can be used without GUI widget.
-    """
+      all_installed = lambda libs: all(
+          subprocess.run(
+              f"wsl -- bash -c \"dpkg -l | grep {lib}\"", capture_output=True, text=True
+          ).stdout.encode("utf-16-le").decode("utf-8").replace("\x00", "").find(lib) >= 0
+          for lib in libs
+      )
+
+      return all_installed(required_libs_old) or all_installed(required_libs_new)
+  
+  def check_pythonpath_windows(self,file):
+      '''
+      Check if the environment env_name in wsl know the path to a specific file (ex : Crownsegmentationcli.py)
+      return : bool
+      '''
+      conda_exe = self.conda.getCondaExecutable()
+      command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
+      result = self.conda.condaRunCommand(command)
+      if "True" in result :
+          return True
+      return False
+  
+  def give_pythonpath_windows(self):
+      '''
+      take the pythonpath of Slicer and give it to the environment name_env in wsl.
+      '''
+      paths = slicer.app.moduleManager().factoryManager().searchPaths
+      mnt_paths = []
+      for path in paths :
+          mnt_paths.append(f"\"{self.windows_to_linux_path(path)}\"")
+      pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
+      conda_exe = self.conda.getCondaExecutable()
+      argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
+      results = self.conda.condaRunCommand(argument)
+      
+  def windows_to_linux_path(self,windows_path):
+      '''
+      convert a windows path to a wsl path
+      '''
+      windows_path = windows_path.strip()
+
+      path = windows_path.replace('\\', '/')
+
+      if ':' in path:
+          drive, path_without_drive = path.split(':', 1)
+          path = "/mnt/" + drive.lower() + path_without_drive
+
+      return path
+  
+  def check_cli_script(self, name):
+      if not self.check_pythonpath_windows(f"{name}"): 
+          self.give_pythonpath_windows()
+          results = self.check_pythonpath_windows(f"{name}")
+          
+  def condaRunCommand(self, command: list[str]):
+      '''
+      Runs a command in a specified Conda environment, handling different operating systems.
+      
+      copy paste from SlicerConda and change the process line to be able to get the stderr/stdout 
+      and cancel the process without blocking slicer
+      '''
+      path_activate = self.conda.getActivateExecutable()
+
+      if path_activate=="None":
+          return "Path to conda no setup"
+
+      if platform.system() == "Windows":
+          command_execute = f"source {path_activate} {self.name_env} &&"
+          for com in command :
+              command_execute = command_execute+ " "+com
+
+          user = self.conda.getUser()
+          command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
+          print("command_to_execute in condaRunCommand : ",command_to_execute)
+
+          self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                                  text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
+                                  creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
+                                  )
+      else:
+          path_conda_exe = self.conda.getCondaExecutable()
+          command_execute = f"{path_conda_exe} run -n {self.name_env}"
+          for com in command :
+              command_execute = command_execute+ " "+com
+
+          print("command_to_execute in conda run : ",command_execute)
+          self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
+  
+      self.stdout, self.stderr = self.subpro.communicate()
+
+  # def process(self, parameters, showResult=True):
+  #   """
+  #   Run the processing algorithm.
+  #   Can be used without GUI widget.
+  #   """
 
 
 
-    logging.info('Processing started')
+  #   logging.info('Processing started')
 
 
-    print ('parameters : ', parameters)
+  #   print ('parameters : ', parameters)
 
 
-    AMASSSProcess = slicer.modules.amasss_cli
+  #   AMASSSProcess = slicer.modules.amasss_cli
 
-    self.cliNode = slicer.cli.run(AMASSSProcess, None, parameters)
+  #   self.cliNode = slicer.cli.run(AMASSSProcess, None, parameters)
 
-    # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-    # slicer.mrmlScene.RemoveNode(cliNode)
+  #   # We don't need the CLI module node anymore, remove it to not clutter the scene with it
+  #   # slicer.mrmlScene.RemoveNode(cliNode)
 
 
 
-    return AMASSSProcess
+  #   return AMASSSProcess
 
 
 #region OLD CODE
