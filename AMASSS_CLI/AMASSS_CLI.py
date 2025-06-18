@@ -700,6 +700,13 @@ def main(args):
 
     isSegmentInput = args["isSegmentInput"]
 
+    if not os.path.exists(os.path.split(args["log_path"])[0]):
+        os.mkdir(os.path.split(args["log_path"])[0])
+
+    with open(args["log_path"], "w") as log_f:
+        log_f.truncate(0)
+
+
     temp_fold = args["temp_fold"]
     if not os.path.exists(temp_fold):
         os.makedirs(temp_fold)
@@ -864,9 +871,12 @@ def main(args):
         startTime = time.time()
         seg_not_to_clean = ["CV","RC"]
 
-
+        idx=0
         with torch.no_grad():
             for step, batch in enumerate(pred_loader):
+                idx+=1
+                with open(args["log_path"], "r+") as log_f:
+                    log_f.write(str(idx))
 
                 #region PREDICTION
 
@@ -1121,6 +1131,7 @@ if __name__ == "__main__":
         "isDCMInput": sys.argv[16] == "true",
 
         "merging_order": ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC","CBMASK","MANDMASK","MAXMASK"],
+        "log_path": sys.argv[17]
 
     }
 

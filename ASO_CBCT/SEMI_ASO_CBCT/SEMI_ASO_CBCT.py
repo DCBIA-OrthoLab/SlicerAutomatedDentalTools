@@ -40,8 +40,17 @@ def main(args):
     gold_file, gold_json_file = ExtractFilesFromFolder(
         gold_dir, scan_extension, lm_extension, gold=True
     )
+    if not os.path.exists(os.path.split(args.log_path)[0]):
+        os.mkdir(os.path.split(args.log_path)[0])
 
+    with open(args.log_path, "w") as log_f:
+        log_f.truncate(0)
+
+    idx=0
     for patient, data in patients.items():
+
+        with open(args.log_path, "r+") as log_f:
+            log_f.write(str(idx+1))
 
         try:
             input_file, input_json_file, input_transform = data["scan"], data["json"], data["tfm"]
@@ -108,6 +117,7 @@ if __name__ == "__main__":
     parser.add_argument("output_folder", nargs=1)
     parser.add_argument("add_inname", nargs=1)
     parser.add_argument("list_landmark", nargs=1)
+    parser.add_argument("log_path", type=str)
 
     args = parser.parse_args()
 

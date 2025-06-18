@@ -39,6 +39,13 @@ def main(args):
         args.temp_folder[0],
         True if args.ApproxReg[0] == "true" else False,
     )
+
+    if not os.path.exists(os.path.split(args.log_path)[0]):
+        os.mkdir(os.path.split(args.log_path)[0])
+
+    with open(args.log_path, "w") as log_f:
+        log_f.truncate(0)
+
     if SegLabel == 0:
         SegLabel = None
 
@@ -48,8 +55,10 @@ def main(args):
 
     patients = GetDictPatients(t1_folder, t2_folder, segmentationType=reg_type)
     print("{} Registration".format(translate(reg_type)))
+    idx=0
     for patient, data in patients.items():
         print("Working on patient: ", patient)
+        idx+=1
         outpath = os.path.join(output_dir, translate(reg_type), patient + "_OutReg")
         ScanOutPath, TransOutPath = os.path.join(
             outpath, patient + "_" + reg_type + "Scan" + add_name + ".nii.gz"
@@ -72,6 +81,10 @@ def main(args):
             # if args.reg_lm:
             #     transformedLandmarks = applyTransformLandmarks(LoadOnlyLandmarks(data['lmT2']), transform.GetInverse())
             #     WriteJson(transformedLandmarks, os.path.join(outpath,patient+'_lm_'+add_name+'.mrk.json'))
+
+        print(idx)
+        with open(args.log_path, "r+") as log_f:
+            log_f.write(idx)
 
         print(f"""<filter-progress>{0}</filter-progress>""")
         sys.stdout.flush()
@@ -97,7 +110,7 @@ if __name__ == "__main__":
     parser.add_argument("SegmentationLabel", nargs=1)
     parser.add_argument("temp_folder", nargs=1)
     parser.add_argument("ApproxReg", nargs=1)
-    # parser.add_argument('reg_lm',nargs=1)
+    parser.add_argument("log_path", type=str)
 
     args = parser.parse_args()
 

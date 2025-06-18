@@ -69,6 +69,12 @@ def main(args):
         args.DCMInput[0] == "true",
     )
 
+    if not os.path.exists(os.path.split(args.log_path)[0]):
+        os.mkdir(os.path.split(args.log_path)[0])
+
+    with open(args.log_path, "w") as log_f:
+        log_f.truncate(0)
+        
     if isDCMInput:
         convertdicom2nifti(input_dir)
 
@@ -81,6 +87,8 @@ def main(args):
 
     for i in range(len(input_files)):
 
+        with open(args.log_path, "r+") as log_f:
+            log_f.write(str(i+1))
         input_file = input_files[i]
 
         img = sitk.ReadImage(input_file)
@@ -131,6 +139,7 @@ if __name__ == "__main__":
     parser.add_argument("SmallFOV", nargs=1)
     parser.add_argument("temp_folder", nargs=1)
     parser.add_argument("DCMInput", nargs=1)
+    parser.add_argument("log_path", type=str)
 
     args = parser.parse_args()
 

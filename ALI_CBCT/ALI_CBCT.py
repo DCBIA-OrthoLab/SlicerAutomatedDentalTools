@@ -53,7 +53,13 @@ from ALI_CBCT_utils import (
 
 def main(input):
     print("Reading : ",args.input)
-    
+    if not os.path.exists(os.path.split(args.log_path)[0]):
+        os.mkdir(os.path.split(args.log_path)[0])
+
+    with open(args.log_path, "w") as log_f:
+        log_f.truncate(0)
+        
+
     scale_spacing = ast.literal_eval(args.spacing)
     speed_per_scale = ast.literal_eval(args.speed_per_scale)
     agent_FOV = ast.literal_eval(args.agent_FOV)
@@ -180,7 +186,11 @@ def main(input):
     tot_step = 0
     fails = {}
     outPath = args.output_dir
+    idx=0
     for environment in environment_lst:
+        with open(args.log_path, "r+") as log_f:
+            log_f.write(str(idx+1))
+
         print(environment.patient_id)
         for agent in agent_lst:
             brain = Brain(
@@ -242,7 +252,8 @@ if __name__ == "__main__":
     parser.add_argument("speed_per_scale", type=str, default="[1,1]", help="Speed of the agent per scale")
     parser.add_argument("agent_FOV", type=str, default="[64,64,64]", help="Field of view of the agent")
     parser.add_argument("spawn_radius", type=str, default="10", help="Spawn radius of the agent")
-    
+    parser.add_argument("log_path", type=str)
+
     args = parser.parse_args()
     
     main(args)
