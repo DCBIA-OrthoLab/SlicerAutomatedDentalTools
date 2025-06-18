@@ -348,7 +348,6 @@ class Auto_IOS(Method):
             "occlusion": "true" if self.IsLower(kwargs["input_t1_folder"]) else "false",
             "jaw": "Upper",
             "folder_error": path_error,
-            "log_path": kwargs["logPath"],
         }
 
         parameter_pre_aso_T2 = {
@@ -360,7 +359,6 @@ class Auto_IOS(Method):
             "occlusion": "true" if self.IsLower(kwargs["input_t2_folder"]) else "false",
             "jaw": "Upper",
             "folder_error": path_error,
-            "log_path": kwargs["logPath"],
         }
 
         parameter_reg = {
@@ -369,7 +367,6 @@ class Auto_IOS(Method):
             "output": kwargs["folder_output"],
             "model": self.getModel(kwargs["model_folder_3"], extension="ckpt"),
             "suffix": kwargs["add_in_namefile"],
-            "log_path": kwargs["logPath"],
         }
 
         print('-' * 70)
@@ -470,7 +467,6 @@ class Semi_IOS(Auto_IOS):
             "output": kwargs["folder_output"],
             "model": self.getModel(kwargs["model_folder_3"], extension="ckpt"),
             "suffix": kwargs["add_in_namefile"],
-            "log_path": kwargs["logPath"],
         }
 
         print("parameter", parameter_reg)
