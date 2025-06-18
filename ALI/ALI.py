@@ -326,7 +326,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.display = Display
     self.selected_tooth = None
     
-    self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
+    # self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
     
     documentsLocation = qt.QStandardPaths.DocumentsLocation
     self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
@@ -851,7 +851,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       lm_type=self.selected_lm,
       teeth=self.selected_tooth,
       output_dir=self.ui.SaveFolderLineEdit.text,
-      logPath=self.log_path,
+      logPath=self.logic.log_path,
       DCMInput=self.isDCMInput,
     )
     
@@ -864,23 +864,49 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     self.module_name = self.list_Processes_Parameters[0]["Module"]
     self.displayModule = self.list_Processes_Parameters[0]["Display"]
-    
+    self.onProcessStarted()
 
-    if "CrownSegmentationcli" in self.module_name:
-      self.ui.CancelButton.setEnabled(False)
-      self.run_conda_tool(0)
-    else:
-      self.ui.CancelButton.setEnabled(False)
-      print("module name : ", self.module_name)
-      self.run_conda_tool(0)
-      self.OnEndProcess()
-        
-     
+
+    num_processes = len(self.list_Processes_Parameters)
+    self.start_time = time.time()
+    for num_process in range(num_processes):
+        command = self.run_conda_tool(0)
+        self.module_name = self.list_Processes_Parameters[0]["Module"]
+        self.displayModule = self.list_Processes_Parameters[0]["Display"]
+        # running in // to not block Slicer
+        self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+        self.process.start()
+        self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
+        self.ui.TimerLabel.setHidden(False)
+        self.ui.TimerLabel.setText(f"time : 0.00s")
+        previous_time = self.startTime
+        while self.process.is_alive():
+          slicer.app.processEvents()
+          current_time = time.time()
+          gap=current_time-previous_time
+          if gap>0.3:
+            currentTime = time.time() - self.startTime
+            previous_time = currentTime
+            if currentTime < 60:
+              timer = f"Time : {int(currentTime)}s"
+            elif currentTime < 3600:
+              timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+            else:
+              timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+              
+            self.ui.TimerLabel.setText(timer)
+
+        del self.list_Processes_Parameters[0]
+    
+    
+    self.OnEndProcess(num_process)
+
     
   def onProcessStarted(self):
     self.ui.label_LibsInstallation.setHidden(True)
     self.ui.LabelInfoPreProc.setHidden(True)
     self.startTime = time.time()
+    self.process=0
 
     self.ui.progressBar.setValue(0)
     
@@ -903,7 +929,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         lines = file.readlines()
         return lines[-1] if lines else None
 
-  def onProcessUpdate(self, caller, event):
+  def onProcessUpdate(self, process_idx):
         # timer = f"Time : {time.time()-self.startTime:.2f}s"
         currentTime = time.time() - self.startTime
         if currentTime < 60:
@@ -914,10 +940,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
 
         self.ui.TimerLabel.setText(timer)
-        progress = caller.GetProgress()
-        # self.module_name = caller.GetModuleTitle() if self.module_name_bis is None else self.module_name_bis
         self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
-        # self.displayModule = self.displayModule_bis if self.displayModule_bis is not None else self.display[self.module_name.split(' ')[0]]
 
         if self.module_name_before != self.module_name:
             self.ui.LabelProgressPatient.setText(f"Landmarks : 0 / {self.nb_lm*self.nb_patient} | Patient : 0 / {self.nb_patient}")
@@ -944,39 +967,12 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.LabelProgressPatient.setText(message)
             self.nb_change_bystep += 1
 
-        if caller.GetStatus() & caller.Completed:
-            if caller.GetStatus() & caller.ErrorsMask:
-                # error
-                print("\n\n ========= PROCESSED ========= \n")
-
-                print(self.process.GetOutputText())
-                print("\n\n ========= ERROR ========= \n")
-                errorText = self.process.GetErrorText()
-                print("CLI execution failed: \n \n" + errorText)
-                # error
-                # errorText = caller.GetErrorText()
-                # print("\n"+ 70*"=" + "\n\n" + errorText)
-                # print(70*"=")
-                self.onCancel()
-
-            else:
-                print("\n\n ========= PROCESSED ========= \n")
-                # print("PROGRESS :",self.displayModule.progress)
-
-                print(self.process.GetOutputText())
-                try:
-                    if self.list_Processes_Parameters[0]["Module"]=="ALI_IOS":
-                        print("name process : ",self.list_Processes_Parameters[0]["Process"])
-                        self.run_conda_tool(0)
-                        
-                except IndexError:
-                    self.OnEndProcess()
                     
-  def OnEndProcess(self):
+  def OnEndProcess(self,process_idx):
     self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_lm}")
     self.nb_extension_did += 1
     self.ui.LabelProgressExtension.setText(
-      f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
+      f"Extension : {process_idx+1} / {self.nb_extension_launch}"
     )
     self.ui.progressBar.setValue(0)
     
@@ -1086,32 +1082,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
             value = self.logic.windows_to_linux_path(value)
         command.append(f"\"{value}\"")
+      value = self.logic.windows_to_linux_path(self.logic.log_path)
+      command.append(f"\"{value}\"")
       print("command : ",command)
 
-    # running in // to not block Slicer
-    self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
-    self.process.start()
-    self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
-    self.ui.TimerLabel.setHidden(False)
-    self.ui.TimerLabel.setText(f"time : 0.00s")
-    previous_time = self.startTime
-    while self.process.is_alive():
-      slicer.app.processEvents()
-      current_time = time.time()
-      gap=current_time-previous_time
-      if gap>0.3:
-        currentTime = time.time() - self.startTime
-        previous_time = currentTime
-        if currentTime < 60:
-          timer = f"Time : {int(currentTime)}s"
-        elif currentTime < 3600:
-          timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-        else:
-          timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
-          
-        self.ui.TimerLabel.setText(timer)
-
-    del self.list_Processes_Parameters[process_id]
+    return command
       
     
   def onCheckRequirements(self):
@@ -1622,6 +1597,8 @@ class ALILogic(ScriptedLoadableModuleLogic):
     self.conda = self.init_conda()
     self.name_env = "shapeaxi"
     self.cliNode = None
+    self.check_log_path()
+    self.stdout, self.stderr = '', ''
 
   def init_conda(self):
     # check if CondaSetUp exists
@@ -1639,6 +1616,24 @@ class ALILogic(ScriptedLoadableModuleLogic):
       from CondaSetUp import CondaSetUpCall
       return CondaSetUpCall()
     
+  def check_log_path(self):
+    self.log_path = os.path.normpath(os.path.join(os.path.dirname(__file__), 'process.log'))
+
+    if '\\' in self.log_path:
+        self.log_path = self.log_path.replace('\\', '/')
+
+    with open(self.log_path, mode='w') as f: pass
+
+  def read_log_path(self):
+    with open(self.log_path, 'r') as f:
+        line = f.readline()
+        # if empty the loop over subjects hasn't started yet -> just set counter to 0
+        if line == '': 
+            return 0
+        else:
+            return line
+
+
   def run_conda_command(self, target, command):
     self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
     self.process.start()

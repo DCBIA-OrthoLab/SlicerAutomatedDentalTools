@@ -303,7 +303,6 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         exemple dic = {'teeth'=['A,....],'Type'=['O',...]}
         """
 
-        self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
         self.time = 0
 
         # use messletter to add big comment with univers as police
@@ -864,24 +863,58 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 model_folder_segor=self.ui.lineEditModelSegOr.text,
                 add_in_namefile=self.ui.lineEditAddName.text,
                 dic_checkbox=self.dicchckbox,
-                logPath=self.log_path,
+                logPath=self.logic.log_path,
                 smallFOV=str(self.ui.checkBoxSmallFOV.isChecked()),
                 isDCMInput=self.isDCMInput,
             )
 
             self.nb_extension_launch = len(self.list_Processes_Parameters)
+            self.module_name = self.list_Processes_Parameters[0]["Module"]
+            self.displayModule = self.list_Processes_Parameters[0]["Display"]
+
             self.onProcessStarted()
+            # /!\ Launch of the first process /!\
+            print("module name : ", self.module_name)
+            self.ui.ButtonCancel.setEnabled(False)
+            num_processes = len(self.list_Processes_Parameters)
+            self.start_time = time.time()
+
+            for num_process in range(num_processes):
             
-            module = self.list_Processes_Parameters[0]["Module"]
-            print("module name : ", module)
-            self.run_conda_tool()
+                command = self.run_conda_tool(0)
+                self.module_name = self.list_Processes_Parameters[0]["Module"]
+                self.displayModule = self.list_Processes_Parameters[0]["Display"]
 
+                # running in // to not block Slicer
+                process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+                process.start()
+                self.ui.LabelTimer.setHidden(False)
+                self.ui.LabelTimer.setText(f"Time : 0.00s")
+                previous_time = self.startTime
+                while process.is_alive():
+                    slicer.app.processEvents()
+                    self.onProcessUpdate(num_process)
+                    current_time = time.time()
+                    gap=current_time-previous_time
+                    if gap>0.3:
+                        currentTime = time.time() - self.startTime
+                        previous_time = currentTime
+                        if currentTime < 60:
+                            timer = f"Time : {int(currentTime)}s"
+                        elif currentTime < 3600:
+                            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                        else:
+                            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                        
+                        self.ui.LabelTimer.setText(timer)
+                del self.list_Processes_Parameters[0]
 
-            del self.list_Processes_Parameters[0]
+            self.OnEndProcess(num_process)
 
     def onProcessStarted(self):
         self.ui.label_LibsInstallation.setHidden(True)
         self.startTime = time.time()
+        self.progress = 0
 
         # self.ui.progressBar.setMaximum(self.nb_patient)
         self.ui.progressBar.setValue(0)
@@ -897,7 +930,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.RunningUI(True)
 
-    def onProcessUpdate(self, caller, event):
+    def onProcessUpdate(self,process_id):
         currentTime = time.time() - self.startTime
         if currentTime < 60:
             timer = f"Time : {int(currentTime)}s"
@@ -907,15 +940,13 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
 
         self.ui.LabelTimer.setText(timer)
-        progress = caller.GetProgress()
-        self.module_name = caller.GetModuleTitle()
         self.ui.LabelNameExtension.setText(self.module_name)
 
         if self.module_name_before != self.module_name:
             self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
             self.nb_extnesion_did += 1
             self.ui.LabelProgressExtension.setText(
-                f"Extension : {self.nb_extnesion_did} / {self.nb_extension_launch}"
+                f"Extension : {process_id+1} / {self.nb_extension_launch}"
             )
             self.ui.progressBar.setValue(0)
 
@@ -925,97 +956,87 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.module_name_before = self.module_name
             self.nb_change_bystep = 0
 
-        if progress == 0:
+        if self.progress == 0:
             self.updateProgessBar = False
 
         if self.displayModule.isProgress(
-            progress=progress, updateProgessBar=self.updateProgessBar
+            progress=self.progress, updateProgessBar=self.updateProgessBar
         ):
             progress_bar, message = self.displayModule()
             self.ui.progressBar.setValue(progress_bar)
             self.ui.LabelProgressPatient.setText(message)
             self.nb_change_bystep += 1
 
-        if caller.GetStatus() & caller.Completed:
-            if caller.GetStatus() & caller.ErrorsMask:
-                # error
-                print("\n\n ========= PROCESSED ========= \n")
+        # if caller.GetStatus() & caller.Completed:
+        #     if caller.GetStatus() & caller.ErrorsMask:
+        #         # error
+        #         print("\n\n ========= PROCESSED ========= \n")
 
-                print(self.process.GetOutputText())
-                print("\n\n ========= ERROR ========= \n")
-                errorText = self.process.GetErrorText()
-                print("CLI execution failed: \n \n" + errorText)
-                # error
-                # errorText = caller.GetErrorText()
-                # print("\n"+ 70*"=" + "\n\n" + errorText)
-                # print(70*"=")
-                self.onCancel()
+        #         print(self.process.GetOutputText())
+        #         print("\n\n ========= ERROR ========= \n")
+        #         errorText = self.process.GetErrorText()
+        #         print("CLI execution failed: \n \n" + errorText)
+        #         # error
+        #         # errorText = caller.GetErrorText()
+        #         # print("\n"+ 70*"=" + "\n\n" + errorText)
+        #         # print(70*"=")
+        #         self.onCancel()
 
-            else:
-                print("\n\n ========= PROCESSED ========= \n")
+        #     else:
+        #         print("\n\n ========= PROCESSED ========= \n")
 
-                print(self.process.GetOutputText())
-                try:
-                    # self.process = slicer.cli.run(
-                    #     self.list_Processes_Parameters[0]["Process"],
-                    #     None,
-                    #     self.list_Processes_Parameters[0]["Parameter"],
-                    # )
-                    # self.module_name = self.list_Processes_Parameters[0]["Module"]
-                    # self.displayModule = self.list_Processes_Parameters[0]["Display"]
-                    # self.processObserver = self.process.AddObserver(
-                    #     "ModifiedEvent", self.onProcessUpdate
-                    # )
+        #         print(self.process.GetOutputText())
+        #         try:
 
-                        module=self.list_Processes_Parameters[0]['Module']
-                        print(f"in conda tool: {module} wants to run", )
+        #                 module=self.list_Processes_Parameters[0]['Module']
+        #                 print(f"in conda tool: {module} wants to run", )
 
-                        args = self.list_Processes_Parameters[0]["Parameter"]
-                        self.logic.check_cli_script(f"{module}")
+        #                 args = self.list_Processes_Parameters[0]["Parameter"]
+        #                 self.logic.check_cli_script(f"{module}")
 
-                        conda_exe = self.logic.conda.getCondaExecutable()
-                        command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{module}"]
+        #                 conda_exe = self.logic.conda.getCondaExecutable()
+        #                 command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{module}"]
 
-                        for key, value in args.items():
-                            print("key : ",key)
-                            if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
-                                value = self.logic.windows_to_linux_path(value)
-                            command.append(f"\"{value}\"")
-                        print("command : ",command)
-                        return command
+        #                 for key, value in args.items():
+        #                     print("key : ",key)
+        #                     if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+        #                         value = self.logic.windows_to_linux_path(value)
+        #                     command.append(f"\"{value}\"")
+        #                 print("command : ",command)
+        #                 return command
 
-                        # running in // to not block Slicer
-                        process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
-                        process.start()
-                        self.ui.LabelTimer.setHidden(False)
-                        self.ui.LabelTimer.setText(f"Time : 0.00s")
-                        previous_time = self.startTime
-                        while process.is_alive():
-                            slicer.app.processEvents()
-                            current_time = time.time()
-                            gap=current_time-previous_time
-                            if gap>0.3:
-                                currentTime = time.time() - self.startTime
-                                previous_time = currentTime
-                                if currentTime < 60:
-                                    timer = f"Time : {int(currentTime)}s"
-                                elif currentTime < 3600:
-                                    timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-                                else:
-                                    timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+        #                 # running in // to not block Slicer
+        #                 process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+        #                 process.start()
+        #                 self.ui.LabelTimer.setHidden(False)
+        #                 self.ui.LabelTimer.setText(f"Time : 0.00s")
+        #                 previous_time = self.startTime
+        #                 while process.is_alive():
+        #                     slicer.app.processEvents()
+        #                     current_time = time.time()
+        #                     gap=current_time-previous_time
+        #                     if gap>0.3:
+        #                         currentTime = time.time() - self.startTime
+        #                         previous_time = currentTime
+        #                         if currentTime < 60:
+        #                             timer = f"Time : {int(currentTime)}s"
+        #                         elif currentTime < 3600:
+        #                             timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+        #                         else:
+        #                             timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
                                 
-                                self.ui.LabelTimer.setText(timer)
+        #                         self.ui.LabelTimer.setText(timer)
 
-                        del self.list_Processes_Parameters[0]
-                except IndexError:
-                    self.OnEndProcess()
+        #                 del self.list_Processes_Parameters[0]
+        #         except IndexError:
+        #             self.OnEndProcess()
 
-    def OnEndProcess(self):
+    def OnEndProcess(self,process_idx):
         """Function called when the process is finished."""
         self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
         self.nb_extnesion_did += 1
         self.ui.LabelProgressExtension.setText(
-            f"Extension : {self.nb_extnesion_did} / {self.nb_extension_launch}"
+            f"Extension : {process_idx+1} / {self.nb_extension_launch}"
         )
         self.ui.progressBar.setValue(0)
 
@@ -1068,8 +1089,8 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.HideComputeItems(run)
         
-    def run_conda_tool(self):
-        if "CrownSegmentationcli" in self.list_Processes_Parameters[0]['Module']:
+    def run_conda_tool(self,process_id):
+        if "CrownSegmentationcli" in self.list_Processes_Parameters[process_id]['Module']:
 
             output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
             clean_output = re.search(r"Result: (.+)", output_command)
@@ -1080,7 +1101,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 print("Error: Unable to find dentalmodelseg path.")
                 return
             
-            args = self.list_Processes_Parameters[0]["Parameter"]
+            args = self.list_Processes_Parameters[process_id]["Parameter"]
             print("args : ",args)
             conda_exe = self.logic.conda.getCondaExecutable()
             command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
@@ -1092,12 +1113,13 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 command.append(f"\"{value}\"")
             print("*"*50)
             print("command : ",command)
+            return command
 
         else: 
-            module=self.list_Processes_Parameters[0]['Module']
+            module=self.list_Processes_Parameters[process_id]['Module']
             print(f"in conda tool: {module} wants to run", )
 
-            args = self.list_Processes_Parameters[0]["Parameter"]
+            args = self.list_Processes_Parameters[process_id]["Parameter"]
             self.logic.check_cli_script(f"{module}")
 
             conda_exe = self.logic.conda.getCondaExecutable()
@@ -1108,32 +1130,10 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
                     value = self.logic.windows_to_linux_path(value)
                 command.append(f"\"{value}\"")
+            value = self.logic.windows_to_linux_path(self.logic.log_path)
+            command.append(f"\"{value}\"")
             print("command : ",command)
             return command
-
-        # running in // to not block Slicer
-        process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
-        process.start()
-        self.ui.LabelTimer.setHidden(False)
-        self.ui.LabelTimer.setText(f"Time : 0.00s")
-        previous_time = self.startTime
-        while process.is_alive():
-            slicer.app.processEvents()
-            current_time = time.time()
-            gap=current_time-previous_time
-            if gap>0.3:
-                currentTime = time.time() - self.startTime
-                previous_time = currentTime
-                if currentTime < 60:
-                    timer = f"Time : {int(currentTime)}s"
-                elif currentTime < 3600:
-                    timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-                else:
-                    timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
-                
-                self.ui.LabelTimer.setText(timer)
-
-        del self.list_Processes_Parameters[0]
 
     """
 
@@ -1750,7 +1750,28 @@ class ASOLogic(ScriptedLoadableModuleLogic):
         self.conda = self.init_conda()
         self.name_env = "shapeaxi"
         self.cliNode = None
-        
+        self.check_log_path()
+        self.stdout, self.stderr = '', ''
+    
+    
+    def check_log_path(self):
+        self.log_path = os.path.normpath(os.path.join(os.path.dirname(__file__), 'process.log'))
+
+        if '\\' in self.log_path:
+            self.log_path = self.log_path.replace('\\', '/')
+
+        with open(self.log_path, mode='w') as f: pass
+
+    def read_log_path(self):
+        with open(self.log_path, 'r') as f:
+            line = f.readline()
+            # if empty the loop over subjects hasn't started yet -> just set counter to 0
+            if line == '': 
+                return 0
+            else:
+                return line
+
+
     def init_conda(self):
         # check if CondaSetUp exists
         try:

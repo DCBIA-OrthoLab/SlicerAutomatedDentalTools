@@ -810,17 +810,21 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
             value = self.logic.windows_to_linux_path(value)
         command.append(f"\"{value}\"")
+    value = self.logic.windows_to_linux_path(self.logic.log_path)
+    command.append(f"\"{value}\"")
     print("command : ",command)
 
     self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
     self.process.start()
     # self.ui.TimerLabel.setHidden(False)
     self.ui.TimerLabel.setText(f"time : 0.00s")
+    self.startTime = time.time()
     previous_time = self.startTime
     self.onProcessStarted()
     while self.process.is_alive():
         slicer.app.processEvents()
         current_time = time.time()
+        self.onProcessUpdate()
         gap=current_time-previous_time
         if gap>0.3:
             currentTime = time.time() - self.startTime
@@ -834,7 +838,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             
             self.ui.TimerLabel.setText(timer)
 
-    # self.OnEndProcess()
+    self.OnEndProcess()
 
     # def onCliModified(self, caller, event):
     #     self.progressBar.setValue(caller.GetProgress())
@@ -849,7 +853,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # self.progressBar.setWindowTitle("Starting...")
     # self.progressBar.connect('canceled()', self.onCancel)
 
-    self.startTime = time.time()
 
     self.ui.PredScanProgressBar.setMaximum(self.scan_count)
     self.ui.PredScanProgressBar.setValue(0)
@@ -921,51 +924,46 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 
-  def onProcessUpdate(self,caller,event):
+  def onProcessUpdate(self):
 
     # print(caller.GetProgress(),caller.GetStatus())
 
     # self.ui.TimerLabel.setText(f"Time : {self.startTime:.2f}s")
     self.ui.TimerLabel.setText(f"Time : {time.time()-self.startTime:.2f}s")
 
-    progress = caller.GetProgress()
-
     # print("Progress : ",progress)
 
-    if progress == 0:
+    if self.progress == 0:
       self.updateProgessBar = False
 
-    if progress != 0 and self.updateProgessBar == False:
+    if self.progress != 0 and self.updateProgessBar == False:
       self.updateProgessBar = True
-      self.UpdateProgressBar(progress)
-
-    # print(progress)
+      self.UpdateProgressBar(self.progress)
 
 
+    # if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+    #   # process complete
 
-    if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
-      # process complete
 
+    #   if self.logic.cliNode.GetStatus() & self.logic.cliNode.ErrorsMask:
+    #     # error
+    #     print(self.logic.cliNode.GetOutputText())
+    #     print("\n\n ========= ERROR ========= \n")
+    #     errorText = self.logic.cliNode.GetErrorText()
+    #     print("CLI execution failed: \n \n" + errorText)
 
-      if self.logic.cliNode.GetStatus() & self.logic.cliNode.ErrorsMask:
-        # error
-        print(self.logic.cliNode.GetOutputText())
-        print("\n\n ========= ERROR ========= \n")
-        errorText = self.logic.cliNode.GetErrorText()
-        print("CLI execution failed: \n \n" + errorText)
+    #     # self.progressBar.windowTitle = "FAILED 1"
+    #     # self.progressBar.setValue(100)
 
-        # self.progressBar.windowTitle = "FAILED 1"
-        # self.progressBar.setValue(100)
+    #     # msg = qt.QMessageBox()
+    #     # msg.setText(f'There was an error during the process:\n \n {errorText} ')
+    #     # msg.setWindowTitle("Error")
+    #     # msg.exec_()
 
-        # msg = qt.QMessageBox()
-        # msg.setText(f'There was an error during the process:\n \n {errorText} ')
-        # msg.setWindowTitle("Error")
-        # msg.exec_()
+    #   else:
+    #     # success
 
-      else:
-        # success
-
-        self.OnEndProcess()
+    #     self.OnEndProcess()
 
   def onCancel(self):
     # print(self.logic.cliNode.GetOutputText())
@@ -1005,7 +1003,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     print('PROCESS DONE.')
     # self.progressBar.setValue(100)
     # self.progressBar.close()
-    print(self.logic.cliNode.GetOutputText())
+    # print(self.logic.cliNode.GetOutputText())
 
     stopTime = time.time()
     # print(self.startTime)
@@ -1353,6 +1351,9 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
     self.isCondaSetUp = False
     self.conda = self.init_conda()
     self.name_env = "shapeaxi"
+    self.check_log_path()
+
+    self.stdout, self.stderr = '', ''
 
   def init_conda(self):
         # check if CondaSetUp exists
@@ -1369,7 +1370,23 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
         else:
             from CondaSetUp import CondaSetUpCall
             return CondaSetUpCall()
-        
+  def check_log_path(self):
+    self.log_path = os.path.normpath(os.path.join(os.path.dirname(__file__), 'process.log'))
+
+    if '\\' in self.log_path:
+      self.log_path = self.log_path.replace('\\', '/')
+
+    with open(self.log_path, mode='w') as f: pass
+
+  def read_log_path(self):
+    with open(self.log_path, 'r') as f:
+      line = f.readline()
+      # if empty the loop over subjects hasn't started yet -> just set counter to 0
+      if line == '': 
+        return 0
+      else:
+        return line
+
   def run_conda_command(self, target, command):
       self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
       self.process.start()

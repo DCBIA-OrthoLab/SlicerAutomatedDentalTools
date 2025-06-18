@@ -303,7 +303,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         exemple dic = {'teeth'=['A,....],'Type'=['O',...]}
         """
 
-        self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
         self.time = 0
 
         # use messletter to add big comment with univers as police
@@ -977,7 +976,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 model_folder_3=self.ui.lineEditModel3.text,
                 add_in_namefile=self.ui.lineEditAddName.text,
                 dic_checkbox=self.dicchckbox,
-                logPath=self.log_path,
+                logPath=self.logic.log_path,
                 merge_seg=merge_seg,
                 isDCMInput=self.isDCMInput,
                 slicerDownload=self.SlicerDownloadPath,
@@ -990,26 +989,31 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             self.nb_extension_launch = len(self.list_Processes_Parameters)
             self.module_name = self.list_Processes_Parameters[0]["Module"]
+            self.displayModule = self.list_Processes_Parameters[0]["Display"]
             self.onProcessStarted()
             # /!\ Launch of the first process /!\
             print("module name : ", self.module_name)
             self.ui.ButtonCancel.setEnabled(False)
             num_processes = len(self.list_Processes_Parameters)
+            self.start_time = time.time()
             for num_process in range(num_processes):
                 command = self.run_conda_tool(0)
+                self.module_name = self.list_Processes_Parameters[0]["Module"]
+                self.displayModule = self.list_Processes_Parameters[0]["Display"]
                 # running in // to not block Slicer
                 self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
                 self.process.start()
                 self.ui.LabelTimer.setHidden(False)
                 self.ui.LabelTimer.setText(f"time : 0.00s")
-                previous_time = self.startTime
+                previous_time = self.start_time
                 self.onProcessStarted()
                 while self.process.is_alive():
                     slicer.app.processEvents()
                     current_time = time.time()
                     gap=current_time-previous_time
                     if gap>0.3:
-                        currentTime = time.time() - self.startTime
+                        self.onProcessUpdate(num_process)
+                        currentTime = time.time() - self.start_time
                         previous_time = currentTime
                         if currentTime < 60:
                             timer = f"Time : {int(currentTime)}s"
@@ -1020,10 +1024,11 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         
                         self.ui.LabelTimer.setText(timer)
                 del self.list_Processes_Parameters[0]
+            self.OnEndProcess(num_process)
                     
     def onProcessStarted(self):
         self.ui.label_LibsInstallation.setHidden(True)
-        self.startTime = time.time()
+        self.progress = 0
 
         # self.ui.progressBar.setMaximum(self.nb_patient)
         self.ui.progressBar.setValue(0)
@@ -1040,87 +1045,35 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.RunningUI(True)
 
-    def onProcessUpdate(self, caller, event):
-        currentTime = time.time() - self.startTime
-        timer = self.format_time(currentTime)
-        self.ui.LabelTimer.setText(timer)
-        # progress = caller.GetProgress()
-        # self.module_name = caller.GetModuleTitle() if self.module_name_bis is None else self.module_name_bis
+    def onProcessUpdate(self,process_idx):
         self.ui.LabelNameExtension.setText(self.module_name)
-        # self.displayModule = self.displayModule_bis if self.displayModule_bis is not None else self.display[self.module_name.split(' ')[0]]
+        num_subject = self.logic.read_log_path()
+        # print("log path: ", self.logic.read_log_path())
 
         if self.module_name_before != self.module_name:
-            self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
-            self.nb_extension_did += 1
+            self.ui.LabelProgressPatient.setText(f"Patient : {num_subject} / {self.nb_patient}")
             self.ui.LabelProgressExtension.setText(
-                f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
+                f"Extension : {process_idx+1} / {self.nb_extension_launch}"
             )
             self.ui.progressBar.setValue(0)
-
-            # if self.nb_change_bystep == 0 and self.module_name_before:
-            #     print(f'Error this module doesn\'t work {self.module_name_before}')
-
             self.module_name_before = self.module_name
             self.nb_change_bystep = 0
 
-        if progress == 0:
+        if self.progress == 0:
             self.updateProgessBar = False
 
         if self.displayModule.isProgress(
-            progress=progress, updateProgessBar=self.updateProgessBar
+            progress=self.progress, updateProgessBar=self.updateProgessBar
         ):
             progress_bar, message = self.displayModule()
             self.ui.progressBar.setValue(progress_bar)
             self.ui.LabelProgressPatient.setText(message)
             self.nb_change_bystep += 1
 
-        if caller.GetStatus() & caller.Completed:
-            if caller.GetStatus() & caller.ErrorsMask:
-                # error
-                print("\n\n ========= PROCESSED ========= \n")
-
-                print(self.process.GetOutputText())
-                print("\n\n ========= ERROR ========= \n")
-                errorText = self.process.GetErrorText()
-                print("CLI execution failed: \n \n" + errorText)
-                # error
-                # errorText = caller.GetErrorText()
-                # print("\n"+ 70*"=" + "\n\n" + errorText)
-                # print(70*"=")
-                self.onCancel()
-
-            else:
-                print("\n\n ========= PROCESSED ========= \n")
-                # print("PROGRESS :",self.displayModule.progress)
-
-                print(self.process.GetOutputText())
-                try:
-                    print("name process : ",self.list_Processes_Parameters[0]["Process"])
-                    if self.list_Processes_Parameters[0]["Module"]=="AREG_IOS":
-                        self.run_conda_tool("areg")
-                        
-                    self.ui.ButtonCancel.setEnabled(True)
-                    self.process = slicer.cli.run(
-                        self.list_Processes_Parameters[0]["Process"],
-                        None,
-                        self.list_Processes_Parameters[0]["Parameter"],
-                    )
-                    self.module_name = self.list_Processes_Parameters[0]["Module"]
-                    self.displayModule = self.list_Processes_Parameters[0]["Display"]
-                    self.run_conda_tool()
-                    # self.processObserver = self.process.AddObserver(
-                    #     "ModifiedEvent", self.onProcessUpdate
-                    # )
-                    #del self.list_Processes_Parameters[0]
-                    # self.displayModule.progress = 0
-                except IndexError:
-                    self.OnEndProcess()
-
-    def OnEndProcess(self):
-        self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
-        self.nb_extension_did += 1
+    def OnEndProcess(self,process_idx):
+        self.ui.LabelProgressPatient.setText(f"Patient : {self.nb_patient} / {self.nb_patient}")
         self.ui.LabelProgressExtension.setText(
-            f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
+            f"Extension : {process_idx+1} / {self.nb_extension_launch}"
         )
         self.ui.progressBar.setValue(0)
 
@@ -1129,7 +1082,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.module_name_before = self.module_name
         self.nb_change_bystep = 0
-        total_time = time.time() - self.startTime
+        total_time = time.time() - self.start_time
         average_time = total_time / self.nb_patient
         print("PROCESS DONE.")
         print(
@@ -1146,7 +1099,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         stopTime = time.time()
 
-        logging.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+        logging.info(f"Processing completed in {stopTime-self.start_time:.2f} seconds")
 
         s = PopUpWindow(
             title="Process Done",
@@ -1215,33 +1168,33 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 print("Error: Unable to find dentalmodelseg path.")
                 return
             
-            for i in range(2):
-                args = self.list_Processes_Parameters[process_id]["Parameter"]
-                print("args : ",args)
-                conda_exe = self.logic.conda.getCondaExecutable()
-                command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
-                for key, value in args.items():
-                    if key in ["out","input_csv","vtk_folder","dentalmodelseg_path"]:
-                        value = self.logic.windows_to_linux_path(value)
-                    if key == "dentalmodelseg_path":
-                        value = dentalmodelseg_path_clean
-                    command.append(f"\"{value}\"")
-                print("*"*50)
-                print("command : ",command)
+            # for i in range(2):
+            args = self.list_Processes_Parameters[process_id]["Parameter"]
+            print("args : ",args)
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
+            for key, value in args.items():
+                if key in ["out","input_csv","vtk_folder","dentalmodelseg_path"]:
+                    value = self.logic.windows_to_linux_path(value)
+                if key == "dentalmodelseg_path":
+                    value = dentalmodelseg_path_clean
+                command.append(f"\"{value}\"")
+            print("*"*50)
+            # print("command : ",command)
+            return command
 
-                # running in // to not block Slicer
-                self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
-                self.process.start()
-                self.ui.LabelTimer.setHidden(False)
-                self.ui.LabelTimer.setText(f"Time : 0.00s")
-                start_time = time.time()
-                previous_time = start_time
-                while self.process.is_alive():
-                    slicer.app.processEvents()
-                    formatted_time = self.update_ui_time(start_time, previous_time)
-                    self.ui.LabelTimer.setText(f"{formatted_time}")
+                # # running in // to not block Slicer
+                # self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+                # self.process.start()
+                # self.ui.LabelTimer.setHidden(False)
+                # self.ui.LabelTimer.setText(f"Time : 0.00s")
+                # previous_time = time.time()
+                # while self.process.is_alive():
+                #     slicer.app.processEvents()
+                #     formatted_time = self.update_ui_time(self.start_time, previous_time)
+                #     self.ui.LabelTimer.setText(f"{formatted_time}")
 
-                # #del self.list_Processes_Parameters[0]
+                # del self.list_Processes_Parameters[0]
 
         else: # module=="SEMI_ASO_CBCT":
             module=self.list_Processes_Parameters[process_id]['Module']
@@ -1258,6 +1211,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
                 value = self.logic.windows_to_linux_path(value)
             command.append(f"\"{value}\"")
+        value = self.logic.windows_to_linux_path(self.logic.log_path)
+        command.append(f"\"{value}\"")
         print("command : ",command)
         return command
 
@@ -1639,8 +1594,11 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         ScriptedLoadableModuleLogic.__init__(self)
         self.isCondaSetUp = False
         self.conda = self.init_conda()
+        self.check_log_path()
+
         self.name_env = "shapeaxi"
         self.cliNode = None
+        self.stdout, self.stderr = '', ''
 
     def init_conda(self):
         # check if CondaSetUp exists
@@ -1657,7 +1615,24 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         else:
             from CondaSetUp import CondaSetUpCall
             return CondaSetUpCall()
-        
+    
+    def check_log_path(self):
+        self.log_path = os.path.normpath(os.path.join(os.path.dirname(__file__), 'process.log'))
+
+        if '\\' in self.log_path:
+            self.log_path = self.log_path.replace('\\', '/')
+
+        with open(self.log_path, mode='w') as f: pass
+
+    def read_log_path(self):
+        with open(self.log_path, 'r') as f:
+            line = f.readline()
+            # if empty the loop over subjects hasn't started yet -> just set counter to 0
+            if line == '': 
+                return 0
+            else:
+                return line
+
     def run_conda_command(self, target, command):
         self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
         self.process.start()
