@@ -255,9 +255,11 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ### L/R Cropping ###
         self.ui.SearchButtonSepCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCTSep"))
         self.ui.SearchButtonSepMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRISep"))
+        self.ui.SearchButtonSepSeg.connect("clicked(bool)",partial(self.openFinder,"InputSegSep"))
         self.ui.SearchButtonSepOut.connect("clicked(bool)",partial(self.openFinder,"OutputSep"))
         self.ui.lineEditSepCBCT.textChanged.connect(self.updateSepLabel)
         self.ui.lineEditSepMRI.textChanged.connect(self.updateSepLabel)
+        self.ui.lineEditSepSeg.textChanged.connect(self.updateSepLabel)
         self.ui.pushButtonCropLR.connect("clicked(bool)", self.lrCropMRI2CBCT)
         
         
@@ -979,6 +981,10 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         elif nom=="InputMRISep":
             surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
             self.ui.lineEditSepMRI.setText(surface_folder)
+            
+        elif nom=="InputSegSep":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditSepSeg.setText(surface_folder)
         
         elif nom=="OutputSep":
             surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
@@ -1173,14 +1179,19 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         install_function()
         LinEditMRISep = "None"
         LinEditCBCTSep = "None"
+        LineEditSegSep = "None"
         
         if self.ui.lineEditSepMRI.text != "":
             LinEditMRISep = self.ui.lineEditSepMRI.text
         if self.ui.lineEditSepCBCT.text != "":
             LinEditCBCTSep = self.ui.lineEditSepCBCT.text
+        if self.ui.lineEditSepSeg.text != "":
+            LineEditSegSep = self.ui.lineEditSepSeg.text
+            
         param = {
             "input_folder_CBCT": LinEditCBCTSep,
             "input_folder_MRI": LinEditMRISep,
+            "input_folder_Seg": LineEditSegSep,
             "output_folder": self.ui.lineEditSepOut.text,
         }
         
@@ -1194,6 +1205,10 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.showMessage(mess)
             return
         ok,mess = self.lr_crop_mri2cbct.TestScan(param["input_folder_MRI"])
+        if not ok :
+            self.showMessage(mess)
+            return
+        ok,mess = self.lr_crop_mri2cbct.TestScan(param["input_folder_Seg"])
         if not ok :
             self.showMessage(mess)
             return
@@ -1440,6 +1455,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             selected.append("CBCT")
         if self.ui.lineEditSepMRI.text.strip():
             selected.append("MRI")
+        if self.ui.lineEditSepSeg.text.strip():
+            selected.append("Seg")
                 
         if selected:
             self.ui.labelCropLR.setText(f"<b>Running cropping for: {', '.join(selected)}</b>")

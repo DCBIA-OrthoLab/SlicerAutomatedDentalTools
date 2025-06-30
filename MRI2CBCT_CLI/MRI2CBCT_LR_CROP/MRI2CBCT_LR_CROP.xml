@@ -30,9 +30,16 @@
     </string>
 
     <string>
+      <name>input_folder_Seg</name>
+      <label>input_folder_Seg</label>
+      <index>2</index>
+      <description>Path for the input Segmentation</description>
+    </string>
+
+    <string>
       <name>output_folder</name>
       <label>output_folder</label>
-      <index>2</index>
+      <index>3</index>
       <description>output folder</description>
     </string>
 

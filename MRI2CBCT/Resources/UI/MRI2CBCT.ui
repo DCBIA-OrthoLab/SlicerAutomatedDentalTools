@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>940</width>
-    <height>2041</height>
+    <width>939</width>
+    <height>2148</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -753,18 +753,8 @@
        <layout class="QVBoxLayout" name="verticalLayout_2">
         <item>
          <layout class="QGridLayout" name="gridLayout_8">
-          <item row="0" column="0">
-           <widget class="QLabel" name="label_27">
-            <property name="text">
-             <string>Input CBCT folder:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLineEdit" name="lineEditSepCBCT"/>
-          </item>
-          <item row="0" column="2">
-           <widget class="QPushButton" name="SearchButtonSepCBCT">
+          <item row="3" column="2">
+           <widget class="QPushButton" name="SearchButtonSepOut">
             <property name="text">
              <string>Search</string>
             </property>
@@ -784,25 +774,52 @@
             </property>
            </widget>
           </item>
-          <item row="1" column="1">
-           <widget class="QLineEdit" name="lineEditSepMRI"/>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="lineEditSepOut"/>
           </item>
-          <item row="2" column="2">
-           <widget class="QPushButton" name="SearchButtonSepOut">
+          <item row="0" column="2">
+           <widget class="QPushButton" name="SearchButtonSepCBCT">
             <property name="text">
              <string>Search</string>
             </property>
            </widget>
           </item>
-          <item row="2" column="0">
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="lineEditSepMRI"/>
+          </item>
+          <item row="3" column="0">
            <widget class="QLabel" name="label_28">
             <property name="text">
              <string>Output folder:</string>
             </property>
            </widget>
           </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="lineEditSepCBCT"/>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_27">
+            <property name="text">
+             <string>Input CBCT folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label">
+            <property name="text">
+             <string>Input Seg folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="2">
+           <widget class="QPushButton" name="SearchButtonSepSeg">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
           <item row="2" column="1">
-           <widget class="QLineEdit" name="lineEditSepOut"/>
+           <widget class="QLineEdit" name="lineEditSepSeg"/>
           </item>
          </layout>
         </item>
