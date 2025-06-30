@@ -44,8 +44,6 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [BatchDentalSegmentator](#BatchDentalSeg) | DentalSegmentator in batch for mixed or permanent dentition |
 | [CLI-C](#CLI-C-module) |Classification and Localization of Impacted Canines |
 
-
-
 These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
 
 **Input**
@@ -370,14 +368,17 @@ The AutoMatrix module provides a user interface to apply a matrix to a folder fo
 ## How the module works?
 
 ### How to name the new files and where they are stored
-The module will create the same path you had in the input folder in the output folder.
-The new files will be named by the name of the original file + the suffix you entered + the name of the matrix files that were applied.
+The module will replicate the folder structure from your input folder inside the output folder.
+Each new file will keep the original filename, followed by the suffix you specify.
+If the "Add matrix name to filename" option is enabled, the matrix filename will also be appended.
 
-Example :
-Input file : patient1_T1_MA.nii.gz
-Input matrix : patient1_matrix1.tfm
-Input suffix : _apply
-Output file : patient1_T1_MA_apply_matrix1.nii.gz
+Example:  
+| With matrix name | Without matrix name |
+| ----------- | ----------- |
+| **Input file:** patient1_T1_MA.nii.gz | **Input file:** patient1_T1_MA.nii.gz
+| **Input matrix:** patient1_matrix1.tfm | **Input matrix:** Matrix_mirror.tfm
+| **Suffix:** _apply | **Suffix:** _mir
+| **Output file:** patient1_T1_MA_apply_matrix1.nii.gz | **Output file:** patient1_T1_MA_mir.nii.gz
 
 
 ### 4 Modes available
@@ -404,8 +405,11 @@ There is button "Mirror" that will automatically download the matrix mirror and 
 | ----------- | ----------- | ----------- |
 | **CBCT** | .nii.gz | .tfm .npy .h5 .mat .txt |
 | **IOS** | .vtk .stl .vtp .off .obj | .tfm .npy .h5 .mat .txt|
+| **Landmark** | .mrk.json | .tfm .npy .h5 .mat .txt|
 
 ## MRI2CBCT Module
+
+<img src="MRI2CBCT/Resources/Icons/MRI2CBCT.png" alt="Extension Logo" width="70"/>
 
 The MRI2CBCT module provides a user interface to perform the registration between MRI and CBCT scans.
 
@@ -418,23 +422,38 @@ The MRI2CBCT module provides a user interface to perform the registration betwee
    - **Download Models:** You can download the models required for segmentation and orientation by clicking on "Download."
 
 2. **Orient and Center MRI:**
+   - **Bilateral mode:** When enabled, additional options become available:  
+   This option is intended for bilateral TMJ scans, which contains two slices between left and right separated by a large distance.When such DICOM volumes are saved as NIfTI, the original slice spacing is lost or misrepresented, which distorts the image.  
+   <br>
+   Enabling bilateral mode lets you select a loaded DICOM node to automatically retrieve the true acquisition spacing (from DICOM metadata) and apply it before orientation. This ensures that the image is correctly resampled and anatomically accurate.
+   > If **Bilateral** is disabled, the spacing from the input scan is used as-is.  
    - **Input:** MRI folder path
    - **Axis Direction:** You need to choose the new direction for each axis.
 
-3. **Resample:**
-   - **Options:** You can choose to resample both MRI and CBCT, just MRI, or just CBCT.
+3. **Left and Right Cropping:**
+   - **Inputs:** Folder paths for CBCT and/or MRI.
+
+#### Resampling Step:
+   - **Options:** You can resample T1 and/or T2 scans for **MRI**, **CBCT**, and **Segmentation** independently.
    - **Slice/Number of Slices:** Decide the new slices/number of slices or retain the same size as before running it.
    - **Spacing:** Choose the new spacing or keep the same spacing as in the input.
+   - **Center Image:** When enabled, padding is added equally in all directions to center the content.
 
-#### Manual Approximation and Cropping:
-Before running the normalization, the user needs to perform a manual approximation and cropping on the same region for the MRI, CBCT, and CBCT segmentation.
-For the cropping, the user can use AutoCrop3D available in this extension.
+#### Approximation:
+This step aligns the MRI and CBCT volumes to prepare for precise registration.
+- **Inputs:** Resampled MRI and CBCT volumes.
+
+#### Cropping (TMJ Region):
+Currently, cropping is done using the AutoCrop method. In the future, this step will be replaced by a trained model that automatically identifies and extracts the TMJ region of interest.
 
 #### Registration:
 - **Inputs:** CBCT, CBCT segmentation, and MRI scans after completing the preprocessing steps, including manual approximation and cropping.
 - **Normalization Options:** Select the normalization method and specify the percentile to apply to both MRI and CBCT scans. Default values are provided for convenience.
   
 ## FlexReg Module
+
+<img src="FlexReg/Resources/Icons/FlexReg.png" alt="Extension Logo" width="70"/>
+
 FlexReg is a module that allows you to register patient-specific Intra Oral Scans. It lets you create custom patches for registration.
 
 ### How does the module work?
@@ -519,15 +538,48 @@ B. a folder named **Explainability** containing the visualization results:
 
 
 ## BatchDentalSeg
-3D Slicer extension for fully-automatic segmentation of CT and CBCT dental volumes in batch using Dentalsegmentator model (for adults scans)  or PediatricDentalsegmentator model (for children scans).
+3D Slicer extension for fully-automatic segmentation of CT and CBCT dental volumes in batch using Dentalsegmentator model (for adults scans), PediatricDentalsegmentator model (for children scans), UniversalLabDentalSegmentator (for labeling all the teeth), NasoMaxillaDentalSegmentator (for segment separatly the upper skull and the Naso Maxillary Complex.
 
 ![image](https://github.com/user-attachments/assets/240928bd-6551-46db-8688-7b6b581f5d70)
-After selecting the folder with the volumes to process and the model that fit better your scans, this module generates the following segmentations for each volumes: 
-* Maxilla & Upper Skull
-* Mandible
-* Upper Teeth
-* Lower Teeth
-* Mandibular canal
+After selecting the following:
+
+1. **Input folder** (containing volumes to process)  
+2. **Output folder** (where segmentations will be saved)  
+3. **Model** (the pretrained network that best fits your scans)  
+
+this module generates the following labeled regions for each volume:
+
+### PediatricDentalSegmentator  
+*(Identical to DentalSegmentator)*  
+- **Maxilla & Upper Skull**  
+- **Mandible**  
+- **Upper Teeth**  
+- **Lower Teeth**  
+- **Mandibular canal**  
+
+### DentalSegmentator  
+- **Maxilla & Upper Skull**  
+- **Mandible**  
+- **Upper Teeth**  
+- **Lower Teeth**  
+- **Mandibular canal**  
+
+### NasoMaxillaDentalSegmentator  
+This model splits the upper skull into two regions and also segments teeth and mandible:  
+- **Upper Skull** (excluding nasal/maxillary complex)  
+- **Naso-Maxilla Complex**  
+- **Mandible**  
+- **Upper Teeth**  
+- **Lower Teeth**  
+- **Mandibular canal**  
+
+### UniversalLabeling  
+Same as DentalSegmentator, but each tooth receives its own unique label:  
+- **Maxilla & Upper Skull**  
+- **Mandible**  
+- **Upper Teeth** (each tooth labeled separately)  
+- **Lower Teeth** (each tooth labeled separately)  
+- **Mandibular canal**  
 
 ### DentalSegmentator model
 
@@ -541,6 +593,13 @@ DentalSegmentator is based on nnU-Net framework. It has been trained on 470 dent
 
 As DentalSegmentator, PediatricDentalSegmentator is also based on nnUnet. It has been trained on 513 dento-maxillo-facial CBCT scans including scans withs primary teeth.
 
+### UniversalLabDentalSegmentator model
+
+As PediatricDentalSegmentator, UniversalLabDentalSegmentator is also based on nnUnet. It has been trained on 513 dento-maxillo-facial CBCT scans including scans withs primary teeth
+
+### NasoMaxillayDentalSegmentator model
+
+As DentalSegmentator, NasoMaxillaryDentalSegmentator is also based on nnUnet. It has been trained on 135 dento-maxillo-facial CBCT scans including scans withs primary teeth.
 
 ### Using the extension
 
@@ -553,17 +612,20 @@ It's a module in the Automated Dental Tools extension so it can be can be found 
 After the installation process and restart of Slicer, the extension can be found in the module file explorer under `Automated Dental Tools>BatchDentalSegmentator`.
 It can also be found by using the `find` module button and searching for the keyword `BatchDentalSegmentator`.
 
-To use the extension, click on `Select Folder` to select the folder where your scans are.
+You will also need to install the `NNUNet` extension, you can find it by using the `find` module button and searching for the keyword `NNUNet`
 
-![image](https://github.com/user-attachments/assets/72bb7c14-6ed7-4036-a2e5-e76633f03c44)
+To use the extension, click on `Select Folder` to select the folder where your scans are and  click on `Select Output Folder` to select the folder where your segmentations will be save.
 
-Then choose the model that you want to use (DentalSegmentator for scans of subjects with permanent dentition) or PediatricDentalSegmentator (for scans of subjects with mixed dentition)
+![image](https://github.com/user-attachments/assets/a7482f69-8494-43d9-afed-226d7eef963a)
 
-![image](https://github.com/user-attachments/assets/c4529265-3dcc-4deb-b835-4988630100e2)
+
+Then choose the model that you want to use :
+
+![image](https://github.com/user-attachments/assets/5b7a18ea-bec5-48c4-9fc6-f769e3515f3f)
+
 
 Finally click on the `Apply` button to start the segmentations.
 
-![image](https://github.com/user-attachments/assets/3c03bc13-cfc6-4b37-b743-13d30a8c1107)
 
 If your device doesn't include CUDA, the processing may be very long and a dialog will ask for confirmation before
 starting the segmentation process.
@@ -577,7 +639,8 @@ The progress will be reported in the console logs.
 After the segmentation process has run, the segmentation will be loaded into the application.
 The segmentation results can be modified using the `Segment Editor` tools.
 
-![Screencast from 04-22-2025 11_01_23 AM](https://github.com/user-attachments/assets/df2ba70d-bd36-46f4-8ab2-a9dfabc68874)
+![Screencast from 06-02-2025 11_29_42 AM (1)](https://github.com/user-attachments/assets/9c5fcf21-39d0-4c30-963b-218c077db7af)
+
 
 The segmentation can be exported using the `Export segmentation` menu and selecting the export format to use.
 
@@ -664,6 +727,8 @@ The module checks and automatically installs these dependencies upon first usage
 
 ![image](https://github.com/user-attachments/assets/eb032449-9653-43d6-a83b-b9019e3fe39a)
 
+
+![Screencast from 06-02-2025 11_36_38 AM (1)](https://github.com/user-attachments/assets/d8ea03e4-53b5-450e-a8f1-6bde5d72ccd7)
 
 
 

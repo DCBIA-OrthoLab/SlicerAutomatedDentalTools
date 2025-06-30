@@ -14,7 +14,7 @@ import csv
 
 def run_resample(img=None, dir=None, csv=None, csv_column='image', csv_root_path=None, csv_use_spc=0,
                      csv_column_spcx=None, csv_column_spcy=None, csv_column_spcz=None, ref=None, size=None,
-                     img_spacing=None, spacing=None, origin=None, linear=False, center=0, fit_spacing=False,
+                     img_spacing=None, spacing=None, origin=None, linear=False, center=0, rightSide=0,mri=0, fit_spacing=False,
                      iso_spacing=False, image_dimension=2, pixel_dimension=1, rgb=False, ow=1, out="./out.nrrd",
                      out_ext=None):
     args = {
@@ -34,6 +34,8 @@ def run_resample(img=None, dir=None, csv=None, csv_column='image', csv_root_path
         'origin': origin,
         'linear': linear,
         'center': center,
+        'rightSide': rightSide,
+        'mri': mri,
         'fit_spacing': fit_spacing,
         'iso_spacing': iso_spacing,
         'image_dimension': image_dimension,
@@ -76,12 +78,21 @@ def main(input_folder,output_folder,resample_size,spacing,center,iso_spacing,is_
             linear = False if is_seg else True
             center_image = 1 if center == "True" else 0
             
+            isMRI = 1 if iso_spacing else 0
+            
+            if "left" in input_path.lower():
+                isRight = 0
+            elif "right" in input_path.lower():
+                isRight = 1
+            else:
+                isRight = 0  # default fallback
+            
             if resample_size != "None" and spacing=="None" :
-                run_resample(img=input_path,out=out_path,size=list(map(int, resample_size.split(','))),fit_spacing=True,center=center_image,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+                run_resample(img=input_path,out=out_path,size=list(map(int, resample_size.split(','))),fit_spacing=True,center=center_image,rightSide=isRight,mri=isMRI,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
             elif resample_size == "None" and spacing!="None" :
-                run_resample(img=input_path,out=out_path,spacing=list(map(float, spacing.split(','))),size=[size_file[0],size_file[1],size_file[2]],fit_spacing=False,center=center_image,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+                run_resample(img=input_path,out=out_path,spacing=list(map(float, spacing.split(','))),size=[size_file[0],size_file[1],size_file[2]],fit_spacing=False,center=center_image,rightSide=isRight,mri=isMRI,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
             elif resample_size != "None" and spacing!="None" :
-                run_resample(img=input_path,out=out_path,spacing=list(map(float, spacing.split(','))),size=list(map(int, resample_size.split(','))),fit_spacing=True,center=center_image,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+                run_resample(img=input_path,out=out_path,spacing=list(map(float, spacing.split(','))),size=list(map(int, resample_size.split(','))),fit_spacing=True,center=center_image,rightSide=isRight,mri=isMRI,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
                 
             if total_patients > 0:
                 patient_count += 1
