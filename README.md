@@ -728,7 +728,6 @@ The module checks and automatically installs these dependencies upon first usage
 ![image](https://github.com/user-attachments/assets/eb032449-9653-43d6-a83b-b9019e3fe39a)
 
 
-![Screencast from 06-02-2025 11_36_38 AM (1)](https://github.com/user-attachments/assets/d8ea03e4-53b5-450e-a8f1-6bde5d72ccd7)
 
 
 
