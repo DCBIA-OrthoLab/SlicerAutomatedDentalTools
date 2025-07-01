@@ -42,6 +42,7 @@ add_subdirectory(MRI2CBCT_CLI)
 add_subdirectory(BATCHDENTALSEG)
 add_subdirectory(DOCShapeAXI)
 add_subdirectory(DOCShapeAXI_CLI)
+add_subdirectory(CLIC)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
