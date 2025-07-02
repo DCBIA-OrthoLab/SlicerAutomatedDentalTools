@@ -5,7 +5,9 @@ import SegmentEditorEffects
 import ctk
 import numpy as np
 import qt
+import sys
 import slicer
+import logging
 import os
 from .IconPath import icon, iconPath
 from .PythonDependencyChecker import PythonDependencyChecker, hasInternetConnection
@@ -50,69 +52,139 @@ class ExportFormat(Flag):
     NIFTI = auto()
     GLTF = auto()
     VTK = auto()
+    VTK_MERGED = auto() 
 
 # ─── Segmentation Widget Class ────────────────────────────────────────────────
+
+
+class PipRunner(qt.QObject):
+    """
+    Lance « pip install … » de façon non bloquante grâce à qt.QProcess.
+    • onLine(str)     : sortie temps réel (stdout + stderr fusionnés)
+    • onFinished(ok)  : bool → True si retour 0
+    """
+    def __init__(self, packages, onLine, onFinished, parent=None):
+        super().__init__(parent)
+        self._onLine     = onLine
+        self._onFinished = onFinished
+        self._proc       = qt.QProcess(self)           # vie = celle du runner
+
+        # — configuration process —
+        self._proc.setProgram(sys.executable)          # PythonSlicer
+        self._proc.setArguments(["-m", "pip", "install"] + packages)
+        self._proc.setProcessChannelMode(qt.QProcess.MergedChannels)
+
+        # — connexion signaux —
+        self._proc.readyReadStandardOutput.connect(self._readLines)
+        self._proc.readyReadStandardError.connect(self._readLines)  # fusionné, par sécurité
+        self._proc.finished.connect(self._procFinished)
+
+        self._proc.start()
+
+    # ---------- slots internes ----------
+    def _readLines(self):
+        while self._proc.canReadLine():
+            # Qt → QByteArray → bytes → str
+            lineBA  = self._proc.readLine()           # QByteArray
+            lineStr = lineBA.data().decode("utf-8", "ignore").rstrip()
+            self._onLine(lineStr)
+
+
+    def _procFinished(self, exitCode, *args):
+        """
+        Slot appelé à la fin du QProcess.
+        Qt5 : finished(int)
+        Qt6 : finished(int, QProcess.ExitStatus)
+        -> *args absorbe éventuellement le 2ᵉ paramètre.
+        """
+        self._onFinished(exitCode == 0)
+        self.deleteLater()          # auto-nettoyage de l’objet
+            # auto-nettoyage
 
 class SegmentationWidget(qt.QWidget):
 
     # ─── Initialization ─────────────────────────────────────────────────────────
+    # ─── Initialization ─────────────────────────────────────────────────────────
     def __init__(self, logic=None, parent=None):
         super().__init__(parent)
-        self.logic = logic or self._createSlicerSegmentationLogic()
-        self._prevSegmentationNode = None
-        self._minimumIslandSize_mm3 = 60
 
-        self.folderPath = ""
-        self.folderFiles = []
-        self.currentFileIndex = 0
-        self.currentVolumeNode = None
+        # ----------------------------------------------------------------- state
+        self.logic                    = logic or self._createSlicerSegmentationLogic()
+        self._prevSegmentationNode    = None
+        self._minimumIslandSize_mm3   = 60
+        self.folderPath               = ""
+        self.folderFiles              = []
+        self.currentFileIndex         = 0
+        self.currentVolumeNode        = None
+        self.fullInfoLogs             = []          # journal des messages
 
-        # INPUT folder selection widget
-        self.folderPathLineEdit = qt.QLineEdit(self)
-        self.folderPathLineEdit.setReadOnly(True)
-        folderSelectButton = createButton("Select Folder", callback=self.selectFolder)
+        # ========================================================================
+        # 1)  INPUT / OUTPUT FOLDERS
+        # ========================================================================
+        self.folderPathLineEdit   = qt.QLineEdit(self);  self.folderPathLineEdit.setReadOnly(True)
+        self.outputFolderLineEdit = qt.QLineEdit(self);  self.outputFolderLineEdit.setReadOnly(True)
 
-        # OUTPUT folder selection widget
-        self.outputFolderPath = ""
-        self.outputFolderLineEdit = qt.QLineEdit(self)
-        self.outputFolderLineEdit.setReadOnly(True)
-        outputFolderSelectButton = createButton("Select Output Folder", callback=self.selectOutputFolder)
+        folderBtn = createButton("Select Folder",        callback=self.selectFolder)
+        outBtn    = createButton("Select Output Folder", callback=self.selectOutputFolder)
 
         self.inputWidget = qt.QWidget(self)
-        inputLayout = qt.QFormLayout(self.inputWidget)
-        inputLayout.setContentsMargins(0, 0, 0, 0)
-        inputLayout.addRow("Input Folder:", self.folderPathLineEdit)
-        inputLayout.addRow("", folderSelectButton)
+        inputLayout      = qt.QFormLayout(self.inputWidget); inputLayout.setContentsMargins(0,0,0,0)
+        inputLayout.addRow("Input Folder:",  self.folderPathLineEdit)
+        inputLayout.addRow("",               folderBtn)
         inputLayout.addRow("Output Folder:", self.outputFolderLineEdit)
-        inputLayout.addRow("", outputFolderSelectButton)
+        inputLayout.addRow("",               outBtn)
 
-        # Device selection combo box
-        self.deviceComboBox = qt.QComboBox()
-        self.deviceComboBox.addItems(["cuda", "cpu", "mps"])
+        # ========================================================================
+        # 2)  EXPORT FORMATS  (placé juste sous le dossier de sortie)
+        # ========================================================================
+        exportWidget = qt.QWidget()
+        exportLayout = qt.QFormLayout(exportWidget)
 
-        # Model selection combo box
-        self.modelComboBox = qt.QComboBox()
-        self.modelComboBox.addItems([
-            "DentalSegmentator", "PediatricDentalsegmentator",
-            "NasoMaxillaDentSeg", "UniversalLabDentalsegmentator"
-        ])
+        self.stlCheckBox       = qt.QCheckBox(exportWidget); self.stlCheckBox.setChecked(True)
+        self.objCheckBox       = qt.QCheckBox(exportWidget)
+        self.niftiCheckBox     = qt.QCheckBox(exportWidget)
+        self.gltfCheckBox      = qt.QCheckBox(exportWidget)
+        self.vtkCheckBox       = qt.QCheckBox(exportWidget)
+        self.vtkmergedCheckBox = qt.QCheckBox(exportWidget)
 
-        # ► 1) Create Resolve Mirroring button BEFORE connecting signals
+        self.reductionFactorSlider = ctk.ctkSliderWidget()
+        self.reductionFactorSlider.maximum     = 1.0
+        self.reductionFactorSlider.value       = 0.9
+        self.reductionFactorSlider.singleStep  = 0.01
+        self.reductionFactorSlider.toolTip     = "Decimation factor for glTF export."
+
+        exportLayout.addRow("Export STL",           self.stlCheckBox)
+        exportLayout.addRow("Export OBJ",           self.objCheckBox)
+        exportLayout.addRow("Export NIFTI",         self.niftiCheckBox)
+        exportLayout.addRow("Export glTF",          self.gltfCheckBox)
+        exportLayout.addRow("Export VTK",           self.vtkCheckBox)
+        exportLayout.addRow("Export VTK (merged)",  self.vtkmergedCheckBox)
+        exportLayout.addRow("glTF reduction factor:", self.reductionFactorSlider)
+        # exportLayout.addRow(createButton("Export", callback=self.onExportClicked, parent=exportWidget))
+
+        # ↳ on insère le widget d’export sous les dossiers
+        inputLayout.addRow("Export formats :", exportWidget)
+
+        # ========================================================================
+        # 3)  DEVICE & MODEL
+        # ========================================================================
+        self.deviceComboBox = qt.QComboBox(); self.deviceComboBox.addItems(["cuda","cpu","mps"])
+        self.modelComboBox  = qt.QComboBox(); self.modelComboBox.addItems([
+            "DentalSegmentator","PediatricDentalsegmentator","NasoMaxillaDentSeg","UniversalLabDentalsegmentator"])
+
+        # Resolve-mirroring (spécifique UniversalLab…)
         self.resolveMirroringButton = createButton(
-            "Resolve Mirroring",
-            callback=self.onResolveMirroring,
-            toolTip="Automatically mirrors labeled segments",
-            parent=self
-        )
-        self.resolveMirroringButton.setVisible(False)  # hidden by default
-
-        # Connect signal to show/hide resolve mirroring button
+            "Resolve Mirroring", callback=self.onResolveMirroring,
+            toolTip="Automatically mirrors labeled segments", parent=self)
+        self.resolveMirroringButton.setVisible(False)
         self.modelComboBox.currentTextChanged.connect(self._updateResolveButtonVisibility)
         self._updateResolveButtonVisibility(self.modelComboBox.currentText)
 
-        # Segmentation selector widget
+        # ========================================================================
+        # 4)  SEGMENTATION NODE SELECTOR & EDITOR
+        # ========================================================================
         self.segmentationNodeSelector = slicer.qMRMLNodeComboBox(self)
-        self.segmentationNodeSelector.nodeTypes = ["vtkMRMLSegmentationNode"]
+        self.segmentationNodeSelector.nodeTypes  = ["vtkMRMLSegmentationNode"]
         self.segmentationNodeSelector.selectNodeUponCreation = True
         self.segmentationNodeSelector.addEnabled = True
         self.segmentationNodeSelector.removeEnabled = True
@@ -120,137 +192,103 @@ class SegmentationWidget(qt.QWidget):
         self.segmentationNodeSelector.renameEnabled = True
         self.segmentationNodeSelector.setMRMLScene(slicer.mrmlScene)
         self.segmentationNodeSelector.connect(
-            "currentNodeChanged(vtkMRMLNode*)",
-            self.updateSegmentEditorWidget
-        )
-        segmentationSelectorComboBox = self.segmentationNodeSelector.findChild("ctkComboBox")
-        segmentationSelectorComboBox.defaultText = "Create new Segmentation on Apply"
+            "currentNodeChanged(vtkMRMLNode*)", self.updateSegmentEditorWidget)
+        self.segmentationNodeSelector.findChild("ctkComboBox").defaultText = "Create new Segmentation on Apply"
 
-        # Create segment editor widget
         self.segmentEditorWidget = slicer.qMRMLSegmentEditorWidget(self)
         self.segmentEditorWidget.setMRMLScene(slicer.mrmlScene)
         self.segmentEditorWidget.setSegmentationNodeSelectorVisible(False)
         self.segmentEditorWidget.setSourceVolumeNodeSelectorVisible(False)
-        self.segmentEditorWidget.layout().setContentsMargins(0, 0, 0, 0)
+        self.segmentEditorWidget.layout().setContentsMargins(0,0,0,0)
         self.segmentEditorNode = None
 
-        # Surface smoothing slider setup
+        # surface smoothing slider synchronisé avec Show-3D
         self.show3DButton = slicer.util.findChild(self.segmentEditorWidget, "Show3DButton")
         smoothingSlider = self.show3DButton.findChild("ctkSliderWidget")
+
         self.surfaceSmoothingSlider = ctk.ctkSliderWidget(self)
-        self.surfaceSmoothingSlider.setToolTip(
-            "Higher value means stronger smoothing during closed surface representation conversion."
-        )
-        self.surfaceSmoothingSlider.decimals = 2
-        self.surfaceSmoothingSlider.maximum = 1
+        self.surfaceSmoothingSlider.decimals   = 2
+        self.surfaceSmoothingSlider.maximum    = 1
         self.surfaceSmoothingSlider.singleStep = 0.1
         self.surfaceSmoothingSlider.setValue(smoothingSlider.value)
-        self.surfaceSmoothingSlider.tracking = False
+        self.surfaceSmoothingSlider.tracking   = False
         self.surfaceSmoothingSlider.valueChanged.connect(smoothingSlider.setValue)
 
-        # Export widget setup
-        exportWidget = qt.QWidget()
-        exportLayout = qt.QFormLayout(exportWidget)
-        self.stlCheckBox = qt.QCheckBox(exportWidget)
-        self.stlCheckBox.setChecked(True)
-        self.objCheckBox = qt.QCheckBox(exportWidget)
-        self.niftiCheckBox = qt.QCheckBox(exportWidget)
-        self.gltfCheckBox = qt.QCheckBox(exportWidget)
-        self.vtkCheckBox = qt.QCheckBox(exportWidget)
-
-        self.reductionFactorSlider = ctk.ctkSliderWidget()
-        self.reductionFactorSlider.maximum = 1.0
-        self.reductionFactorSlider.value = 0.9
-        self.reductionFactorSlider.singleStep = 0.01
-        self.reductionFactorSlider.toolTip = (
-            "Decimation factor determining how much the mesh complexity will be reduced."
-        )
-        exportLayout.addRow("Export STL", self.stlCheckBox)
-        exportLayout.addRow("Export OBJ", self.objCheckBox)
-        exportLayout.addRow("Export NIFTI", self.niftiCheckBox)
-        exportLayout.addRow("Export glTF", self.gltfCheckBox)
-        exportLayout.addRow("Export VTK", self.vtkCheckBox)
-        exportLayout.addRow("glTF reduction factor :", self.reductionFactorSlider)
-        exportLayout.addRow(createButton("Export", callback=self.onExportClicked, parent=exportWidget))
-
-        # Main layout setup
+        # ========================================================================
+        # 5)  MAIN LAYOUT
+        # ========================================================================
         layout = qt.QVBoxLayout(self)
+
+        # bloc haut : dossiers + formats + device/model
         self.mainInputWidget = qt.QWidget(self)
-        mainInputLayout = qt.QFormLayout(self.mainInputWidget)
-        mainInputLayout.setContentsMargins(0, 0, 0, 0)
+        mainInputLayout = qt.QFormLayout(self.mainInputWidget); mainInputLayout.setContentsMargins(0,0,0,0)
         mainInputLayout.addRow(self.inputWidget)
         mainInputLayout.addRow(self.segmentationNodeSelector)
         mainInputLayout.addRow("Device:", self.deviceComboBox)
-        mainInputLayout.addRow("Model:", self.modelComboBox)
+        mainInputLayout.addRow("Model:",  self.modelComboBox)
         layout.addWidget(self.mainInputWidget)
+
         self._addModelScopeDescription()
 
+        # Apply / Stop widgets
         self.applyButton = createButton(
-            "Apply",
-            callback=self.onApplyClicked,
-            toolTip="Click to run the segmentation.",
-            icon=icon("start_icon.png")
-        )
-        self.currentInfoTextEdit = qt.QTextEdit()
-        self.currentInfoTextEdit.setReadOnly(True)
-        self.currentInfoTextEdit.setLineWrapMode(qt.QTextEdit.NoWrap)
-        self.fullInfoLogs = []
-        self.stopWidget = qt.QVBoxLayout()
-        self.stopButton = createButton(
-            "Stop",
-            callback=self.onStopClicked,
-            toolTip="Click to Stop the segmentation."
-        )
-        self.stopWidgetContainer = qt.QWidget(self)
-        stopLayout = qt.QVBoxLayout(self.stopWidgetContainer)
-        stopLayout.setContentsMargins(0, 0, 0, 0)
-        stopLayout.addWidget(self.stopButton)
-        stopLayout.addWidget(self.currentInfoTextEdit)
-        self.stopWidgetContainer.setVisible(False)
+            "Apply", callback=self.onApplyClicked,
+            toolTip="Run the segmentation.", icon=icon("start_icon.png"))
 
-        self.loading = qt.QMovie(iconPath("loading.gif"))
-        self.loading.setScaledSize(qt.QSize(24, 24))
-        self.loading.frameChanged.connect(self._updateStopIcon)
-        self.loading.start()
+        self.currentInfoTextEdit = qt.QTextEdit(); self.currentInfoTextEdit.setReadOnly(True)
+        self.currentInfoTextEdit.setLineWrapMode(qt.QTextEdit.NoWrap)
+
+        self.stopButton = createButton("Stop", callback=self.onStopClicked, toolTip="Stop the segmentation.")
+        self.loading    = qt.QMovie(iconPath("loading.gif")); self.loading.setScaledSize(qt.QSize(24,24))
+        self.loading.frameChanged.connect(self._updateStopIcon); self.loading.start()
 
         self.applyWidget = qt.QWidget(self)
-        applyLayout = qt.QHBoxLayout(self.applyWidget)
-        applyLayout.setContentsMargins(0, 0, 0, 0)
+        applyLayout = qt.QHBoxLayout(self.applyWidget); applyLayout.setContentsMargins(0,0,0,0)
         applyLayout.addWidget(self.applyButton, 1)
-        applyLayout.addWidget(
-            createButton("", callback=self.showInfoLogs, icon=icon("info.png"), toolTip="Show logs.")
-        )
+        applyLayout.addWidget(createButton("", callback=self.showInfoLogs,
+                                        icon=icon("info.png"), toolTip="Show logs."))
+
+        self.stopWidgetContainer = qt.QWidget(self)
+        stopLayout = qt.QVBoxLayout(self.stopWidgetContainer); stopLayout.setContentsMargins(0,0,0,0)
+        stopLayout.addWidget(self.stopButton); stopLayout.addWidget(self.currentInfoTextEdit)
+        self.stopWidgetContainer.setVisible(False)
 
         layout.addWidget(self.applyWidget)
         layout.addWidget(self.stopWidgetContainer)
         layout.addWidget(self.resolveMirroringButton)
-        self.mirroringProgressBar = qt.QProgressBar()
-        self.mirroringProgressBar.setMinimum(0)
-        self.mirroringProgressBar.setMaximum(100)
-        self.mirroringProgressBar.setVisible(False)
-        layout.addWidget(self.mirroringProgressBar)
 
+        # progress bar mirroring
+        self.mirroringProgressBar = qt.QProgressBar(); self.mirroringProgressBar.setMinimum(0); self.mirroringProgressBar.setMaximum(100)
+        self.mirroringProgressBar.setVisible(False); layout.addWidget(self.mirroringProgressBar)
+
+        # 3-D + smoothing slider
         layout.addWidget(self.segmentEditorWidget)
+        surfLayout = qt.QFormLayout(); surfLayout.setContentsMargins(0,0,0,0)
+        surfLayout.addRow("Surface smoothing :", self.surfaceSmoothingSlider)
+        layout.addLayout(surfLayout)
 
-        surfaceSmoothingLayout = qt.QFormLayout()
-        surfaceSmoothingLayout.setContentsMargins(0, 0, 0, 0)
-        surfaceSmoothingLayout.addRow("Surface smoothing :", self.surfaceSmoothingSlider)
-        layout.addLayout(surfaceSmoothingLayout)
-        layout.addWidget(exportWidget)
-        addInCollapsibleLayout(exportWidget, layout, "Export segmentation", isCollapsed=False)
         layout.addStretch()
 
-        self.isStopping = False
+        # ========================================================================
+        # 6)  INTERNAL SETUP
+        # ========================================================================
+        self.isStopping         = False
         self._dependencyChecker = PythonDependencyChecker()
-        self.processedVolumes = {}
+        self.processedVolumes   = {}
 
+        # initialise affichage
         self.onInputChangedForLoadedVolume(None)
         self.updateSegmentEditorWidget()
+
+        # observe fermeture de scène
         self.sceneCloseObserver = slicer.mrmlScene.AddObserver(
-            slicer.mrmlScene.EndCloseEvent, self.onSceneChanged
-        )
+            slicer.mrmlScene.EndCloseEvent, self.onSceneChanged)
         self.onSceneChanged(doStopInference=False)
+
+        # connecter logique NNUNet
         self._connectSegmentationLogic()
+
+
 
     # ─── Resolve Mirroring Button Visibility ────────────────────────────────────
 
@@ -418,7 +456,7 @@ class SegmentationWidget(qt.QWidget):
         correctedLM.SetIJKToRASMatrix(ijkToRAS)
 
         # ► New name: original segmentation name + suffix
-        baseName = segmentationNode.GetName() if segmentationNode else "seg"
+        baseName = segmentationNode.GetName() if segmentationNode else "Segmentation"
         suffix   = "_Mirrored"                           # choose your suffix here
         correctedSeg = slicer.mrmlScene.AddNewNodeByClass(
             "vtkMRMLSegmentationNode",
@@ -476,44 +514,37 @@ class SegmentationWidget(qt.QWidget):
             self.outputFolderPath = folderPath
             self.outputFolderLineEdit.setText(folderPath)
 
+    # ──────────────────────────────────────────────────────────────────────────────
+    # 3)  _saveSegmentationAsNifti  –  suppression propre du label-map temporaire
+    # ──────────────────────────────────────────────────────────────────────────────
     def _saveSegmentationAsNifti(self, segmentationNode, volumeNode):
-        # ADDED: Start message
         self.onProgressInfo("=== Start of saving the segmentation in NIfTI ===")
-        # Preliminary checks
         if not segmentationNode:
             self.onProgressInfo("ERROR: segmentationNode is invalid or not provided.")
             return
-        if not volumeNode:
-            self.onProgressInfo("WARNING: VolumeNode not provided, using default segmentation geometry.")
-        else:
-            # Set segmentation reference geometry from input volume if needed
+
+        if volumeNode:
             segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
-        self.onProgressInfo(f"Using segmentation'{segmentationNode.GetName()}'for export. Output folder ={self.outputFolderPath}")
-        
-        # Create labelmap node for export
+
         labelmapVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
-        self.onProgressInfo("Labelmap node created to receive segmentation data.")
-        
-        # Export all segments to labelmap (using reference geometry of volume if available)
         success = slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
-                    segmentationNode, labelmapVolumeNode, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY)
+            segmentationNode, labelmapVolumeNode, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY)
+
         if not success:
             self.onProgressInfo("ERROR: Exporting segments to the labelmap failed.")
             return
-        self.onProgressInfo("Exporting segments to labelmap completed successfully.")
-        
-        # Build output NIfTI filepath
-        filename = segmentationNode.GetName() + ".nii.gz"
-        output_path = os.path.join(self.outputFolderPath, filename)
-        self.onProgressInfo(f"Saving the labelmap in NIfTI format:{output_path}")
-        
-        # Save labelmap as .nii.gz
+
+        output_path = os.path.join(self.outputFolderPath, segmentationNode.GetName() + ".nii.gz")
         saved = slicer.util.saveNode(labelmapVolumeNode, output_path)
         if saved:
-            self.onProgressInfo(f"✅ Segmentation saved in{output_path}")
+            self.onProgressInfo(f"✅ Segmentation saved in {output_path}")
         else:
             self.onProgressInfo(f"❌ Failed to save segmentation in {output_path}")
-    
+
+        # ► Nettoyage du label-map
+        # labelmapVolumeNode.RemoveAllDisplayNodes()
+        slicer.mrmlScene.RemoveNode(labelmapVolumeNode)
+
 
     def __del__(self):
         slicer.mrmlScene.RemoveObserver(self.sceneCloseObserver)
@@ -533,14 +564,25 @@ class SegmentationWidget(qt.QWidget):
 
     # ─── Scene change handling ────────────────────────────────────────────────
 
+    # ──────────────────────────────────────────────────────────────────────────────
+    # 2)  onSceneChanged  –  un seul SegmentEditorNode ré-utilisé
+    # ──────────────────────────────────────────────────────────────────────────────
     def onSceneChanged(self, *_, doStopInference=True):
         if doStopInference:
             self.onStopClicked()
-        self.segmentEditorNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentEditorNode")
+
+        # ⇢ Conserver UN unique SegmentEditorNode
+        if not hasattr(self, "segmentEditorNode") or self.segmentEditorNode is None \
+        or not slicer.mrmlScene.IsNodePresent(self.segmentEditorNode):
+            self.segmentEditorNode = slicer.mrmlScene.AddNewNodeByClass(
+                "vtkMRMLSegmentEditorNode")
+
         self.segmentEditorWidget.setMRMLSegmentEditorNode(self.segmentEditorNode)
-        self.processedVolumes = {}
+
+        self.processedVolumes   = {}
         self._prevSegmentationNode = None
         self._initSlicerDisplay()
+
 
     @staticmethod
     def _initSlicerDisplay():
@@ -562,39 +604,65 @@ class SegmentationWidget(qt.QWidget):
         self._setApplyVisible(True)
 
     # ─── Apply segmentation ─────────────────────────────────────────────────────
+    
+
+# ──────────────────────────────────────────────────────────────
+# 1.  Fonction utilitaire pour exécuter pip de façon asynchrone
+# ──────────────────────────────────────────────────────────────
 
     def onApplyClicked(self, *_):
-        """
-        For folder mode, launch processing on all files in the selected folder.
-        """
+        # --- validations rapides ---
         if not self.folderPath:
             slicer.util.errorDisplay("Please select a folder containing volumes.")
+            return
+        if not self.folderFiles:
+            slicer.util.errorDisplay("No valid volume file found in the folder.")
             return
 
         self.currentInfoTextEdit.clear()
         self._setApplyVisible(False)
 
-        if not self.folderFiles:
-            slicer.util.errorDisplay("No valid volume file found in the folder.")
-            self._setApplyVisible(True)
-            return
+        # ---------- Étape 1 : installation deps async ----------
+        packages = ["numpy<2.0", "numexpr<2.10"]   # complétez votre liste
 
-        if not self.isNNUNetModuleInstalled() or self.logic is None:
-            slicer.util.errorDisplay(
-                "This module depends on the NNUNet module. Please install the NNUNet module and restart to proceed."
-            )
-            return
+        _log = logging.getLogger("BATCHDENTALSEG")   # nom de votre extension
 
-        if not self._installNNUNetIfNeeded():
-            self._setApplyVisible(True)
-            return
+        def _onLine(line: str):
+            self.currentInfoTextEdit.append(line)    # QTextEdit
+            _log.info(line)   
 
-        if not self._dependencyChecker.downloadWeightsIfNeeded(self.onProgressInfo):
-            self._setApplyVisible(True)
-            return
+        def _onFinished(ok: bool):
+            if not ok:
+                qt.QMessageBox.critical(
+                    self, "Installation error",
+                    "Certaines bibliothèques Python n'ont pas pu être installées.\n"
+                    "Veuillez vérifier votre connexion Internet ou relancer Slicer."
+                )
+                self._setApplyVisible(True)
+                return
 
-        # Start processing first file in folder
-        self.processNextFile()
+            # ---------- Étape 2 : dépendances internes ----------
+            if not self.isNNUNetModuleInstalled() or self.logic is None:
+                slicer.util.errorDisplay(
+                    "This module depends on the NNUNet module. "
+                    "Please install the NNUNet module and restart to proceed."
+                )
+                self._setApplyVisible(True)
+                return
+
+            if not self._installNNUNetIfNeeded():
+                self._setApplyVisible(True)
+                return
+
+            if not self._dependencyChecker.downloadWeightsIfNeeded(_onLine):
+                self._setApplyVisible(True)
+                return
+
+            # ---------- Étape 3 : traiter les scans ----------
+            self.processNextFile()
+
+        # Lancement *non bloque* (aucun thread Python ⇒ plus de warnings Qt)
+        self._pipRunner = PipRunner(packages, _onLine, _onFinished, parent=self)
 
 
     def processNextFile(self):
@@ -671,9 +739,9 @@ class SegmentationWidget(qt.QWidget):
             NasoMaxillaDentSegCheckpoint = fold_path.joinpath("checkpoint_final.pth")
             # If checkpoint doesn't exist, download checkpoint and dataset.json and plans.json inside basePath
             if not NasoMaxillaDentSegCheckpoint .exists():
-                url_checkpoint = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENTSEG_MODEL/checkpoint_final.pth"
-                url_dataset = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENTSEG_MODEL/dataset.json"
-                url_plans = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENTSEG_MODEL/plans.json"
+                url_checkpoint = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENT_SEG/checkpoint_final.pth"
+                url_dataset = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENT_SEG/dataset.json"
+                url_plans = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENT_SEG/plans.json"
                 self.onProgressInfo("Downloading NasoMaxillaDentSeg model...")
                 # Download checkpoint; convert Path to string for downloadFile
                 slicer.util.downloadFile(url_checkpoint, str(NasoMaxillaDentSegCheckpoint))
@@ -732,26 +800,50 @@ class SegmentationWidget(qt.QWidget):
         self.logic.startSegmentation(volumeNode)
 
     # ─── Inference finished callback ──────────────────────────────────────────
-
+    # ──────────────────────────────────────────────────────────────────────────────
+    # 1)  onInferenceFinished  –  appel explicite à _cleanupAfterCase
+    # ──────────────────────────────────────────────────────────────────────────────
     def onInferenceFinished(self, *_):
         if self.isStopping:
             self._setApplyVisible(True)
             return
 
+        segNode = None
+        volNode = None
         try:
             self.onProgressInfo("Loading inference results...")
-            # Load segmentation results into memory
+            # Chargement des résultats
             self._loadSegmentationResults()
 
-            segmentationNode = self.getCurrentSegmentationNode()
-            volumeNode = self.getCurrentVolumeNode()
-            self._saveSegmentationAsNifti(segmentationNode, volumeNode)
+            segNode = self.getCurrentSegmentationNode()
+            volNode = self.getCurrentVolumeNode()
+            if not segNode:
+                raise RuntimeError("No segmentation node found after inference.")
+
+            # ---------- export selon cases cochées ----------
+            selected = self.getSelectedExportFormats()
+            if selected == ExportFormat(0):
+                self.onProgressInfo("⚠️  No export format selected — nothing saved.")
+            else:
+                if not self.outputFolderPath:
+                    raise RuntimeError("Output folder not selected.")
+                if selected & ExportFormat.NIFTI:
+                    self._saveSegmentationAsNifti(segNode, volNode)
+                other = selected & ~ExportFormat.NIFTI
+                if other != ExportFormat(0):
+                    self.exportSegmentation(segNode, self.outputFolderPath, other)
 
             self.onProgressInfo("Inference ended successfully.")
-        except RuntimeError as e:
+
+        except Exception as e:
             slicer.util.errorDisplay(e)
             self.onProgressInfo(f"Error loading results :\n{e}")
+
         finally:
+            # ►► libération complète des ressources pour le cas courant
+            # self._cleanupAfterCase(volNode, segNode)
+
+            # ---------- enchaînement dossier ----------
             if self.folderPath:
                 self.currentFileIndex += 1
                 if self.currentFileIndex < len(self.folderFiles):
@@ -761,13 +853,14 @@ class SegmentationWidget(qt.QWidget):
                     self._setApplyVisible(True)
             else:
                 self._setApplyVisible(True)
-                
+
+
     # ─── Load segmentation results ────────────────────────────────────────────
 
     def _loadSegmentationResults(self):
         currentSegmentation = self.getCurrentSegmentationNode()
         segmentationNode = self.logic.loadSegmentation()
-        segmentationNode.SetName(self.currentVolumeNode.GetName() + "_seg")
+        segmentationNode.SetName(self.currentVolumeNode.GetName() + "_Segmentation")
         if currentSegmentation is not None:
             self._copySegmentationResultsToExistingNode(currentSegmentation, segmentationNode)
         else:
@@ -1110,6 +1203,7 @@ class SegmentationWidget(qt.QWidget):
         dialog.resize(slicer.util.mainWindow().size * 0.7)
         dialog.exec()
 
+
     @staticmethod
     def moveTextEditToEnd(textEdit):
         textEdit.verticalScrollBar().setValue(textEdit.verticalScrollBar().maximum)
@@ -1150,7 +1244,8 @@ class SegmentationWidget(qt.QWidget):
             self.stlCheckBox: ExportFormat.STL,
             self.niftiCheckBox: ExportFormat.NIFTI,
             self.gltfCheckBox: ExportFormat.GLTF,
-            self.vtkCheckBox: ExportFormat.VTK
+            self.vtkCheckBox: ExportFormat.VTK,
+            self.vtkmergedCheckBox  : ExportFormat.VTK_MERGED
 
         }
         for checkBox, exportFormat in checkBoxes.items():
@@ -1177,128 +1272,128 @@ class SegmentationWidget(qt.QWidget):
             self.exportSegmentation(segmentationNode, folderPath, selectedFormats)
             slicer.util.infoDisplay(f"Export successful to {folderPath}.")
 
-    def exportSegmentation(self, segmentationNode, folderPath, selectedFormats):
-        for closedSurfaceExport in [ExportFormat.STL, ExportFormat.OBJ]:
-            if selectedFormats & closedSurfaceExport:
+    def exportSegmentation(self, segNode, folderPath, selectedFormats):
+        """
+        - STL / OBJ : inchangés
+        - VTK_MERGED : pipeline historique (un seul fichier)
+        - VTK        : un fichier .vtk par segment
+        """
+        # ------------------------------------------------------------------ STL/OBJ
+        for fmt in (ExportFormat.STL, ExportFormat.OBJ):
+            if selectedFormats & fmt:
                 slicer.vtkSlicerSegmentationsModuleLogic.ExportSegmentsClosedSurfaceRepresentationToFiles(
-                    folderPath,
-                    segmentationNode,
-                    None,
-                    closedSurfaceExport.name,
-                    True,
-                    1.0,
-                    False
+                    folderPath, segNode, None, fmt.name, True, 1.0, False
                 )
+
+        # ----------------------------------------------------------------- VTK(s)
+        if selectedFormats & ExportFormat.VTK_MERGED:
+            self._exportMergedVTK(segNode, folderPath)
+
         if selectedFormats & ExportFormat.VTK:
-            import vtk, os, numpy as np
-            from vtk.util.numpy_support import vtk_to_numpy
+            self._exportVTKPerLabel(segNode, folderPath)
 
-            refVolume = self.getCurrentVolumeNode()
-
-            # 1. temporary labelmap
-            labelmapNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
-            slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
-                segmentationNode, labelmapNode
-            )
-            imageData = labelmapNode.GetImageData()
-
-            # 2. marching-cubes
-            mc = vtk.vtkDiscreteMarchingCubes()
-            mc.SetInputData(imageData)
-            for l in np.unique(vtk_to_numpy(imageData.GetPointData().GetScalars())):
-                if l: mc.SetValue(int(l), int(l))
-            mc.Update()
-
-            # 3. cleaning
-            clean = vtk.vtkCleanPolyData()
-            clean.SetInputConnection(mc.GetOutputPort())
-            clean.Update()
-
-            # 4. Windowed-Sinc smoothing
-            ws = vtk.vtkWindowedSincPolyDataFilter()
-            ws.SetInputConnection(clean.GetOutputPort())
-            ws.SetNumberOfIterations(60)
-            ws.SetPassBand(0.05)
-            ws.BoundarySmoothingOn()
-            ws.FeatureEdgeSmoothingOn()
-            ws.NonManifoldSmoothingOn()
-            ws.NormalizeCoordinatesOn()
-            ws.Update()
-
-            # 5. flat normals
-            flatN = vtk.vtkPolyDataNormals()
-            flatN.SetInputConnection(ws.GetOutputPort())
-            flatN.ComputePointNormalsOff()
-            flatN.ComputeCellNormalsOn()
-            flatN.SplittingOff()
-            flatN.AutoOrientNormalsOn()
-            flatN.ConsistencyOn()
-            flatN.SetFeatureAngle(180)
-            flatN.Update()
-
-            # 6. IJK→RAS matrix of labelmap
-            ijk2ras = vtk.vtkMatrix4x4()
-            labelmapNode.GetIJKToRASMatrix(ijk2ras)
-
-            # 7. possible parent transform
-            parentMat = vtk.vtkMatrix4x4(); parentMat.Identity()
-            for node in (segmentationNode, refVolume):
-                tr = node.GetParentTransformNode()
-                if tr:
-                    tr.GetMatrixTransformToWorld(parentMat)
-                    break
-
-            # 8. RAS chain = parent * ijk2ras
-            rasMat = vtk.vtkMatrix4x4()
-            vtk.vtkMatrix4x4.Multiply4x4(parentMat, ijk2ras, rasMat)
-
-            # 9. apply RAS
-            rasT = vtk.vtkTransform(); rasT.SetMatrix(rasMat)
-            rasFilter = vtk.vtkTransformPolyDataFilter()
-            rasFilter.SetInputConnection(flatN.GetOutputPort())
-            rasFilter.SetTransform(rasT)
-            rasFilter.Update()
-
-            # 10. convert RAS → LPS  (diag(-1,-1,1))
-            ras2lps = vtk.vtkTransform(); ras2lps.Scale(-1, -1, 1)
-            lpsFilter = vtk.vtkTransformPolyDataFilter()
-            lpsFilter.SetInputConnection(rasFilter.GetOutputPort())
-            lpsFilter.SetTransform(ras2lps)
-            lpsFilter.Update()
-            polyOut = lpsFilter.GetOutput()
-
-            # 11. write VTP
-            vtp_path = os.path.join(folderPath,
-                                    f"{segmentationNode.GetName()}_merged_flat.vtp")
-            wxml = vtk.vtkXMLPolyDataWriter()
-            wxml.SetFileName(vtp_path)
-            wxml.SetInputData(polyOut)
-            wxml.SetDataModeToBinary()
-            wxml.Write()
-
-            # 12. (optional) legacy .vtk
-            wvtk = vtk.vtkPolyDataWriter()
-            wvtk.SetFileName(vtp_path.replace(".vtp", ".vtk"))
-            wvtk.SetInputData(polyOut)
-            wvtk.SetFileTypeToBinary()
-            wvtk.Write()
-
-            slicer.mrmlScene.RemoveNode(labelmapNode)
-
-
-
-
-
+        # -------------------------------------------------------------------- NIfTI
         if selectedFormats & ExportFormat.NIFTI:
             slicer.vtkSlicerSegmentationsModuleLogic.ExportSegmentsBinaryLabelmapRepresentationToFiles(
-                folderPath,
-                segmentationNode,
-                None,
-                "nii.gz"
+                folderPath, segNode, None, "nii.gz"
             )
 
+        # --------------------------------------------------------------------- glTF
         if selectedFormats & ExportFormat.GLTF:
-            self._exportToGLTF(segmentationNode, folderPath)
+            self._exportToGLTF(segNode, folderPath)
+
+    # ─── 4. Pipelines helpers ──────────────────────────────────────────────────
+    def _exportMergedVTK(self, segNode, folderPath):
+        """ancien pipeline ‘merged’, déplacé ici sans changement fonctionnel."""
+        import vtk, os, numpy as np
+        from vtk.util.numpy_support import vtk_to_numpy
+
+        refVol = self.getCurrentVolumeNode()
+        labelmap = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+        slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(segNode, labelmap)
+        img = labelmap.GetImageData()
+
+        mc = vtk.vtkDiscreteMarchingCubes(); mc.SetInputData(img)
+        for l in np.unique(vtk_to_numpy(img.GetPointData().GetScalars())):
+            if l: mc.SetValue(int(l), int(l))
+        mc.Update()
+
+        clean = vtk.vtkCleanPolyData(); clean.SetInputConnection(mc.GetOutputPort()); clean.Update()
+        ws = vtk.vtkWindowedSincPolyDataFilter(); ws.SetInputConnection(clean.GetOutputPort())
+        ws.SetNumberOfIterations(60); ws.SetPassBand(0.05)
+        ws.BoundarySmoothingOn(); ws.FeatureEdgeSmoothingOn()
+        ws.NonManifoldSmoothingOn(); ws.NormalizeCoordinatesOn(); ws.Update()
+
+        flatN = vtk.vtkPolyDataNormals(); flatN.SetInputConnection(ws.GetOutputPort())
+        flatN.ComputePointNormalsOff(); flatN.ComputeCellNormalsOn()
+        flatN.SplittingOff(); flatN.AutoOrientNormalsOn()
+        flatN.ConsistencyOn(); flatN.SetFeatureAngle(180); flatN.Update()
+
+        # transforms (parent + RAS→LPS)
+        ijk2ras = vtk.vtkMatrix4x4(); labelmap.GetIJKToRASMatrix(ijk2ras)
+        parentMat = vtk.vtkMatrix4x4(); parentMat.Identity()
+        if refVol and refVol.GetParentTransformNode():
+            refVol.GetParentTransformNode().GetMatrixTransformToWorld(parentMat)
+        rasMat = vtk.vtkMatrix4x4(); vtk.vtkMatrix4x4.Multiply4x4(parentMat, ijk2ras, rasMat)
+
+        rasT = vtk.vtkTransform(); rasT.SetMatrix(rasMat)
+        rasF = vtk.vtkTransformPolyDataFilter(); rasF.SetTransform(rasT); rasF.SetInputConnection(flatN.GetOutputPort()); rasF.Update()
+        lpsT = vtk.vtkTransform(); lpsT.Scale(-1, -1, 1)
+        lpsF = vtk.vtkTransformPolyDataFilter(); lpsF.SetTransform(lpsT); lpsF.SetInputConnection(rasF.GetOutputPort()); lpsF.Update()
+
+        outPath = os.path.join(folderPath, f"{segNode.GetName()}_merged.vtk")
+        w = vtk.vtkPolyDataWriter(); w.SetFileName(outPath); w.SetInputData(lpsF.GetOutput()); w.SetFileTypeToBinary(); w.Write()
+        slicer.mrmlScene.RemoveNode(labelmap)
+
+    def _exportVTKPerLabel(self, segNode, folderPath):
+        """boucle sur chaque segment, écrit <SegName>_<LabelName>.vtk"""
+        import vtk, os, re
+
+        segNode.CreateClosedSurfaceRepresentation()
+        seg        = segNode.GetSegmentation()
+        segNameRaw = segNode.GetName()
+        segSafe    = re.sub(r"[^0-9A-Za-z_-]+", "_", segNameRaw)   # nom de la segmentation “sécurisé”
+
+        # matrice éventuelle de parent transform
+        parentMat = vtk.vtkMatrix4x4(); parentMat.Identity()
+        tr = segNode.GetParentTransformNode()
+        if tr:
+            tr.GetMatrixTransformToWorld(parentMat)
+
+        for segId in seg.GetSegmentIDs():
+            s = seg.GetSegment(segId)
+            poly = s.GetRepresentation("Closed surface")
+            if not poly or poly.GetNumberOfPoints() == 0:
+                continue
+
+            # --- pipeline nettoyage + lissage (inchangé) ----------------------
+            clean = vtk.vtkCleanPolyData(); clean.SetInputData(poly); clean.Update()
+            ws = vtk.vtkWindowedSincPolyDataFilter(); ws.SetInputConnection(clean.GetOutputPort())
+            ws.SetNumberOfIterations(60); ws.SetPassBand(0.05)
+            ws.BoundarySmoothingOn(); ws.FeatureEdgeSmoothingOn()
+            ws.NonManifoldSmoothingOn(); ws.NormalizeCoordinatesOn(); ws.Update()
+
+            flatN = vtk.vtkPolyDataNormals(); flatN.SetInputConnection(ws.GetOutputPort())
+            flatN.ComputePointNormalsOff(); flatN.ComputeCellNormalsOn()
+            flatN.SplittingOff(); flatN.AutoOrientNormalsOn()
+            flatN.ConsistencyOn(); flatN.SetFeatureAngle(180); flatN.Update()
+
+            rasT = vtk.vtkTransform(); rasT.SetMatrix(parentMat)
+            rasF = vtk.vtkTransformPolyDataFilter(); rasF.SetTransform(rasT); rasF.SetInputConnection(flatN.GetOutputPort()); rasF.Update()
+            lpsT = vtk.vtkTransform(); lpsT.Scale(-1, -1, 1)
+            lpsF = vtk.vtkTransformPolyDataFilter(); lpsF.SetTransform(lpsT); lpsF.SetInputConnection(rasF.GetOutputPort()); lpsF.Update()
+
+            # --- nom du fichier ------------------------------------------------
+            labelSafe = re.sub(r"[^0-9A-Za-z_-]+", "_", s.GetName())
+            outPath   = os.path.join(folderPath, f"{segSafe}_{labelSafe}.vtk")
+
+            # --- écriture ------------------------------------------------------
+            writer = vtk.vtkPolyDataWriter()
+            writer.SetFileName(outPath)
+            writer.SetInputData(lpsF.GetOutput())
+            writer.SetFileTypeToBinary()
+            writer.Write()
+
 
     def _exportToGLTF(self, segmentationNode, folderPath, tryInstall=True):
         try:
