@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME CMAKE_LINK_INTERFACE_LIBRARIES)
+set(MODULE_NAME CLIC)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
