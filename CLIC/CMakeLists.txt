@@ -4,7 +4,7 @@ set(MODULE_NAME CLIC)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  runner/clic_runenr.py
+  runner/clic_runner.py
 
 
 )
