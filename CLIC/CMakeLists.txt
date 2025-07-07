@@ -10,8 +10,8 @@ set(MODULE_PYTHON_SCRIPTS
 )
 
 set(MODULE_PYTHON_RESOURCES
-  Ressources/Icons/CLIC.png
-  Ressources/UI/CLIC.ui
+  Resources/Icons/CLIC.png
+  Resources/UI/CLIC.ui
 
 )
 
