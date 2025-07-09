@@ -108,7 +108,7 @@ class Registration_MRI2CBCT(Method):
             {
                 "Process": MRI2CBCT_RESAMPLE_REG,
                 "Parameter": parameter_mri2cbct_reg,
-                "Module": "MRI2CBCT registration",
+                "Module": "MRI2CBCT_REG",
             }
         )
            

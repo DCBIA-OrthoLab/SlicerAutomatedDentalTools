@@ -30,40 +30,7 @@ import zipfile
 import importlib.metadata
 
 from slicer import vtkMRMLScalarVolumeNode
-
-def check_lib_installed(lib_name, required_version=None):
-    try:
-        installed_version = importlib.metadata.version(lib_name)
-        if required_version and installed_version != required_version:
-            return False
-        return True
-    except importlib.metadata.PackageNotFoundError:
-        return False
-
-# import csv
-    
-def install_function():
-    libs = [('itk',None),('monai','0.7.0'),('einops',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2'),('nibabel',None),('itk-elastix',None),('connected-components-3d','3.9.1'),("pandas",None),("scikit-learn",None),("torch",None),("torchreg",None),("SimpleITK",None)]
-    libs_to_install = []
-    for lib, version in libs:
-        if not check_lib_installed(lib, version):
-            libs_to_install.append((lib, version))
-
-    if libs_to_install:
-        message = "The following libraries are not installed or need updating:\n"
-        message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
-        message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
-        user_choice = slicer.util.confirmYesNoDisplay(message)
-
-        if user_choice:
-            for lib, version in libs_to_install:
-                lib_version = f'{lib}=={version}' if version else lib
-                pip_install(lib_version)
-        else :
-          return False
-    import vtk
-    import itk
-    return True
+import platform
 #
 # MRI2CBCT
 #
@@ -192,6 +159,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._parameterNodeGuiTag = None
         self.processWasCanceled = False
         self.observerTags = []
+        self.all_installed = True
         
         
 
@@ -213,6 +181,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
         self.logic = MRI2CBCTLogic()
+
+        qt.QTimer.singleShot(100, self.onCheckRequirements)
         
         documentsLocation = qt.QStandardPaths.DocumentsLocation
         self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
@@ -1001,7 +971,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         folder path. It also runs a test on the downloaded model and shows a warning message
         if any errors occur.
         """
-        install_function()
 
         # To select the reference files (CBCT Orientation and Registration mode only)
         if name=="Segmentation" or name=="Orientation" :
@@ -1161,6 +1130,50 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         return out_path
     
+    def run_conda_tool(self):
+        module=self.list_Processes_Parameters[0]['Module']
+        print(f"in conda tool: {module} wants to run", )
+
+        args = self.list_Processes_Parameters[0]["Parameter"]
+        self.logic.check_cli_script(f"{module}")
+
+        conda_exe = self.logic.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{module}"]
+
+        for key, value in args.items():
+            print("key : ",key)
+            if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+                value = self.logic.windows_to_linux_path(value)
+            command.append(f"\"{value}\"")
+        print("command : ",command)
+        return command
+
+        # running in // to not block Slicer
+        process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+        process.start()
+        self.ui.LabelTimer.setHidden(False)
+        self.ui.LabelTimer.setText(f"Time : 0.00s")
+        previous_time = self.startTime
+        while process.is_alive():
+            slicer.app.processEvents()
+            current_time = time.time()
+            gap=current_time-previous_time
+            if gap>0.3:
+                currentTime = time.time() - self.startTime
+                previous_time = currentTime
+                if currentTime < 60:
+                    timer = f"Time : {int(currentTime)}s"
+                elif currentTime < 3600:
+                    timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                else:
+                    timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                
+                self.ui.LabelTimer.setText(timer)
+
+        del self.list_Processes_Parameters[0]
+
+
+
     def lrCropMRI2CBCT(self)->None:
         """
         This function is called when the button "pushButtonCropLR" is clicked.
@@ -1170,7 +1183,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         parameter passing, and process initiation, including setting up observers for process updates.
         """
         
-        install_function()
         LinEditMRISep = "None"
         LinEditCBCTSep = "None"
         
@@ -1206,17 +1218,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("module name : ",self.list_Processes_Parameters[0]["Module"])
         print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
         
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-        del self.list_Processes_Parameters[0]
+        self.process = self.run_conda_tool()
 
     def orientCBCT(self)->None:
         """
@@ -1227,7 +1229,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         and starts the processing pipeline if all checks pass. It handles the initial setup,
         parameter passing, and process initiation, including setting up observers for process updates.
         """
-        install_function()
         
         param = {"input_t1_folder":self.ui.LineEditCBCT.text,
                 "folder_output":self.ui.lineEditOutputOrientCBCT.text,
@@ -1253,18 +1254,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("module name : ",self.list_Processes_Parameters[0]["Module"])
         print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
         
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-
-        del self.list_Processes_Parameters[0]
+        self.process = self.run_conda_tool()
     
     def orientCenterMRI(self):
         """
@@ -1275,7 +1265,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         and starts the processing pipeline if all checks pass. It handles the initial setup, parameter passing,
         and process initiation, including setting up observers for process updates.
         """
-        install_function()
         if self.ui.checkBoxBilateralMRI.isChecked():
             z_spacing = self.ui.AcquisitionSpacing.value
         else:
@@ -1305,18 +1294,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("module name : ",self.list_Processes_Parameters[0]["Module"])
         print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
         
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-
-        del self.list_Processes_Parameters[0]
+        self.process = self.run_conda_tool()
         
     def resampleMRICBCT(self):
         """
@@ -1327,7 +1305,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         and starts the processing pipeline if all checks pass. The function handles the initial setup, parameter
         passing, and process initiation, including setting up observers for process updates.
         """
-        install_function()
         LineEditMRI = "None"
         LineEditT2MRI = "None"
         LineEditCBCT = "None"
@@ -1418,18 +1395,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("module name : ",self.list_Processes_Parameters[0]["Module"])
         print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
         
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-
-        del self.list_Processes_Parameters[0]
+        self.process = self.run_conda_tool()
         
     def updateSepLabel(self):
         """
@@ -1534,7 +1500,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         and process initiation, including setting up observers for process updates. The function also checks
         for normalization parameters and validates input folders for the presence of necessary files.
         """
-        install_function()
         param = {"folder_general": self.ui.LineEditOutput.text,
             "mri_folder": self.ui.lineEditRegMRI.text,
             "cbct_folder": self.ui.lineEditRegCBCT.text,
@@ -1577,19 +1542,10 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # /!\ Launch of the first process /!\
         print("module name : ",self.list_Processes_Parameters[0]["Module"])
         print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        print()
+        print()
         
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-
-        del self.list_Processes_Parameters[0]
+        self.process = self.run_conda_tool()
         
     def approximateMRI(self) -> None:
         """
@@ -1600,7 +1556,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         and process initiation, including setting up observers for process updates. The function also checks
         for normalization parameters and validates input folders for the presence of necessary files.
         """
-        install_function()
         
         param = {"cbct_folder": self.ui.lineEditApproxCBCT.text,
             "mri_folder": self.ui.lineEditApproxMRI.text,
@@ -1634,18 +1589,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("module name : ",self.list_Processes_Parameters[0]["Module"])
         print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
         
-        self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-        
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.processObserver = self.process.AddObserver(
-            "ModifiedEvent", self.onProcessUpdate
-        )
-
-        del self.list_Processes_Parameters[0]   
+        self.process = self.run_conda_tool()
         
     def onProcessStarted(self):
         """
@@ -1735,16 +1679,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 print(self.process.GetOutputText())
                 try:
                     print("name process : ",self.list_Processes_Parameters[0]["Process"])
-                    self.process = slicer.cli.run(
-                        self.list_Processes_Parameters[0]["Process"],
-                        None,
-                        self.list_Processes_Parameters[0]["Parameter"],
-                    )
-                    self.module_name = self.list_Processes_Parameters[0]["Module"]
-                    self.processObserver = self.process.AddObserver(
-                        "ModifiedEvent", self.onProcessUpdate
-                    )
-                    del self.list_Processes_Parameters[0]
+                    self.process = self.run_conda_tool()
                     # self.displayModule.progress = 0
                 except IndexError:
                     self.OnEndProcess()
@@ -1823,7 +1758,84 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         msg.exec_()
 
 
-    
+    def onCheckRequirements(self):
+        if not self.logic.isCondaSetUp:
+            messageBox = qt.QMessageBox()
+            text = textwrap.dedent("""
+            SlicerConda is not set up, please click 
+            <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
+            """).strip()
+            messageBox.information(None, "Information", text)
+            return False
+        
+        if platform.system() == "Windows":
+            self.ui.label_time.setHidden(False)
+            self.ui.label_time.setText(f"Checking if wsl is installed, this task may take a moments")
+            
+            if self.logic.testWslAvailable():
+                self.ui.label_time.setText(f"WSL installed")
+                if not self.logic.check_lib_wsl():
+                    self.ui.label_time.setText(f"Checking if the required librairies are installed, this task may take a moments")
+                    messageBox = qt.QMessageBox()
+                    text = textwrap.dedent("""
+                        WSL doesn't have all the necessary libraries, please download the installer 
+                        and follow the instructions 
+                        <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+                        for installation. The link may be blocked by Chrome, just authorize it.""").strip()
+
+                    messageBox.information(None, "Information", text)
+                    return False
+                
+            else : # if wsl not install, ask user to install it ans stop process
+                messageBox = qt.QMessageBox()
+                text = textwrap.dedent("""
+                    WSL is not installed, please download the installer and follow the instructions 
+                    <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+                    for installation. The link may be blocked by Chrome, just authorize it.""").strip()        
+
+                messageBox.information(None, "Information", text)
+                return False
+            
+        
+        ## MiniConda
+        self.ui.label_time.setText(f"Checking if miniconda is installed")
+        if "Error" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
+            messageBox = qt.QMessageBox()
+            text = textwrap.dedent("""
+            Code can't be launch. \nConda is not setup. 
+            Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
+            messageBox.information(None, "Information", text)
+            return False
+        
+        
+        ## shapeAXI
+        self.ui.label_time.setText(f"Checking if environnement exists")
+        if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
+            userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+            if userResponse :
+                start_time = time.time()
+                previous_time = start_time
+                formatted_time = self.format_time(0)
+                self.ui.label_time.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
+                process = self.logic.install_shapeaxi()
+                
+                while self.logic.process.is_alive():
+                    slicer.app.processEvents()
+                    formatted_time = self.update_ui_time(start_time, previous_time)
+                    self.ui.label_time.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
+            
+                start_time = time.time()
+                previous_time = start_time
+                formatted_time = self.format_time(0)
+                text = textwrap.dedent(f"""
+                Installation of librairies into the new environnement. 
+                This task may take a few minutes.\ntime: {formatted_time}""").strip()
+                self.ui.label_time.setText(text)
+            else:
+                return False
+        else:
+            self.ui.label_time.setText(f"Ennvironnement already exists")
+            
     
 
 
@@ -1845,6 +1857,132 @@ class MRI2CBCTLogic(ScriptedLoadableModuleLogic):
     def __init__(self) -> None:
         """Called when the logic class is instantiated. Can be used for initializing member variables."""
         ScriptedLoadableModuleLogic.__init__(self)
+        self.isCondaSetUp = False
+        self.conda = self.init_conda()
+        self.name_env = "shapeaxi"
+        self.cliNode = None
+        
+    def init_conda(self):
+        # check if CondaSetUp exists
+        try:
+            import CondaSetUp
+        except:
+            return False
+        self.isCondaSetUp = True
+        
+        # set up conda on windows with WSL
+        if platform.system() == "Windows":
+            from CondaSetUp import CondaSetUpCallWsl
+            return CondaSetUpCallWsl()
+        else:
+            from CondaSetUp import CondaSetUpCall
+            return CondaSetUpCall()
+        
+    def run_conda_command(self, target, command):
+        self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
+        self.process.start()
+        
+    def install_shapeaxi(self):
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+        
+        
+    def check_lib_wsl(self) -> bool:
+        # Ubuntu versions < 24.04
+        required_libs_old = ["libxrender1", "libgl1-mesa-glx"]
+        # Ubuntu versions >= 24.04
+        required_libs_new = ["libxrender1", "libgl1", "libglx-mesa0"]
+
+
+        all_installed = lambda libs: all(
+            subprocess.run(
+                f"wsl -- bash -c \"dpkg -l | grep {lib}\"", capture_output=True, text=True
+            ).stdout.encode("utf-16-le").decode("utf-8").replace("\x00", "").find(lib) >= 0
+            for lib in libs
+        )
+
+        return all_installed(required_libs_old) or all_installed(required_libs_new)
+    
+    def check_pythonpath_windows(self,file):
+        '''
+        Check if the environment env_name in wsl know the path to a specific file (ex : Crownsegmentationcli.py)
+        return : bool
+        '''
+        conda_exe = self.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
+        result = self.conda.condaRunCommand(command)
+        print("output CHECK python path: ", result)
+        if "True" in result :
+            return True
+        return False
+    
+    def give_pythonpath_windows(self):
+        '''
+        take the pythonpath of Slicer and give it to the environment name_env in wsl.
+        '''
+        paths = slicer.app.moduleManager().factoryManager().searchPaths
+        mnt_paths = []
+        for path in paths :
+            mnt_paths.append(f"\"{self.windows_to_linux_path(path)}\"")
+        pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
+        conda_exe = self.conda.getCondaExecutable()
+        argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
+        results = self.conda.condaRunCommand(argument)
+        print("output GIVE python path: ", results)
+        
+    def windows_to_linux_path(self,windows_path):
+        '''
+        convert a windows path to a wsl path
+        '''
+        windows_path = windows_path.strip()
+
+        path = windows_path.replace('\\', '/')
+
+        if ':' in path:
+            drive, path_without_drive = path.split(':', 1)
+            path = "/mnt/" + drive.lower() + path_without_drive
+
+        return path
+    
+    def check_cli_script(self,file):
+        if not self.check_pythonpath_windows(f"{file}"): 
+            self.give_pythonpath_windows()
+            results = self.check_pythonpath_windows(f"{file}")
+                        
+    def condaRunCommand(self, command: list[str]):
+        '''
+        Runs a command in a specified Conda environment, handling different operating systems.
+        
+        copy paste from SlicerConda and change the process line to be able to get the stderr/stdout 
+        and cancel the process without blocking slicer
+        '''
+        path_activate = self.conda.getActivateExecutable()
+
+        if path_activate=="None":
+            return "Path to conda no setup"
+
+        if platform.system() == "Windows":
+            command_execute = f"source {path_activate} {self.name_env} &&"
+            for com in command :
+                command_execute = command_execute+ " "+com
+
+            user = self.conda.getUser()
+            command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
+            print("command_to_execute in condaRunCommand : ",command_to_execute)
+
+            self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                                    text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
+                                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
+                                    )
+        else:
+            path_conda_exe = self.conda.getCondaExecutable()
+            command_execute = f"{path_conda_exe} run -n {self.name_env}"
+            for com in command :
+                command_execute = command_execute+ " "+com
+
+            print("command_to_execute in conda run : ",command_execute)
+            self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
+    
+        self.stdout, self.stderr = self.subpro.communicate()
 
     def getParameterNode(self):
         return MRI2CBCTParameterNode(super().getParameterNode())

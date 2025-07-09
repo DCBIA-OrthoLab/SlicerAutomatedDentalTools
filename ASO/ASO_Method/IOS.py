@@ -284,7 +284,6 @@ class Auto_IOS(Method):
             "occlusion": occlusion,
             "jaw": "/".join(jaw),
             "folder_error": path_error,
-            "log_path": kwargs["logPath"],
         }
 
         # parameter_pre_aso= {'input':path_seg,
@@ -646,7 +645,6 @@ class Semi_IOS(Auto_IOS):
             "occlusion": occlusion,
             "jaw": "/".join(jaw),
             "folder_error": path_error,
-            "log_path": kwargs["logPath"],
         }
 
         print("parameter", parameter)

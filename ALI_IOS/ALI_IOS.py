@@ -243,7 +243,7 @@ def main(args):
                     WriteJson(lm_lst,os.path.join(args.output_dir,f"{patient_id}_{jaw}_{models_type}_Pred.json"))
                     
                     with open(args.log_path, "r+") as log_f:
-                        log_f.write(str(1))
+                        log_f.write(patient_id)
 
 
 if __name__ == "__main__":

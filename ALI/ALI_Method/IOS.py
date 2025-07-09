@@ -266,7 +266,6 @@ class Auto_IOS(Method):
             "image_size": "224",
             "blur_radius": "0",
             "faces_per_pixel": "1",
-            "log_path": kwargs["logPath"],
         }
 
         print('-' * 70)

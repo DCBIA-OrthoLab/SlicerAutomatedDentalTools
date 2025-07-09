@@ -103,7 +103,7 @@ class Process_CBCT(Method):
             {
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso,
-                "Module": "Centering CBCT",
+                "Module": "PRE_ASO_CBCT",
                 # "Display": DisplayASOCBCT(nb_scan),
             }
         ]
@@ -135,7 +135,7 @@ class Process_CBCT(Method):
             {
                 "Process": AMASSSProcess,
                 "Parameter": parameter_amasss_seg_t1,
-                "Module": "AMASSS_CBCT Segmentation of CBCT",
+                "Module": "AMASSS_CLI",
                 # "Display": DisplayAMASSS(nb_scan, len(full_seg_struct)),
             }
         )

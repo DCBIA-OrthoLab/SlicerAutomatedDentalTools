@@ -113,10 +113,10 @@ def main(args):
     gold[UpperOrLower(gold_files[0])] = ReadSurf(gold_files[0])
     gold[UpperOrLower(gold_files[1])] = ReadSurf(gold_files[1])
 
-    if not os.path.exists(os.path.split(args.log_path[0])[0]):
-        os.mkdir(os.path.split(args.log_path[0])[0])
+    if not os.path.exists(os.path.split(args.log_path)[0]):
+        os.mkdir(os.path.split(args.log_path)[0])
 
-    with open(args.log_path[0], "w") as log_f:
+    with open(args.log_path, "w") as log_f:
         log_f.truncate(0)
 
     if args.occlusion[0].lower() == "true":
@@ -167,7 +167,7 @@ def main(args):
                 f"Error {str(tne)}, for this file {file_vtk}",
             )
 
-            with open(args.log_path[0], "r+") as log_f:
+            with open(args.log_path, "r+") as log_f:
                 log_f.write(str(index))
             continue
 
@@ -181,7 +181,7 @@ def main(args):
                 f"Error {str(nss)}, for this file {file_vtk}",
             )
 
-            with open(args.log_path[0], "r+") as log_f:
+            with open(args.log_path, "r+") as log_f:
                 log_f.write(str(index))
             continue
 
@@ -206,7 +206,7 @@ def main(args):
                 args.add_inname[0],
             )
 
-        with open(args.log_path[0], "r+") as log_f:
+        with open(args.log_path, "r+") as log_f:
             log_f.write(str(index))
 
 
@@ -225,7 +225,7 @@ if __name__ == "__main__":
     parser.add_argument("occlusion", nargs=1)
     parser.add_argument("jaw", nargs=1)
     parser.add_argument("folder_error", nargs=1)
-    parser.add_argument("log_path", nargs=1)
+    parser.add_argument("log_path", type=str)
 
     args = parser.parse_args()
     print(args)

@@ -106,7 +106,7 @@ class Preprocess_CBCT_MRI(Method):
             {
                 "Process": MRI2CBCT_RESAMPLE_CBCT_MRI,
                 "Parameter": parameter_mri2cbct_resample_cbct_mri,
-                "Module": "Resample files",
+                "Module": "MRI2CBCT_RESAMPLE_CBCT_MRI",
             }
         )
            

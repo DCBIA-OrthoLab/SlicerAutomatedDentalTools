@@ -42,94 +42,6 @@ from FlexReg_utils.orientation import orientation_f
 
 
 
-def check_lib_installed(lib_name, required_version=None):
-    '''
-    Check if the library is installed and meets the required version constraint (if any).
-    - lib_name: "torch"
-    - required_version: ">=1.10.0", "==0.7.0", "<2.0.0", etc.
-    '''
-    try:
-        if required_version:
-            # Use full requirement spec (e.g., "torch>=1.10.0")
-            pkg_resources.require(f"{lib_name}{required_version}")
-        else:
-            # Just check if it's installed
-            pkg_resources.get_distribution(lib_name)
-        return True
-    except (pkg_resources.DistributionNotFound, pkg_resources.VersionConflict) as e:
-        print(f"Version check failed: {e}")
-        return False
-
-# import csv
-
-def install_function(self,list_libs:list):
-    '''
-    Test the necessary libraries and install them with the specific version if needed
-    User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
-    '''
-    libs = list_libs
-    libs_to_install = []
-    libs_to_update = []
-    installation_errors = []
-    for lib, version_constraint,url in libs:
-        if not check_lib_installed(lib, version_constraint):
-            try:
-            # check if the library is already installed
-                if pkg_resources.get_distribution(lib).version:
-                    libs_to_update.append((lib, version_constraint))
-            except:
-                libs_to_install.append((lib, version_constraint))
-
-    if libs_to_install or libs_to_update:
-          message = "The following changes are required for the libraries:\n"
-
-          #Specify which libraries will be updated with a new version
-          #and which libraries will be installed for the first time
-          if libs_to_update:
-              message += "\n --- Libraries to update (version mismatch): \n"
-              message += "\n".join([f"{lib} (current: {pkg_resources.get_distribution(lib).version}) -> {version_constraint.replace('==','').replace('<=','').replace('>=','').replace('<','').replace('>','')}" for lib, version_constraint in libs_to_update])
-              message += "\n"
-          if libs_to_install:
-
-              message += "\n --- Libraries to install:  \n"
-          message += "\n".join([f"{lib}{version_constraint}" if version_constraint else lib for lib, version_constraint in libs_to_install])
-
-          message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
-          message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
-
-          user_choice = slicer.util.confirmYesNoDisplay(message)
-
-          if user_choice:
-            try:
-                for lib, version_constraint in libs_to_install + libs_to_update:
-                    if not version_constraint:
-                        pip_install(lib)
-
-                    elif "https:/" in version_constraint:
-                        print("version_constraint", version_constraint)
-                        # download the library from the url
-                        pip_install(version_constraint)
-                    else:
-                        print("version_constraint else", version_constraint)
-                        lib_version = f'{lib}{version_constraint}' if version_constraint else lib
-                        pip_install(lib_version)
-
-                return True
-            except Exception as e:
-                    installation_errors.append((lib, str(e)))
-
-            if installation_errors:
-                error_message = "The following errors occured during installation:\n"
-                error_message += "\n".join([f"{lib}: {error}" for lib, error in installation_errors])
-                slicer.util.errorDisplay(error_message)
-                return False
-          else :
-            return False
-
-    else:
-        return True
-
-
 #
 # FlexReg
 #
@@ -603,11 +515,21 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         
         parameters["lower_arch"] = self.lower_arch
 
+        module='FlexReg_CLI'
 
+        self.check_cli_script(module)
+        conda_exe = self.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"{module}"]
 
-        flybyProcess = slicer.modules.flexreg_cli
-        self.cliNode = slicer.cli.run(flybyProcess,None, parameters)  
-        return flybyProcess
+        for key, value in parameters.items():
+            print("key : ", key)
+            if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+                value = self.windows_to_linux_path(value)
+            command.append(f"\"{value}\"")
+        print("command : ",command)
+
+        return command
+
     
     def init_conda(self):
         # check if CondaSetUp exists
@@ -650,14 +572,6 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
 
         self.run_conda_command(target=self.conda.condaRunCommand, command=(command,))
         
-    def setup_cli_command(self):
-        args = self.find_cli_parameters()
-        conda_exe = self.conda.getCondaExecutable()
-        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"FlexReg_CLI"]
-        for arg in args :
-            command.append("\""+arg+"\"")
-
-        self.run_conda_command(target=self.condaRunCommand, command=(command,))
         
     def check_lib_wsl(self) -> bool:
         # Ubuntu versions < 24.04
@@ -716,15 +630,11 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
 
         return path
     
-    def check_cli_script(self):
-        if not self.check_pythonpath_windows("FlexReg_CLI"): 
+    def check_cli_script(self,file):
+        if not self.check_pythonpath_windows(f"{file}"): 
             self.give_pythonpath_windows()
-            results = self.check_pythonpath_windows("FlexReg_CLI")
-            
-        if not self.check_pythonpath_windows("CrownSegmentationcli"):
-            self.give_pythonpath_windows()
-            results = self.check_pythonpath_windows("CrownSegmentationcli")
-            
+            results = self.check_pythonpath_windows(f"{file}")
+                        
     def condaRunCommand(self, command: list[str]):
         '''
         Runs a command in a specified Conda environment, handling different operating systems.
@@ -910,11 +820,25 @@ class Reg:
                             suffix,
                             0,
                             lower_arch)
-                self.logic.process()
+                command = self.logic.process()
 
-                self.start_time = time.time()
-                self.timer.timeout.connect(self.onProcessUpdateICP)
-                self.timer.start(500)
+                self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+                self.process.start()
+                previous_time = self.start_time
+                while self.process.is_alive():
+                    slicer.app.processEvents()
+                    current_time = time.time()
+                    gap=current_time-previous_time
+                    if gap>0.3:
+                        currentTime = time.time() - self.start_time
+                        previous_time = currentTime
+                        if currentTime < 60:
+                            timer = f"Time : {int(currentTime)}s"
+                        elif currentTime < 3600:
+                            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                        else:
+                            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                        
 
             else:
                 slicer.util.infoDisplay("Create patch on T1 and T2 before registration")
@@ -1240,6 +1164,9 @@ class WidgetParameter:
         self.layout_label_display.addWidget(self.label_sep)
         self.label_sep.setVisible(True)
 
+
+        qt.QTimer.singleShot(100, self.onCheckRequirements)
+
         
 
     def handleStackedWidgetChange(self, index):
@@ -1318,10 +1245,31 @@ class WidgetParameter:
                         "None",
                         "None",
                         index)
-        self.logic.process()
+        command = self.logic.process()
+
+
+        self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+        self.process.start()
+        self.label_time.setHidden(False)
+        self.label_time.setText(f"time : 0.00s")
         self.start_time = time.time()
-        self.timer.timeout.connect(self.onProcessUpdateDelete)
-        self.timer.start(500)
+
+        previous_time = self.start_time
+        while self.process.is_alive():
+            slicer.app.processEvents()
+            current_time = time.time()
+            gap=current_time-previous_time
+            if gap>0.3:
+                currentTime = time.time() - self.start_time
+                previous_time = currentTime
+                if currentTime < 60:
+                    timer = f"Time : {int(currentTime)}s"
+                elif currentTime < 3600:
+                    timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                else:
+                    timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                
+                self.label_time.setText(timer)
         
     def DownloadUnzip(
         self, url, directory, folder_name=None, num_downl=1, total_downloads=1
@@ -1474,19 +1422,7 @@ class WidgetParameter:
         
         # Install the libraries only if it's the first time
         if not FlexRegBootManager.booted:
-            check_env = self.onCheckRequirements()
-            is_installed = False
-            print(check_env)
-            if check_env:
-                if platform.system() == "Windows":
-                    list_libs_windows = [('numpy',"<2.0",None),('itk',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
-                    is_installed = install_function(self,list_libs_windows)
-                    
-                else:
-                    list_libs_linux = [('numpy',"<2.0",None),('itk',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
-                    is_installed = install_function(self,list_libs_linux)
-                    
-            if not is_installed:
+            if not self.all_installed:
                 qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
                 return
             
@@ -1741,39 +1677,21 @@ class WidgetParameter:
         process.start()
         self.label_time.setVisible(True)
         self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: 0.0s")
-        start_time = time.time()
-        previous_time = start_time
+        self.start_time = time.time()
+        previous_time = self.start_time
         while process.is_alive():
             slicer.app.processEvents()
             current_time = time.time()
             gap=current_time-previous_time
             if gap>0.3:
                 previous_time = current_time
-                elapsed_time = current_time - start_time
+                elapsed_time = current_time - self.start_time
                 self.label_time.setText(f"Your file wasn't segmented.\nSegmentation in process. This task may take a few minutes.\ntime: {elapsed_time:.1f}s")
         
         self.viewScan()
 
         return True
 
-    def parall_process(self,function,arguments=[],message=""):
-        '''
-        to be able to run function in parralle with a message
-        '''
-        process = threading.Thread(target=function, args=tuple(arguments)) #run in paralle to not block slicer
-        process.start()
-        start_time = time.time()
-        previous_time = time.time()
-        self.label_time.setVisible(True)
-        self.label_time.setText(f"{message}\ntime: 0s")
-        while process.is_alive():
-          slicer.app.processEvents()
-          current_time = time.time()
-          gap=current_time-previous_time
-          if gap>0.3:
-              previous_time = current_time
-              elapsed_time = current_time - start_time
-              self.label_time.setText(f"{message}\ntime: {elapsed_time:.1f}s")
               
     def onCheckRequirements(self):
         self.label_time.setHidden(False)
@@ -1899,47 +1817,6 @@ class WidgetParameter:
             formatted_time = self.format_time(self.elapsed_time)
             return formatted_time
 
-    def shapeaxi(self):
-        '''
-        run shapeaxi (segmentation of the crown, dentalmodelseg) in slicer (for Linux system)
-        '''
-        slicer_path = slicer.app.applicationDirPath()
-        dentalmodelseg_path = os.path.join(slicer_path,"..","lib","Python","bin","dentalmodelseg")
-
-        moduleName = "CrownSegmentation"
-        moduleAvailable = moduleName in slicer.app.moduleManager().modulesNames()
-        self._processed2 = False
-        if moduleAvailable : 
-            parameters = {
-                "surf" :self.lineedit.text,
-                "input_csv":"None",
-                "out" : "None",
-                "overwrite":"1",
-                "model": "latest",
-                "crown_segmentation" : "0",
-                "array_name":"Universal_ID",
-                "fdi":"0",
-                "suffix":"None",
-                "vtk_folder":os.path.dirname(self.lineedit.text),
-                "dentalmodelseg_path":dentalmodelseg_path
-            }
-            self.start_time = time.time()
-            flybyProcess = slicer.modules.crownsegmentationcli
-            self.start_time = time.time()
-            try:
-                self.timer.timeout.disconnect()
-            except TypeError:
-                pass
-            self.timer.timeout.connect(self.onProcessUpdateSeg)
-            self.timer.start(500)
-            self.seg_clinode = slicer.cli.run(flybyProcess,None, parameters)    
-            
-            self._segmentationCompleted = False
-            while not self._segmentationCompleted:
-                slicer.app.processEvents()  # Process GUI events
-            return True
-            
-        return True
 
             
     def onProcessUpdateSeg(self):
@@ -1995,14 +1872,29 @@ class WidgetParameter:
                             "None",
                             index,
                             "None")
-                self.logic.process()
+                command = self.logic.process()
+
+                self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+                self.process.start()
+                self.label_time.setHidden(False)
+                self.label_time.setText(f"time : 0.00s")
                 self.start_time = time.time()
-                try:
-                    self.timer.timeout.disconnect()
-                except TypeError:
-                    pass
-                self.timer.timeout.connect(self.onProcessUpdateButterfly)
-                self.timer.start(500)
+                previous_time = self.start_time
+                while self.process.is_alive():
+                    slicer.app.processEvents()
+                    current_time = time.time()
+                    gap=current_time-previous_time
+                    if gap>0.3:
+                        currentTime = time.time() - self.start_time
+                        previous_time = currentTime
+                        if currentTime < 60:
+                            timer = f"Time : {int(currentTime)}s"
+                        elif currentTime < 3600:
+                            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                        else:
+                            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                        
+                        self.label_time.setText(timer)
         else :
             slicer.util.infoDisplay(f"Load a vtk file in window number : {self.title} \nTo do this, enter the path to a vtk file and click on view.")
 
@@ -2252,15 +2144,29 @@ class WidgetParameter:
                         "None",
                         index,
                         "None")
-            self.logic.process()
+            command = self.logic.process()
 
+            self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+            self.process.start()
+            self.label_time.setHidden(False)
+            self.label_time.setText(f"time : 0.00s")
             self.start_time = time.time()
-            try:
-                self.timer.timeout.disconnect()
-            except TypeError:
-                pass
-            self.timer.timeout.connect(self.onProcessUpdateCurve)
-            self.timer.start(500)
+            previous_time = self.start_time
+            while self.process.is_alive():
+                slicer.app.processEvents()
+                current_time = time.time()
+                gap=current_time-previous_time
+                if gap>0.3:
+                    currentTime = time.time() - self.start_time
+                    previous_time = currentTime
+                    if currentTime < 60:
+                        timer = f"Time : {int(currentTime)}s"
+                    elif currentTime < 3600:
+                        timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                    else:
+                        timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                    
+                    self.label_time.setText(timer)
 
         else :
             slicer.util.infoDisplay(f"Load a vtk file in window number : {self.title} \nTo do this, enter the path to a vtk file and click on view.")
@@ -2363,7 +2269,8 @@ class WidgetParameter:
         '''
         Check if a Butterfly1 exist, if no disable the display of the combobox
         '''
-        import torch
+        # import torch
+        import numpy as np
         index = 1
         final_array = None
 
@@ -2372,13 +2279,13 @@ class WidgetParameter:
             
             if self.isButterflyPatchAvailable(polydata,array_name):
                 current_array = polydata.GetPointData().GetArray(array_name)
-                current_tensor = torch.tensor(vtk_to_numpy(current_array)).to(torch.float32).cuda()
+                current_tensor = vtk_to_numpy(current_array)
                 
                 if final_array is None:
                     final_array = current_tensor
                 else:
                     # Utiliser une opération OR pour combiner les patches
-                    final_array = torch.logical_or(final_array, current_tensor).to(torch.float32)
+                    final_array = np.logical_or(final_array, current_tensor)
                 
                 index += 1
             else:

@@ -3,7 +3,7 @@ import json
 import numpy as np
 import torch
 import SimpleITK as sitk
-from monai.transforms import Compose, AddChannel, BorderPad, ScaleIntensity, SpatialCrop
+from monai.transforms import Compose, AddChannel, BorderPad, ScaleIntensity, SpatialCrop, ToTensord
 
 from ALI_CBCT_utils.constants import LABELS, LABEL_GROUPS, SCALE_KEYS, DEVICE, bcolors
 from ALI_CBCT_utils.io import WriteJson, GenControlPoint
@@ -50,7 +50,10 @@ class Environment :
             data = {"path":path}
             img = sitk.ReadImage(path)
             img_ar = sitk.GetArrayFromImage(img)
-            data["image"] = torch.from_numpy(self.transform(img_ar)).type(torch.int16)
+            transformed_img = self.transform(img_ar)
+            if isinstance(transformed_img, np.ndarray):
+                transformed_img = torch.from_numpy(transformed_img).type(torch.int16)
+            data["image"] = transformed_img #torch.from_numpy().type(torch.int16)
 
             data["spacing"] = np.array(img.GetSpacing())
             origin = img.GetOrigin()

@@ -348,7 +348,6 @@ class Auto_IOS(Method):
             "occlusion": "true" if self.IsLower(kwargs["input_t1_folder"]) else "false",
             "jaw": "Upper",
             "folder_error": path_error,
-            "log_path": kwargs["logPath"],
         }
 
         parameter_pre_aso_T2 = {
@@ -360,7 +359,6 @@ class Auto_IOS(Method):
             "occlusion": "true" if self.IsLower(kwargs["input_t2_folder"]) else "false",
             "jaw": "Upper",
             "folder_error": path_error,
-            "log_path": kwargs["logPath"],
         }
 
         parameter_reg = {
@@ -369,7 +367,6 @@ class Auto_IOS(Method):
             "output": kwargs["folder_output"],
             "model": self.getModel(kwargs["model_folder_3"], extension="ckpt"),
             "suffix": kwargs["add_in_namefile"],
-            "log_path": kwargs["logPath"],
         }
 
         print('-' * 70)
@@ -382,9 +379,9 @@ class Auto_IOS(Method):
         print("parameter reg", parameter_reg)
         print('-' * 70)
 
-        PreOrientProcess = slicer.modules.pre_aso_ios
-        SegProcess = slicer.modules.crownsegmentationcli
-        RegProcess = slicer.modules.areg_ios
+        PreOrientProcess = 'PRE_ASO_IOS'
+        SegProcess = 'CrownSegmentationcli'
+        RegProcess = 'AREG_IOS'
 
         numberscan = self.NumberScan(
             kwargs["input_t1_folder"], kwargs["input_t2_folder"]
@@ -393,7 +390,7 @@ class Auto_IOS(Method):
             {
                 "Process": SegProcess,
                 "Parameter": parameter_segteeth_T1,
-                "Module": "CrownSegmentationcli T1",
+                "Module": "CrownSegmentationcli",
                 "Display": DisplayCrownSeg(
                     number_scan_toseg_T1, kwargs["logPath"], "T1 Scan"
                 ),
@@ -401,7 +398,7 @@ class Auto_IOS(Method):
             {
                 "Process": SegProcess,
                 "Parameter": parameter_segteeth_T2,
-                "Module": "CrownSegmentationcli T2",
+                "Module": "CrownSegmentationcli",
                 "Display": DisplayCrownSeg(
                     number_scan_toseg_T2, kwargs["logPath"], "T2 Scan"
                 ),
@@ -409,13 +406,13 @@ class Auto_IOS(Method):
             {
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso_T1,
-                "Module": "PRE_ASO_IOS T1",
+                "Module": "PRE_ASO_IOS",
                 "Display": DisplayASOIOS(numberscan, kwargs["logPath"], "T1 Patient"),
             },
             {
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso_T2,
-                "Module": "PRE_ASO_IOS T2",
+                "Module": "PRE_ASO_IOS",
                 "Display": DisplayASOIOS(numberscan, kwargs["logPath"], "T2 Patient"),
             },
             {
@@ -470,11 +467,10 @@ class Semi_IOS(Auto_IOS):
             "output": kwargs["folder_output"],
             "model": self.getModel(kwargs["model_folder_3"], extension="ckpt"),
             "suffix": kwargs["add_in_namefile"],
-            "log_path": kwargs["logPath"],
         }
 
         print("parameter", parameter_reg)
-        RegProcess = slicer.modules.areg_ios
+        RegProcess = 'AREG_IOS'
         numberscan = self.NumberScan(
             kwargs["input_t1_folder"], kwargs["input_t2_folder"]
         )
