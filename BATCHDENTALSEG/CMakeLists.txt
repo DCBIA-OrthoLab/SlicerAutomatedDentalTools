@@ -19,6 +19,7 @@ set(MODULE_PYTHON_SCRIPTS
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/DentalSegmentator.png
   Resources/Icons/DentalSegmentator_full_icon.png
+  Resources/Icons/DentalSegmentator_full_icon_2.png
   Resources/Icons/info.png
   Resources/Icons/loading.gif
   Resources/Icons/start_icon.png

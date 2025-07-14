@@ -2,7 +2,7 @@ import slicer
 from slicer.ScriptedLoadableModule import *
 
 from BATCHDENTALSEGLib import SegmentationWidget
-
+from BATCHDENTALSEGLib.IconPath import icon
 
 class BATCHDENTALSEG(ScriptedLoadableModule):
     def __init__(self, parent):
@@ -11,6 +11,7 @@ class BATCHDENTALSEG(ScriptedLoadableModule):
         self.parent.title = tr("BatchDentalSegmentator")
         self.parent.categories = [translate("qSlicerAbstractCoreModule", "Automated Dental Tools")]
         self.parent.dependencies = []
+        self.parent.icon = icon("DentalSegmentator_full_icon_2.png")  
         self.parent.contributors = [
             "Enzo Tulissi (UoM)",
             "Gauthier DOT (AP-HP)",
@@ -44,7 +45,7 @@ class BATCHDENTALSEGWidget(ScriptedLoadableModuleWidget):
         self.layout.addStretch()
 
 
-class BATCHDENTALSEGTest(ScriptedLoadableModuleTest):
+class DentalSegmentatorTest(ScriptedLoadableModuleTest):
     def runTest(self):
         try:
             from SlicerPythonTestRunnerLib import RunnerLogic, RunnerWidget, RunSettings, isRunningInTestMode
@@ -64,3 +65,4 @@ class BATCHDENTALSEGTest(ScriptedLoadableModuleTest):
             raise AssertionError(f"Test failed: \n{results.getFailingCasesString()}")
 
         slicer.util.delayDisplay(f"Tests OK. {results.getSummaryString()}")
+
