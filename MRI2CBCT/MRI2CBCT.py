@@ -9,6 +9,7 @@ from MRI2CBCT_utils.Preprocess_CBCT_MRI import Preprocess_CBCT_MRI
 from MRI2CBCT_utils.Reg_MRI2CBCT import Registration_MRI2CBCT
 from MRI2CBCT_utils.Approx_MRI2CBCT import Approximation_MRI2CBCT
 from MRI2CBCT_utils.LR_crop import LR_CROP_MRI2CBCT
+from MRI2CBCT_utils.TMJ_crop import TMJ_CROP_MRI2CBCT
 import time 
 
 
@@ -28,6 +29,7 @@ import shutil
 import urllib
 import zipfile
 import importlib.metadata
+from pathlib import Path
 
 from slicer import vtkMRMLScalarVolumeNode
 
@@ -228,6 +230,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.registration_mri2cbct = Registration_MRI2CBCT(self)
         self.approximate_mri2cbct = Approximation_MRI2CBCT(self)
         self.lr_crop_mri2cbct = LR_CROP_MRI2CBCT(self)
+        self.tmj_crop_mri2cbct = TMJ_CROP_MRI2CBCT(self)
 
         # Connections
         #        LineEditOutputReg
@@ -261,6 +264,20 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.lineEditSepMRI.textChanged.connect(self.updateSepLabel)
         self.ui.lineEditSepSeg.textChanged.connect(self.updateSepLabel)
         self.ui.pushButtonCropLR.connect("clicked(bool)", self.lrCropMRI2CBCT)
+        
+        
+        ### TMJ Cropping ###
+        self.ui.SearchButtonTMJCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCTTMJ"))
+        self.ui.SearchButtonTMJMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRITMJ"))
+        self.ui.SearchButtonTMJSeg.connect("clicked(bool)",partial(self.openFinder,"InputSegTMJ"))
+        self.ui.SearchButtonTMJOut.connect("clicked(bool)",partial(self.openFinder,"OutputTMJ"))
+        self.ui.pushButtonDownloadModelTMJ.pressed.connect(
+            lambda: self.downloadTMJModel(
+                self.ui.lineEditTMJModel
+            )
+        )
+        self.ui.pushButtonSearchModelTMJ.connect("clicked(bool)",partial(self.openFinder,"InputTMJModel"))
+        self.ui.pushButtonCropTMJ.connect("clicked(bool)", self.tmjCropMRI2CBCT)
         
         
         
@@ -342,6 +359,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.labelT2Seg.setVisible(False)
         self.ui.lineEditResampleT2Seg.setVisible(False)
         self.ui.SearchButtonResampleT2Seg.setVisible(False)
+        self.ui.labelBarNotWorking.setVisible(False)
         
         self.ui.comboBoxRegMRI.setCurrentIndex(1)
         self.ui.comboBoxRegMRI.setEnabled(False)
@@ -880,7 +898,77 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.frame_4.setVisible(expanded)
         elif name == "Approx":
             self.ui.frame_5.setVisible(expanded)
+            
+    def downloadTMJModel(self, lineEdit):
+        """
+        Download a model from the Slicer Models repository and set the path in the specified line edit.
+
+        Parameters:
+        - lineEdit: The QLineEdit widget where the model path will be set.
+        """
+        foldPath, is_installed = self.install_nnunet()
+        if is_installed:
+            self.ui.lineEditTMJModel.setText(foldPath)
+        else:
+            slicer.util.errorDisplay("Failed to download TMJ model.")
+            
+    def download_file_with_progress(self, url, dest_path, label="Downloading..."):
+        dest_path = Path(dest_path)
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with urllib.request.urlopen(url) as response, open(dest_path, "wb") as out_file:
+            progress = qt.QProgressDialog(
+                f"{label}: {dest_path.name}", "Cancel", 0, 100, self.parent)
+            progress.setCancelButton(None)
+            progress.setWindowModality(qt.Qt.WindowModal)
+            progress.setWindowTitle("Downloading model file...")
+            progress.show()
+
+            length = response.info().get("Content-Length")
+            if length:
+                length = int(length)
+                blocksize = max(4096, length // 100)
+                read = 0
+                while True:
+                    buffer = response.read(blocksize)
+                    if not buffer:
+                        break
+                    read += len(buffer)
+                    out_file.write(buffer)
+                    progress.setValue(read * 100.0 / length)
+                    qt.QApplication.processEvents()
+            else:
+                out_file.write(response.read())  # No progress bar fallback
                 
+    def install_nnunet(self) -> bool:
+        # Set up base and fold paths
+        basePath = Path(self.SlicerDownloadPath).joinpath("ML", "Dataset001_myseg", "nnUNetTrainer__nnUNetResEncUNetXLPlans__3d_fullres").resolve()
+        foldPath = basePath.joinpath("fold_0")
+        foldPath.mkdir(parents=True, exist_ok=True)
+
+        # Define destination paths
+        checkpoint_path = foldPath.joinpath("checkpoint_final.pth")
+        dataset_json_path = basePath.joinpath("dataset.json")
+        plans_json_path = basePath.joinpath("plans.json")
+
+        # Define URLs
+        url_checkpoint = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/TMJ_CROP_MODEL/checkpoint_final.pth"
+        url_dataset = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/TMJ_CROP_MODEL/dataset.json"
+        url_plans = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/TMJ_CROP_MODEL/plans.json"
+
+        # Download files if missing
+        if not checkpoint_path.exists():
+            self.download_file_with_progress(url_checkpoint, checkpoint_path, label="Downloading checkpoint")
+
+        if not dataset_json_path.exists():
+            self.download_file_with_progress(url_dataset, dataset_json_path, label="Downloading dataset.json")
+
+        if not plans_json_path.exists():
+            self.download_file_with_progress(url_plans, plans_json_path, label="Downloading plans.json")
+
+        # If everything exists, return True
+        return basePath, (checkpoint_path.exists() and dataset_json_path.exists() and plans_json_path.exists())
+
     def openFinder(self,nom : str,_) -> None : 
         """
          Open finder to let the user choose is files or folder
@@ -989,7 +1077,26 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         elif nom=="OutputSep":
             surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
             self.ui.lineEditSepOut.setText(surface_folder)
+            
+        elif nom=="InputCBCTTMJ":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditCropTMJCBCT.setText(surface_folder)
+        
+        elif nom=="InputMRITMJ":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditCropTMJMRI.setText(surface_folder)
+            
+        elif nom=="InputSegTMJ":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditCropTMJSeg.setText(surface_folder)
+            
+        elif nom=="OutputTMJ":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+            self.ui.lineEditCropTMJOut.setText(surface_folder)
 
+        elif nom=="InputTMJModel":
+            surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a model folder")
+            self.ui.lineEditTMJModel.setText(surface_folder)
         
         
     def downloadModel(self, lineEdit, name, test,_):
@@ -1166,6 +1273,68 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             os.remove(temp_path)
 
         return out_path
+    
+    def tmjCropMRI2CBCT(self)->None:
+        """
+        This function is called when the button "pushButtonCropTMJ" is clicked.
+        It crops the TMJ on both the Right and Left of MRI, CBCT, and segmentation images and initiates the processing pipeline.
+        This function sets up the parameters for MRI and CBCT separation, tests the process and scan,
+        and starts the processing pipeline if all checks pass. It handles the initial setup,
+        parameter passing, and process initiation, including setting up observers for process updates.
+        """
+        
+        install_function()
+        param = {
+            "cbct_folder": self.ui.lineEditCropTMJCBCT.text,
+            "mri_folder": self.ui.lineEditCropTMJMRI.text,
+            "seg_folder": self.ui.lineEditCropTMJSeg.text,
+            "output_folder": self.ui.lineEditCropTMJOut.text,
+            "model_folder": self.ui.lineEditTMJModel.text,
+        }
+        
+        ok,mess = self.tmj_crop_mri2cbct.TestProcess(**param)
+        if not ok :
+            self.showMessage(mess)
+            return
+        
+        ok,mess = self.tmj_crop_mri2cbct.TestScan(param["cbct_folder"])
+        if not ok :
+            self.showMessage(mess)
+            return
+        ok,mess = self.tmj_crop_mri2cbct.TestScan(param["mri_folder"])
+        if not ok :
+            self.showMessage(mess)
+            return
+        ok,mess = self.tmj_crop_mri2cbct.TestScan(param["seg_folder"])
+        if not ok :
+            self.showMessage(mess)
+            return
+        ok,mess = self.tmj_crop_mri2cbct.TestModel(param["model_folder"])
+        if not ok :
+            self.showMessage(mess)
+            return
+        
+        self.list_Processes_Parameters = self.tmj_crop_mri2cbct.Process(**param)
+        
+        self.onProcessStarted()
+        
+        # /!\ Launch of the first process /!\
+        print("module name : ",self.list_Processes_Parameters[0]["Module"])
+        print("Parameters TMJ Crop: ",self.list_Processes_Parameters[0]["Parameter"])
+        
+        self.process = slicer.cli.run(
+                self.list_Processes_Parameters[0]["Process"],
+                None,
+                self.list_Processes_Parameters[0]["Parameter"],
+            )
+        
+        self.ui.labelBarNotWorking.setVisible(True)
+        
+        self.module_name = self.list_Processes_Parameters[0]["Module"]
+        self.processObserver = self.process.AddObserver(
+            "ModifiedEvent", self.onProcessUpdate
+        )
+        del self.list_Processes_Parameters[0]
     
     def lrCropMRI2CBCT(self)->None:
         """
@@ -1814,7 +1983,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onCancel(self):
         self.processWasCanceled = True
         self.process.Cancel()
-        print("\n\n ========= PROCESS MANUALLY CANCELED ========= \n")
+        print("\n\n ========= PROCESS CANCELED ========= \n")
         self.ui.label_info.setText("Process was canceled.")
         self.RunningUI(False)
         
@@ -1824,6 +1993,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.label_time.setVisible(run)
         self.ui.label_info.setVisible(run)
         self.ui.pushButtonCancelProcess.setVisible(run)
+        self.ui.labelBarNotWorking.setVisible(False)
         
     def showMessage(self,mess):
         msg = QMessageBox()
