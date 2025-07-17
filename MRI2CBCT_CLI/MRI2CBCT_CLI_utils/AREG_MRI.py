@@ -122,9 +122,9 @@ def registration(cbct_folder,mri_folder,cbct_mask_folder,output_folder,mri_origi
 
             cbct_mask_path = get_corresponding_file(cbct_mask_folder, patient_id, "_CBCT_")
 
-            process_images(mri_path, cbct_mask_path, output_folder,patient_id,mri_path_original,)
+            process_images(mri_path, cbct_mask_path, output_folder, patient_id, mri_path_original,)
 
-def process_images(mri_path, cbct_mask_path, output_folder, patient_id,mri_path_original):
+def process_images(mri_path, cbct_mask_path, output_folder, patient_id, mri_path_original):
     """
     Processes MRI and CBCT mask images, performs registration, and saves the results.
 
@@ -143,8 +143,8 @@ def process_images(mri_path, cbct_mask_path, output_folder, patient_id,mri_path_
     """
     
     try : 
-        mri_path = itk.imread(mri_path, itk.F)
-        cbct_mask_path = itk.imread(cbct_mask_path, itk.F)
+        mri_image = itk.imread(mri_path, itk.F)
+        cbct_mask_image = itk.imread(cbct_mask_path, itk.F)
     except KeyError as e:
         print(f"An error occurred while reading the images of the patient : {patient_id}")
         print(e)
@@ -154,7 +154,7 @@ def process_images(mri_path, cbct_mask_path, output_folder, patient_id,mri_path_
     Transforms = []
 
     try : 
-        TransformObj_Fine = ElastixReg(cbct_mask_path, mri_path, initial_transform=None)
+        TransformObj_Fine = ElastixReg(cbct_mask_image, mri_image, initial_transform=None)
     except Exception as e:
         print(f"An error occurred during the registration process on the patient {patient_id} :")
         print(e)
@@ -170,9 +170,18 @@ def process_images(mri_path, cbct_mask_path, output_folder, patient_id,mri_path_
     output_image_path_transform = os.path.join(output_folder,os.path.basename(mri_path_original).replace('.nii.gz', f'_reg_transform.tfm'))
     
     sitk.WriteTransform(transform, output_image_path_transform)
-    
 
-
+    original_mri_sitk = sitk.ReadImage(mri_path_original)
+    transformed_mri = sitk.Resample(
+        original_mri_sitk,
+        original_mri_sitk,  # Use same geometry as reference
+        transform,
+        sitk.sitkLinear,
+        0.0,
+        original_mri_sitk.GetPixelID()
+    )
+    sitk.WriteImage(transformed_mri, output_image_path)
+    print(f"Saved transformed MRI to {output_image_path}\n\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='AREG MRI folder')
