@@ -45,7 +45,7 @@ def GetPatients(file_path:str,matrix_path:str):
         files = []
 
         if Path(file_path).is_dir():
-            files_original = search(file_path,'.vtk','.vtp','.stl','.off','.obj','.nii.gz','.nrrd', '.mrk.json')
+            files_original = search(file_path,'.vtk','.vtp','.stl','.off','.obj', '.nii','.nii.gz','.nrrd', '.mrk.json')
             files = []
             for i in range(len(files_original['.vtk'])):
                 files.append(files_original['.vtk'][i])
@@ -61,6 +61,9 @@ def GetPatients(file_path:str,matrix_path:str):
 
             for i in range(len(files_original['.obj'])):
                 files.append(files_original['.obj'][i])
+                
+            for i in range(len(files_original['.nii'])):
+                files.append(files_original['.nii'][i])
 
             for i in range(len(files_original['.nii.gz'])):
                 files.append(files_original['.nii.gz'][i])
@@ -93,7 +96,7 @@ def GetPatients(file_path:str,matrix_path:str):
             except :
                 print("not a .nii.gz")
 
-            if extension ==".vtk" or extension ==".vtp" or extension ==".stl" or extension ==".off" or extension ==".obj" or extension==".nii.gz" or extension==".nrrd" or extension==".mrk.json":
+            if extension ==".vtk" or extension ==".vtp" or extension ==".stl" or extension ==".off" or extension ==".obj" or extension==".nii" or extension==".nii.gz" or extension==".nrrd" or extension==".mrk.json":
                 files = [file_path]
                 file_pat = os.path.basename(file_path).split('_Seg')[0].split('_seg')[0].split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0].replace('.','')
                 for i in range(50):
