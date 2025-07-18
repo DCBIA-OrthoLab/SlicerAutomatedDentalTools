@@ -60,7 +60,7 @@ def GetListFiles(folder_path, file_extension):
     return file_list
 
 
-def GetPatients(folder_path, time_point="T1", segmentationType=None):
+def GetPatients(folder_path, time_point="T1", segmentationType=None, mask_folder=None):
     """Return a dictionary with patient id as key"""
     file_extension = [".nii.gz", ".nii", ".nrrd", ".nrrd.gz", ".gipl", ".gipl.gz"]
     json_extension = [".json"]
@@ -91,17 +91,10 @@ def GetPatients(folder_path, time_point="T1", segmentationType=None):
             patients[patient] = {}
 
         if True in [i in basename for i in file_extension]:
-            # if segmentationType+'MASK' in basename:
             if True in [i in basename.lower() for i in ["mask", "seg", "pred"]]:
                 if segmentationType is None:
                     patients[patient]["seg" + time_point] = file
-                else:
-                    if True in [
-                        i in basename.lower()
-                        for i in GetListNamesSegType(segmentationType)
-                    ]:
-                        patients[patient]["seg" + time_point] = file
-
+                # Otherwise, skip for now (handled below)
             else:
                 patients[patient]["scan" + time_point] = file
 
@@ -109,7 +102,38 @@ def GetPatients(folder_path, time_point="T1", segmentationType=None):
             if time_point == "T2":
                 patients[patient]["lm" + time_point] = file
 
+    # If segmentationType is specified, look for masks in mask_folder or fallback to folder_path
+    if segmentationType:
+        target_keywords = GetListNamesSegType(segmentationType)
+        search_folder = mask_folder if mask_folder else folder_path
+        mask_files = GetListFiles(search_folder, file_extension)
+
+        for file in mask_files:
+            basename = os.path.basename(file)
+            patient = (
+                basename.split("_Scan")[0]
+                .split("_scan")[0]
+                .split("_Or")[0]
+                .split("_OR")[0]
+                .split("_MAND")[0]
+                .split("_MD")[0]
+                .split("_MAX")[0]
+                .split("_MX")[0]
+                .split("_CB")[0]
+                .split("_lm")[0]
+                .split("_T2")[0]
+                .split("_T1")[0]
+                .split("_Cl")[0]
+                .split(".")[0]
+            )
+            if True in [kw in basename.lower() for kw in target_keywords]:
+                if patient not in patients:
+                    patients[patient] = {}
+                if "seg" + time_point not in patients[patient]:
+                    patients[patient]["seg" + time_point] = file
+
     return patients
+
 
 
 def GetMatrixPatients(folder_path):
@@ -134,10 +158,11 @@ def GetDictPatients(
     segmentationType=None,
     todo_str="",
     matrix_folder=None,
+    mask_folder_t1=None,
 ):
     """Return a dictionary with patients for both time points"""
     patients_t1 = GetPatients(
-        folder_t1_path, time_point="T1", segmentationType=segmentationType
+        folder_t1_path, time_point="T1", segmentationType=segmentationType, mask_folder=mask_folder_t1
     )
     patients_t2 = GetPatients(folder_t2_path, time_point="T2", segmentationType=None)
     patients = MergeDicts(patients_t1, patients_t2)
