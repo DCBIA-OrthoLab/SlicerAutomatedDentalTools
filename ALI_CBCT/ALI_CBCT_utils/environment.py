@@ -3,7 +3,7 @@ import json
 import numpy as np
 import torch
 import SimpleITK as sitk
-from monai.transforms import Compose, AddChannel, BorderPad, ScaleIntensity, SpatialCrop
+from monai.transforms import Compose, EnsureChannelFirst, BorderPad, ScaleIntensity, SpatialCrop
 
 from ALI_CBCT_utils.constants import LABELS, LABEL_GROUPS, SCALE_KEYS, DEVICE, bcolors
 from ALI_CBCT_utils.io import WriteJson, GenControlPoint
@@ -29,12 +29,15 @@ class Environment :
         self.device = device
         self.scale_keys = scale_keys if scale_keys is not None else SCALE_KEYS
         self.verbose = verbose
-        self.transform = Compose([AddChannel(),BorderPad(spatial_border=self.padding.tolist())])
-        # self.transform = Compose([AddChannel(),BorderPad(spatial_border=self.padding.tolist()),ScaleIntensity(minv = -1.0, maxv = 1.0, factor = None)])
+        self.transform = Compose([
+            EnsureChannelFirst(channel_dim="no_channel"),
+            BorderPad(spatial_border=self.padding.tolist())
+        ])
+        # self.transform = Compose([EnsureChannelFirst(),BorderPad(spatial_border=self.padding.tolist()),ScaleIntensity(minv = -1.0, maxv = 1.0, factor = None)])
 
         self.scale_nbr = 0
 
-        # self.transform = Compose([AddChannel(),BorderPad(spatial_border=self.padding.tolist())])
+        # self.transform = Compose([EnsureChannelFirst(),BorderPad(spatial_border=self.padding.tolist())])
         self.available_lm = []
 
         self.data = {}
@@ -50,7 +53,7 @@ class Environment :
             data = {"path":path}
             img = sitk.ReadImage(path)
             img_ar = sitk.GetArrayFromImage(img)
-            data["image"] = torch.from_numpy(self.transform(img_ar)).type(torch.int16)
+            data["image"] = self.transform(img_ar).to(dtype=torch.int16)
 
             data["spacing"] = np.array(img.GetSpacing())
             origin = img.GetOrigin()
