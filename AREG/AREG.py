@@ -375,7 +375,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         }
         self.reference_lm = []
         self.ActualMeth = Method
-        self.ActualMeth = self.MethodDic["Or_Auto_CBCT"]
+        self.ActualMethName = "Or_Auto_CBCT"
+        self.ActualMeth = self.MethodDic[self.ActualMethName]
         self.type = "CBCT"
         self.nb_scan = 0
         self.startprocess = 0
@@ -448,6 +449,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # self.SwitchMode(0)
         self.SwitchType()
+        
+        self.ui.label_11.setVisible(False)
+        self.ui.lineEditMaskT1Path.setVisible(False)
+        self.ui.ButtonSearchT1Mask.setVisible(False)
 
         """
 
@@ -464,6 +469,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.ButtonSearchScan1.pressed.connect(
             lambda: self.SearchScan(self.ui.lineEditScanT1LmPath)
+        )
+        self.ui.ButtonSearchT1Mask.pressed.connect(
+            lambda: self.SearchScan(self.ui.lineEditMaskT1Path)
         )
         self.ui.ButtonSearchScan2.pressed.connect(
             lambda: self.SearchScan(self.ui.lineEditScanT2LmPath)
@@ -490,6 +498,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.CbModeType.activated.connect(self.SwitchType)
         self.ui.CbCBCTInputType.currentIndexChanged.connect(self.SwitchCBCTInputType)
         self.ui.ButtonTestFiles.clicked.connect(self.TestFiles)
+        
+        self.ui.LabelSelectcomboBox.setVisible(False)
+        self.ui.label_10.setVisible(False)
 
     """
 
@@ -518,8 +529,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Function to change the UI depending on the mode selected (Semi or Fully Automated)"""
         self.ui.CbCBCTInputType.setVisible(True)
         self.ui.label_CBCTInputType.setVisible(True)
-        self.ui.label_CBCTInputType_2.setVisible(True)
         self.ui.advancedCollapsibleButton.collapsed = False
+        self.ui.label_11.setVisible(False)
+        self.ui.lineEditMaskT1Path.setVisible(False)
+        self.ui.ButtonSearchT1Mask.setVisible(False)
 
         if index == 2:  # Semi-Automated
             self.ui.label_6.setVisible(False)
@@ -535,6 +548,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditModel3.setVisible(False)
             self.ui.ButtonSearchModel3.setVisible(False)
             self.ui.label_LibsInstallation.setVisible(False)
+            
+            self.ui.label_11.setVisible(True)
+            self.ui.lineEditMaskT1Path.setVisible(True)
+            self.ui.ButtonSearchT1Mask.setVisible(True)
 
         if index == 1:  # Fully Automated
             # self.ui.label_6.setVisible(True)
@@ -561,14 +578,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.ButtonSearchModel3.setVisible(False)
                 self.ui.CbCBCTInputType.setVisible(False)
                 self.ui.label_CBCTInputType.setVisible(False)
-                self.ui.label_CBCTInputType_2.setVisible(False)
                 self.isDCMInput = False
                 self.ui.label_LibsInstallation.setVisible(False)
 
     def SwitchModeIOS(self, index):
         self.ui.CbCBCTInputType.setVisible(False)
         self.ui.label_CBCTInputType.setVisible(False)
-        self.ui.label_CBCTInputType_2.setVisible(False)
         self.ui.advancedCollapsibleButton.collapsed = True
         self.isDCMInput = False
         # registration and orientation
@@ -611,16 +626,19 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Function to change the UI and the Method in AREG depending on the selected type (Semi CBCT, Fully CBCT...)"""
         if self.ui.CbInputType.currentIndex == 0:
             if self.ui.CbModeType.currentIndex == 2:
-                self.ActualMeth = self.MethodDic["Semi_CBCT"]
+                self.ActualMethName = "Semi_CBCT"
+                self.ActualMeth = self.MethodDic[self.ActualMethName]
                 self.ui.stackedWidget.setCurrentIndex(0)
 
             elif self.ui.CbModeType.currentIndex == 0:
-                self.ActualMeth = self.MethodDic["Or_Auto_CBCT"]
+                self.ActualMethName = "Or_Auto_CBCT"
+                self.ActualMeth = self.MethodDic[self.ActualMethName]
                 self.ui.stackedWidget.setCurrentIndex(2)
                 self.ui.label_7.setText("Segmentation Model Folder")
 
             elif self.ui.CbModeType.currentIndex == 1:
-                self.ActualMeth = self.MethodDic["Auto_CBCT"]
+                self.ActualMethName = "Auto_CBCT"
+                self.ActualMeth = self.MethodDic[self.ActualMethName]
                 self.ui.stackedWidget.setCurrentIndex(1)
                 self.ui.label_7.setText("Segmentation Model Folder")
 
@@ -677,14 +695,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self.type == "CBCT":
             self.ui.CbCBCTInputType.setVisible(True)
             self.ui.label_CBCTInputType.setVisible(True)
-            self.ui.label_CBCTInputType_2.setVisible(True)
 
         if self.type == "IOS" or (
             self.type == "CBCT" and self.ui.CbModeType.currentIndex != 0
         ):
             self.ui.CbCBCTInputType.setVisible(False)
             self.ui.label_CBCTInputType.setVisible(False)
-            self.ui.label_CBCTInputType_2.setVisible(False)
             self.isDCMInput = False
 
     def ClearAllLineEdits(self):
@@ -823,7 +839,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.lineEditScanT1LmPath.text, self.ui.lineEditScanT2LmPath.text
             )
             error = self.ActualMeth.TestScan(
-                self.ui.lineEditScanT1LmPath.text, self.ui.lineEditScanT2LmPath.text
+                self.ui.lineEditScanT1LmPath.text, self.ui.lineEditScanT2LmPath.text, self.ui.lineEditMaskT1Path.text
             )
 
         if isinstance(error, str):
@@ -848,27 +864,33 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             lineEdit.setText(scan_folder)
 
             # To check if the input segmentation (for the Semi-Auto CBCT mode) has different labels to show them in a combobox
-            if (
-                self.ui.lineEditScanT1LmPath.text != ""
-                and self.ui.lineEditScanT2LmPath.text == ""
-            ):
-                if (
-                    self.ui.CbInputType.currentIndex == 0
-                    and self.ui.CbModeType.currentIndex == 2
-                ):
-                    if self.SegmentationLabels == [0]:
-                        self.SegmentationLabels += self.ActualMeth.GetSegmentationLabel(
-                            self.ui.lineEditScanT1LmPath.text
-                        )
-                        for i in self.SegmentationLabels:
-                            if i != 0:
-                                self.ui.LabelSelectcomboBox.addItem(f"Label {i}")
+            # if (
+            #     self.ui.lineEditScanT1LmPath.text != ""
+            #     and self.ui.lineEditScanT2LmPath.text == ""
+            # ):
+            #     if (
+            #         self.ui.CbInputType.currentIndex == 0
+            #         and self.ui.CbModeType.currentIndex == 2
+            #     ):
+            #         if self.SegmentationLabels == [0]:
+            #             self.SegmentationLabels += self.ActualMeth.GetSegmentationLabel(
+            #                 self.ui.lineEditScanT1LmPath.text
+            #             )
+            #             for i in self.SegmentationLabels:
+            #                 if i != 0:
+            #                     self.ui.LabelSelectcomboBox.addItem(f"Label {i}")
 
-            if (
-                self.ui.lineEditScanT1LmPath.text != ""
-                and self.ui.lineEditScanT2LmPath.text != ""
-            ):
-                self.CheckScan()
+            t1_path = self.ui.lineEditScanT1LmPath.text
+            t2_path = self.ui.lineEditScanT2LmPath.text
+            mask_path = self.ui.lineEditMaskT1Path.text
+
+            if t1_path != "" and t2_path != "":
+                if self.ActualMethName == "Semi_CBCT":
+                    if mask_path != "":
+                        self.CheckScan()
+                else:
+                    self.ui.lineEditMaskT1Path.setText("")
+                    self.CheckScan()
 
     def downloadModel(self, lineEdit, name, test=False):
         """Function to download the model files from the link in the getModelUrl function"""
@@ -1052,6 +1074,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         error = self.ActualMeth.TestProcess(
             input_t1_folder=self.ui.lineEditScanT1LmPath.text,
             input_t2_folder=self.ui.lineEditScanT2LmPath.text,
+            input_t1_mask=self.ui.lineEditMaskT1Path.text,
             folder_output=self.ui.lineEditOutputPath.text,
             model_folder_1=self.ui.lineEditModel1.text,
             model_folder_2=self.ui.lineEditModel2.text,
@@ -1079,6 +1102,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.list_Processes_Parameters = self.ActualMeth.Process(
                 input_t1_folder=self.ui.lineEditScanT1LmPath.text,
                 input_t2_folder=self.ui.lineEditScanT2LmPath.text,
+                input_t1_mask=self.ui.lineEditMaskT1Path.text,
                 folder_output=self.ui.lineEditOutputPath.text,
                 model_folder_1=self.ui.lineEditModel1.text,
                 model_folder_2=self.ui.lineEditModel2.text,
