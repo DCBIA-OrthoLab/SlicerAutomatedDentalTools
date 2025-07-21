@@ -1,9 +1,10 @@
 import os
+import sys
 import json
 import numpy as np
 import torch
 import SimpleITK as sitk
-from monai.transforms import Compose, EnsureChannelFirst, BorderPad, ScaleIntensity, SpatialCrop
+from monai.transforms import Compose, BorderPad, ScaleIntensity, SpatialCrop
 
 from ALI_CBCT_utils.constants import LABELS, LABEL_GROUPS, SCALE_KEYS, DEVICE, bcolors
 from ALI_CBCT_utils.io import WriteJson, GenControlPoint
@@ -30,7 +31,7 @@ class Environment :
         self.scale_keys = scale_keys if scale_keys is not None else SCALE_KEYS
         self.verbose = verbose
         self.transform = Compose([
-            EnsureChannelFirst(channel_dim="no_channel"),
+            self.get_channel_transform(),
             BorderPad(spatial_border=self.padding.tolist())
         ])
         # self.transform = Compose([EnsureChannelFirst(),BorderPad(spatial_border=self.padding.tolist()),ScaleIntensity(minv = -1.0, maxv = 1.0, factor = None)])
@@ -44,6 +45,13 @@ class Environment :
 
         self.predicted_landmarks = {}
 
+    def get_channel_transform(self):
+        if sys.version_info >= (3, 10):
+            from monai.transforms import EnsureChannelFirst
+            return EnsureChannelFirst(channel_dim="no_channel")
+        else:
+            from monai.transforms import AddChannel
+            return AddChannel()
 
     def LoadImages(self,images_path):
 
@@ -53,7 +61,10 @@ class Environment :
             data = {"path":path}
             img = sitk.ReadImage(path)
             img_ar = sitk.GetArrayFromImage(img)
-            data["image"] = self.transform(img_ar).to(dtype=torch.int16)
+            if sys.version_info >= (3, 10):
+                data["image"] = self.transform(img_ar).to(dtype=torch.int16)
+            else:
+                data["image"] = torch.from_numpy(self.transform(img_ar)).type(torch.int16)
 
             data["spacing"] = np.array(img.GetSpacing())
             origin = img.GetOrigin()
