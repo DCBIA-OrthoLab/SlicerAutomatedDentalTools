@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>939</width>
-    <height>2459</height>
+    <height>2482</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -289,185 +289,6 @@
      </property>
      <layout class="QFormLayout" name="formLayout_2">
       <item row="6" column="1">
-       <spacer name="verticalSpacer_9">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-        <property name="sizeType">
-         <enum>QSizePolicy::Fixed</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>20</width>
-          <height>5</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-      <item row="7" column="1">
-       <widget class="QLabel" name="label_6">
-        <property name="font">
-         <font>
-          <weight>75</weight>
-          <bold>true</bold>
-         </font>
-        </property>
-        <property name="text">
-         <string>Orientation +  Segmentation of the CBCT</string>
-        </property>
-       </widget>
-      </item>
-      <item row="8" column="1">
-       <spacer name="verticalSpacer_5">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-        <property name="sizeType">
-         <enum>QSizePolicy::Fixed</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>20</width>
-          <height>5</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-      <item row="9" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_7">
-        <item>
-         <widget class="QLabel" name="label_3">
-          <property name="text">
-           <string>Input CBCT folder:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="LineEditCBCT"/>
-        </item>
-        <item>
-         <widget class="QComboBox" name="ComboBoxCBCT">
-          <item>
-           <property name="text">
-            <string>File</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>Folder</string>
-           </property>
-          </item>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="SearchButtonCBCT">
-          <property name="text">
-           <string>Search</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="pushButtonTestFilePreCBCT">
-          <property name="text">
-           <string>TestFile</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="10" column="1">
-       <layout class="QGridLayout" name="gridLayout">
-        <item row="1" column="1">
-         <widget class="QLineEdit" name="lineEditOrientCBCT"/>
-        </item>
-        <item row="1" column="2">
-         <widget class="QPushButton" name="pushButtonDownloadOrientCBCT">
-          <property name="text">
-           <string>Download</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="1">
-         <widget class="QLineEdit" name="lineEditSegCBCT"/>
-        </item>
-        <item row="1" column="0">
-         <widget class="QLabel" name="label_14">
-          <property name="text">
-           <string>Orientation Model: </string>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="1">
-         <widget class="QLineEdit" name="lineEditOutputOrientCBCT"/>
-        </item>
-        <item row="0" column="2">
-         <widget class="QPushButton" name="SearchOutputFolderOrientCBCT">
-          <property name="text">
-           <string>Search</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="2">
-         <widget class="QPushButton" name="pushButtonDownloadSegCBCT">
-          <property name="text">
-           <string>Download</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="0">
-         <widget class="QLabel" name="label_15">
-          <property name="text">
-           <string>Segmentation Model: </string>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="0">
-         <widget class="QLabel" name="label_7">
-          <property name="text">
-           <string>Output folder:</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="11" column="1">
-       <widget class="QPushButton" name="pushButtonOrientCBCT">
-        <property name="toolTip">
-         <string/>
-        </property>
-        <property name="whatsThis">
-         <string/>
-        </property>
-        <property name="styleSheet">
-         <string notr="true"/>
-        </property>
-        <property name="text">
-         <string>Orient and Segment CBCT</string>
-        </property>
-       </widget>
-      </item>
-      <item row="12" column="1">
-       <widget class="QFrame" name="frame_3">
-        <property name="styleSheet">
-         <string notr="true">QFrame {
-    background-color: #D3D3D3;;
-}</string>
-        </property>
-        <property name="frameShape">
-         <enum>QFrame::HLine</enum>
-        </property>
-        <property name="frameShadow">
-         <enum>QFrame::Plain</enum>
-        </property>
-        <property name="lineWidth">
-         <number>0</number>
-        </property>
-        <property name="midLineWidth">
-         <number>4</number>
-        </property>
-       </widget>
-      </item>
-      <item row="13" column="1">
        <spacer name="verticalSpacer_7">
         <property name="orientation">
          <enum>Qt::Vertical</enum>
@@ -483,7 +304,7 @@
         </property>
        </spacer>
       </item>
-      <item row="14" column="1">
+      <item row="7" column="1">
        <widget class="QLabel" name="label_8">
         <property name="font">
          <font>
@@ -496,7 +317,7 @@
         </property>
        </widget>
       </item>
-      <item row="15" column="1">
+      <item row="8" column="1">
        <spacer name="verticalSpacer_3">
         <property name="orientation">
          <enum>Qt::Vertical</enum>
@@ -512,14 +333,14 @@
         </property>
        </spacer>
       </item>
-      <item row="17" column="1">
+      <item row="10" column="1">
        <widget class="QCheckBox" name="checkBoxBilateralMRI">
         <property name="text">
          <string>Bilateral MRI</string>
         </property>
        </widget>
       </item>
-      <item row="19" column="1">
+      <item row="12" column="1">
        <widget class="QComboBox" name="comboBoxDICOMVolumes">
         <item>
          <property name="text">
@@ -528,14 +349,14 @@
         </item>
        </widget>
       </item>
-      <item row="20" column="1">
+      <item row="13" column="1">
        <widget class="QLabel" name="labelDICOMSpacing">
         <property name="text">
          <string>Acquisition spacing: None</string>
         </property>
        </widget>
       </item>
-      <item row="21" column="1">
+      <item row="14" column="1">
        <spacer name="verticalSpacer_10">
         <property name="orientation">
          <enum>Qt::Vertical</enum>
@@ -551,7 +372,7 @@
         </property>
        </spacer>
       </item>
-      <item row="22" column="1">
+      <item row="15" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_9">
         <item>
          <spacer name="horizontalSpacer_3">
@@ -595,7 +416,7 @@
         </item>
        </layout>
       </item>
-      <item row="23" column="1">
+      <item row="16" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_8">
         <item>
          <widget class="QLabel" name="label_4">
@@ -637,14 +458,14 @@
         </item>
        </layout>
       </item>
-      <item row="24" column="1">
+      <item row="17" column="1">
        <widget class="QTableWidget" name="tableWidgetOrient">
         <property name="whatsThis">
          <string/>
         </property>
        </widget>
       </item>
-      <item row="26" column="1">
+      <item row="19" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_2">
         <item>
          <widget class="QPushButton" name="ButtonDefaultOrientMRI">
@@ -668,7 +489,7 @@
         </item>
        </layout>
       </item>
-      <item row="31" column="1">
+      <item row="24" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_13">
         <item>
          <widget class="QLabel" name="label_25">
@@ -689,7 +510,7 @@
         </item>
        </layout>
       </item>
-      <item row="32" column="1">
+      <item row="25" column="1">
        <widget class="QPushButton" name="pushButtonOrientMRI">
         <property name="styleSheet">
          <string notr="true"/>
@@ -699,7 +520,7 @@
         </property>
        </widget>
       </item>
-      <item row="33" column="1">
+      <item row="26" column="1">
        <widget class="QFrame" name="frame_2">
         <property name="styleSheet">
          <string notr="true">QFrame {
@@ -720,7 +541,7 @@
         </property>
        </widget>
       </item>
-      <item row="34" column="1">
+      <item row="27" column="1">
        <spacer name="verticalSpacer_8">
         <property name="orientation">
          <enum>Qt::Vertical</enum>
@@ -736,7 +557,7 @@
         </property>
        </spacer>
       </item>
-      <item row="35" column="1">
+      <item row="28" column="1">
        <widget class="QLabel" name="label_23">
         <property name="font">
          <font>
@@ -749,7 +570,7 @@
         </property>
        </widget>
       </item>
-      <item row="36" column="1">
+      <item row="29" column="1">
        <layout class="QVBoxLayout" name="verticalLayout_2">
         <item>
          <layout class="QGridLayout" name="gridLayout_8">
@@ -825,7 +646,7 @@
         </item>
        </layout>
       </item>
-      <item row="37" column="1">
+      <item row="30" column="1">
        <spacer name="verticalSpacer_6">
         <property name="orientation">
          <enum>Qt::Vertical</enum>
@@ -841,14 +662,14 @@
         </property>
        </spacer>
       </item>
-      <item row="38" column="1">
+      <item row="31" column="1">
        <widget class="QLabel" name="labelCropLR">
         <property name="text">
          <string>No separation selected</string>
         </property>
        </widget>
       </item>
-      <item row="39" column="1">
+      <item row="32" column="1">
        <widget class="QPushButton" name="pushButtonCropLR">
         <property name="styleSheet">
          <string notr="true"/>
