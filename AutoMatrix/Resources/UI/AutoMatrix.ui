@@ -17,35 +17,55 @@
       <string>Inputs</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
-      <item row="0" column="1">
+      <item row="2" column="1">
        <layout class="QVBoxLayout" name="verticalLayout_2">
         <item>
          <layout class="QGridLayout" name="gridLayout_2">
-          <item row="1" column="1">
-           <widget class="QLineEdit" name="LineEditMatrix"/>
-          </item>
-          <item row="0" column="0">
-           <widget class="QLabel" name="label_3">
+          <item row="3" column="6">
+           <widget class="QCheckBox" name="CheckBoxMirror">
+            <property name="layoutDirection">
+             <enum>Qt::RightToLeft</enum>
+            </property>
             <property name="text">
-             <string>Input file(s) patient(s) :</string>
+             <string>Mirror</string>
             </property>
            </widget>
           </item>
-          <item row="1" column="0">
+          <item row="1" column="6">
+           <widget class="QPushButton" name="SearchButtonPatient">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
            <widget class="QLabel" name="labelInputMatrix">
             <property name="text">
              <string>Input file(s) matrix :</string>
             </property>
            </widget>
           </item>
-          <item row="1" column="3">
+          <item row="1" column="2">
+           <widget class="QLineEdit" name="LineEditPatient"/>
+          </item>
+          <item row="3" column="0">
+           <widget class="QCheckBox" name="CheckBoxSuffixBased">
+            <property name="text">
+             <string>From AReg</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="2">
+           <widget class="QLineEdit" name="LineEditMatrix"/>
+          </item>
+          <item row="2" column="6">
            <widget class="QPushButton" name="SearchButtonMatrix">
             <property name="text">
              <string>Search</string>
             </property>
            </widget>
           </item>
-          <item row="0" column="2">
+          <item row="1" column="4">
            <widget class="QComboBox" name="ComboBoxPatient">
             <item>
              <property name="text">
@@ -59,14 +79,28 @@
             </item>
            </widget>
           </item>
-          <item row="0" column="3">
-           <widget class="QPushButton" name="SearchButtonPatient">
+          <item row="4" column="0">
+           <widget class="QLabel" name="labelReference">
+            <property name="text">
+             <string>Reference file:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_3">
+            <property name="text">
+             <string>Input file(s) patient(s) :</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="6">
+           <widget class="QPushButton" name="SearchReference">
             <property name="text">
              <string>Search</string>
             </property>
            </widget>
           </item>
-          <item row="1" column="2">
+          <item row="2" column="4">
            <widget class="QComboBox" name="ComboBoxMatrix">
             <item>
              <property name="text">
@@ -80,45 +114,41 @@
             </item>
            </widget>
           </item>
-          <item row="0" column="1">
-           <widget class="QLineEdit" name="LineEditPatient"/>
-          </item>
-          <item row="3" column="0">
-           <widget class="QLabel" name="labelReference">
-            <property name="text">
-             <string>Reference file:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QCheckBox" name="CheckBoxSuffixBased">
-            <property name="text">
-             <string>From AReg</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="1">
+          <item row="4" column="2" colspan="3">
            <widget class="QLineEdit" name="LineEditReference">
             <property name="text">
              <string>None</string>
             </property>
            </widget>
           </item>
-          <item row="3" column="2">
-           <widget class="QPushButton" name="SearchReference">
-            <property name="text">
-             <string>Search</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="3">
-           <widget class="QCheckBox" name="CheckBoxMirror">
-            <property name="text">
-             <string>Mirror</string>
-            </property>
-           </widget>
-          </item>
          </layout>
+        </item>
+       </layout>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QCheckBox" name="CheckBoxSegmentation">
+          <property name="layoutDirection">
+           <enum>Qt::RightToLeft</enum>
+          </property>
+          <property name="text">
+           <string>Check this box if using segmentations; otherwise, leave it unchecked.</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
         </item>
        </layout>
       </item>
