@@ -62,6 +62,7 @@ class Automatrix_Method(Method):
             "fromAreg": str(kwargs["fromAreg"]),
             "output_folder": kwargs["output_folder"],
             "log_path": kwargs["log_path"],
+            "is_seg": kwargs["is_seg"],
         }
         
         print('-' * 70)
