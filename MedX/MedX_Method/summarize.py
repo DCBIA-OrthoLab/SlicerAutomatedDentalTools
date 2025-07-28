@@ -28,6 +28,20 @@ class MedX_Method(Method):
         _, nb_files = self.search(file_folder, ['.docx', '.pdf', '.txt'])
         return nb_files
     
+    def getModelUrl(self):
+        return {
+            "MedX": {
+                "Summarization": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/MedX/BART.zip"
+            }
+        }
+        
+    def TestModel(self, model_folder: str) -> str:
+
+        if len(super().search(model_folder, "safetensors")["safetensors"]) == 0:
+            return "Folder must have model for "
+        else:
+            return None
+
     def TestProcess(self, **kwargs) -> str:
         out = ""
         ok = True

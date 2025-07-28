@@ -120,20 +120,6 @@
     <layout class="QVBoxLayout" name="verticalLayout_3">
      <item>
       <layout class="QGridLayout" name="gridLayout_6">
-       <item row="3" column="0">
-        <widget class="QLabel" name="label_time">
-         <property name="text">
-          <string>time : </string>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="0">
-        <widget class="QLabel" name="label_info">
-         <property name="text">
-          <string>Number of processed files : </string>
-         </property>
-        </widget>
-       </item>
        <item row="2" column="0">
         <widget class="QProgressBar" name="progressBar">
          <property name="enabled">
@@ -147,10 +133,31 @@
          </property>
         </widget>
        </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="label_info">
+         <property name="text">
+          <string>Number of processed files : </string>
+         </property>
+        </widget>
+       </item>
        <item row="0" column="0">
         <widget class="QLabel" name="LabelNameExtension">
          <property name="text">
           <string>Running</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
+        <widget class="QLabel" name="label_time">
+         <property name="text">
+          <string>time : </string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0">
+        <widget class="QLabel" name="ImageWidget">
+         <property name="text">
+          <string>Image</string>
          </property>
         </widget>
        </item>

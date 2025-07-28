@@ -347,12 +347,27 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.nb_scans = 0
         
         self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
+        
+        documentsLocation = qt.QStandardPaths.DocumentsLocation
+        self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        self.SlicerDownloadPath = os.path.join(
+            self.documents,
+            slicer.app.applicationName + "Downloads",
+            "MedX",
+        )
+
+        if not os.path.exists(self.SlicerDownloadPath):
+            os.makedirs(self.SlicerDownloadPath)
 
         # Summarization
         self.ui.SearchButtonModel.connect("clicked(bool)",partial(self.openFinder,"Model"))
         self.ui.SearchButtonPatient.connect("clicked(bool)",partial(self.openFinder,"Patient"))
         self.ui.SearchButtonOutput.connect("clicked(bool)",partial(self.openFinder,"Output"))
-        # self.ui.DownloadModel
+        self.ui.DownloadModel.pressed.connect(
+            lambda: self.downloadModel(
+                self.ui.LineEditModel, "MedX"
+            )
+        )
         self.ui.SummarizeButton.connect("clicked(bool)", self.onSummarizeButton)
         self.ui.ButtonCancel.connect("clicked(bool)", self.onCancel)
         
@@ -523,7 +538,88 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._parameterNode.SetNodeReferenceID("OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID)
 
         self._parameterNode.EndModify(wasModified)
+        
+        
+    def DownloadUnzip(
+        self, url, directory, folder_name=None, num_downl=1, total_downloads=1
+    ):
+        out_path = os.path.join(directory, folder_name)
 
+        if not os.path.exists(out_path):
+            # print("Downloading {}...".format(folder_name.split(os.sep)[0]))
+            os.makedirs(out_path)
+
+            temp_path = os.path.join(directory, "temp.zip")
+
+            # Download the zip file from the url
+            with urllib.request.urlopen(url) as response, open(
+                temp_path, "wb"
+            ) as out_file:
+                # Pop up a progress bar with a QProgressDialog
+                progress = qt.QProgressDialog(
+                    "Downloading {} (File {}/{})".format(
+                        folder_name.split(os.sep)[0], num_downl, total_downloads
+                    ),
+                    "Cancel",
+                    0,
+                    100,
+                    self.parent,
+                )
+                progress.setCancelButton(None)
+                progress.setWindowModality(qt.Qt.WindowModal)
+                progress.setWindowTitle(
+                    "Downloading {}...".format(folder_name.split(os.sep)[0])
+                )
+                # progress.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
+                progress.show()
+                length = response.info().get("Content-Length")
+                if length:
+                    length = int(length)
+                    blocksize = max(4096, length // 100)
+                    read = 0
+                    while True:
+                        buffer = response.read(blocksize)
+                        if not buffer:
+                            break
+                        read += len(buffer)
+                        out_file.write(buffer)
+                        progress.setValue(read * 100.0 / length)
+                        qt.QApplication.processEvents()
+
+            # Unzip the file
+            with zipfile.ZipFile(temp_path, "r") as zip:
+                zip.extractall(out_path)
+
+            # Delete the zip file
+            os.remove(temp_path)
+
+        return out_path
+        
+        
+    def downloadModel(self, lineEdit, name, test=False):
+        """Function to download the model files from the link in the getModelUrl function"""
+
+        listmodel = self.ActualMeth.getModelUrl()
+
+        urls = listmodel[name]
+        for i, (name_bis, url) in enumerate(urls.items()):
+            _ = self.DownloadUnzip(
+                url=url,
+                directory=os.path.join(self.SlicerDownloadPath),
+                folder_name=os.path.join(self.SlicerDownloadPath),
+                num_downl=i + 1,
+                total_downloads=len(urls),
+            )
+        model_folder = os.path.join(self.SlicerDownloadPath)
+
+        if not model_folder == "":
+            error = self.ActualMeth.TestModel(model_folder)
+
+            if isinstance(error, str):
+                qt.QMessageBox.warning(self.parent, "Warning", error)
+
+            else:
+                lineEdit.setText(model_folder)
 
 
     def onSummarizeButton(self)->None:
