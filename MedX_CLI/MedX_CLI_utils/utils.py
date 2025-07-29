@@ -1,10 +1,8 @@
 import re
 import csv
 import fitz
-import string
 from docx import Document
 from transformers import BartTokenizer, BartForConditionalGeneration
-
 
 def load_model_and_tokenizer(model_path):
     """
@@ -253,74 +251,3 @@ def save_dict_to_csv(data_dict, output_file_path):
         for key, value in data_dict.items():
             writer.writerow([key, value])
     print(f"CSV file saved to {output_file_path}")
-    
-def initialize_key_value_summary():
-    """
-    Initialize a dictionary with default values based on the expected types.
-
-    Returns:
-        dict: Dictionary with default values assigned based on the types.
-    """
-    KEYS_AND_TYPES = {
-    "patient_id": str,
-    "patient_age": str,
-    "headache_intensity": str,
-    "headache_frequency": str,
-    "headache_location": str,
-    "migraine_history": str,
-    "migraine_frequency": str,
-    "average_daily_pain_intensity": str,
-    "diet_score": str,
-    "tmj_pain_rating": str,
-    "disability_rating": str,
-    "jaw_function_score": str,
-    "jaw_clicking": str,
-    "jaw_crepitus": str,
-    "jaw_locking": str,
-    "maximum_opening": str,
-    "maximum_opening_without_pain": str,
-    "disc_displacement": str,
-    "muscle_pain_score": str,
-    "muscle_pain_location": str,
-    "muscle_spasm_present": str,
-    "muscle_tenderness_present": str,
-    "muscle_stiffness_present": str,
-    "muscle_soreness_present": str,
-    "joint_pain_areas": str,
-    "joint_arthritis_location": str,
-    "neck_pain_present": str,
-    "back_pain_present": str,
-    "earache_present": str,
-    "tinnitus_present": str,
-    "vertigo_present": str,
-    "hearing_loss_present": str,
-    "hearing_sensitivity_present": str,
-    "sleep_apnea_diagnosed": str,
-    "sleep_disorder_type": str,
-    "airway_obstruction_present": str,
-    "anxiety_present": str,
-    "depression_present": str,
-    "stress_present": str,
-    "autoimmune_condition": str,
-    "fibromyalgia_present": str,
-    "current_medications": str,
-    "previous_medications": str,
-    "adverse_reactions": str,
-    "appliance_history": str,
-    "current_appliance": str,
-    "cpap_used": str,
-    "apap_used": str,
-    "bipap_used": str,
-    "physical_therapy_status": str,
-    "pain_onset_date": str,
-    "pain_duration": str,
-    "pain_frequency": str,
-    "onset_triggers": str,
-    "pain_relieving_factors": str,
-    "pain_aggravating_factors": str
-    }
-    
-    defaults = {
-        str: "",
-    }
-    return {key: defaults[expected_type] for key, expected_type in KEYS_AND_TYPES.items()}

@@ -6,6 +6,7 @@ set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   MedX_Method/__init__.py
   MedX_Method/summarize.py
+  MedX_Method/dashboard.py
   MedX_Method/Method.py
   MedX_Method/Progress.py
 )
