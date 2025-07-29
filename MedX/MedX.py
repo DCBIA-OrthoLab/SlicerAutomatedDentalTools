@@ -11,19 +11,23 @@ from slicer.util import VTKObservationMixin, pip_install
 import qt
 import glob
 import numpy as np
-from qt import QFileDialog,QMessageBox,QGridLayout,QWidget
+from qt import QFileDialog,QMessageBox,QGridLayout,QWidget,QPixmap
 from functools import partial
 import SimpleITK as sitk
 
 
-from MedX_Method.summarize import MedX_Method
+from MedX_Method.summarize import MedX_Summarize_Method
+from MedX_Method.dashboard import MedX_Dashboard_Method
 from MedX_Method.Method import Method
 from MedX_Method.Progress import Display
 
 
-
+import signal
 import time
+import textwrap
+import platform
 import threading
+import subprocess
 import pkg_resources
 import io
 
@@ -89,9 +93,6 @@ def install_function(self,list_libs:list):
             self.ui.label_LibsInstallation.setVisible(True)
             try:
                 for lib, version_constraint in libs_to_install + libs_to_update:
-                    # if lib == "pytorch3d":
-                    #     install_pytorch3d()
-                    #     continue
                     if not version_constraint:
                         pip_install(lib)
 
@@ -331,6 +332,10 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
         self.logic = MedXLogic()
+        
+        self.summarize = MedX_Summarize_Method(self)
+        self.dashboard = MedX_Dashboard_Method(self)
+        self.dashboardPixmap = None  # store original pixmap
 
         # Connections
 
@@ -338,13 +343,8 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
         
-        self.MethodDict = {
-            "MedX": MedX_Method(self),
-        }
-        self.ActualMeth = Method
-        self.ActualMeth = self.MethodDict["MedX"]
-        self.display = Display
         self.nb_scans = 0
+        self.time_log = 0
         
         self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
         
@@ -375,7 +375,6 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Dashboard
         self.ui.SearchButtonSummary.connect("clicked(bool)",partial(self.openFinder,"Summary"))
         self.ui.SearchButtonOutDashboard.connect("clicked(bool)",partial(self.openFinder,"OutDashboard"))
-        self.ui.checkBoxDashboard.connect("clicked(bool)", self.onCheckBoxDashboard)
         self.ui.DashboardButton.connect("clicked(bool)", self.onDashboardButton)
         
 
@@ -392,20 +391,9 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.label_time.setVisible(False)
         self.ui.ButtonCancel.setVisible(False)
         self.ui.LabelNameExtension.setVisible(False)
+        self.ui.label_LibsInstallation.setVisible(False)
 
         self.timer_should_continue = True
-        
-        
-    def onCheckBoxDashboard(self, checked: bool) -> None:
-        """
-        Show or hide the dashboard options based on the checkbox state.
-        """
-        show = True if checked else False
-        
-        self.ui.labelOutDashboard.setVisible(show)
-        self.ui.lineEditOutDashboard.setVisible(show)
-        self.ui.SearchButtonOutDashboard.setVisible(show)
-
 
     def openFinder(self,nom : str,_) -> None :
         """
@@ -599,7 +587,7 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def downloadModel(self, lineEdit, name, test=False):
         """Function to download the model files from the link in the getModelUrl function"""
 
-        listmodel = self.ActualMeth.getModelUrl()
+        listmodel = self.summarize.getModelUrl()
 
         urls = listmodel[name]
         for i, (name_bis, url) in enumerate(urls.items()):
@@ -613,7 +601,7 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         model_folder = os.path.join(self.SlicerDownloadPath)
 
         if not model_folder == "":
-            error = self.ActualMeth.TestModel(model_folder)
+            error = self.summarize.TestModel(model_folder)
 
             if isinstance(error, str):
                 qt.QMessageBox.warning(self.parent, "Warning", error)
@@ -626,24 +614,28 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Run processing when user clicks "Summarize" button.
         """
-        list_libs = [('transformers', None, None),
-                     ('torch', None, None),
-                     ('pymupdf', None, None),
-                     ('python-docx', None, None),
-                     ('evaluate', None, None),
-                     ('scikit-learn', None, None),
-                     ('peft', None, None),
-                     ('bitsandbytes', None, None)]
-        
-        is_installed = install_function(self, list_libs)
-        
-        if not is_installed:
-            qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
+        list_libs = ['transformers',
+                     'torch',
+                     'pymupdf',
+                     'python-docx',
+                     'evaluate',
+                     'scikit-learn',
+                     'peft',
+                     'bitsandbytes',
+                     'matplotlib',]
+
+        try:
+            check_env = self.onCheckRequirements(list_libs)
+            print("seg_env: ", check_env)
+        except Exception as e:
+            qt.QMessageBox.warning(self.parent, "Warning", f"An error occurred while checking requirements: {str(e)}")
             return
         
         self.logic.check_cli_script()
+        
+        self.ui.label_LibsInstallation.setVisible(False)
 
-        error = self.ActualMeth.TestProcess(
+        error = self.summarize.TestProcess(
             input_notes=self.ui.LineEditClinicalNotes.text,
             input_model=self.ui.LineEditModel.text,
             output_folder=self.ui.LineEditOutput.text,
@@ -653,11 +645,15 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if isinstance(error, str):
             qt.QMessageBox.warning(self.parent, "Warning", error.replace(",", "\n"))
 
-        self.list_Processes_Parameters = self.ActualMeth.Process(
+        self.list_Processes_Parameters = self.summarize.Process(
             input_notes=self.ui.LineEditClinicalNotes.text,
             input_model=self.ui.LineEditModel.text,
             output_folder=self.ui.LineEditOutput.text,
             log_path=self.log_path,
+        )
+        
+        self.nb_scans = self.summarize.NbScan(
+            file_folder=self.ui.LineEditClinicalNotes.text,
         )
         
         self.nb_extension_launch = len(self.list_Processes_Parameters)
@@ -668,7 +664,64 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("module name : ", module)
         
         self.ui.SummarizeButton.setEnabled(False)
-        self.ui.ButtonCancel.setVisible(True)
+        self.run_conda_tool()
+        self.OnEndProcess()
+        # self.process = slicer.cli.run(
+        #     self.list_Processes_Parameters[0]["Process"],
+        #     None,
+        #     self.list_Processes_Parameters[0]["Parameter"],
+        # )
+        
+        # self.module_name = self.list_Processes_Parameters[0]["Module"]
+        # self.displayModule = self.list_Processes_Parameters[0]["Display"]
+        # self.processObserver = self.process.AddObserver(
+        #     "ModifiedEvent", self.onProcessUpdate
+        # )
+
+        # del self.list_Processes_Parameters[0]
+        
+    def onDashboardButton(self)->None:
+        """
+        Run processing when user clicks "Dashboard" button.
+        """
+        list_libs = [('numpy', None, None),
+                     ('pandas', None, None),
+                     ('matplotlib', None, None)]
+        
+        is_installed = install_function(self, list_libs)
+        
+        if not is_installed:
+            qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
+            return
+
+        error = self.dashboard.TestProcess(
+            summary_folder=self.ui.lineEditSummaries.text,
+            output_folder=self.ui.lineEditOutDashboard.text,
+        )
+
+        # print('error',error)
+        if isinstance(error, str):
+            qt.QMessageBox.warning(self.parent, "Warning", error.replace(",", "\n"))
+            return
+
+        self.list_Processes_Parameters = self.dashboard.Process(
+            summary_folder=self.ui.lineEditSummaries.text,
+            output_folder=self.ui.lineEditOutDashboard.text,
+            log_path=self.log_path,
+        )
+        
+        self.nb_scans = self.dashboard.NbScan(
+            file_folder=self.ui.lineEditSummaries.text,
+        )
+        
+        self.nb_extension_launch = len(self.list_Processes_Parameters)
+        self.onProcessStarted()
+        
+        module = self.list_Processes_Parameters[0]["Module"]
+        # /!\ Launch of the first process /!\
+        print("module name : ", module)
+        
+        self.ui.DashboardButton.setEnabled(False)
         self.process = slicer.cli.run(
             self.list_Processes_Parameters[0]["Process"],
             None,
@@ -682,7 +735,217 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
 
         del self.list_Processes_Parameters[0]
+
+        # if os.path.exists(dashboard_path):
+        #     self.dashboardPixmap = QPixmap(dashboard_path)
+        #     self.updateDashboardImage()
+        # else:
+        #     qt.QMessageBox.warning(self.parent, "Warning", f"Dashboard image not found:\n{dashboard_path}")
         
+    def showDashboardImageInSliceView(self):
+        dashboardPath = os.path.join(self.ui.lineEditOutDashboard.text, "dashboard.png")
+        if not os.path.exists(dashboardPath):
+            qt.QMessageBox.warning(self.parent, "Warning", f"No dashboard image found at:\n{dashboardPath}")
+            return
+
+        [success, volumeNode] = slicer.util.loadVolume(dashboardPath, returnNode=True)
+        if not success:
+            qt.QMessageBox.warning(self.parent, "Warning", "Failed to load dashboard image.")
+            return
+
+        # Switch to single slice layout (Red)
+        layoutManager = slicer.app.layoutManager()
+        layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
+
+        # Show image in Red slice viewer
+        redWidget = layoutManager.sliceWidget("Red")
+        redLogic = redWidget.sliceLogic()
+        redLogic.GetSliceCompositeNode().SetBackgroundVolumeID(volumeNode.GetID())
+
+        # Fit the image to view
+        redLogic.FitSliceToAll()
+
+    def updateDashboardImage(self):
+        if self.dashboardPixmap:
+            scale_factor = 0.5
+            new_width = int(self.dashboardPixmap.width() * scale_factor)
+            new_height = int(self.dashboardPixmap.height() * scale_factor)
+            
+            scaled = self.dashboardPixmap.scaled(
+                new_width,
+                new_height,
+                qt.Qt.KeepAspectRatio,
+                qt.Qt.SmoothTransformation,
+            )
+            
+            self.ui.ImageWidget.setPixmap(scaled)
+            self.ui.ImageWidget.setFixedSize(scaled.size())
+            
+    def format_time(self,seconds):
+        """ Convert seconds to H:M:S format. """
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        return f"{hours:02}:{minutes:02}:{secs:02}"
+    
+    def update_ui_time(self, start_time, previous_time):
+        current_time = time.time()
+        gap=current_time-previous_time
+        if gap>0.3:
+            previous_time = current_time
+            self.elapsed_time = current_time - start_time
+            formatted_time = self.format_time(self.elapsed_time)
+            return formatted_time
+            
+    def onCheckRequirements(self, list_libs:list) -> bool:
+        if not self.logic.isCondaSetUp:
+            messageBox = qt.QMessageBox()
+            text = textwrap.dedent("""
+            SlicerConda is not set up, please click 
+            <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
+            """).strip()
+            messageBox.information(None, "Information", text)
+            return False
+        
+        self.ui.label_LibsInstallation.setVisible(True)
+        
+        if platform.system() == "Windows":
+            self.ui.label_LibsInstallation.setText(f"Checking if wsl is installed, this task may take a moments")
+            
+            if self.logic.testWslAvailable():
+                self.ui.label_LibsInstallation.setText(f"WSL installed")
+                if not self.logic.check_lib_wsl():
+                    self.ui.label_LibsInstallation.setText(f"Checking if the required librairies are installed, this task may take a moments")
+                    messageBox = qt.QMessageBox()
+                    text = textwrap.dedent("""
+                        WSL doesn't have all the necessary libraries, please download the installer 
+                        and follow the instructions 
+                        <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+                        for installation. The link may be blocked by Chrome, just authorize it.""").strip()
+
+                    messageBox.information(None, "Information", text)
+                    return False
+                
+            else : # if wsl not install, ask user to install it ans stop process
+                messageBox = qt.QMessageBox()
+                text = textwrap.dedent("""
+                    WSL is not installed, please download the installer and follow the instructions 
+                    <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+                    for installation. The link may be blocked by Chrome, just authorize it.""").strip()        
+
+                messageBox.information(None, "Information", text)
+                return False
+            
+        
+        ## MiniConda
+        
+        
+        self.ui.label_LibsInstallation.setText(f"Checking if miniconda is installed")
+        if "Error" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
+            messageBox = qt.QMessageBox()
+            text = textwrap.dedent("""
+            Code can't be launch. \nConda is not setup. 
+            Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
+            messageBox.information(None, "Information", text)
+            return False
+        
+        self.ui.label_LibsInstallation.setText(f"Checking if environnement exists")
+        
+        
+        ## summaries
+        
+        
+        if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
+            userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the summarization doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+            if userResponse :
+                start_time = time.time()
+                previous_time = start_time
+                formatted_time = self.format_time(0)
+                self.ui.label_LibsInstallation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
+                process = self.logic.install_summaries(list_libs=list_libs)
+                
+                while self.logic.process.is_alive():
+                    slicer.app.processEvents()
+                    formatted_time = self.update_ui_time(start_time, previous_time)
+                    self.ui.label_LibsInstallation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
+            
+                start_time = time.time()
+                previous_time = start_time
+                formatted_time = self.format_time(0)
+                text = textwrap.dedent(f"""
+                Installation of librairies into the new environnement. 
+                This task may take a few minutes.\ntime: {formatted_time}""").strip()
+                self.ui.label_LibsInstallation.setText(text)
+            else:
+                return False
+        else:
+            self.ui.label_LibsInstallation.setText(f"Environnement already exists")
+
+
+        self.all_installed = True
+        return True
+        
+    def run_conda_tool(self):
+        args = self.list_Processes_Parameters[0]["Parameter"]
+        print("args : ", args)
+        conda_exe = self.logic.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"MedX_Summarize"]
+        for key, value in args.items():
+            print("key : ", key)
+            if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+                value = self.logic.windows_to_linux_path(value)
+            command.append(f"\"{value}\"")
+        print("command : ",command)
+
+        # running in // to not block Slicer
+        self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
+        self.process.start()
+        self.module_name = self.list_Processes_Parameters[0]["Module"]
+        self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
+        self.ui.label_time.setVisible(True)
+        self.ui.label_time.setText(f"time : 0.00s")
+        previous_time = self.startTime
+        while self.process.is_alive():
+            self.ui.ButtonCancel.setVisible(True)
+            self.onCondaProcessUpdate()
+            slicer.app.processEvents()
+            current_time = time.time()
+            gap=current_time-previous_time
+            if gap>0.3:
+                currentTime = time.time() - self.startTime
+                previous_time = currentTime
+                if currentTime < 60:
+                    timer = f"Time : {int(currentTime)}s"
+                elif currentTime < 3600:
+                    timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                else:
+                    timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                    
+                self.ui.label_time.setText(timer)
+
+        del self.list_Processes_Parameters[0]
+    
+    def read_log_path(self):
+        with open(self.log_path, 'r') as f:
+            line = f.readline()
+            if line != '':
+                return line
+    
+    def onCondaProcessUpdate(self):
+        if os.path.isfile(self.log_path):
+            time_progress = os.path.getmtime(self.log_path)
+            line = self.read_log_path()
+            if (time_progress != self.time_log) and line:
+                progress = line.strip()
+            
+                self.progress = int(progress)
+                self.ui.label_info.setText(f"Number of processed files : {self.progress}/{self.nb_scans}")
+                progress_bar_value = round((self.progress) / self.nb_scans * 100,2)
+                self.time_log = time_progress
+                
+                self.ui.progressBar.setValue(progress_bar_value)
+                self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
+
     def onProcessUpdate(self, caller, event):
         # timer = f"Time : {time.time()-self.startTime:.2f}s"
         currentTime = time.time() - self.startTime
@@ -824,6 +1087,8 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressBar.setValue(0)
         self.progress = 0
         
+        self.ui.label_LibsInstallation.setVisible(False)
+        
         self.RunningUI(True)
         self.ui.progressBar.setEnabled(True)
         self.ui.progressBar.setHidden(False)
@@ -832,6 +1097,9 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         
     def OnEndProcess(self):
+        if self.module_name == "MedX Dashboard":
+            self.showDashboardImageInSliceView()
+            
         total_time = time.time() - self.startTime
         average_time = total_time / self.nb_scans
         print("PROCESS DONE.")
@@ -868,10 +1136,11 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ButtonCancel.setVisible(run)
         self.ui.progressBar.setVisible(run)
         self.ui.label_time.setVisible(run)
-        self.ui.applyButton.setEnabled(not run)
+        self.ui.SummarizeButton.setEnabled(not run)
+        self.ui.DashboardButton.setEnabled(not run)
         
     def onCancel(self):
-        self.process.Cancel()
+        self.logic.cancel_process()
         print("\n\n ========= PROCESS CANCELED ========= \n")
         
         self.RunningUI(False)
@@ -905,6 +1174,141 @@ class MedXLogic(ScriptedLoadableModuleLogic):
         self.logPath = logPath
         self.cliNode = None
         self.installCliNode = None
+        self.isCondaSetUp = False
+        self.conda = self.init_conda()
+        self.name_env = "summaries"
+        self.cliNode = None
+        
+    def init_conda(self):
+        # check if CondaSetUp exists
+        try:
+            import CondaSetUp
+        except:
+            return False
+        self.isCondaSetUp = True
+        
+        # set up conda on windows with WSL
+        if platform.system() == "Windows":
+            from CondaSetUp import CondaSetUpCallWsl
+            return CondaSetUpCallWsl()
+        else:
+            from CondaSetUp import CondaSetUpCall
+            return CondaSetUpCall()
+        
+    def run_conda_command(self, target, command):
+        self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
+        self.process.start()
+
+    def install_summaries(self, list_libs: list):
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.12", list_libs))
+        
+    def check_lib_wsl(self) -> bool:
+        # Ubuntu versions < 24.04
+        required_libs_old = ["libxrender1", "libgl1-mesa-glx"]
+        # Ubuntu versions >= 24.04
+        required_libs_new = ["libxrender1", "libgl1", "libglx-mesa0"]
+
+
+        all_installed = lambda libs: all(
+            subprocess.run(
+                f"wsl -- bash -c \"dpkg -l | grep {lib}\"", capture_output=True, text=True
+            ).stdout.encode("utf-16-le").decode("utf-8").replace("\x00", "").find(lib) >= 0
+            for lib in libs
+        )
+
+        return all_installed(required_libs_old) or all_installed(required_libs_new)
+    
+    def check_pythonpath_windows(self,file):
+        '''
+        Check if the environment env_name in wsl know the path to a specific file (ex : Crownsegmentationcli.py)
+        return : bool
+        '''
+        conda_exe = self.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
+        result = self.conda.condaRunCommand(command)
+        print("output CHECK python path: ", result)
+        if "True" in result :
+            return True
+        return False
+    
+    def give_pythonpath_windows(self):
+        '''
+        take the pythonpath of Slicer and give it to the environment name_env in wsl.
+        '''
+        paths = slicer.app.moduleManager().factoryManager().searchPaths
+        mnt_paths = []
+        for path in paths :
+            mnt_paths.append(f"\"{self.windows_to_linux_path(path)}\"")
+        pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
+        conda_exe = self.conda.getCondaExecutable()
+        argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
+        results = self.conda.condaRunCommand(argument)
+        print("output GIVE python path: ", results)
+        
+    def windows_to_linux_path(self,windows_path):
+        '''
+        convert a windows path to a wsl path
+        '''
+        windows_path = windows_path.strip()
+
+        path = windows_path.replace('\\', '/')
+
+        if ':' in path:
+            drive, path_without_drive = path.split(':', 1)
+            path = "/mnt/" + drive.lower() + path_without_drive
+
+        return path
+    
+    def cancel_process(self):
+        if platform.system() == 'Windows':
+            self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
+        print("Cancellation requested. Terminating process...")
+
+        self.subpro.wait() ## important
+        self.cancel = True
+    
+    def check_cli_script(self):
+        if not self.check_pythonpath_windows("MedX_Summarize"):
+            self.give_pythonpath_windows()
+            results = self.check_pythonpath_windows("MedX_Summarize")
+
+    def condaRunCommand(self, command: list[str]):
+        '''
+        Runs a command in a specified Conda environment, handling different operating systems.
+        
+        copy paste from SlicerConda and change the process line to be able to get the stderr/stdout 
+        and cancel the process without blocking slicer
+        '''
+        path_activate = self.conda.getActivateExecutable()
+
+        if path_activate=="None":
+            return "Path to conda no setup"
+
+        if platform.system() == "Windows":
+            command_execute = f"source {path_activate} {self.name_env} &&"
+            for com in command :
+                command_execute = command_execute+ " "+com
+
+            user = self.conda.getUser()
+            command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
+            print("command_to_execute in condaRunCommand : ",command_to_execute)
+
+            self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                              text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
+                              creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
+                              )
+        else:
+            path_conda_exe = self.conda.getCondaExecutable()
+            command_execute = f"{path_conda_exe} run -n {self.name_env}"
+            for com in command :
+                command_execute = command_execute+ " "+com
+
+            print("command_to_execute in conda run : ",command_execute)
+            self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
+    
+        self.stdout, self.stderr = self.subpro.communicate()
 
 
     def setDefaultParameters(self, parameterNode):

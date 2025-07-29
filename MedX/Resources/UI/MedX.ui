@@ -120,7 +120,28 @@
     <layout class="QVBoxLayout" name="verticalLayout_3">
      <item>
       <layout class="QGridLayout" name="gridLayout_6">
-       <item row="2" column="0">
+       <item row="4" column="0">
+        <widget class="QLabel" name="label_time">
+         <property name="text">
+          <string>time : </string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="0">
+        <widget class="QLabel" name="LabelNameExtension">
+         <property name="text">
+          <string>Running</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="label_info">
+         <property name="text">
+          <string>Number of processed files : 0</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
         <widget class="QProgressBar" name="progressBar">
          <property name="enabled">
           <bool>true</bool>
@@ -133,31 +154,10 @@
          </property>
         </widget>
        </item>
-       <item row="1" column="0">
-        <widget class="QLabel" name="label_info">
+       <item row="2" column="0">
+        <widget class="QLabel" name="label_LibsInstallation">
          <property name="text">
-          <string>Number of processed files : </string>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="0">
-        <widget class="QLabel" name="LabelNameExtension">
-         <property name="text">
-          <string>Running</string>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="0">
-        <widget class="QLabel" name="label_time">
-         <property name="text">
-          <string>time : </string>
-         </property>
-        </widget>
-       </item>
-       <item row="4" column="0">
-        <widget class="QLabel" name="ImageWidget">
-         <property name="text">
-          <string>Image</string>
+          <string>TextLabel</string>
          </property>
         </widget>
        </item>
@@ -214,21 +214,7 @@
        <layout class="QVBoxLayout" name="verticalLayout_4">
         <item>
          <layout class="QGridLayout" name="gridLayout">
-          <item row="0" column="2">
-           <widget class="QPushButton" name="SearchButtonSummary">
-            <property name="text">
-             <string>Search</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0">
-           <widget class="QLabel" name="labelOutDashboard">
-            <property name="text">
-             <string>Output folder:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="1">
+          <item row="1" column="1">
            <widget class="QLineEdit" name="lineEditOutDashboard"/>
           </item>
           <item row="0" column="0">
@@ -238,8 +224,8 @@
             </property>
            </widget>
           </item>
-          <item row="3" column="2">
-           <widget class="QPushButton" name="SearchButtonOutDashboard">
+          <item row="0" column="2">
+           <widget class="QPushButton" name="SearchButtonSummary">
             <property name="text">
              <string>Search</string>
             </property>
@@ -248,37 +234,25 @@
           <item row="0" column="1">
            <widget class="QLineEdit" name="lineEditSummaries"/>
           </item>
-          <item row="2" column="0">
-           <widget class="QCheckBox" name="checkBoxDashboard">
-            <property name="layoutDirection">
-             <enum>Qt::RightToLeft</enum>
-            </property>
+          <item row="1" column="0">
+           <widget class="QLabel" name="labelOutDashboard">
             <property name="text">
-             <string>Save dashboard</string>
+             <string>Output folder:</string>
             </property>
            </widget>
           </item>
-          <item row="1" column="1">
-           <spacer name="verticalSpacer_3">
-            <property name="orientation">
-             <enum>Qt::Vertical</enum>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="SearchButtonOutDashboard">
+            <property name="text">
+             <string>Search</string>
             </property>
-            <property name="sizeType">
-             <enum>QSizePolicy::Fixed</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>20</width>
-              <height>10</height>
-             </size>
-            </property>
-           </spacer>
+           </widget>
           </item>
          </layout>
         </item>
        </layout>
       </item>
-      <item row="1" column="0" colspan="2">
+      <item row="2" column="0" colspan="2">
        <widget class="QPushButton" name="DashboardButton">
         <property name="enabled">
          <bool>true</bool>
@@ -290,6 +264,22 @@
          <string>Visualize Dashboard</string>
         </property>
        </widget>
+      </item>
+      <item row="1" column="0">
+       <spacer name="verticalSpacer_3">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeType">
+         <enum>QSizePolicy::Fixed</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>5</height>
+         </size>
+        </property>
+       </spacer>
       </item>
      </layout>
     </widget>

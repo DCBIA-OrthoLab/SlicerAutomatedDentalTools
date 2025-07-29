@@ -61,7 +61,7 @@ def process_notes(notes_folder, output_folder, model, tokenizer, log_path):
             patient_files[patient_id] = []
         patient_files[patient_id].append(file_name)
 
-    for patient_id, files in patient_files.items():
+    for idx, (patient_id, files) in enumerate(patient_files.items()):
         print(f"Processing patient {patient_id}...")
         combined_text = ""
         for file_name in files:
@@ -81,18 +81,8 @@ def process_notes(notes_folder, output_folder, model, tokenizer, log_path):
             print(f"Saved summary to {output_file_path}")
             output_file.write(f"{summary}\n")
             
-        with open(log_path, "a") as log_f:
-                log_f.write(str(1))
-                            
-        print(f"""<filter-progress>{0}</filter-progress>""")
-        sys.stdout.flush()
-        time.sleep(0.2)
-        print(f"""<filter-progress>{2}</filter-progress>""")
-        sys.stdout.flush()
-        time.sleep(0.2)
-        print(f"""<filter-progress>{0}</filter-progress>""")
-        sys.stdout.flush()
-        time.sleep(0.2)
+        with open(log_path, "w+") as log_f:
+                log_f.write(str(idx + 1))
 
 def main(args):
     model, tokenizer = load_model_and_tokenizer(args.input_model)
