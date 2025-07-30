@@ -3,6 +3,7 @@ import glob
 import vtk
 import numpy as np
 import json
+import SimpleITK as sitk
 from vtk.util.numpy_support import vtk_to_numpy
 from ASO_IOS_utils.OFFReader import OFFReader
 
@@ -244,3 +245,17 @@ def WritefileError(file, folder_error, message):
     name, _ = os.path.splitext(name)
     with open(os.path.join(folder_error, f"{name}Error.txt"), "w") as f:
         f.write(message)
+
+def PatientNumber(path):
+    matrix_pat = os.path.basename(path).split('_U')[0].split('_L')[0].split('.')[0].replace('.','')
+    return matrix_pat
+
+
+def saveMatrixAsTfm(matrix, output_path):
+    assert matrix.shape == (4, 4), "Expected a 4x4 matrix."
+    
+    inverted_matrix = np.linalg.inv(matrix)
+    transform = sitk.AffineTransform(3)
+    transform.SetMatrix(inverted_matrix[:3, :3].flatten())
+    transform.SetTranslation(inverted_matrix[:3, 3])
+    sitk.WriteTransform(transform, output_path)
