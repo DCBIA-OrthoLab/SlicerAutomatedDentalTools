@@ -398,7 +398,7 @@ class SegmentationWidget(qt.QWidget):
         # ─── 1. Create an empty label map (correct geometry) ────────────────
         geomLM = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
         logic.ExportAllSegmentsToLabelmapNode(
-            segmentationNode, geomLM, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY)
+            segmentationNode, geomLM, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY,True)
 
         ijkToRAS = vtk.vtkMatrix4x4(); geomLM.GetIJKToRASMatrix(ijkToRAS)
         spacing, origin = geomLM.GetSpacing(), geomLM.GetOrigin()
@@ -895,40 +895,130 @@ class SegmentationWidget(qt.QWidget):
             self.onProgressInfo("Start of processing of results")
             self.onProgressInfo("Processing results in progress...")
 
-            # === PHASE 2: Chargement des résultats ===
+            # === PHASE 2: Chargement des résultats & affichage des labels bruts ===
             try:
                 self._loadSegmentationResults()
                 segNode = self.getCurrentSegmentationNode()
                 volNode = self.getCurrentVolumeNode()
-                
                 if not segNode:
                     raise RuntimeError("No segmentation node found")
-                    
-                self.onProgressInfo(f"Validated nodes - Seg: {segNode.GetName()}, Vol: {volNode.GetName() if volNode else 'None'}")
+
+                # On lit la segmentation source
+                segmentation = segNode.GetSegmentation()
+
+                # Dictionnaire complet nom→valeur
+                full_label_map = {
+                    "Upper-right third molar": 1,   "Upper-right second molar": 2,
+                    "Upper-right first molar": 3,   "Upper-right second premolar": 4,
+                    "Upper-right first premolar": 5,"Upper-right canine": 6,
+                    "Upper-right lateral incisor": 7, "Upper-right central incisor": 8,
+                    "Upper-left central incisor": 9,   "Upper-left lateral incisor": 10,
+                    "Upper-left canine": 11,          "Upper-left first premolar": 12,
+                    "Upper-left second premolar": 13,  "Upper-left first molar": 14,
+                    "Upper-left second molar": 15,     "Upper-left third molar": 16,
+                    "Lower-left third molar": 17,      "Lower-left second molar": 18,
+                    "Lower-left first molar": 19,      "Lower-left second premolar": 20,
+                    "Lower-left first premolar": 21,   "Lower-left canine": 22,
+                    "Lower-left lateral incisor": 23,  "Lower-left central incisor": 24,
+                    "Lower-right central incisor": 25, "Lower-right lateral incisor": 26,
+                    "Lower-right canine": 27,          "Lower-right first premolar": 28,
+                    "Lower-right second premolar": 29, "Lower-right first molar": 30,
+                    "Lower-right second molar": 31,    "Lower-right third molar": 32,
+                    "Upper-right second molar (baby)": 33, "Upper-right first molar (baby)": 34,
+                    "Upper-right canine (baby)": 35,       "Upper-right lateral incisor (baby)": 36,
+                    "Upper-right central incisor (baby)": 37, "Upper-left central incisor (baby)": 38,
+                    "Upper-left lateral incisor (baby)": 39,  "Upper-left canine (baby)": 40,
+                    "Upper-left first molar (baby)": 41,       "Upper-left second molar (baby)": 42,
+                    "Lower-left second molar (baby)": 43,      "Lower-left first molar (baby)": 44,
+                    "Lower-left canine (baby)": 45,            "Lower-left lateral incisor (baby)": 46,
+                    "Lower-left central incisor (baby)": 47,   "Lower-right central incisor (baby)": 48,
+                    "Lower-right lateral incisor (baby)": 49,  "Lower-right canine (baby)": 50,
+                    "Lower-right first molar (baby)": 51,      "Lower-right second molar (baby)": 52,
+                    "Mandible": 53, "Maxilla": 54, "Mandibular canal": 55
+                }
+
+                # 1) Récupération et affichage des labels bruts
+                raw_labels = []
+                import vtk
+                for segId in segmentation.GetSegmentIDs():
+                    segment = segmentation.GetSegment(segId)
+                    name = segment.GetName()
+                    if name not in full_label_map:
+                        self.onProgressInfo(f"[WARN] segment inattendu : «{name}» — ignoré")
+                        continue
+                    raw_labels.append(full_label_map[name])
+                    # On met à jour le tag pour pouvoir vérifier juste après
+                    segment.SetTag("LabelValue", str(full_label_map[name]))
+
+                raw_labels = sorted(set(raw_labels))
+                self.onProgressInfo(f"Predicted label values (raw): {raw_labels}")
+
+                # 2) Vérification post-SetTag
+                for segId in segmentation.GetSegmentIDs():
+                    segment = segmentation.GetSegment(segId)
+                    tag_val = vtk.mutable("")                
+                    segment.GetTag("LabelValue", tag_val)
+                    self.onProgressInfo(
+                        f"[DEBUG] Après SetTag, segment «{segment.GetName()}» a LabelValue = {tag_val.get()!r}"
+                    )
+
             except Exception as e:
                 raise RuntimeError(f"Failed to load results: {str(e)}")
 
-            # === PHASE 3: Export des résultats ===
-            selected = self.getSelectedExportFormats()
-            if selected != ExportFormat(0):
-                if not self.outputFolderPath:
-                    raise RuntimeError("Output folder not specified")
+            # === PHASE 3: Export NIfTI manuel, segment par segment ===
 
-                try:
-                    # Export NIFTI
-                    if selected & ExportFormat.NIFTI:
-                        self.onProgressInfo("Start of NIFTI export")
-                        self._saveSegmentationAsNifti(segNode, volNode)
-                        self.onProgressInfo("NIFTI export successful")
+            # 3.1) On crée un tableau numpy vide de la taille du volume
+            import numpy as np
+            ref_arr = slicer.util.arrayFromVolume(volNode)  # shape (Z,Y,X)
+            label_arr = np.zeros(ref_arr.shape, dtype=np.uint16)
 
-                    # Autres formats d'export
-                    other_formats = selected & ~ExportFormat.NIFTI
-                    if other_formats != ExportFormat(0):
-                        self.onProgressInfo(f"Start exporting other formats: {other_formats}")
-                        self.exportSegmentation(segNode, self.outputFolderPath, other_formats)
-                        self.onProgressInfo("Export other formats successful")
-                except Exception as e:
-                    raise RuntimeError(f"Export failed: {str(e)}")
+            # 3.2) Pour chaque segment, on exporte uniquement ce segment
+            logic = slicer.modules.segmentations.logic()
+            for segId in segmentation.GetSegmentIDs():
+                segment = segmentation.GetSegment(segId)
+                name = segment.GetName()
+                if name not in full_label_map:
+                    continue
+                value = full_label_map[name]
+
+                # Labelmap temporaire
+                tmpLM = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+                ids = vtk.vtkStringArray()
+                ids.InsertNextValue(segId)
+                success = logic.ExportSegmentsToLabelmapNode(
+                    segNode,                       # segmentation node
+                    ids,                           # tableau d’IDs
+                    tmpLM,                         # sortie
+                    volNode,                       # référence spatiale
+                    slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY
+                )
+                if not success:
+                    self.onProgressInfo(f"[ERROR] impossible d’exporter le segment «{name}»")
+                    slicer.mrmlScene.RemoveNode(tmpLM)
+                    continue
+
+                single_arr = slicer.util.arrayFromVolume(tmpLM)  # 0/1 mask
+                label_arr[single_arr > 0] = value
+                slicer.mrmlScene.RemoveNode(tmpLM)
+
+            # 3.3) On reconstruit un vrai volume labelmap et on l’enregistre
+            tmpOut = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+            slicer.util.updateVolumeFromArray(tmpOut, label_arr)
+            tmpOut.SetSpacing(volNode.GetSpacing())
+            tmpOut.SetOrigin(volNode.GetOrigin())
+            # copier la matrice IJK→RAS
+            ijk2ras = vtk.vtkMatrix4x4()
+            volNode.GetIJKToRASMatrix(ijk2ras)
+            tmpOut.SetIJKToRASMatrix(ijk2ras)
+
+            import os
+            output_path = os.path.join(self.outputFolderPath, segNode.GetName() + ".nii.gz")
+            saved = slicer.util.saveNode(tmpOut, output_path)
+            if saved:
+                self.onProgressInfo(f"✅ Segmentation saved manually in {output_path}")
+            else:
+                self.onProgressInfo(f"❌ Échec du saveNode sur {output_path}")
+            slicer.mrmlScene.RemoveNode(tmpOut)
 
             # === PHASE 4: Succès ===
             self.onProgressInfo("Processing completed successfully")
@@ -946,14 +1036,11 @@ class SegmentationWidget(qt.QWidget):
             # === PHASE 5: Nettoyage ===
             try:
                 self.onProgressInfo("Start cleaning procedure")
-                
-                # Nettoyage des nœuds
                 if hasattr(self, '_cleanupAfterCase'):
                     self._cleanupAfterCase(volNode, segNode)
                 else:
                     logging.error("Missing _cleanupAfterCase method!")
-
-                # Nettoyage GPU
+                # Vidage cache GPU
                 try:
                     import torch
                     if torch.cuda.is_available():
@@ -961,32 +1048,32 @@ class SegmentationWidget(qt.QWidget):
                         self.onProgressInfo("CUDA cache cleared")
                 except ImportError:
                     pass
-
-                # Gestion de la mémoire
-                import gc
-                gc.collect()
+                # GC
+                import gc; gc.collect()
                 self.onProgressInfo(f"Memory used: {self._get_memory_usage()}")
-
-                # Passage au fichier suivant ou fin
+                # Passage au suivant
                 if hasattr(self, 'folderFiles') and self.folderFiles:
                     self.currentFileIndex += 1
                     self._updateBatchCounter(show_file_name=True)
                     if self.currentFileIndex < len(self.folderFiles):
-                        self.onProgressInfo(f"Switch to file {self.currentFileIndex + 1}/{len(self.folderFiles)}")
-                        qt.QTimer.singleShot(150, self.processNextFile)  # Délai augmenté
+                        self.onProgressInfo(
+                            f"Switch to file {self.currentFileIndex+1}/{len(self.folderFiles)}"
+                        )
+                        qt.QTimer.singleShot(150, self.processNextFile)
                     else:
                         self._setApplyVisible(True)
                         self.onProgressInfo("All files have been processed")
                         self.onProgressInfo("Complete treatment completed")
                 else:
                     self._setApplyVisible(True)
-
             except Exception as cleanup_error:
-                logging.critical(f"Final cleaning failure: {str(cleanup_error)}", exc_info=True)
-                self.onProgressInfo(f"CLEANING ERROR: {str(cleanup_error)}")
+                logging.critical(f"Final cleaning failure: {cleanup_error}", exc_info=True)
+                self.onProgressInfo(f"CLEANING ERROR: {cleanup_error}")
             finally:
                 self._timeout_timer.stop()
                 self.onProgressInfo("Procedure completely completed")
+
+
 
     def _cleanupAfterCase(self, volumeNode, segmentationNode):
 
@@ -1755,4 +1842,3 @@ class SegmentationWidget(qt.QWidget):
     def nnUnetFolder(cls) -> Path:
         fileDir = Path(__file__).parent
         return fileDir.joinpath("..", "Resources", "ML").resolve()
-
