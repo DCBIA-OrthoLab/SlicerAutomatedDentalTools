@@ -86,7 +86,7 @@ def GetPatients(file_path:str,matrix_path:str):
             for i in range(len(files)):
                 file = files[i]
 
-                file_pat = (os.path.basename(file)).split('_Seg')[0].split('_seg')[0].split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0]
+                file_pat = (os.path.basename(file)).split('_Seg')[0].split('_seg')[0].split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('_MR')[0].split('.')[0]
                 for i in range(50):
                     file_pat=file_pat.split('_T'+str(i))[0]
 
@@ -107,7 +107,7 @@ def GetPatients(file_path:str,matrix_path:str):
 
             if extension ==".vtk" or extension ==".vtp" or extension ==".stl" or extension ==".off" or extension ==".obj" or extension==".nii" or extension==".nii.gz" or extension==".nrrd" or extension==".mrk.json":
                 files = [file_path]
-                file_pat = os.path.basename(file_path).split('_Seg')[0].split('_seg')[0].split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0].replace('.','')
+                file_pat = os.path.basename(file_path).split('_Seg')[0].split('_seg')[0].split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('_MR')[0].split('.')[0].replace('.','')
                 for i in range(50):
                     file_pat=file_pat.split('_T'+str(i))[0]
 
@@ -139,7 +139,7 @@ def GetPatients(file_path:str,matrix_path:str):
 
             for i in range(len(matrixes)):
                 matrix = matrixes[i]
-                matrix_pat = os.path.basename(matrix).split('_Left')[0].split('_left')[0].split('_Right')[0].split('_right')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('_MA')[0].split('_Mir')[0].split('_mir')[0].split('_Mirror')[0].split('_mirror')[0].split('.')[0].replace('.','')
+                matrix_pat = os.path.basename(matrix).split('_Left')[0].split('_left')[0].split('_Right')[0].split('_right')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('_MA')[0].split('_Mir')[0].split('_mir')[0].split('_Mirror')[0].split('_mirror')[0].split('_MR')[0].split('.')[0].replace('.','')
 
                 for i in range(50):
                     matrix_pat=matrix_pat.split('_T'+str(i))[0]
