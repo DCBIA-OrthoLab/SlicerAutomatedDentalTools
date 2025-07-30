@@ -12,8 +12,8 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
-     <property name="text">
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
+     <property name="text" stdset="0">
       <string>Inputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_16">
@@ -126,11 +126,11 @@
              </widget>
             </item>
             <item>
-             <widget class="qMRMLNodeComboBox" name="MRMLNodeComboBox_file">
+             <widget class="qMRMLNodeComboBox" name="MRMLNodeComboBox_file" native="true">
               <property name="enabled">
                <bool>true</bool>
               </property>
-              <property name="nodeTypes">
+              <property name="nodeTypes" stdset="0">
                <stringlist>
                 <string>vtkMRMLVolumeNode</string>
                </stringlist>
@@ -227,8 +227,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton">
-     <property name="text">
+    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton" native="true">
+     <property name="text" stdset="0">
       <string>Segmentation selection</string>
      </property>
      <layout class="QFormLayout" name="formLayout_1">
@@ -266,8 +266,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton">
-     <property name="text">
+    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton" native="true">
+     <property name="text" stdset="0">
       <string>Outputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -385,7 +385,7 @@
                <string>Generate the .vtf files associated with the previously generated segmentations.</string>
               </property>
               <property name="layoutDirection">
-               <enum>Qt::RightToLeft</enum>
+               <enum>Qt::LayoutDirection::RightToLeft</enum>
               </property>
               <property name="text">
                <string>Generate surface file</string>
@@ -398,7 +398,7 @@
             <item>
              <widget class="QCheckBox" name="SavePredictCheckBox">
               <property name="layoutDirection">
-               <enum>Qt::RightToLeft</enum>
+               <enum>Qt::LayoutDirection::RightToLeft</enum>
               </property>
               <property name="text">
                <string>Save in input folder</string>
@@ -428,8 +428,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton">
-     <property name="text">
+    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton" native="true">
+     <property name="text" stdset="0">
       <string>Advanced</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_9">
@@ -468,7 +468,7 @@
              <string>Center the origin of all the files.</string>
             </property>
             <property name="layoutDirection">
-             <enum>Qt::RightToLeft</enum>
+             <enum>Qt::LayoutDirection::RightToLeft</enum>
             </property>
             <property name="text">
              <string>Center all</string>
@@ -487,7 +487,7 @@
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Save the scan with contrast adjustment.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="layoutDirection">
-             <enum>Qt::RightToLeft</enum>
+             <enum>Qt::LayoutDirection::RightToLeft</enum>
             </property>
             <property name="text">
              <string>Save adjusted scan</string>
@@ -513,16 +513,6 @@
              <number>5</number>
             </property>
             <item>
-             <widget class="QLabel" name="labelPrecision">
-              <property name="toolTip">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Overlap porcentage of the segmentation windows. &lt;/p&gt;&lt;p&gt;High overlap will significantly increase the prediction time.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-              </property>
-              <property name="text">
-               <string>Prediction precision</string>
-              </property>
-             </widget>
-            </item>
-            <item>
              <widget class="QLabel" name="labelSmoothing">
               <property name="toolTip">
                <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Smoothing factor to apply to the generated .vtk surface.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
@@ -533,62 +523,12 @@
              </widget>
             </item>
             <item>
-             <widget class="QLabel" name="label_3">
-              <property name="text">
-               <string>GPU usage</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <layout class="QVBoxLayout" name="verticalLayout_5">
-              <item>
-               <widget class="QLabel" name="label_CPU_use">
-                <property name="text">
-                 <string>Use CPU memory</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </item>
-            <item>
-             <widget class="QLabel" name="label_4">
-              <property name="text">
-               <string>CPU usage</string>
-              </property>
-             </widget>
+             <layout class="QVBoxLayout" name="verticalLayout_5"/>
             </item>
            </layout>
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_12">
-            <item>
-             <widget class="QSlider" name="horizontalSliderPrecision">
-              <property name="toolTip">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Overlap porcentage of the segmentation windows. &lt;/p&gt;&lt;p&gt;High overlap will significantly increase the prediction time.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-              </property>
-              <property name="maximum">
-               <number>95</number>
-              </property>
-              <property name="singleStep">
-               <number>5</number>
-              </property>
-              <property name="pageStep">
-               <number>5</number>
-              </property>
-              <property name="value">
-               <number>50</number>
-              </property>
-              <property name="orientation">
-               <enum>Qt::Horizontal</enum>
-              </property>
-              <property name="tickPosition">
-               <enum>QSlider::TicksBothSides</enum>
-              </property>
-              <property name="tickInterval">
-               <number>5</number>
-              </property>
-             </widget>
-            </item>
             <item>
              <widget class="QSlider" name="horizontalSliderSmoothing">
               <property name="toolTip">
@@ -607,58 +547,10 @@
                <number>5</number>
               </property>
               <property name="orientation">
-               <enum>Qt::Horizontal</enum>
+               <enum>Qt::Orientation::Horizontal</enum>
               </property>
               <property name="tickPosition">
-               <enum>QSlider::TicksBothSides</enum>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QSlider" name="horizontalSliderGPU">
-              <property name="minimum">
-               <number>1</number>
-              </property>
-              <property name="maximum">
-               <number>5</number>
-              </property>
-              <property name="pageStep">
-               <number>1</number>
-              </property>
-              <property name="orientation">
-               <enum>Qt::Horizontal</enum>
-              </property>
-              <property name="tickPosition">
-               <enum>QSlider::TicksBothSides</enum>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QCheckBox" name="host_memory">
-              <property name="toolTip">
-               <string>Use host memory with a performance penalty. Enable if CUDA runs out of memory.</string>
-              </property>
-              <property name="text">
-               <string/>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QSlider" name="horizontalSliderCPU">
-              <property name="minimum">
-               <number>1</number>
-              </property>
-              <property name="maximum">
-               <number>5</number>
-              </property>
-              <property name="pageStep">
-               <number>1</number>
-              </property>
-              <property name="orientation">
-               <enum>Qt::Horizontal</enum>
-              </property>
-              <property name="tickPosition">
-               <enum>QSlider::TicksBothSides</enum>
+               <enum>QSlider::TickPosition::TicksBothSides</enum>
               </property>
              </widget>
             </item>
@@ -670,22 +562,6 @@
              <number>0</number>
             </property>
             <item>
-             <widget class="QSpinBox" name="spinBoxPrecision">
-              <property name="toolTip">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Overlap porcentage of the segmentation windows. &lt;/p&gt;&lt;p&gt;High overlap will significantly increase the prediction time.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-              </property>
-              <property name="maximum">
-               <number>95</number>
-              </property>
-              <property name="singleStep">
-               <number>5</number>
-              </property>
-              <property name="value">
-               <number>50</number>
-              </property>
-             </widget>
-            </item>
-            <item>
              <widget class="QSpinBox" name="spinBoxSmoothing">
               <property name="toolTip">
                <string>Smoothing factor to apply to the generated .vtk surface.</string>
@@ -696,27 +572,7 @@
              </widget>
             </item>
             <item>
-             <widget class="QSpinBox" name="spinBoxGPU">
-              <property name="minimum">
-               <number>1</number>
-              </property>
-              <property name="maximum">
-               <number>5</number>
-              </property>
-             </widget>
-            </item>
-            <item>
              <layout class="QVBoxLayout" name="verticalLayout_10"/>
-            </item>
-            <item>
-             <widget class="QSpinBox" name="spinBoxCPU">
-              <property name="minimum">
-               <number>1</number>
-              </property>
-              <property name="maximum">
-               <number>5</number>
-              </property>
-             </widget>
             </item>
            </layout>
           </item>
@@ -728,8 +584,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton">
-     <property name="text">
+    <widget class="ctkCollapsibleButton" name="optionCollapsibleButton" native="true">
+     <property name="text" stdset="0">
       <string>Compute</string>
      </property>
      <layout class="QFormLayout" name="formLayout_1">
@@ -834,7 +690,7 @@
    <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
-      <enum>Qt::Vertical</enum>
+      <enum>Qt::Orientation::Vertical</enum>
      </property>
      <property name="sizeHint" stdset="0">
       <size>
