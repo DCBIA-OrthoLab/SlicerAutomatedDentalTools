@@ -228,7 +228,7 @@ class FlexRegWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = None
         self._parameterNode = None
         self._updatingGUIFromParameterNode = False
-        self.reg = Reg() #Creation os an object reg for the registration
+        self.reg = Reg() #Creation of an object reg for the registration
 
     def setup(self):
         """
@@ -603,7 +603,7 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         
         parameters["lower_arch"] = self.lower_arch
 
-
+        print("Running FlexReg_CLI with parameters:", parameters)
 
         flybyProcess = slicer.modules.flexreg_cli
         self.cliNode = slicer.cli.run(flybyProcess,None, parameters)  
