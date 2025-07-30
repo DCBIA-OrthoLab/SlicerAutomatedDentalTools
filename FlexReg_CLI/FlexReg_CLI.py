@@ -2,6 +2,7 @@
 
 import argparse
 import vtk
+import SimpleITK as sitk
 from FlexReg_Method.make_butterfly import butterflyPatch
 from FlexReg_Method.draw import drawPatch
 from FlexReg_Method.ICP import vtkICP,ICP
@@ -154,6 +155,20 @@ def main(args):
         transformFilter.SetInputData(modelNode)
         transformFilter.SetTransform(transform)
         transformFilter.Update()
+
+        # Save the registration matrix
+        flip = np.diag([-1, -1, 1, 1])
+        composed = flip @ matrix_array @ flip
+        composed_inv = np.linalg.inv(composed)
+
+        sitk_tfm = sitk.AffineTransform(3)
+        sitk_tfm.SetMatrix(composed_inv[:3, :3].flatten())
+        sitk_tfm.SetTranslation(composed_inv[:3, 3])
+
+        base_filename = os.path.splitext(os.path.basename(args.lineedit))[0]
+        tfm_outpath = os.path.join(args.path_output, f"{base_filename}{args.suffix}.tfm")
+        sitk.WriteTransform(sitk_tfm, tfm_outpath)
+        print(f"Saved inverted matrix to: {tfm_outpath}")
 
         modelNode = transformFilter.GetOutput()
         modelNode.Modified()
