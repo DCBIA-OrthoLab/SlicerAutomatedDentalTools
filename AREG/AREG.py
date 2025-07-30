@@ -863,23 +863,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not scan_folder == "":
             lineEdit.setText(scan_folder)
 
-            # To check if the input segmentation (for the Semi-Auto CBCT mode) has different labels to show them in a combobox
-            # if (
-            #     self.ui.lineEditScanT1LmPath.text != ""
-            #     and self.ui.lineEditScanT2LmPath.text == ""
-            # ):
-            #     if (
-            #         self.ui.CbInputType.currentIndex == 0
-            #         and self.ui.CbModeType.currentIndex == 2
-            #     ):
-            #         if self.SegmentationLabels == [0]:
-            #             self.SegmentationLabels += self.ActualMeth.GetSegmentationLabel(
-            #                 self.ui.lineEditScanT1LmPath.text
-            #             )
-            #             for i in self.SegmentationLabels:
-            #                 if i != 0:
-            #                     self.ui.LabelSelectcomboBox.addItem(f"Label {i}")
-
             t1_path = self.ui.lineEditScanT1LmPath.text
             t2_path = self.ui.lineEditScanT2LmPath.text
             mask_path = self.ui.lineEditMaskT1Path.text

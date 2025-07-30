@@ -57,14 +57,12 @@
       <description>path for the log</description>
     </string>
 
-
-
-
-
-
-
-
-
+    <string>
+      <name>areg_mode</name>
+      <label>areg_mode</label>
+      <index>7</index>
+      <description>Mode of the AREG registration</description>
+    </string>
 
   </parameters>
 </executable>
