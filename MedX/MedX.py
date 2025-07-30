@@ -735,12 +735,6 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
 
         del self.list_Processes_Parameters[0]
-
-        # if os.path.exists(dashboard_path):
-        #     self.dashboardPixmap = QPixmap(dashboard_path)
-        #     self.updateDashboardImage()
-        # else:
-        #     qt.QMessageBox.warning(self.parent, "Warning", f"Dashboard image not found:\n{dashboard_path}")
         
     def showDashboardImageInSliceView(self):
         dashboardPath = os.path.join(self.ui.lineEditOutDashboard.text, "dashboard.png")
@@ -748,8 +742,8 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             qt.QMessageBox.warning(self.parent, "Warning", f"No dashboard image found at:\n{dashboardPath}")
             return
 
-        [success, volumeNode] = slicer.util.loadVolume(dashboardPath, returnNode=True)
-        if not success:
+        volumeNode = slicer.util.loadVolume(dashboardPath)
+        if not volumeNode:
             qt.QMessageBox.warning(self.parent, "Warning", "Failed to load dashboard image.")
             return
 
@@ -764,22 +758,6 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Fit the image to view
         redLogic.FitSliceToAll()
-
-    def updateDashboardImage(self):
-        if self.dashboardPixmap:
-            scale_factor = 0.5
-            new_width = int(self.dashboardPixmap.width() * scale_factor)
-            new_height = int(self.dashboardPixmap.height() * scale_factor)
-            
-            scaled = self.dashboardPixmap.scaled(
-                new_width,
-                new_height,
-                qt.Qt.KeepAspectRatio,
-                qt.Qt.SmoothTransformation,
-            )
-            
-            self.ui.ImageWidget.setPixmap(scaled)
-            self.ui.ImageWidget.setFixedSize(scaled.size())
             
     def format_time(self,seconds):
         """ Convert seconds to H:M:S format. """
@@ -1097,7 +1075,7 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         
     def OnEndProcess(self):
-        if self.module_name == "MedX Dashboard":
+        if self.module_name == "MedX Dashboard" and self.ui.DisplayDashboard.isChecked():
             self.showDashboardImageInSliceView()
             
         total_time = time.time() - self.startTime
