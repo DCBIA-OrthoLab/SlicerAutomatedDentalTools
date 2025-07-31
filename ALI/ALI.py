@@ -10,6 +10,7 @@ from slicer.util import VTKObservationMixin, pip_install, pip_uninstall
 import webbrowser
 import textwrap
 import importlib.metadata
+import signal
 
 from pathlib import Path
 import platform
@@ -356,6 +357,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.type = "CBCT"
     self.display = Display
     self.selected_tooth = None
+    
+    self.nb_patient = 0
+    self.time_log = 0
     
     self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
     
@@ -843,7 +847,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def onPredictButton(self):
     if self.type == "CBCT":
-      list_libs_CBCT = [('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2'), ('monai', '0.7.0')]
+      list_libs_CBCT = [('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2')]
+      monai_version = '1.5.0' if sys.version_info >= (3, 10) else '0.7.0'
+      list_libs_CBCT.append(('monai', monai_version))
       
       is_installed = install_function(self,list_libs_CBCT)
     
@@ -853,7 +859,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       print("seg_env : ",check_env)
       
       if check_env:
-        list_libs_IOS = [('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2'), ('monai', '0.7.0')]
+        list_libs_IOS = [('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2')]
+        monai_version = '0.7.0' #'1.5.0' if sys.version_info >= (3, 10) else '0.7.0'
+        list_libs_IOS.append(('monai', monai_version))
 
         is_installed = install_function(self,list_libs_IOS)
       
@@ -911,19 +919,18 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
 
     if "CrownSegmentationcli" in self.module_name:
-      self.ui.CancelButton.setEnabled(False)
       print("module name : ", self.module_name)
+      self.nb_extension_did += 1
       self.run_conda_tool("seg")
       self.module_name = self.list_Processes_Parameters[0]["Module"]
     if "ALI_IOS" in self.module_name:
-      self.ui.CancelButton.setEnabled(False)
+      self.nb_extension_did += 1
       print("module name : ", self.module_name)
       self.run_conda_tool("ali")
       self.OnEndProcess()
         
      
     else: 
-      self.ui.CancelButton.setEnabled(True)
       self.process = slicer.cli.run(
         self.list_Processes_Parameters[0]["Process"],
         None,
@@ -943,7 +950,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.progressBar.setValue(0)
     
     self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
-    self.ui.LabelProgressExtension.setText(f"Extension : 0 / {self.nb_extension_launch}")
+    self.ui.LabelProgressExtension.setText(f"Extension : 1 / {self.nb_extension_launch}")
     
     self.nb_extension_did = 0
     self.module_name_before = 0
@@ -960,6 +967,31 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     with open(file_path, 'r') as file:
         lines = file.readlines()
         return lines[-1] if lines else None
+      
+  def read_log_path(self):
+      with open(self.log_path, 'r') as f:
+          line = f.readline()
+          if line != '':
+              return line
+  
+  def onCondaProcessUpdate(self):
+      if os.path.isfile(self.log_path):
+          self.ui.LabelProgressExtension.setText(
+              f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
+          )
+          time_progress = os.path.getmtime(self.log_path)
+          line = self.read_log_path()
+          if (time_progress != self.time_log) and line:
+              progress = line.strip()
+          
+              self.progress = int(progress)
+              self.ui.LabelProgressPatient.setText(f"Patient : {self.progress}/{self.nb_patient}")
+              
+              progress_bar_value = round((self.progress) / self.nb_patient * 100,2)
+              self.time_log = time_progress
+              
+              self.ui.progressBar.setValue(progress_bar_value)
+              self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
 
   def onProcessUpdate(self, caller, event):
         # timer = f"Time : {time.time()-self.startTime:.2f}s"
@@ -1032,7 +1064,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     
   def OnEndProcess(self):
     self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_lm}")
-    self.nb_extension_did += 1
     self.ui.LabelProgressExtension.setText(
       f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
     )
@@ -1079,7 +1110,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def onCancel(self):
     # print(self.logic.cliNode.GetOutputText())
-    self.process.Cancel()
+    try:
+      self.process.Cancel()
+    except Exception as e:
+      self.logic.cancel_process()
+
     print("\n\n ========= PROCESS CANCELED ========= \n")
 
     self.RunningUI(False)
@@ -1127,15 +1162,17 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         command.append(f"\"{value}\"")
       print("*"*50)
       print("command : ",command)
-
+      
       # running in // to not block Slicer
-      self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+      self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
       self.process.start()
       self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
       self.ui.TimerLabel.setHidden(False)
       self.ui.TimerLabel.setText(f"Time : 0.00s")
       previous_time = self.startTime
       while self.process.is_alive():
+        self.ui.CancelButton.setVisible(True)
+        self.onCondaProcessUpdate()
         slicer.app.processEvents()
         current_time = time.time()
         gap=current_time-previous_time
@@ -1150,7 +1187,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
           
           self.ui.TimerLabel.setText(timer)
-
+      
       del self.list_Processes_Parameters[0]
     
     elif type == "ali":
@@ -1166,13 +1203,16 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       print("command : ",command)
 
       # running in // to not block Slicer
-      self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+      self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
       self.process.start()
       self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
       self.ui.TimerLabel.setHidden(False)
       self.ui.TimerLabel.setText(f"time : 0.00s")
       previous_time = self.startTime
+
       while self.process.is_alive():
+        self.ui.CancelButton.setVisible(True)
+        self.onCondaProcessUpdate()
         slicer.app.processEvents()
         current_time = time.time()
         gap=current_time-previous_time
@@ -1699,6 +1739,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
     self.conda = self.init_conda()
     self.name_env = "shapeaxi"
     self.cliNode = None
+    self.pythonVersion = "3.9"
 
   def init_conda(self):
     # check if CondaSetUp exists
@@ -1721,7 +1762,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
     self.process.start()
     
   def install_shapeaxi(self):
-    self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+    self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.pythonVersion,["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
     
   def check_if_pytorch3d(self):
     conda_exe = self.conda.getCondaExecutable()
@@ -1804,6 +1845,16 @@ class ALILogic(ScriptedLoadableModuleLogic):
       path = "/mnt/" + drive.lower() + path_without_drive
 
     return path
+  
+  def cancel_process(self):
+    if platform.system() == 'Windows':
+      self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
+    else:
+      os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
+    print("Cancellation requested. Terminating process...")
+
+    self.subpro.wait() ## important
+    self.cancel = True
 
   def check_cli_script(self):
     if not self.check_pythonpath_windows("ALI_IOS"): 

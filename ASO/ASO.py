@@ -23,6 +23,7 @@ import subprocess
 import threading
 import textwrap
 import platform
+import signal
 
 from ASO_Method.IOS import Auto_IOS, Semi_IOS
 from ASO_Method.CBCT import Semi_CBCT, Auto_CBCT
@@ -40,8 +41,8 @@ def check_lib_installed(lib_name, required_version=None):
 
 # import csv
     
-def install_function(self):
-    libs = [('itk', None), ('torch', None), ('monai', '0.7.0'),('pytorch_lightning',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2')]
+def install_function(self, libs: list):
+    
     libs_to_install = []
     for lib, version in libs:
         if not check_lib_installed(lib, version):
@@ -266,6 +267,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._updatingGUIFromParameterNode = False
 
         self.nb_patient = 0  # number of scans in the input folder
+        self.time_log = 0  # time of the last log update
 
     def setup(self):
         """
@@ -867,16 +869,24 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             check_env = self.onCheckRequirements()
             print("seg_env: ", check_env)
             
-            if check_env:
-                is_installed = install_function(self)
-        else:
-            is_installed = install_function(self)
+            libs = [('itk', None), ('torch', None),('pytorch_lightning',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2')]
+            monai_version = '0.7.0' #'1.5.0' if sys.version_info >= (3, 10) else '0.7.0'
+            libs.append(('monai', monai_version))
             
+            if check_env:
+                is_installed = install_function(self, libs)
+                
+            self.logic.check_cli_script()
+            
+        else:
+            libs = [('itk', None), ('torch', None),('pytorch_lightning',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2')]
+            monai_version = '1.5.0' if sys.version_info >= (3, 10) else '0.7.0'
+            libs.append(('monai', monai_version))
+            is_installed = install_function(self, libs)
+
         if not is_installed:
             qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
             return
-        
-        self.logic.check_cli_script()
         
         self.ui.label_LibsInstallation.setVisible(False)
         error = self.ActualMeth.TestProcess(
@@ -914,6 +924,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             module = self.list_Processes_Parameters[0]["Module"]
             print("module name : ", module)
             if module == "CrownSegmentationcli":
+                self.nb_extension_did += 1
                 self.run_conda_tool()
 
             # /!\ Launch of the first process /!\
@@ -939,14 +950,39 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
         self.ui.LabelProgressExtension.setText(
-            f"Extension : 0 / {self.nb_extension_launch}"
+            f"Extension : 1 / {self.nb_extension_launch}"
         )
-        self.nb_extnesion_did = 0
+        self.nb_extension_did = 0
 
         self.module_name_before = 0
         self.nb_change_bystep = 0
 
         self.RunningUI(True)
+    
+    def read_log_path(self):
+      with open(self.log_path, 'r') as f:
+          line = f.readline()
+          if line != '':
+              return line
+  
+    def onCondaProcessUpdate(self):
+        if os.path.isfile(self.log_path):
+            self.ui.LabelProgressExtension.setText(
+                f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
+            )
+            time_progress = os.path.getmtime(self.log_path)
+            line = self.read_log_path()
+            if (time_progress != self.time_log) and line:
+                progress = line.strip()
+            
+                self.progress = int(progress)
+                self.ui.LabelProgressPatient.setText(f"Patient : {self.progress}/{self.nb_patient}")
+                
+                progress_bar_value = round((self.progress) / self.nb_patient * 100,2)
+                self.time_log = time_progress
+                
+                self.ui.progressBar.setValue(progress_bar_value)
+                self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
 
     def onProcessUpdate(self, caller, event):
         currentTime = time.time() - self.startTime
@@ -964,9 +1000,9 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         if self.module_name_before != self.module_name:
             self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
-            self.nb_extnesion_did += 1
+            self.nb_extension_did += 1
             self.ui.LabelProgressExtension.setText(
-                f"Extension : {self.nb_extnesion_did} / {self.nb_extension_launch}"
+                f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
             )
             self.ui.progressBar.setValue(0)
 
@@ -1024,9 +1060,8 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def OnEndProcess(self):
         """Function called when the process is finished."""
         self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
-        self.nb_extnesion_did += 1
         self.ui.LabelProgressExtension.setText(
-            f"Extension : {self.nb_extnesion_did} / {self.nb_extension_launch}"
+            f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
         )
         self.ui.progressBar.setValue(0)
 
@@ -1067,7 +1102,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         s.exec_()
 
     def onCancel(self):
-        self.process.Cancel()
+        try:
+            self.process.Cancel()
+        except Exception as e:
+            self.logic.cancel_process()
+            
+        print("\n\n ========= PROCESS CANCELED ========= \n")
 
         self.RunningUI(False)
 
@@ -1103,12 +1143,14 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("command : ",command)
 
         # running in // to not block Slicer
-        process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+        process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
         process.start()
         self.ui.LabelTimer.setHidden(False)
         self.ui.LabelTimer.setText(f"Time : 0.00s")
         previous_time = self.startTime
         while process.is_alive():
+            self.ui.ButtonCancel.setVisible(True)
+            self.onCondaProcessUpdate()
             slicer.app.processEvents()
             current_time = time.time()
             gap=current_time-previous_time
@@ -1741,6 +1783,7 @@ class ASOLogic(ScriptedLoadableModuleLogic):
         self.conda = self.init_conda()
         self.name_env = "shapeaxi"
         self.cliNode = None
+        self.python_version = "3.9"
         
     def init_conda(self):
         # check if CondaSetUp exists
@@ -1763,7 +1806,7 @@ class ASOLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
@@ -1840,6 +1883,16 @@ class ASOLogic(ScriptedLoadableModuleLogic):
 
         return path
     
+    def cancel_process(self):
+        if platform.system() == 'Windows':
+            self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
+        print("Cancellation requested. Terminating process...")
+
+        self.subpro.wait() ## important
+        self.cancel = True
+    
     def check_cli_script(self):
         if not self.check_pythonpath_windows("PRE_ASO_IOS"): 
             self.give_pythonpath_windows()
@@ -1875,9 +1928,9 @@ class ASOLogic(ScriptedLoadableModuleLogic):
             print("command_to_execute in condaRunCommand : ",command_to_execute)
 
             self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
-                                    text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
-                                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
-                                    )
+                              text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
+                              creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
+                              )
         else:
             path_conda_exe = self.conda.getCondaExecutable()
             command_execute = f"{path_conda_exe} run -n {self.name_env}"
@@ -1888,25 +1941,6 @@ class ASOLogic(ScriptedLoadableModuleLogic):
             self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
     
         self.stdout, self.stderr = self.subpro.communicate()
-
-    # def process(self, parameters):
-    #     """
-    #     Run the processing algorithm.
-    #     Can be used without GUI widget.
-    #     :param inputVolume: volume to be thresholded
-
-    #     """
-
-    #     # import time
-    #     # startTime = time.time()
-
-    #     logging.info("Processing started")
-
-    #     PredictProcess = slicer.modules.aso_ios
-
-    #     self.cliNode = slicer.cli.run(PredictProcess, None, parameters)
-
-    #     return PredictProcess
 
     def iterillimeted(self, iter):
         out = []
