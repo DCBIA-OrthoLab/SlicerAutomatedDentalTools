@@ -12,6 +12,8 @@ import logging
 import glob
 import time
 import shutil
+import subprocess
+
 import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin, pip_install
@@ -623,11 +625,24 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.lineEditModelPath.setText(model_folder)
         self.model_ready = True
 
+
+  def openUrlInBrowser(self,url):
+    # on choisit firefox si dispo
+    browser = 'firefox' if shutil.which('firefox') else 'xdg-open'
+    env = os.environ.copy()
+    # empêche le chargement d’atk-bridge
+    env['NO_AT_BRIDGE'] = '1'
+    subprocess.Popen(
+        [browser, url],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
   def onDownloadButton(self):
-    webbrowser.open(MODEL_LINK)
+        self.openUrlInBrowser(MODEL_LINK)
 
   def onDownloadScanButton(self):
-    webbrowser.open(SCAN_LINK)
+        self.openUrlInBrowser(SCAN_LINK)
 
     #endregion
 
