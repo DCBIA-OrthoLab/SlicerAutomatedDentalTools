@@ -872,14 +872,15 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             
             if check_env:
                 is_installed = install_function(self)
+                
+            self.logic.check_cli_script()
+            
         else:
             is_installed = install_function(self)
             
         if not is_installed:
             qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
             return
-        
-        self.logic.check_cli_script()
         
         self.ui.label_LibsInstallation.setVisible(False)
         error = self.ActualMeth.TestProcess(

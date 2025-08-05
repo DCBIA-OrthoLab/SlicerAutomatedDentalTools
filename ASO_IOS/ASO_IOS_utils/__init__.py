@@ -8,6 +8,7 @@ from .utils import (
     LoadJsonLandmarks,
     listlandmark2diclandmark,
     WritefileError,
+    saveMatrixAsTfm, PatientNumber
 )
 from .icp import (
     vtkICP,

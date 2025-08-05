@@ -70,5 +70,13 @@
       <index>7</index>
       <description>Log path</description>
     </string>
+
+    <string>
+      <name>is_seg</name>
+      <label>is_seg</label>
+      <index>8</index>
+      <description>Whether or not the input is a segmentation</description>
+    </string>
+    
   </parameters>
 </executable>

@@ -863,23 +863,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not scan_folder == "":
             lineEdit.setText(scan_folder)
 
-            # To check if the input segmentation (for the Semi-Auto CBCT mode) has different labels to show them in a combobox
-            # if (
-            #     self.ui.lineEditScanT1LmPath.text != ""
-            #     and self.ui.lineEditScanT2LmPath.text == ""
-            # ):
-            #     if (
-            #         self.ui.CbInputType.currentIndex == 0
-            #         and self.ui.CbModeType.currentIndex == 2
-            #     ):
-            #         if self.SegmentationLabels == [0]:
-            #             self.SegmentationLabels += self.ActualMeth.GetSegmentationLabel(
-            #                 self.ui.lineEditScanT1LmPath.text
-            #             )
-            #             for i in self.SegmentationLabels:
-            #                 if i != 0:
-            #                     self.ui.LabelSelectcomboBox.addItem(f"Label {i}")
-
             t1_path = self.ui.lineEditScanT1LmPath.text
             t2_path = self.ui.lineEditScanT2LmPath.text
             mask_path = self.ui.lineEditMaskT1Path.text
@@ -1041,12 +1024,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onPredictButton(self):
         if self.type == "CBCT":
-            monai_version = '==1.5.0' if sys.version_info >= (3, 10) else '==0.7.0'
-            
+            monai_version = '==1.5.0' if sys.version_info >= (3, 10) else '==0.7.0'            
             if platform.system() == "Windows":
                 list_libs_CBCT_windows = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
                             ('pandas',None,None),('torch','>=2.6.0',"https://download.pytorch.org/whl/cu118")] #(lib_name, version, url)
-                
                 list_libs_CBCT_windows.append(('monai', monai_version, None))
 
                 is_installed = install_function(self,list_libs_CBCT_windows)
@@ -1054,7 +1035,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 # libraries and versions compatibility to use AREG_CBCT
                 list_libs_CBCT = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
                             ('pandas',None,None),('torch','>=2.6.0',None)] #(lib_name, version, url)
-                
+
                 list_libs_CBCT.append(('monai', monai_version, None))
 
                 is_installed = install_function(self,list_libs_CBCT)

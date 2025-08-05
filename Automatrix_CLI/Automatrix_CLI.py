@@ -86,7 +86,7 @@ def GetPatients(file_path:str,matrix_path:str):
             for i in range(len(files)):
                 file = files[i]
 
-                file_pat = (os.path.basename(file)).split('_Seg')[0].split('_seg')[0].split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0]
+                file_pat = (os.path.basename(file)).split('_Seg')[0].split('_seg')[0].split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('_MR')[0].split('.')[0]
                 for i in range(50):
                     file_pat=file_pat.split('_T'+str(i))[0]
 
@@ -107,7 +107,7 @@ def GetPatients(file_path:str,matrix_path:str):
 
             if extension ==".vtk" or extension ==".vtp" or extension ==".stl" or extension ==".off" or extension ==".obj" or extension==".nii" or extension==".nii.gz" or extension==".nrrd" or extension==".mrk.json":
                 files = [file_path]
-                file_pat = os.path.basename(file_path).split('_Seg')[0].split('_seg')[0].split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0].replace('.','')
+                file_pat = os.path.basename(file_path).split('_Seg')[0].split('_seg')[0].split('_Scan')[0].split('_scan')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('_MR')[0].split('.')[0].replace('.','')
                 for i in range(50):
                     file_pat=file_pat.split('_T'+str(i))[0]
 
@@ -139,7 +139,7 @@ def GetPatients(file_path:str,matrix_path:str):
 
             for i in range(len(matrixes)):
                 matrix = matrixes[i]
-                matrix_pat = os.path.basename(matrix).split('_Left')[0].split('_left')[0].split('_Right')[0].split('_right')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('_MA')[0].split('_Mir')[0].split('_mir')[0].split('_Mirror')[0].split('_mirror')[0].split('.')[0].replace('.','')
+                matrix_pat = os.path.basename(matrix).split('_Left')[0].split('_left')[0].split('_Right')[0].split('_right')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('_MA')[0].split('_Mir')[0].split('_mir')[0].split('_Mirror')[0].split('_mirror')[0].split('_MR')[0].split('.')[0].replace('.','')
 
                 for i in range(50):
                     matrix_pat=matrix_pat.split('_T'+str(i))[0]
@@ -170,7 +170,7 @@ def apply_transform_to_landmarks(scan_path, transform, output_path):
         json.dump(lm_data, f, indent=2)
         
 
-def apply_transform_to_image(image, transform, reference, output_path, scan_path):
+def apply_transform_to_image(image, transform, reference, output_path, scan_path, is_seg=False):
     if isinstance(transform, sitk.CompositeTransform):
         ref_guess_gz = scan_path.replace("_transform.tfm", ".nii.gz")
         ref_guess_nii = scan_path.replace("_transform.tfm", ".nii")
@@ -183,7 +183,7 @@ def apply_transform_to_image(image, transform, reference, output_path, scan_path
             print(f"WARNING: CompositeTransform but no reference found at {ref_guess_gz} or {ref_guess_nii}. Using image as fallback.")
             reference = image
 
-    resampled_image = ResampleImage(image, transform, reference)
+    resampled_image = ResampleImage(image, transform, reference, is_seg)
     sitk.WriteImage(resampled_image, output_path)
 
 def ResampleImage(image, transform, reference=None, is_seg=False):
@@ -211,6 +211,8 @@ def main(args):
         "_L": ("Maxilla", "MAXReg_matrix.tfm"),
         "_U": ("Mandible", "MANDReg_matrix.tfm"),
     }
+    
+    is_seg = args.is_seg.lower() == "true"
     
     reference_image = None
     if (args.reference_file != "None") and Path(args.reference_file).exists():
@@ -280,12 +282,19 @@ def main(args):
                 try:
                     image = sitk.ReadImage(scan)
                     if "mirror" in os.path.basename(matrix).lower():
+                        tfm = sitk.AffineTransform(tfm)
+                        # Center the transform around image center
+                        center = image.TransformContinuousIndexToPhysicalPoint([
+                            (sz - 1) / 2.0 for sz in image.GetSize()
+                        ])
+                        tfm.SetCenter(center)
+                        
                         local_reference = image
                     else:
                         local_reference = reference_image if reference_image is not None else image
                     
                     out_file = outpath.split(extension_scan)[0] + out_suffix + extension_scan
-                    apply_transform_to_image(image, tfm, local_reference, out_file, matrix)
+                    apply_transform_to_image(image, tfm, local_reference, out_file, matrix, is_seg=is_seg)
                 except Exception as e:
                     print(f"ERROR processing {scan} with matrix {matrix}: {e}")
                     continue
@@ -315,7 +324,8 @@ if __name__ == "__main__":
     parser.add_argument("matrix_name", type=str)
     parser.add_argument("fromAreg", type=str)
     parser.add_argument("output_folder", type=str)
-    parser.add_argument("log_path", type=str)    
+    parser.add_argument("log_path", type=str)
+    parser.add_argument("is_seg", type=str)
 
     args = parser.parse_args()
 
