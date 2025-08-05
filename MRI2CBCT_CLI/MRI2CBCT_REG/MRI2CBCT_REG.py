@@ -62,7 +62,7 @@ def run_script_normalize_percentile(file_type,input_folder, folder_general, uppe
     return output_folder_norm
 
 
-def run_script_apply_mask(cbct_folder, cbct_label2,folder_general, suffix,upper_percentile, lower_percentile, max_norm, min_norm):
+def run_script_apply_mask(cbct_folder, cbct_label2,folder_general, suffix,upper_percentile, lower_percentile, max_norm, min_norm, is_mri=False):
     """
     Applies a mask to CBCT images and saves the normalized results.
 
@@ -75,12 +75,16 @@ def run_script_apply_mask(cbct_folder, cbct_label2,folder_general, suffix,upper_
     lower_percentile (float): Lower percentile for normalization.
     max_norm (float): Maximum value for normalization.
     min_norm (float): Minimum value for normalization.
+    is_mri (bool): Whether the input files are MRI files (default: False).
     """
     print("folder_general : ",folder_general)
-    cbct_mask_folder = os.path.join(folder_general,"b3_CBCT_norm_mask_l2",f"percentile=[{lower_percentile},{upper_percentile}]_norm=[{min_norm},{max_norm}]")
-    create_folder(cbct_mask_folder)
-    apply_mask_f(folder_path=cbct_folder, seg_folder=cbct_label2, folder_output=cbct_mask_folder, suffix=suffix, seg_label=1)
-    return cbct_mask_folder
+    if is_mri:
+        mask_folder = os.path.join(folder_general,"a3_MRI_inv_norm_mask",f"percentile=[{lower_percentile},{upper_percentile}]_norm=[{min_norm},{max_norm}]")
+    else:
+        mask_folder = os.path.join(folder_general,"b3_CBCT_norm_mask_l2",f"percentile=[{lower_percentile},{upper_percentile}]_norm=[{min_norm},{max_norm}]")
+    create_folder(mask_folder)
+    apply_mask_f(folder_path=cbct_folder, seg_folder=cbct_label2, folder_output=mask_folder, suffix=suffix, seg_label=1)
+    return mask_folder
 
 def run_script_AREG_MRI_folder(cbct_folder, cbct_mask_folder,mri_folder,mri_original_folder,folder_general,mri_lower_p,mri_upper_p,mri_min_norm,mri_max_norm,cbct_lower_p,cbct_upper_p,cbct_min_norm,cbct_max_norm):
     """
@@ -145,7 +149,7 @@ def main():
     
     mri_min_norm, mri_max_norm, mri_lower_p, mri_upper_p, cbct_min_norm, cbct_max_norm, cbct_lower_p, cbct_upper_p = extract_values(args.normalization)
     
-    total_steps = 5
+    total_steps = 6
     current_step = 0
     
     # MRI
@@ -158,6 +162,11 @@ def main():
     current_step += 1
     print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
     sys.stdout.flush()
+    
+    input_path_mri_norm_mask = run_script_apply_mask(input_path_norm_mri, args.cbct_label2, args.folder_general, "mask", upper_percentile=mri_upper_p, lower_percentile=mri_lower_p, max_norm=mri_max_norm, min_norm=mri_min_norm, is_mri=True)
+    current_step += 1
+    print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
+    sys.stdout.flush()
 
     # CBCT
     output_path_norm_cbct = run_script_normalize_percentile("CBCT",args.cbct_folder, args.folder_general, upper_percentile=cbct_upper_p, lower_percentile=cbct_lower_p, max_norm=cbct_max_norm, min_norm=cbct_min_norm)
@@ -165,13 +174,13 @@ def main():
     print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
     sys.stdout.flush()
     
-    input_path_cbct_norm_mask = run_script_apply_mask(output_path_norm_cbct,args.cbct_label2,args.folder_general,"mask",upper_percentile=cbct_upper_p, lower_percentile=cbct_lower_p, max_norm=cbct_max_norm, min_norm=cbct_min_norm)
+    input_path_cbct_norm_mask = run_script_apply_mask(output_path_norm_cbct,args.cbct_label2,args.folder_general,"mask",upper_percentile=cbct_upper_p, lower_percentile=cbct_lower_p, max_norm=cbct_max_norm, min_norm=cbct_min_norm, is_mri=False)
     current_step += 1
     print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
     sys.stdout.flush()
     
     # REG
-    run_script_AREG_MRI_folder(cbct_folder=args.cbct_folder,cbct_mask_folder=input_path_cbct_norm_mask,mri_folder=input_path_norm_mri,mri_original_folder=args.mri_folder,folder_general=args.folder_general,mri_lower_p=mri_lower_p,mri_upper_p=mri_upper_p,mri_min_norm=mri_min_norm,mri_max_norm=mri_max_norm,cbct_lower_p=cbct_lower_p,cbct_upper_p=cbct_upper_p,cbct_min_norm=cbct_min_norm,cbct_max_norm=cbct_max_norm)
+    run_script_AREG_MRI_folder(cbct_folder=args.cbct_folder,cbct_mask_folder=input_path_cbct_norm_mask,mri_folder=input_path_mri_norm_mask,mri_original_folder=args.mri_folder,folder_general=args.folder_general,mri_lower_p=mri_lower_p,mri_upper_p=mri_upper_p,mri_min_norm=mri_min_norm,mri_max_norm=mri_max_norm,cbct_lower_p=cbct_lower_p,cbct_upper_p=cbct_upper_p,cbct_min_norm=cbct_min_norm,cbct_max_norm=cbct_max_norm)
     current_step += 1
     print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
     sys.stdout.flush()
@@ -181,6 +190,8 @@ def main():
         delete_folder(folder_mri_inverse)
         delete_folder(input_path_norm_mri)
         delete_folder(os.path.dirname(input_path_norm_mri))
+        delete_folder(input_path_mri_norm_mask)
+        delete_folder(os.path.dirname(input_path_mri_norm_mask))
         delete_folder(output_path_norm_cbct)
         delete_folder(os.path.dirname(output_path_norm_cbct))
         delete_folder(input_path_cbct_norm_mask)

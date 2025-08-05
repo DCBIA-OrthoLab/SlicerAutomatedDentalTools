@@ -120,9 +120,9 @@ def main(args):
     for jaw_teeth in dic_teeth.values():
         total_landmarks += len(jaw_teeth)
     total_landmarks *= len(dic_patients)
-    
-    
-    for patient_id,patient_path in dic_patients.items():
+
+
+    for idx,(patient_id,patient_path) in enumerate(dic_patients.items()):
 
         print(f"prediction for patient {patient_id}")
         for models_type in models_to_use.keys():
@@ -233,17 +233,12 @@ def main(args):
 
                                 group_data[land_name] = {"x": final[0], "y": final[1], "z": final[2]}
 
-                    # print(f"""<filter-progress>{1}</filter-progress>""")
-                    # sys.stdout.flush()
-                    # time.sleep(0.5)
-                    # print(f"""<filter-progress>{0}</filter-progress>""")
-
                 if len(group_data.keys()) > 0:
                     lm_lst = GenControlPoint(group_data, landmarks_selected)
                     WriteJson(lm_lst,os.path.join(args.output_dir,f"{patient_id}_{jaw}_{models_type}_Pred.json"))
                     
-                    with open(args.log_path, "r+") as log_f:
-                        log_f.write(str(1))
+        with open(args.log_path, "w+") as log_f:
+            log_f.write(str(idx + 1))
 
 
 if __name__ == "__main__":

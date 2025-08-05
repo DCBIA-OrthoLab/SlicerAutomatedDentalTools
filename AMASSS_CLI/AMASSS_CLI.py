@@ -13,11 +13,6 @@ import re
 import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin, pip_install
-from monai.networks.nets import UNETR
-from monai.data import DataLoader, Dataset
-# from monai.transforms import Compose, LoadImaged, ScaleIntensityd, Spacingd, ToTensord
-# from monai.inferers import sliding_window_inference
-
 # ── Constantes globales ───────────────────────────────────────────────────────
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -92,81 +87,109 @@ import vtk
 
 # (Supposer que LABEL_COLORS et Write(model, outpath) sont déjà définis globalement)
 
-def SavePredToVTK(file_path, temp_folder, smoothing, vtk_output_path,model_size="LARGE"):
-    """
-    Génère un .vtk par structure pour la segmentation donnée en file_path.
+import os, numpy as np, SimpleITK as sitk, vtk
+from vtk.util.numpy_support import vtk_to_numpy
 
-    Args:
-      file_path       : chemin vers le fichier de segmentation (nii/nrrd…)
-      temp_folder     : dossier temporaire pour les .nrrd intermédiaires
-      smoothing       : nombre d’itérations de lissage VTK
-      vtk_output_path : chemin vers un dossier ou vers un fichier .vtk
-      model_size      : "LARGE" ou "SMALL", pour mapper label→structure via NAMES_FROM_LABELS
-    """
-    # 1) Lecture de la segmentation
+def SavePredToVTK(file_path, temp_folder, smoothing, vtk_output_path, model_size="LARGE"):
+    import os, numpy as np, SimpleITK as sitk, vtk
+
+    # 1) Lecture
     img = sitk.ReadImage(file_path)
     arr = sitk.GetArrayFromImage(img)
 
-    # 2) Labels présents
-    present_labels = [i+1 for i in range(int(arr.max())) if (arr == (i+1)).any()]
-
-    # 3) Détermine si on écrit dans un dossier
-    output_is_dir = vtk_output_path.endswith(os.sep) or os.path.isdir(vtk_output_path)
-    if output_is_dir:
-        os.makedirs(vtk_output_path, exist_ok=True)
-
-    # 4) Détermine la racine du nom sans extension multiple
+    # 2) Prépare le nom de base (sans extensions multiples)
     base = os.path.basename(file_path)
-    for ext in ('.nii.gz', '.nrrd.gz', '.nii', '.nrrd'):
+    for ext in ('.nii.gz','.nrrd.gz','.nii','.nrrd'):
         if base.endswith(ext):
             base = base[:-len(ext)]
             break
 
-    # 5) Pour chaque label : extraction + lissage + écriture
-    for label in present_labels:
-        struct_name = NAMES_FROM_LABELS[model_size][label]  # ex: "MAND", "MAX", etc.
+    # 3) On détecte le mode merged
+    is_merged = base.endswith("_MERGED")
 
-        # 5.1) création du nrrd temporaire
-        seg = (arr == label).astype(np.uint8)
-        tmp_nrrd = os.path.join(temp_folder, f"tempVTK_{struct_name}.nrrd")
-        sitk.WriteImage(sitk.GetImageFromArray(seg), tmp_nrrd)
+    # 4) Crée le dossier de sortie si besoin
+    output_is_dir = vtk_output_path.endswith(os.sep) or os.path.isdir(vtk_output_path)
+    if output_is_dir:
+        os.makedirs(vtk_output_path, exist_ok=True)
 
-        # 5.2) marching cubes
-        reader = vtk.vtkNrrdReader()
-        reader.SetFileName(tmp_nrrd)
-        reader.Update()
+    # --- UTIL : écrivain VTK ---
+    def write_poly(poly, outvtk):
+        w = vtk.vtkPolyDataWriter()
+        w.SetFileName(outvtk)
+        w.SetInputData(poly)
+        w.Write()
+        print(f" → Written VTK: {outvtk}", flush=True)
+
+    # --- UTIL : build + smooth + color ---
+    def mesh_from_nrrd(nrrd, iters, color_rgb):
+        r = vtk.vtkNrrdReader()
+        r.SetFileName(nrrd)
+        r.Update()
         dmc = vtk.vtkDiscreteMarchingCubes()
-        dmc.SetInputConnection(reader.GetOutputPort())
-        dmc.GenerateValues(1, 1, 1)
+        dmc.SetInputConnection(r.GetOutputPort())
+        dmc.GenerateValues(1, 1, 1)  # binaire
+        s = vtk.vtkSmoothPolyDataFilter()
+        s.SetInputConnection(dmc.GetOutputPort())
+        s.SetNumberOfIterations(iters)
+        s.Update()
+        poly = s.GetOutput()
+        cols = vtk.vtkUnsignedCharArray()
+        cols.SetName("Colors")
+        cols.SetNumberOfComponents(3)
+        cols.SetNumberOfTuples(poly.GetNumberOfCells())
+        for i in range(poly.GetNumberOfCells()):
+            cols.SetTuple(i, color_rgb)
+        poly.GetCellData().SetScalars(cols)
+        return poly
 
-        # 5.3) lissage
-        smoother = vtk.vtkSmoothPolyDataFilter()
-        smoother.SetInputConnection(dmc.GetOutputPort())
-        smoother.SetNumberOfIterations(smoothing)
-        smoother.Update()
-        model = smoother.GetOutput()
+    # ——— MODE MERGED ———
+    if is_merged:
+        # 1) On va append tous les sous-maillages colorés label par label
+        append = vtk.vtkAppendPolyData()
+        for label in sorted(np.unique(arr)):
+            if label == 0:
+                continue
+            struct = NAMES_FROM_LABELS[model_size][label]
+            # écriture NRRD temporaire pour ce label
+            tmp_nrrd = os.path.join(temp_folder, f"temp.nrrd")
+            mask = (arr == label).astype(np.uint8)
+            img2 = sitk.GetImageFromArray(mask); img2.CopyInformation(img)
+            sitk.WriteImage(img2, tmp_nrrd)
+            # extraction + lissage + couleur
+            color = LABEL_COLORS.get(label, [255,255,255])
+            mesh = mesh_from_nrrd(tmp_nrrd, smoothing, color)
+            append.AddInputData(mesh)
+        append.Update()
+        merged_poly = append.GetOutput()
 
-        # 5.4) colorisation (optionnelle)
-        colors = vtk.vtkUnsignedCharArray()
-        colors.SetName("Colors")
-        colors.SetNumberOfComponents(3)
-        colors.SetNumberOfTuples(model.GetNumberOfCells())
-        color = LABEL_COLORS.get(label, [255,255,255])
-        for i in range(model.GetNumberOfCells()):
-            colors.SetTuple(i, color)
-        model.GetCellData().SetScalars(colors)
-
-        # 5.5) chemin final .vtk
+        # 2) Écriture du polydata final
+        outname = f"{base}.vtk"
         if output_is_dir:
-            outpath = os.path.join(vtk_output_path, f"{base}_{struct_name}.vtk")
+            outvtk = os.path.join(vtk_output_path, outname)
         else:
             root, _ = os.path.splitext(vtk_output_path)
-            outpath = f"{root}_{struct_name}.vtk"
-            os.makedirs(os.path.dirname(outpath), exist_ok=True)
+            outvtk = f"{root}_{outname}"
+            os.makedirs(os.path.dirname(outvtk), exist_ok=True)
+        write_poly(merged_poly, outvtk)
+        return
 
-        # 5.6) écriture
-        Write(model, outpath)
-        print(f" → Written VTK: {outpath}", flush=True)
+    # ——— MODE SEPARATE ———
+    # On déduit le nom de la structure depuis le suffixe du fichier
+    struct = base.split('_')[-1]  # ex: "MAND", "MAX", etc.
+    # écriture du NRRD binaire
+    tmp_nrrd = os.path.join(temp_folder, f"temp.nrrd")
+    m = (arr > 0).astype(np.uint8)
+    i2 = sitk.GetImageFromArray(m); i2.CopyInformation(img)
+    sitk.WriteImage(i2, tmp_nrrd)
+    # récupération de l'index et de la couleur
+    label_index = LABELS[model_size][struct]
+    color = LABEL_COLORS.get(label_index, [255,255,255])
+    # build + write
+    poly = mesh_from_nrrd(tmp_nrrd, smoothing, color)
+    outname = f"{base}.vtk"
+    outvtk = os.path.join(vtk_output_path, outname) if output_is_dir else os.path.join(os.path.dirname(vtk_output_path), outname)
+    write_poly(poly, outvtk)
+
 
 
 
