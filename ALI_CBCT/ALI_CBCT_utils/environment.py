@@ -34,11 +34,8 @@ class Environment :
             self.get_channel_transform(),
             BorderPad(spatial_border=self.padding.tolist())
         ])
-        # self.transform = Compose([EnsureChannelFirst(),BorderPad(spatial_border=self.padding.tolist()),ScaleIntensity(minv = -1.0, maxv = 1.0, factor = None)])
-
         self.scale_nbr = 0
 
-        # self.transform = Compose([EnsureChannelFirst(),BorderPad(spatial_border=self.padding.tolist())])
         self.available_lm = []
 
         self.data = {}

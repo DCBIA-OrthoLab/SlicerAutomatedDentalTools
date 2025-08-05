@@ -20,6 +20,7 @@ from pathlib import Path
 import textwrap
 import pkg_resources
 import platform
+import signal
 import threading
 import subprocess
 import re
@@ -319,6 +320,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.all_installed = False
 
         self.nb_patient = 0  # number of scans in the input folder
+        self.time_log = 0  # time of the last log update
 
     def setup(self):
         """
@@ -1024,20 +1026,18 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onPredictButton(self):
         if self.type == "CBCT":
-            monai_version = '==1.5.0' if sys.version_info >= (3, 10) else '==0.7.0'
-            
+            monai_version = '==1.5.0' if sys.version_info >= (3, 10) else '==0.7.0'            
             if platform.system() == "Windows":
                 list_libs_CBCT_windows = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
-                            ('pandas',None,None),('torch',None,"https://download.pytorch.org/whl/cu118")] #(lib_name, version, url)
-                
+                            ('pandas',None,None),('torch','2.6.0',"https://download.pytorch.org/whl/cu118")] #(lib_name, version, url)
                 list_libs_CBCT_windows.append(('monai', monai_version, None))
 
                 is_installed = install_function(self,list_libs_CBCT_windows)
             else:
                 # libraries and versions compatibility to use AREG_CBCT
                 list_libs_CBCT = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
-                            ('pandas',None,None),('torch',None,None)] #(lib_name, version, url)
-                
+                            ('pandas',None,None),('torch','2.6.0',None)] #(lib_name, version, url)
+
                 list_libs_CBCT.append(('monai', monai_version, None))
 
                 is_installed = install_function(self,list_libs_CBCT)
@@ -1115,18 +1115,18 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.nb_extension_launch = len(self.list_Processes_Parameters)
             self.onProcessStarted()
 
-            module = self.list_Processes_Parameters[0]["Module"]
+            self.module_name = self.list_Processes_Parameters[0]["Module"]
             # /!\ Launch of the first process /!\
-            print("module name : ", module)
+            print("module name : ", self.module_name)
             # if we are on windows, crownsegmentation and areg ios need to be run in wsl because of Pytorch3D
-            if module in ["CrownSegmentationcli T1", "AREG_IOS"]:
-                self.ui.ButtonCancel.setEnabled(False)
-                if "CrownSegmentationcli" in module:
+            if self.module_name in ["CrownSegmentationcli T1", "AREG_IOS"]:
+                if "CrownSegmentationcli" in self.module_name:
                     self.run_conda_tool("seg")
-                else :
+                else:
+                    self.nb_extension_did += 1
+                    print("module name : ", self.module_name)
                     self.run_conda_tool("areg")
               
-            self.ui.ButtonCancel.setEnabled(True)
             self.process = slicer.cli.run(
                 self.list_Processes_Parameters[0]["Process"],
                 None,
@@ -1149,7 +1149,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
         self.ui.LabelProgressExtension.setText(
-            f"Extension : 0 / {self.nb_extension_launch}"
+            f"Extension : 1 / {self.nb_extension_launch}"
         )
         self.nb_extension_did = 0
 
@@ -1157,6 +1157,43 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.nb_change_bystep = 0
 
         self.RunningUI(True)
+        
+    def read_log_path(self):
+      with open(self.log_path, 'r') as f:
+          line = f.readline()
+          if line != '':
+              return line
+  
+    def onCondaProcessUpdate(self):
+        if os.path.isfile(self.log_path):
+            self.ui.LabelNameExtension.setText(self.module_name)
+            
+            self.ui.LabelProgressExtension.setText(
+                f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
+            )
+
+            if self.module_name_before != self.module_name:
+                self.module_name_before = self.module_name
+                self.progress = 0
+                self.ui.LabelProgressPatient.setText(f"Patient : {self.progress}/{self.nb_patient}")
+                progress_bar_value = round((self.progress) / self.nb_patient * 100,2)
+                
+                self.ui.progressBar.setValue(progress_bar_value)
+                self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
+
+            time_progress = os.path.getmtime(self.log_path)
+            line = self.read_log_path()
+            if (time_progress != self.time_log) and line:
+                progress = line.strip()
+            
+                self.progress = int(progress)
+                self.ui.LabelProgressPatient.setText(f"Patient : {self.progress}/{self.nb_patient}")
+                
+                progress_bar_value = round((self.progress) / self.nb_patient * 100,2)
+                self.time_log = time_progress
+                
+                self.ui.progressBar.setValue(progress_bar_value)
+                self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
 
     def onProcessUpdate(self, caller, event):
         # timer = f"Time : {time.time()-self.startTime:.2f}s"
@@ -1174,7 +1211,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.LabelNameExtension.setText(self.module_name)
         # self.displayModule = self.displayModule_bis if self.displayModule_bis is not None else self.display[self.module_name.split(' ')[0]]
 
-        if self.module_name_before != self.module_name:
+        if (self.module_name_before != self.module_name) and (self.module_name != "AREG_IOS"):
             self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
             self.nb_extension_did += 1
             self.ui.LabelProgressExtension.setText(
@@ -1222,6 +1259,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 try:
                     print("name process : ",self.list_Processes_Parameters[0]["Process"])
                     if self.list_Processes_Parameters[0]["Module"]=="AREG_IOS":
+                        self.nb_extension_did += 1
                         self.run_conda_tool("areg")
                         
                     self.ui.ButtonCancel.setEnabled(True)
@@ -1242,7 +1280,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def OnEndProcess(self):
         self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
-        self.nb_extension_did += 1
         self.ui.LabelProgressExtension.setText(
             f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
         )
@@ -1251,7 +1288,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # if self.nb_change_bystep == 0:
         #     print(f'Erreur this module didnt work {self.module_name_before}')
 
-        self.module_name_before = self.module_name
         self.nb_change_bystep = 0
         total_time = time.time() - self.startTime
         average_time = total_time / self.nb_patient
@@ -1296,7 +1332,11 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           os.remove(csv_file)
 
     def onCancel(self):
-        self.process.Cancel()
+        try:
+            self.process.Cancel()
+        except Exception as e:
+            self.logic.cancel_process()
+            
         print("\n\n ========= PROCESS CANCELED ========= \n")
 
         self.RunningUI(False)
@@ -1338,7 +1378,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 return
             
             for i in range(2):
+                self.nb_extension_did += 1
                 args = self.list_Processes_Parameters[0]["Parameter"]
+                self.module_name = self.list_Processes_Parameters[0]["Module"]
                 print("args : ",args)
                 conda_exe = self.logic.conda.getCondaExecutable()
                 command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
@@ -1350,14 +1392,18 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     command.append(f"\"{value}\"")
                 print("*"*50)
                 print("command : ",command)
+                
+                self.ui.LabelNameExtension.setText(f"{self.module_name}")
 
                 # running in // to not block Slicer
-                self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+                self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
                 self.process.start()
                 self.ui.LabelTimer.setHidden(False)
                 self.ui.LabelTimer.setText(f"Time : 0.00s")
                 previous_time = self.startTime
                 while self.process.is_alive():
+                    self.ui.ButtonCancel.setVisible(True)
+                    self.onCondaProcessUpdate()
                     slicer.app.processEvents()
                     current_time = time.time()
                     gap=current_time-previous_time
@@ -1378,6 +1424,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         elif type=="areg":
             args = self.list_Processes_Parameters[0]["Parameter"]
             print("args : ", args)
+            self.module_name = self.list_Processes_Parameters[0]["Module"]
+            
             conda_exe = self.logic.conda.getCondaExecutable()
             command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AREG_IOS"]
             for key, value in args.items():
@@ -1388,12 +1436,14 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             print("command : ",command)
 
             # running in // to not block Slicer
-            self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
+            self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
             self.process.start()
             self.ui.LabelTimer.setHidden(False)
             self.ui.LabelTimer.setText(f"time : 0.00s")
             previous_time = self.startTime
             while self.process.is_alive():
+                self.ui.ButtonCancel.setVisible(True)
+                self.onCondaProcessUpdate()
                 slicer.app.processEvents()
                 current_time = time.time()
                 gap=current_time-previous_time
@@ -1791,6 +1841,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         self.conda = self.init_conda()
         self.name_env = "shapeaxi"
         self.cliNode = None
+        self.python_version = "3.9"
 
     def init_conda(self):
         # check if CondaSetUp exists
@@ -1813,7 +1864,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["shapeaxi==1.1.1"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
@@ -1897,6 +1948,16 @@ class AREGLogic(ScriptedLoadableModuleLogic):
 
         return path
     
+    def cancel_process(self):
+        if platform.system() == 'Windows':
+            self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
+        print("Cancellation requested. Terminating process...")
+
+        self.subpro.wait() ## important
+        self.cancel = True
+    
     def check_cli_script(self):
         if not self.check_pythonpath_windows("AREG_IOS"): 
             self.give_pythonpath_windows()
@@ -1928,9 +1989,9 @@ class AREGLogic(ScriptedLoadableModuleLogic):
             print("command_to_execute in condaRunCommand : ",command_to_execute)
 
             self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
-                                    text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
-                                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
-                                    )
+                              text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
+                              creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
+                              )
         else:
             path_conda_exe = self.conda.getCondaExecutable()
             command_execute = f"{path_conda_exe} run -n {self.name_env}"
