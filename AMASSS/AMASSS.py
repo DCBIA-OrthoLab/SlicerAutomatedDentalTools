@@ -128,7 +128,7 @@ def install_function(self,list_libs:list,system:str):
 
                     if not already_installed:
                       already_installed = True
-                      pip_install(f'torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{cuda_version}')
+                      pip_install(f'torch>=2.6.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{cuda_version}')
                       nb_installed += 3
 
                   else:
@@ -142,7 +142,7 @@ def install_function(self,list_libs:list,system:str):
               else:
 
 
-                pip_install(f'torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
+                pip_install(f'torch>=2.6.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
                 for lib, version in libs_to_install:
                   print('lib:',lib)
                   lib_version = f'{lib}=={version}' if version else lib
@@ -720,7 +720,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onPredictButton(self):
     import platform
     # first, install the required libraries and their version
-    list_libs = [('torch', None),('torchvision', None),('torchaudio',None),('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2'),('einops',None),('nibabel',None),('nnunetv2',None)]
+    list_libs = [('torch','2.6.0'),('torchvision', "0.21.0"),('blosc2', None), ('torchaudio',"2.6.0"),('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2'),('einops',None),('nibabel',None),('nnunetv2',None)]
 
     libs_installation = install_function(self,list_libs,platform.system())
     if not libs_installation:

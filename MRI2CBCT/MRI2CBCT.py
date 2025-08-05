@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import sys
 from typing import Annotated, Optional
 from qt import QApplication, QWidget, QTableWidget, QDoubleSpinBox, QTableWidgetItem, QHeaderView,QSpinBox, QVBoxLayout, QLabel, QSizePolicy, QCheckBox, QFileDialog,QMessageBox, QApplication, QProgressDialog
 import qt
@@ -10,6 +11,8 @@ from MRI2CBCT_utils.Reg_MRI2CBCT import Registration_MRI2CBCT
 from MRI2CBCT_utils.Approx_MRI2CBCT import Approximation_MRI2CBCT
 from MRI2CBCT_utils.LR_crop import LR_CROP_MRI2CBCT
 from MRI2CBCT_utils.TMJ_crop import TMJ_CROP_MRI2CBCT
+
+from SlicerNNUNetLib import InstallLogic
 
 import time 
 
@@ -89,7 +92,7 @@ def install_function():
                 try:
                     if lib == "torch":
                         print("Installing torch from official PyTorch wheel (cu118)")
-                        pip_install("torch --index-url https://download.pytorch.org/whl/cu118")
+                        pip_install("torch==2.6.0 --index-url https://download.pytorch.org/whl/cu118")
                     else:
                         pip_target = f"{lib}{version_spec}" if version_spec else lib
                         pip_install(pip_target)
@@ -99,7 +102,6 @@ def install_function():
         else:
             return False
 
-    from SlicerNNUNetLib import InstallLogic
     # Version-aware nnUNet installation
     install_logic = InstallLogic()
     if sys.version_info >= (3, 10):

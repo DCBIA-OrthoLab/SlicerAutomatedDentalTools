@@ -41,8 +41,10 @@ def check_lib_installed(lib_name, required_version=None):
 
 # import csv
     
-def install_function(self, libs: list):
-    
+def install_function(self):
+    libs = [('itk', None), ('torch','2.6.0'),('pytorch_lightning',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2')]
+    monai_version = '1.5.0' if sys.version_info >= (3, 10) else '0.7.0'
+    libs.append(('monai', monai_version))
     libs_to_install = []
     for lib, version in libs:
         if not check_lib_installed(lib, version):
@@ -874,7 +876,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             libs.append(('monai', monai_version))
             
             if check_env:
-                is_installed = install_function(self, libs)
+                is_installed = install_function(self)
                 
             self.logic.check_cli_script()
             
@@ -1806,7 +1808,7 @@ class ASOLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.12",["shapeaxi==1.1.1"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()

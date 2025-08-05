@@ -860,7 +860,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       
       if check_env:
         list_libs_IOS = [('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2')]
-        monai_version = '0.7.0' #'1.5.0' if sys.version_info >= (3, 10) else '0.7.0'
+        monai_version = '1.5.0' if sys.version_info >= (3, 10) else '0.7.0'
         list_libs_IOS.append(('monai', monai_version))
 
         is_installed = install_function(self,list_libs_IOS)
@@ -1739,7 +1739,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
     self.conda = self.init_conda()
     self.name_env = "shapeaxi"
     self.cliNode = None
-    self.pythonVersion = "3.9"
+    self.pythonVersion = "3.9"  # Default Python version for the conda environment
 
   def init_conda(self):
     # check if CondaSetUp exists
