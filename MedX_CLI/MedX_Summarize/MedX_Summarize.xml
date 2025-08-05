@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <index>1</index>
+  <title>MedX_Summarize</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/username/project</documentation-url>
+  <license>Slicer</license>
+  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>input_notes</name>
+      <label>input_notes</label>
+      <index>0</index>
+      <description>Path for the input folder with clinical notes</description>
+    </string>
+
+    <string>
+      <name>input_model</name>
+      <label>input_model</label>
+      <index>1</index>
+      <description>Path for the model</description>
+    </string>
+
+    <string>
+      <name>output_folder</name>
+      <label>output_folder</label>
+      <index>2</index>
+      <description>Path for the output folder</description>
+    </string>
+
+    <string>
+      <name>log_path</name>
+      <label>log_path</label>
+      <index>3</index>
+      <description>Path for the log file</description>
+    </string>
+    
+  </parameters>
+</executable>
