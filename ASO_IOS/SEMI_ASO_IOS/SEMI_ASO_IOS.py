@@ -142,8 +142,8 @@ def main(args):
                     args.output_folder[0],
                 )
 
-        with open(args.log_path[0], "r+") as log_f:
-            log_f.write(str(index))
+        with open(args.log_path[0], "w+") as log_f:
+            log_f.write(str(index+1))
 
 
 if __name__ == "__main__":

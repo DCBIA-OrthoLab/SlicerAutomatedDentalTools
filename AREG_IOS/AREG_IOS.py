@@ -129,8 +129,8 @@ def main(args):
 
         # pbar.update(1)
 
-        with open(args.log_path, "r+") as log_f:
-            log_f.write(str(1))
+        with open(args.log_path, "w+") as log_f:
+            log_f.write(str(idx + 1))
 
 
 if __name__ == "__main__":

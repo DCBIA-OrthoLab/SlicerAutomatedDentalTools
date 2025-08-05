@@ -113,10 +113,7 @@ class Semi_CBCT(Method):
 
     def getModelUrl(self):
         return {
-            "Segmentation": {
-                "Full Face Models": "https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/AMASSS_Models.zip",
-                "Mask Models": "https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/Masks_Models.zip",
-            }
+            "Segmentation": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/AMASSS_CBCT/AMASSS_Models.zip",
         }
 
     def getALIModelList(self):
@@ -287,6 +284,8 @@ class Semi_CBCT(Method):
             "temp_folder": "../",
             "DCMInput": kwargs["isDCMInput"],
         }
+        
+        print(f"PRE_ASO param: {parameter_pre_aso}\n")
 
         PreOrientProcess = slicer.modules.pre_aso_cbct
         list_process = [
@@ -322,12 +321,13 @@ class Semi_CBCT(Method):
                     "Display": DisplayAREGCBCT(nb_scan),
                 }
             )
+            print(f"AREG_CBCT param {full_reg_struct[i]}: {parameter_areg_cbct}\n")
 
         # AMASSS PROCESS - SEGMENTATION
         AMASSSProcess = slicer.modules.amasss_cli
         parameter_amasss_seg_t1 = {
             "inputVolume": kwargs["input_t1_folder"],
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": seg_struct,
             "merge": "MERGE" if kwargs["merge_seg"] else "SEPARATE",
@@ -336,7 +336,7 @@ class Semi_CBCT(Method):
             "output_folder": kwargs["folder_output"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
@@ -345,7 +345,7 @@ class Semi_CBCT(Method):
         }
         parameter_amasss_seg_t2 = {
             "inputVolume": kwargs["folder_output"],
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": seg_struct,
             "merge": "MERGE" if kwargs["merge_seg"] else "SEPARATE",
@@ -354,13 +354,15 @@ class Semi_CBCT(Method):
             "output_folder": kwargs["folder_output"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
             "SegmentInput": False,
             "DCMInput": False,
         }
+        print(f"AMASSS T1 Parameters: {parameter_amasss_seg_t1}\n")
+        print(f"AMASSS T2 Parameters: {parameter_amasss_seg_t2}\n")
         if len(full_seg_struct) > 0:
             list_process.append(
                 {
@@ -408,7 +410,7 @@ class Auto_CBCT(Semi_CBCT):
         # AMASSS PROCESS - MASK SEGMENTATIONS
         parameter_amasss_mask_t1 = {
             "inputVolume": kwargs["input_t1_folder"],
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": reg_struct,
             "merge": "SEPARATE",
@@ -417,7 +419,7 @@ class Auto_CBCT(Semi_CBCT):
             "output_folder": kwargs["input_t1_folder"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
@@ -436,8 +438,7 @@ class Auto_CBCT(Semi_CBCT):
             },
         ]
 
-        # print('AMASSS Mask Parameters:', parameter_amasss_mask_t1)
-        # print()
+        print(f'AMASSS Mask Parameters: {parameter_amasss_mask_t1}\n')
         centered_T2 = kwargs["input_t2_folder"] + "_Center"
         parameter_pre_aso = {
             "input": kwargs["input_t2_folder"],
@@ -499,7 +500,7 @@ class Auto_CBCT(Semi_CBCT):
         AMASSSProcess = slicer.modules.amasss_cli
         parameter_amasss_seg_t1 = {
             "inputVolume": kwargs["input_t1_folder"],
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": seg_struct,
             "merge": "MERGE" if kwargs["merge_seg"] else "SEPARATE",
@@ -508,7 +509,7 @@ class Auto_CBCT(Semi_CBCT):
             "output_folder": kwargs["folder_output"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
@@ -517,7 +518,7 @@ class Auto_CBCT(Semi_CBCT):
         }
         parameter_amasss_seg_t2 = {
             "inputVolume": kwargs["folder_output"],
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": seg_struct,
             "merge": "MERGE" if kwargs["merge_seg"] else "SEPARATE",
@@ -526,14 +527,16 @@ class Auto_CBCT(Semi_CBCT):
             "output_folder": kwargs["folder_output"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
             "SegmentInput": False,
             "DCMInput": False,
         }
-        
+        print(f"AMASSS T1 Parameters: {parameter_amasss_seg_t1}\n")
+        print(f"AMASSS T2 Parameters: {parameter_amasss_seg_t2}\n")
+
         if len(full_seg_struct) > 0:
             list_process.append(
                 {
@@ -562,10 +565,7 @@ class Auto_CBCT(Semi_CBCT):
 class Or_Auto_CBCT(Semi_CBCT):
     def getModelUrl(self):
         return {
-            "Segmentation": {
-                "Full Face Models": "https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/AMASSS_Models.zip",
-                "Mask Models": "https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/Masks_Models.zip",
-            },
+            "Segmentation": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/AMASSS_CBCT/AMASSS_Models.zip",
             "Orientation": {
                 "PreASO": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_preASOmodels/PreASOModels.zip",
                 "Occlusal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Occlusal_Midsagittal_Plane.zip",
@@ -690,8 +690,7 @@ class Or_Auto_CBCT(Semi_CBCT):
 
         list_lmrk_str, nb_landmark = self.ReferenceLandmarks(OrientationReference)
 
-        print("PRE_ASO param:", parameter_pre_aso)
-        print()
+        print(f"PRE_ASO param: {parameter_pre_aso}\n")
 
         # ALI CBCT
         parameter_ali = {
@@ -708,8 +707,8 @@ class Or_Auto_CBCT(Semi_CBCT):
         }
         ALIProcess = slicer.modules.ali_cbct
 
-        print("ALI param:", parameter_ali)
-        print()
+        print(f"ALI param: {parameter_ali}\n")
+        
         # SEMI ASO CBCT
         ASO_T1_Oriented = kwargs["input_t1_folder"] + "Or"
         parameter_semi_aso = {
@@ -721,7 +720,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         }
         OrientProcess = slicer.modules.semi_aso_cbct
 
-        print("SEMI_ASO param:", parameter_semi_aso)
+        print(f"SEMI_ASO param: {parameter_semi_aso}\n")
 
         nb_scan = (
             self.NumberScan(kwargs["input_t1_folder"], kwargs["input_t2_folder"])
@@ -760,22 +759,23 @@ class Or_Auto_CBCT(Semi_CBCT):
         # AMASSS PROCESS - MASK SEGMENTATIONS
         parameter_amasss_mask_t1 = {
             "inputVolume": ASO_T1_Oriented,
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": reg_struct,
             "merge": "SEPARATE",
             "genVtk": False,
             "save_in_folder": False,
-            "output_folder": kwargs["input_t1_folder"],
+            "output_folder": ASO_T1_Oriented,
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
             "SegmentInput": False,
             "DCMInput": False,
         }
+        print(f"AMASSS Mask Parameters: {parameter_amasss_mask_t1}\n")
         AMASSSProcess = slicer.modules.amasss_cli
         list_process += [
             {
@@ -797,6 +797,7 @@ class Or_Auto_CBCT(Semi_CBCT):
             "temp_folder": "../",
             "DCMInput": kwargs["isDCMInput"],
         }
+        print(f"Centering T2 Parameters: {parameter_pre_aso}\n")
 
         PreOrientProcess = slicer.modules.pre_aso_cbct
         list_process.append(
@@ -835,6 +836,7 @@ class Or_Auto_CBCT(Semi_CBCT):
                     "Display": DisplayAREGCBCT(nb_scan),
                 }
             )
+            print(f"AREG CBCT Parameters {full_reg_struct[i]}: {parameter_areg_cbct}\n")
 
         full_seg_struct = list_struct["AMASSS Segmentation"]
         seg_struct = self.TranslateModels(full_seg_struct, False)
@@ -843,7 +845,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         AMASSSProcess = slicer.modules.amasss_cli
         parameter_amasss_seg_t1 = {
             "inputVolume": ASO_T1_Oriented,
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": seg_struct,
             "merge": "MERGE" if kwargs["merge_seg"] else "SEPARATE",
@@ -852,7 +854,7 @@ class Or_Auto_CBCT(Semi_CBCT):
             "output_folder": kwargs["folder_output"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
@@ -861,7 +863,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         }
         parameter_amasss_seg_t2 = {
             "inputVolume": kwargs["folder_output"],
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": seg_struct,
             "merge": "MERGE" if kwargs["merge_seg"] else "SEPARATE",
@@ -870,13 +872,15 @@ class Or_Auto_CBCT(Semi_CBCT):
             "output_folder": kwargs["folder_output"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
             "SegmentInput": False,
             "DCMInput": False,
         }
+        print(f"AMASSS T1 Parameters: {parameter_amasss_seg_t1}\n")
+        print(f"AMASSS T2 Parameters: {parameter_amasss_seg_t2}\n")
         if len(full_seg_struct) > 0:
             list_process.append(
                 {
