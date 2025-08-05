@@ -1045,7 +1045,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             
             if platform.system() == "Windows":
                 list_libs_CBCT_windows = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
-                            ('pandas',None,None),('torch',None,"https://download.pytorch.org/whl/cu118")] #(lib_name, version, url)
+                            ('pandas',None,None),('torch','>=2.6.0',"https://download.pytorch.org/whl/cu118")] #(lib_name, version, url)
                 
                 list_libs_CBCT_windows.append(('monai', monai_version, None))
 
@@ -1053,7 +1053,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             else:
                 # libraries and versions compatibility to use AREG_CBCT
                 list_libs_CBCT = [('itk','<=5.4.rc1',None),('itk-elastix','==0.17.1',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','==3.9.1',None),
-                            ('pandas',None,None),('torch',None,None)] #(lib_name, version, url)
+                            ('pandas',None,None),('torch','>=2.6.0',None)] #(lib_name, version, url)
                 
                 list_libs_CBCT.append(('monai', monai_version, None))
 

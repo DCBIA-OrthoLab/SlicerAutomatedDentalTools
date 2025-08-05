@@ -1479,11 +1479,11 @@ class WidgetParameter:
             print(check_env)
             if check_env:
                 if platform.system() == "Windows":
-                    list_libs_windows = [('numpy',"<2.0",None),('itk',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
+                    list_libs_windows = [('numpy',"<2.0",None),('itk',None,None),('torch','>=2.6.0',None),('monai','==0.7.0',None)] #(lib_name, version, url)
                     is_installed = install_function(self,list_libs_windows)
                     
                 else:
-                    list_libs_linux = [('numpy',"<2.0",None),('itk',None,None),('torch',None,None),('monai','==0.7.0',None)] #(lib_name, version, url)
+                    list_libs_linux = [('numpy',"<2.0",None),('itk',None,None),('torch','>=2.6.0',None),('monai','==0.7.0',None)] #(lib_name, version, url)
                     is_installed = install_function(self,list_libs_linux)
                     
             if not is_installed:
@@ -1863,22 +1863,22 @@ class WidgetParameter:
 
 
         self.label_time.setText(f"Checking if pytorch3d is installed")
-        if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed 
-            process = self.logic.install_pytorch3d()
-            start_time = time.time()
-            previous_time = start_time
-            
-            while self.logic.process.is_alive():
-                slicer.app.processEvents()
-                formatted_time = self.update_ui_time(start_time, previous_time)
-                text = textwrap.dedent(f"""
-                Installation of pytorch into the new environnement. 
-                This task may take a few minutes.\ntime: {formatted_time}
-                """).strip()
-                self.label_time.setText(text)
-        else:
-            self.label_time.setText(f"pytorch3d is already installed")
-            print("pytorch3d already installed")
+        # if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed 
+        process = self.logic.install_pytorch3d()
+        start_time = time.time()
+        previous_time = start_time
+        
+        while self.logic.process.is_alive():
+            slicer.app.processEvents()
+            formatted_time = self.update_ui_time(start_time, previous_time)
+            text = textwrap.dedent(f"""
+            Installation of pytorch into the new environnement. 
+            This task may take a few minutes.\ntime: {formatted_time}
+            """).strip()
+            self.label_time.setText(text)
+        # else:
+        #     self.label_time.setText(f"pytorch3d is already installed")
+        #     print("pytorch3d already installed")
 
         self.all_installed = True   
         return True
