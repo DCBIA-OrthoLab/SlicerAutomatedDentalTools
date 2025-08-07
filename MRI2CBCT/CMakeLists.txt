@@ -8,7 +8,6 @@ set(MODULE_PYTHON_SCRIPTS
   ${FOLDER_LIBRARY}/Approx_MRI2CBCT.py
   ${FOLDER_LIBRARY}/Method.py
   ${FOLDER_LIBRARY}/Preprocess_CBCT_MRI.py
-  ${FOLDER_LIBRARY}/Preprocess_CBCT.py
   ${FOLDER_LIBRARY}/Preprocess_MRI.py
   ${FOLDER_LIBRARY}/Reg_MRI2CBCT.py
   ${FOLDER_LIBRARY}/LR_crop.py
