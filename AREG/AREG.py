@@ -20,6 +20,7 @@ from pathlib import Path
 import textwrap
 import pkg_resources
 import platform
+import signal
 import threading
 import subprocess
 import re
@@ -229,6 +230,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.all_installed = False
 
         self.nb_patient = 0  # number of scans in the input folder
+        self.time_log = 0  # time of the last log update
 
     def setup(self):
         """
@@ -288,7 +290,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         }
         self.reference_lm = []
         self.ActualMeth = Method
-        self.ActualMeth = self.MethodDic["Or_Auto_CBCT"]
+        self.ActualMethName = "Or_Auto_CBCT"
+        self.ActualMeth = self.MethodDic[self.ActualMethName]
         self.type = "CBCT"
         self.nb_scan = 0
         self.startprocess = 0
@@ -360,6 +363,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # self.SwitchMode(0)
         self.SwitchType()
+        
+        self.ui.label_11.setVisible(False)
+        self.ui.lineEditMaskT1Path.setVisible(False)
+        self.ui.ButtonSearchT1Mask.setVisible(False)
 
         """
 
@@ -376,6 +383,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.ButtonSearchScan1.pressed.connect(
             lambda: self.SearchScan(self.ui.lineEditScanT1LmPath)
+        )
+        self.ui.ButtonSearchT1Mask.pressed.connect(
+            lambda: self.SearchScan(self.ui.lineEditMaskT1Path)
         )
         self.ui.ButtonSearchScan2.pressed.connect(
             lambda: self.SearchScan(self.ui.lineEditScanT2LmPath)
@@ -402,6 +412,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.CbModeType.activated.connect(self.SwitchType)
         self.ui.CbCBCTInputType.currentIndexChanged.connect(self.SwitchCBCTInputType)
         self.ui.ButtonTestFiles.clicked.connect(self.TestFiles)
+        
+        self.ui.LabelSelectcomboBox.setVisible(False)
+        self.ui.label_10.setVisible(False)
 
     """
 
@@ -430,8 +443,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Function to change the UI depending on the mode selected (Semi or Fully Automated)"""
         self.ui.CbCBCTInputType.setVisible(True)
         self.ui.label_CBCTInputType.setVisible(True)
-        self.ui.label_CBCTInputType_2.setVisible(True)
         self.ui.advancedCollapsibleButton.collapsed = False
+        self.ui.label_11.setVisible(False)
+        self.ui.lineEditMaskT1Path.setVisible(False)
+        self.ui.ButtonSearchT1Mask.setVisible(False)
 
         if index == 2:  # Semi-Automated
             self.ui.label_6.setVisible(False)
@@ -447,6 +462,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditModel3.setVisible(False)
             self.ui.ButtonSearchModel3.setVisible(False)
             self.ui.label_LibsInstallation.setVisible(False)
+            
+            self.ui.label_11.setVisible(True)
+            self.ui.lineEditMaskT1Path.setVisible(True)
+            self.ui.ButtonSearchT1Mask.setVisible(True)
 
         if index == 1:  # Fully Automated
             # self.ui.label_6.setVisible(True)
@@ -473,14 +492,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.ButtonSearchModel3.setVisible(False)
                 self.ui.CbCBCTInputType.setVisible(False)
                 self.ui.label_CBCTInputType.setVisible(False)
-                self.ui.label_CBCTInputType_2.setVisible(False)
                 self.isDCMInput = False
                 self.ui.label_LibsInstallation.setVisible(False)
 
     def SwitchModeIOS(self, index):
         self.ui.CbCBCTInputType.setVisible(False)
         self.ui.label_CBCTInputType.setVisible(False)
-        self.ui.label_CBCTInputType_2.setVisible(False)
         self.ui.advancedCollapsibleButton.collapsed = True
         self.isDCMInput = False
         # registration and orientation
@@ -523,16 +540,19 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Function to change the UI and the Method in AREG depending on the selected type (Semi CBCT, Fully CBCT...)"""
         if self.ui.CbInputType.currentIndex == 0:
             if self.ui.CbModeType.currentIndex == 2:
-                self.ActualMeth = self.MethodDic["Semi_CBCT"]
+                self.ActualMethName = "Semi_CBCT"
+                self.ActualMeth = self.MethodDic[self.ActualMethName]
                 self.ui.stackedWidget.setCurrentIndex(0)
 
             elif self.ui.CbModeType.currentIndex == 0:
-                self.ActualMeth = self.MethodDic["Or_Auto_CBCT"]
+                self.ActualMethName = "Or_Auto_CBCT"
+                self.ActualMeth = self.MethodDic[self.ActualMethName]
                 self.ui.stackedWidget.setCurrentIndex(2)
                 self.ui.label_7.setText("Segmentation Model Folder")
 
             elif self.ui.CbModeType.currentIndex == 1:
-                self.ActualMeth = self.MethodDic["Auto_CBCT"]
+                self.ActualMethName = "Auto_CBCT"
+                self.ActualMeth = self.MethodDic[self.ActualMethName]
                 self.ui.stackedWidget.setCurrentIndex(1)
                 self.ui.label_7.setText("Segmentation Model Folder")
 
@@ -589,14 +609,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self.type == "CBCT":
             self.ui.CbCBCTInputType.setVisible(True)
             self.ui.label_CBCTInputType.setVisible(True)
-            self.ui.label_CBCTInputType_2.setVisible(True)
 
         if self.type == "IOS" or (
             self.type == "CBCT" and self.ui.CbModeType.currentIndex != 0
         ):
             self.ui.CbCBCTInputType.setVisible(False)
             self.ui.label_CBCTInputType.setVisible(False)
-            self.ui.label_CBCTInputType_2.setVisible(False)
             self.isDCMInput = False
 
     def ClearAllLineEdits(self):
@@ -735,7 +753,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.lineEditScanT1LmPath.text, self.ui.lineEditScanT2LmPath.text
             )
             error = self.ActualMeth.TestScan(
-                self.ui.lineEditScanT1LmPath.text, self.ui.lineEditScanT2LmPath.text
+                self.ui.lineEditScanT1LmPath.text, self.ui.lineEditScanT2LmPath.text, self.ui.lineEditMaskT1Path.text
             )
 
         if isinstance(error, str):
@@ -759,28 +777,17 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not scan_folder == "":
             lineEdit.setText(scan_folder)
 
-            # To check if the input segmentation (for the Semi-Auto CBCT mode) has different labels to show them in a combobox
-            if (
-                self.ui.lineEditScanT1LmPath.text != ""
-                and self.ui.lineEditScanT2LmPath.text == ""
-            ):
-                if (
-                    self.ui.CbInputType.currentIndex == 0
-                    and self.ui.CbModeType.currentIndex == 2
-                ):
-                    if self.SegmentationLabels == [0]:
-                        self.SegmentationLabels += self.ActualMeth.GetSegmentationLabel(
-                            self.ui.lineEditScanT1LmPath.text
-                        )
-                        for i in self.SegmentationLabels:
-                            if i != 0:
-                                self.ui.LabelSelectcomboBox.addItem(f"Label {i}")
+            t1_path = self.ui.lineEditScanT1LmPath.text
+            t2_path = self.ui.lineEditScanT2LmPath.text
+            mask_path = self.ui.lineEditMaskT1Path.text
 
-            if (
-                self.ui.lineEditScanT1LmPath.text != ""
-                and self.ui.lineEditScanT2LmPath.text != ""
-            ):
-                self.CheckScan()
+            if t1_path != "" and t2_path != "":
+                if self.ActualMethName == "Semi_CBCT":
+                    if mask_path != "":
+                        self.CheckScan()
+                else:
+                    self.ui.lineEditMaskT1Path.setText("")
+                    self.CheckScan()
 
     def downloadModel(self, lineEdit, name, test=False):
         """Function to download the model files from the link in the getModelUrl function"""
@@ -943,6 +950,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         error = self.ActualMeth.TestProcess(
             input_t1_folder=self.ui.lineEditScanT1LmPath.text,
             input_t2_folder=self.ui.lineEditScanT2LmPath.text,
+            input_t1_mask=self.ui.lineEditMaskT1Path.text,
             folder_output=self.ui.lineEditOutputPath.text,
             model_folder_1=self.ui.lineEditModel1.text,
             model_folder_2=self.ui.lineEditModel2.text,
@@ -970,6 +978,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.list_Processes_Parameters = self.ActualMeth.Process(
                 input_t1_folder=self.ui.lineEditScanT1LmPath.text,
                 input_t2_folder=self.ui.lineEditScanT2LmPath.text,
+                input_t1_mask=self.ui.lineEditMaskT1Path.text,
                 folder_output=self.ui.lineEditOutputPath.text,
                 model_folder_1=self.ui.lineEditModel1.text,
                 model_folder_2=self.ui.lineEditModel2.text,
@@ -991,6 +1000,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.module_name = self.list_Processes_Parameters[0]["Module"]
             self.displayModule = self.list_Processes_Parameters[0]["Display"]
             self.onProcessStarted()
+
+            self.module_name = self.list_Processes_Parameters[0]["Module"]
             # /!\ Launch of the first process /!\
             print("module name : ", self.module_name)
             self.ui.ButtonCancel.setEnabled(False)
@@ -1036,7 +1047,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
         self.ui.LabelProgressExtension.setText(
-            f"Extension : 0 / {self.nb_extension_launch}"
+            f"Extension : 1 / {self.nb_extension_launch}"
         )
         self.nb_extension_did = 0
 
@@ -1044,6 +1055,43 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.nb_change_bystep = 0
 
         self.RunningUI(True)
+        
+    def read_log_path(self):
+      with open(self.log_path, 'r') as f:
+          line = f.readline()
+          if line != '':
+              return line
+  
+    def onCondaProcessUpdate(self):
+        if os.path.isfile(self.log_path):
+            self.ui.LabelNameExtension.setText(self.module_name)
+            
+            self.ui.LabelProgressExtension.setText(
+                f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
+            )
+
+            if self.module_name_before != self.module_name:
+                self.module_name_before = self.module_name
+                self.progress = 0
+                self.ui.LabelProgressPatient.setText(f"Patient : {self.progress}/{self.nb_patient}")
+                progress_bar_value = round((self.progress) / self.nb_patient * 100,2)
+                
+                self.ui.progressBar.setValue(progress_bar_value)
+                self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
+
+            time_progress = os.path.getmtime(self.log_path)
+            line = self.read_log_path()
+            if (time_progress != self.time_log) and line:
+                progress = line.strip()
+            
+                self.progress = int(progress)
+                self.ui.LabelProgressPatient.setText(f"Patient : {self.progress}/{self.nb_patient}")
+                
+                progress_bar_value = round((self.progress) / self.nb_patient * 100,2)
+                self.time_log = time_progress
+                
+                self.ui.progressBar.setValue(progress_bar_value)
+                self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
 
     def onProcessUpdate(self,process_idx):
         self.ui.LabelNameExtension.setText(self.module_name)
@@ -1080,7 +1128,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # if self.nb_change_bystep == 0:
         #     print(f'Erreur this module didnt work {self.module_name_before}')
 
-        self.module_name_before = self.module_name
         self.nb_change_bystep = 0
         total_time = time.time() - self.start_time
         average_time = total_time / self.nb_patient
@@ -1125,7 +1172,11 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           os.remove(csv_file)
 
     def onCancel(self):
-        self.process.Cancel()
+        try:
+            self.process.Cancel()
+        except Exception as e:
+            self.logic.cancel_process()
+            
         print("\n\n ========= PROCESS CANCELED ========= \n")
 
         self.RunningUI(False)
@@ -1599,6 +1650,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         self.name_env = "shapeaxi"
         self.cliNode = None
         self.stdout, self.stderr = '', ''
+        self.python_version = "3.9"
 
     def init_conda(self):
         # check if CondaSetUp exists
@@ -1638,7 +1690,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["shapeaxi==1.1.1"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
@@ -1721,7 +1773,15 @@ class AREGLogic(ScriptedLoadableModuleLogic):
             path = "/mnt/" + drive.lower() + path_without_drive
 
         return path
-    
+    def cancel_process(self):
+        if platform.system() == 'Windows':
+            self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
+        print("Cancellation requested. Terminating process...")
+
+        self.subpro.wait() ## important
+        self.cancel = True
     def check_cli_script(self, name):
         if not self.check_pythonpath_windows(f"{name}"): 
             self.give_pythonpath_windows()
@@ -1749,9 +1809,9 @@ class AREGLogic(ScriptedLoadableModuleLogic):
             print("command_to_execute in condaRunCommand : ",command_to_execute)
 
             self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
-                                    text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
-                                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
-                                    )
+                              text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
+                              creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
+                              )
         else:
             path_conda_exe = self.conda.getCondaExecutable()
             command_execute = f"{path_conda_exe} run -n {self.name_env}"

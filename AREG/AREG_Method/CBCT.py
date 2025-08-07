@@ -87,6 +87,9 @@ class Semi_CBCT(Method):
 
         if kwargs["input_t2_folder"] == "":
             out += "Please select an input folder for T2 scans\n"
+            
+        if kwargs["input_t1_mask"] == "":
+            out += "Please select an input folder for T1 masks\n"
 
         if kwargs["folder_output"] == "":
             out += "Please select an output folder\n"
@@ -104,10 +107,7 @@ class Semi_CBCT(Method):
 
     def getModelUrl(self):
         return {
-            "Segmentation": {
-                "Full Face Models": "https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/AMASSS_Models.zip",
-                "Mask Models": "https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/Masks_Models.zip",
-            }
+            "Segmentation": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/AMASSS_CBCT/AMASSS_Models.zip",
         }
 
     def getALIModelList(self):
@@ -137,14 +137,17 @@ class Semi_CBCT(Method):
         self,
         scan_folder_t1: str,
         scan_folder_t2: str,
+        mask_folder_t1: str = None,
         liste_keys=["scanT1", "scanT2", "segT1"],
     ):
         out = ""
         scan_extension = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"]
         if self.NumberScan(scan_folder_t1, scan_folder_t2) == 0:
             return "Please Select folder with scans"
+        
+        mask_folder_t1 = None if mask_folder_t1 == "" else mask_folder_t1
 
-        patients = GetDictPatients(scan_folder_t1, scan_folder_t2)
+        patients = GetDictPatients(scan_folder_t1, scan_folder_t2, mask_folder_t1)
         for patient, data in patients.items():
             not_found = [key for key in liste_keys if key not in data.keys()]
             if len(not_found) != 0:
@@ -276,6 +279,7 @@ class Semi_CBCT(Method):
             "DCMInput": kwargs["isDCMInput"],
         }
 
+
         # PreOrientProcess = slicer.modules.pre_aso_cbct
         PreOrientProcess = "PRE_ASO_CBCT"
         list_process = [
@@ -301,6 +305,7 @@ class Semi_CBCT(Method):
                 "SegmentationLabel": kwargs["LabelSeg"],
                 "temp_folder": AReg_temp_folder,
                 "ApproxReg": kwargs["ApproxStep"],
+                "mask_folder_t1": kwargs["input_t1_mask"],
             }
             list_process.append(
                 {
@@ -310,12 +315,13 @@ class Semi_CBCT(Method):
                     "Display": DisplayAREGCBCT(nb_scan),
                 }
             )
+            print(f"AREG_CBCT param {full_reg_struct[i]}: {parameter_areg_cbct}\n")
 
         # AMASSS PROCESS - SEGMENTATION
         AMASSSProcess = "AMASSS_CLI"
         parameter_amasss_seg_t1 = {
             "inputVolume": kwargs["input_t1_folder"],
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": seg_struct,
             "merge": "MERGE" if kwargs["merge_seg"] else "SEPARATE",
@@ -324,7 +330,7 @@ class Semi_CBCT(Method):
             "output_folder": kwargs["folder_output"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
@@ -333,7 +339,7 @@ class Semi_CBCT(Method):
         }
         parameter_amasss_seg_t2 = {
             "inputVolume": kwargs["folder_output"],
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": seg_struct,
             "merge": "MERGE" if kwargs["merge_seg"] else "SEPARATE",
@@ -342,13 +348,15 @@ class Semi_CBCT(Method):
             "output_folder": kwargs["folder_output"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
             "SegmentInput": False,
             "DCMInput": False,
         }
+        print(f"AMASSS T1 Parameters: {parameter_amasss_seg_t1}\n")
+        print(f"AMASSS T2 Parameters: {parameter_amasss_seg_t2}\n")
         if len(full_seg_struct) > 0:
             list_process.append(
                 {
@@ -379,9 +387,9 @@ class Auto_CBCT(Semi_CBCT):
             "https://github.com/lucanchling/Areg_CBCT/releases/download/TestFiles/FullyAuto.zip",
         )
 
-    def TestScan(self, scan_folder_t1: str, scan_folder_t2: str):
+    def TestScan(self, scan_folder_t1: str, scan_folder_t2: str, mask_folder_t1: str = None):
         return super().TestScan(
-            scan_folder_t1, scan_folder_t2, liste_keys=["scanT1", "scanT2"]
+            scan_folder_t1, scan_folder_t2, mask_folder_t1=mask_folder_t1, liste_keys=["scanT1", "scanT2"]
         )
 
     def Process(self, **kwargs):
@@ -396,7 +404,7 @@ class Auto_CBCT(Semi_CBCT):
         # AMASSS PROCESS - MASK SEGMENTATIONS
         parameter_amasss_mask_t1 = {
             "inputVolume": kwargs["input_t1_folder"],
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": reg_struct,
             "merge": "SEPARATE",
@@ -405,7 +413,7 @@ class Auto_CBCT(Semi_CBCT):
             "output_folder": kwargs["input_t1_folder"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
@@ -424,8 +432,7 @@ class Auto_CBCT(Semi_CBCT):
             },
         ]
 
-        # print('AMASSS Mask Parameters:', parameter_amasss_mask_t1)
-        # print()
+        print(f'AMASSS Mask Parameters: {parameter_amasss_mask_t1}\n')
         centered_T2 = kwargs["input_t2_folder"] + "_Center"
         parameter_pre_aso = {
             "input": kwargs["input_t2_folder"],
@@ -469,6 +476,7 @@ class Auto_CBCT(Semi_CBCT):
                 "SegmentationLabel": "0",
                 "temp_folder": AReg_temp_folder,
                 "ApproxReg": kwargs["ApproxStep"],
+                "mask_folder_t1": "None",
             }
             list_process.append(
                 {
@@ -489,7 +497,7 @@ class Auto_CBCT(Semi_CBCT):
         AMASSSProcess = "AMASSS_CLI"
         parameter_amasss_seg_t1 = {
             "inputVolume": kwargs["input_t1_folder"],
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": seg_struct,
             "merge": "MERGE" if kwargs["merge_seg"] else "SEPARATE",
@@ -498,7 +506,7 @@ class Auto_CBCT(Semi_CBCT):
             "output_folder": kwargs["folder_output"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
@@ -507,7 +515,7 @@ class Auto_CBCT(Semi_CBCT):
         }
         parameter_amasss_seg_t2 = {
             "inputVolume": kwargs["folder_output"],
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": seg_struct,
             "merge": "MERGE" if kwargs["merge_seg"] else "SEPARATE",
@@ -516,14 +524,16 @@ class Auto_CBCT(Semi_CBCT):
             "output_folder": kwargs["folder_output"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
             "SegmentInput": False,
             "DCMInput": False,
         }
-        
+        print(f"AMASSS T1 Parameters: {parameter_amasss_seg_t1}\n")
+        print(f"AMASSS T2 Parameters: {parameter_amasss_seg_t2}\n")
+
         if len(full_seg_struct) > 0:
             list_process.append(
                 {
@@ -552,10 +562,7 @@ class Auto_CBCT(Semi_CBCT):
 class Or_Auto_CBCT(Semi_CBCT):
     def getModelUrl(self):
         return {
-            "Segmentation": {
-                "Full Face Models": "https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/AMASSS_Models.zip",
-                "Mask Models": "https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/Masks_Models.zip",
-            },
+            "Segmentation": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/AMASSS_CBCT/AMASSS_Models.zip",
             "Orientation": {
                 "PreASO": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_preASOmodels/PreASOModels.zip",
                 "Occlusal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Occlusal_Midsagittal_Plane.zip",
@@ -583,9 +590,9 @@ class Or_Auto_CBCT(Semi_CBCT):
             "https://github.com/lucanchling/Areg_CBCT/releases/download/TestFiles/Or_FullyAuto_DCM.zip",
         )
 
-    def TestScan(self, scan_folder_t1: str, scan_folder_t2: str):
+    def TestScan(self, scan_folder_t1: str, scan_folder_t2: str, mask_folder_t1: str = None):
         return super().TestScan(
-            scan_folder_t1, scan_folder_t2, liste_keys=["scanT1", "scanT2"]
+            scan_folder_t1, scan_folder_t2, mask_folder_t1=mask_folder_t1, liste_keys=["scanT1", "scanT2"]
         )
 
     def TestScanDCM(self, scan_folder_t1: str, scan_folder_t2) -> str:
@@ -681,8 +688,7 @@ class Or_Auto_CBCT(Semi_CBCT):
 
         list_lmrk_str, nb_landmark = self.ReferenceLandmarks(OrientationReference)
 
-        print("PRE_ASO param:", parameter_pre_aso)
-        print()
+        print(f"PRE_ASO param: {parameter_pre_aso}\n")
 
         # ALI CBCT
         parameter_ali = {
@@ -700,8 +706,8 @@ class Or_Auto_CBCT(Semi_CBCT):
         # ALIProcess = slicer.modules.ali_cbct
         ALIProcess = "ALI_CBCT"
 
-        print("ALI param:", parameter_ali)
-        print()
+        print(f"ALI param: {parameter_ali}\n")
+        
         # SEMI ASO CBCT
         ASO_T1_Oriented = kwargs["input_t1_folder"] + "Or"
         parameter_semi_aso = {
@@ -714,7 +720,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         # OrientProcess = slicer.modules.semi_aso_cbct
         OrientProcess = "SEMI_ASO_CBCT"
 
-        print("SEMI_ASO param:", parameter_semi_aso)
+        print(f"SEMI_ASO param: {parameter_semi_aso}\n")
 
         nb_scan = (
             self.NumberScan(kwargs["input_t1_folder"], kwargs["input_t2_folder"])
@@ -753,16 +759,16 @@ class Or_Auto_CBCT(Semi_CBCT):
         # AMASSS PROCESS - MASK SEGMENTATIONS
         parameter_amasss_mask_t1 = {
             "inputVolume": ASO_T1_Oriented,
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": reg_struct,
             "merge": "SEPARATE",
             "genVtk": False,
             "save_in_folder": False,
-            "output_folder": kwargs["input_t1_folder"],
+            "output_folder": ASO_T1_Oriented,
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
@@ -790,6 +796,7 @@ class Or_Auto_CBCT(Semi_CBCT):
             "temp_folder": "/tmp",
             "DCMInput": kwargs["isDCMInput"],
         }
+        print(f"Centering T2 Parameters: {parameter_pre_aso}\n")
 
         PreOrientProcess = "PRE_ASO_CBCT"
         list_process.append(
@@ -818,6 +825,7 @@ class Or_Auto_CBCT(Semi_CBCT):
                 "SegmentationLabel": "0",
                 "temp_folder": AReg_temp_folder,
                 "ApproxReg": kwargs["ApproxStep"],
+                "mask_folder_t1": "None",
             }
             list_process.append(
                 {
@@ -827,6 +835,7 @@ class Or_Auto_CBCT(Semi_CBCT):
                     "Display": DisplayAREGCBCT(nb_scan),
                 }
             )
+            print(f"AREG CBCT Parameters {full_reg_struct[i]}: {parameter_areg_cbct}\n")
 
         full_seg_struct = list_struct["AMASSS Segmentation"]
         seg_struct = self.TranslateModels(full_seg_struct, False)
@@ -835,7 +844,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         AMASSSProcess = "AMASSS_CLI"
         parameter_amasss_seg_t1 = {
             "inputVolume": ASO_T1_Oriented,
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": seg_struct,
             "merge": "MERGE" if kwargs["merge_seg"] else "SEPARATE",
@@ -844,7 +853,7 @@ class Or_Auto_CBCT(Semi_CBCT):
             "output_folder": kwargs["folder_output"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
@@ -853,7 +862,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         }
         parameter_amasss_seg_t2 = {
             "inputVolume": kwargs["folder_output"],
-            "modelDirectory": kwargs["model_folder_1"],
+            "modelDirectory": os.path.join(kwargs["model_folder_1"], "AMASSS_Models"),
             "highDefinition": False,
             "skullStructure": seg_struct,
             "merge": "MERGE" if kwargs["merge_seg"] else "SEPARATE",
@@ -862,13 +871,15 @@ class Or_Auto_CBCT(Semi_CBCT):
             "output_folder": kwargs["folder_output"],
             "precision": 50,
             "vtk_smooth": 5,
-            "prediction_ID": "Pred",
+            "prediction_ID": "seg",
             "gpu_usage": self.getGPUUsage(),
             "cpu_usage": 1,
             "temp_fold": self.tempAMASSS_folder,
             "SegmentInput": False,
             "DCMInput": False,
         }
+        print(f"AMASSS T1 Parameters: {parameter_amasss_seg_t1}\n")
+        print(f"AMASSS T2 Parameters: {parameter_amasss_seg_t2}\n")
         if len(full_seg_struct) > 0:
             list_process.append(
                 {
@@ -909,24 +920,31 @@ def GetListFiles(folder_path, file_extension):
     return file_list
 
 
-def GetPatients(folder_path, time_point="T1", segmentationType=None):
+def GetPatients(folder_path, time_point="T1", segmentationType=None, folder_mask=None):
     """Return a dictionary with patient id as key"""
     file_extension = [".nii.gz", ".nii", ".nrrd", ".nrrd.gz", ".gipl", ".gipl.gz"]
     json_extension = [".json"]
+    
+    # Get files from main folder
     file_list = GetListFiles(folder_path, file_extension + json_extension)
-
+    
+    # Get mask files from mask folder if provided
+    mask_files = []
+    if folder_mask and os.path.exists(folder_mask):
+        mask_files = GetListFiles(folder_mask, file_extension)
+    
+    # Combine both lists
+    all_files = file_list + mask_files
+    
     patients = {}
 
-    for file in file_list:
+    for file in all_files:
         basename = os.path.basename(file)
         patient = (
             basename.split("_Scan")[0]
             .split("_scan")[0]
             .split("_Or")[0]
             .split("_OR")[0]
-            .split("_mir")[0]
-            .split("_MIR")[0]
-            .split("_Mir")[0]
             .split("_MAND")[0]
             .split("_MD")[0]
             .split("_MAX")[0]
@@ -942,22 +960,34 @@ def GetPatients(folder_path, time_point="T1", segmentationType=None):
         if patient not in patients:
             patients[patient] = {}
 
-        if True in [i in basename for i in file_extension]:
-            # if segmentationType+'MASK' in basename:
+        # Handle mask files separately
+        if file in mask_files:
+            if segmentationType is None:
+                patients[patient]["seg" + time_point] = file
+            else:
+                if any(
+                    kw in basename.lower()
+                    for kw in GetListNamesSegType(segmentationType)
+                ):
+                    patients[patient]["seg" + time_point] = file
+                    
+        # Handle main folder files
+        elif True in [i in basename for i in file_extension]:
+            # If it's a segmentation file in main folder
             if True in [i in basename.lower() for i in ["mask", "seg", "pred"]]:
                 if segmentationType is None:
                     patients[patient]["seg" + time_point] = file
                 else:
-                    if True in [
-                        i in basename.lower()
-                        for i in GetListNamesSegType(segmentationType)
-                    ]:
+                    if any(
+                        kw in basename.lower()
+                        for kw in GetListNamesSegType(segmentationType)
+                    ):
                         patients[patient]["seg" + time_point] = file
-
             else:
                 patients[patient]["scan" + time_point] = file
 
-        if True in [i in basename for i in json_extension]:
+        # Handle JSON landmark files
+        elif True in [i in basename for i in json_extension]:
             if time_point == "T2":
                 patients[patient]["lm" + time_point] = file
 
@@ -983,14 +1013,13 @@ def GetMatrixPatients(folder_path):
 def GetDictPatients(
     folder_t1_path,
     folder_t2_path,
+    folder_t1_mask=None,
     segmentationType=None,
     todo_str="",
     matrix_folder=None,
 ):
     """Return a dictionary with patients for both time points"""
-    patients_t1 = GetPatients(
-        folder_t1_path, time_point="T1", segmentationType=segmentationType
-    )
+    patients_t1 = GetPatients(folder_t1_path, time_point="T1", segmentationType=segmentationType, folder_mask=folder_t1_mask)
     patients_t2 = GetPatients(folder_t2_path, time_point="T2", segmentationType=None)
     patients = MergeDicts(patients_t1, patients_t2)
 

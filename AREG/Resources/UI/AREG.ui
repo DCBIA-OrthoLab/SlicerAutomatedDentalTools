@@ -6,244 +6,235 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>497</width>
-    <height>856</height>
+    <width>600</width>
+    <height>1071</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text">
       <string>Inputs</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
-      <item row="1" column="1">
-       <layout class="QGridLayout" name="gridLayout">
-        <item row="0" column="0">
-         <layout class="QHBoxLayout" name="horizontalLayout">
-          <item>
-           <layout class="QVBoxLayout" name="verticalLayout_2">
-            <item>
-             <widget class="QLabel" name="label">
-              <property name="text">
-               <string>Registration Type</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="label_CBCTInputType">
-              <property name="text">
-               <string>Input Type</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="label_5">
-              <property name="text">
-               <string>Mode</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="label_3">
-              <property name="text">
-               <string>T1 Scans</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="label_2">
-              <property name="text">
-               <string>T2 Scans</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="label_7">
-              <property name="text">
-               <string>Model Folder 1</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="label_6">
-              <property name="text">
-               <string>Model Folder 2</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="label_4">
-              <property name="enabled">
-               <bool>true</bool>
-              </property>
-              <property name="text">
-               <string>Model Folder 3</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_6">
+        <item>
+         <layout class="QGridLayout" name="gridLayout_2">
+          <item row="6" column="2">
+           <widget class="QPushButton" name="ButtonSearchModel1">
+            <property name="text">
+             <string>Download</string>
+            </property>
+           </widget>
           </item>
-          <item>
-           <layout class="QVBoxLayout" name="verticalLayout_4">
-            <item>
-             <widget class="QComboBox" name="CbInputType">
-              <property name="toolTip">
-               <string>To select the type of registration</string>
-              </property>
-              <item>
-               <property name="text">
-                <string>CBCT to CBCT</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>IOS to IOS</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-            <item>
-             <widget class="QComboBox" name="CbCBCTInputType">
-              <property name="toolTip">
-               <string>To select the type of input for CBCT</string>
-              </property>
-              <item>
-               <property name="text">
-                <string>NIFTI, NRRD, GIPL</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>DICOM</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-            <item>
-             <widget class="QComboBox" name="CbModeType">
-              <property name="toolTip">
-               <string>To select the mode of registration</string>
-              </property>
-              <property name="accessibleDescription">
-               <string/>
-              </property>
-              <property name="currentText">
-               <string>Orientation and Registration</string>
-              </property>
-              <property name="placeholderText">
-               <string/>
-              </property>
-              <item>
-               <property name="text">
-                <string>Orientation and Registration</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>Fully-Automated Registration</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>Semi-Automated Registration</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="lineEditScanT1LmPath">
-              <property name="toolTip">
-               <string>Path to T1 folder</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="lineEditScanT2LmPath">
-              <property name="toolTip">
-               <string>Path to T2 folder</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="lineEditModel1"/>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="lineEditModel2"/>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="lineEditModel3"/>
-            </item>
-           </layout>
+          <item row="8" column="2">
+           <widget class="QPushButton" name="ButtonSearchModel3">
+            <property name="text">
+             <string>Download</string>
+            </property>
+           </widget>
           </item>
-          <item>
-           <layout class="QVBoxLayout" name="verticalLayout_6">
+          <item row="5" column="2">
+           <widget class="QPushButton" name="ButtonSearchScan2">
+            <property name="toolTip">
+             <string>To select the T2 folder</string>
+            </property>
+            <property name="text">
+             <string>Select</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="label_2">
+            <property name="text">
+             <string>T2 Scans</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1">
+           <widget class="QLineEdit" name="lineEditScanT2LmPath">
+            <property name="toolTip">
+             <string>Path to T2 folder</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="2">
+           <widget class="QPushButton" name="ButtonSearchScan1">
+            <property name="toolTip">
+             <string>To select the T1 folder</string>
+            </property>
+            <property name="text">
+             <string>Select</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_CBCTInputType">
+            <property name="text">
+             <string>Input Type</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="1">
+           <widget class="QLineEdit" name="lineEditModel1"/>
+          </item>
+          <item row="6" column="0">
+           <widget class="QLabel" name="label_7">
+            <property name="text">
+             <string>Model Folder 1</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="label_3">
+            <property name="text">
+             <string>T1 Scans</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QComboBox" name="CbModeType">
+            <property name="toolTip">
+             <string>To select the mode of registration</string>
+            </property>
+            <property name="accessibleDescription">
+             <string/>
+            </property>
+            <property name="currentText">
+             <string>Orientation and Registration</string>
+            </property>
+            <property name="placeholderText">
+             <string/>
+            </property>
             <item>
-             <widget class="QLabel" name="label_128797">
-              <property name="text">
-               <string/>
-              </property>
-             </widget>
+             <property name="text">
+              <string>Orientation and Registration</string>
+             </property>
             </item>
             <item>
-             <widget class="QLabel" name="label_CBCTInputType_2">
-              <property name="text">
-               <string/>
-              </property>
-             </widget>
+             <property name="text">
+              <string>Fully-Automated Registration</string>
+             </property>
             </item>
             <item>
-             <widget class="QPushButton" name="ButtonTestFiles">
-              <property name="toolTip">
-               <string>To automatically download all the needed files to run the process (works for all modes)</string>
-              </property>
-              <property name="text">
-               <string>Test Files</string>
-              </property>
-             </widget>
+             <property name="text">
+              <string>Semi-Automated Registration</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_5">
+            <property name="text">
+             <string>Mode</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QComboBox" name="CbInputType">
+            <property name="toolTip">
+             <string>To select the type of registration</string>
+            </property>
+            <item>
+             <property name="text">
+              <string>CBCT to CBCT</string>
+             </property>
             </item>
             <item>
-             <widget class="QPushButton" name="ButtonSearchScan1">
-              <property name="toolTip">
-               <string>To select the T1 folder</string>
-              </property>
-              <property name="text">
-               <string>Select</string>
-              </property>
-             </widget>
+             <property name="text">
+              <string>IOS to IOS</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="8" column="1">
+           <widget class="QLineEdit" name="lineEditModel3"/>
+          </item>
+          <item row="1" column="1">
+           <widget class="QComboBox" name="CbCBCTInputType">
+            <property name="toolTip">
+             <string>To select the type of input for CBCT</string>
+            </property>
+            <item>
+             <property name="text">
+              <string>NIFTI, NRRD, GIPL</string>
+             </property>
             </item>
             <item>
-             <widget class="QPushButton" name="ButtonSearchScan2">
-              <property name="toolTip">
-               <string>To select the T2 folder</string>
-              </property>
-              <property name="text">
-               <string>Select</string>
-              </property>
-             </widget>
+             <property name="text">
+              <string>DICOM</string>
+             </property>
             </item>
-            <item>
-             <widget class="QPushButton" name="ButtonSearchModel1">
-              <property name="text">
-               <string>Download</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="ButtonSearchModel2">
-              <property name="text">
-               <string>Download</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="ButtonSearchModel3">
-              <property name="text">
-               <string>Download</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
+           </widget>
+          </item>
+          <item row="2" column="2">
+           <widget class="QPushButton" name="ButtonTestFiles">
+            <property name="toolTip">
+             <string>To automatically download all the needed files to run the process (works for all modes)</string>
+            </property>
+            <property name="text">
+             <string>Test Files</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="label_11">
+            <property name="text">
+             <string>T1 Masks</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label">
+            <property name="text">
+             <string>Registration Type</string>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="0">
+           <widget class="QLabel" name="label_4">
+            <property name="enabled">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>Model Folder 3</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="lineEditScanT1LmPath">
+            <property name="toolTip">
+             <string>Path to T1 folder</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="2">
+           <widget class="QPushButton" name="ButtonSearchT1Mask">
+            <property name="text">
+             <string>Select</string>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="1">
+           <widget class="QLineEdit" name="lineEditModel2"/>
+          </item>
+          <item row="7" column="2">
+           <widget class="QPushButton" name="ButtonSearchModel2">
+            <property name="text">
+             <string>Download</string>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="0">
+           <widget class="QLabel" name="label_6">
+            <property name="text">
+             <string>Model Folder 2</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QLineEdit" name="lineEditMaskT1Path"/>
           </item>
          </layout>
         </item>
@@ -253,14 +244,14 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="advancedCollapsibleButton" native="true">
+    <widget class="ctkCollapsibleButton" name="advancedCollapsibleButton">
      <property name="maximumSize">
       <size>
        <width>16777215</width>
        <height>16777215</height>
       </size>
      </property>
-     <property name="text" stdset="0">
+     <property name="text">
       <string>Option</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_10">
@@ -385,8 +376,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="outputCollapsibleButton">
+     <property name="text">
       <string>Outputs</string>
      </property>
      <layout class="QVBoxLayout" name="Output">
@@ -447,8 +438,8 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="computeCollapsibleButton" native="true">
-     <property name="text" stdset="0">
+    <widget class="ctkCollapsibleButton" name="computeCollapsibleButton">
+     <property name="text">
       <string>Compute</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_8">

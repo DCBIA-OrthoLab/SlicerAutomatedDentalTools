@@ -42,6 +42,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Get nifti info')
     parser.add_argument('input_folder_CBCT', type=str, help='Input path')
     parser.add_argument('input_folder_MRI', type=str, help='Input path')
+    parser.add_argument('input_folder_Seg', type=str, help='Input path')
     parser.add_argument('output_folder', type=str, help='Output path')
     args = parser.parse_args()
 
@@ -52,3 +53,7 @@ if __name__=="__main__":
     if os.path.isdir(args.input_folder_MRI):
         mri_output_folder = os.path.join(args.output_folder, "MRI")
         main(args.input_folder_MRI, mri_output_folder, is_cbct=False)
+        
+    if os.path.isdir(args.input_folder_Seg):
+        seg_output_folder = os.path.join(args.output_folder, "Seg")
+        main(args.input_folder_Seg, seg_output_folder, is_cbct=True)

@@ -140,7 +140,7 @@ class FlexRegWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = None
         self._parameterNode = None
         self._updatingGUIFromParameterNode = False
-        self.reg = Reg() #Creation os an object reg for the registration
+        self.reg = Reg() #Creation of an object reg for the registration
 
     def setup(self):
         """
@@ -552,7 +552,7 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.12",["shapeaxi==1.1.1"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
@@ -1781,22 +1781,22 @@ class WidgetParameter:
 
 
         self.label_time.setText(f"Checking if pytorch3d is installed")
-        if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed 
-            process = self.logic.install_pytorch3d()
-            start_time = time.time()
-            previous_time = start_time
-            
-            while self.logic.process.is_alive():
-                slicer.app.processEvents()
-                formatted_time = self.update_ui_time(start_time, previous_time)
-                text = textwrap.dedent(f"""
-                Installation of pytorch into the new environnement. 
-                This task may take a few minutes.\ntime: {formatted_time}
-                """).strip()
-                self.label_time.setText(text)
-        else:
-            self.label_time.setText(f"pytorch3d is already installed")
-            print("pytorch3d already installed")
+        # if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed 
+        process = self.logic.install_pytorch3d()
+        start_time = time.time()
+        previous_time = start_time
+        
+        while self.logic.process.is_alive():
+            slicer.app.processEvents()
+            formatted_time = self.update_ui_time(start_time, previous_time)
+            text = textwrap.dedent(f"""
+            Installation of pytorch into the new environnement. 
+            This task may take a few minutes.\ntime: {formatted_time}
+            """).strip()
+            self.label_time.setText(text)
+        # else:
+        #     self.label_time.setText(f"pytorch3d is already installed")
+        #     print("pytorch3d already installed")
 
         self.all_installed = True   
         return True

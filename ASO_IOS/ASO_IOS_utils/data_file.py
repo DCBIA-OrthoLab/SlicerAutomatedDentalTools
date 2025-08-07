@@ -51,12 +51,14 @@ class Lower:
 
 @dataclass(init=True, repr=True)
 class Jaw:
-    upper: Upper = field(init=False, repr=False, default=Upper())
-    lower: Lower = field(init=False, repr=False, default=Lower())
+    upper: Upper = field(init=False, repr=False, default_factory=Upper)
+    lower: Lower = field(init=False, repr=False, default_factory=Lower)
     actual: Union[Upper, Lower]
 
     def __init__(self, actual) -> None:
         assert isinstance(actual, (Upper, Lower, str))
+        self.upper = Upper()
+        self.lower = Lower()
         if isinstance(actual, str):
             actual = Files.TypeOfJaw(actual)
         self.actual = actual

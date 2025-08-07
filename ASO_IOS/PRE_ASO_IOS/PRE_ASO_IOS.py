@@ -31,7 +31,7 @@ def check_platform():
 
 # Import from utils
 if check_platform()=="WSL":
-    from ASO_IOS_utils.utils import UpperOrLower, search, ReadSurf, WriteSurf, WritefileError
+    from ASO_IOS_utils.utils import UpperOrLower, search, ReadSurf, WriteSurf, WritefileError, saveMatrixAsTfm, PatientNumber
     from ASO_IOS_utils.icp import vtkICP, vtkMeanTeeth, InitIcp, ICP, ToothNoExist, NoSegmentationSurf
     from ASO_IOS_utils.data_file import Files_vtk_link, Jaw, Lower, Upper
     from ASO_IOS_utils.transformation import TransformSurf
@@ -39,7 +39,7 @@ if check_platform()=="WSL":
     
 else:
     from ASO_IOS_utils import (
-        UpperOrLower, search, ReadSurf, WriteSurf, WritefileError,
+        UpperOrLower, search, ReadSurf, WriteSurf, WritefileError, saveMatrixAsTfm, PatientNumber,
         vtkICP, vtkMeanTeeth, InitIcp, ICP, ToothNoExist, NoSegmentationSurf,
         Files_vtk_link, Jaw, Lower, Upper,
         TransformSurf,
@@ -157,6 +157,11 @@ def main(args):
         try:
             surf, matrix = PrePreAso(surf, gold[jaw()], dic_teeth[jaw()])
             output_icp = icp[jaw()].run(surf, gold[jaw()])
+            
+            final_matrix = np.matmul(output_icp["matrix"], matrix)
+            patient_id = PatientNumber(file_vtk)
+            tfm_path = os.path.join(args.output_folder[0], f"{patient_id}_SegOr.tfm")
+            saveMatrixAsTfm(final_matrix, tfm_path)
 
         except ToothNoExist as tne:
             print(f"Error {tne}, for this file {file_vtk}")

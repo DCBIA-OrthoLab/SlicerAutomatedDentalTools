@@ -15,6 +15,7 @@ set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}/normalize_percentile.py
   ${MODULE_NAME}/resample_create_csv.py
   ${MODULE_NAME}/resample.py
+  ${MODULE_NAME}/TMJ_crop.py
 )
 
 #-----------------------------------------------------------------------------

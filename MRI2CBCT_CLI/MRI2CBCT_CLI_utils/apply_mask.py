@@ -68,10 +68,10 @@ def find_segmentation_file(image_file, seg_folder):
     seg_folder (str): Folder containing segmentation files.
     """
     base_name = os.path.basename(image_file)
-    patient_id = base_name.split('_CBCT')[0].split('_MR')[0]
+    patient_id = base_name.split('_CBCT')[0].split('_MR')[0].split('_MRI')[0].split('_Seg')[0].split('_seg')[0]
     
     for seg_file in os.listdir(seg_folder):
-        if seg_file.startswith(patient_id) and "_CBCT" in seg_file:
+        if seg_file.startswith(patient_id):
             return os.path.join(seg_folder, seg_file)
     
     return None
