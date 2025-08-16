@@ -881,8 +881,66 @@ class SegmentationWidget(qt.QWidget):
     # ──────────────────────────────────────────────────────────────────────────────
     # 1)  onInferenceFinished  –  appel explicite à _cleanupAfterCase
     # ──────────────────────────────────────────────────────────────────────────────
+    def _get_active_label_map(self):
+        """
+        Retourne un dict {NomSegment -> LabelValue} selon le modèle choisi.
+        Si un segment possède déjà un tag 'LabelValue', on l'utilisera en priorité
+        dans onInferenceFinished (ce helper sert d'appoint).
+        """
+        model = self.modelComboBox.currentText
+
+        # === Universal: 55 labels (adulte + dents temporaires + mandibule/maxilla/canal)
+        if model == "UniversalLabDentalsegmentator":
+            return {
+                "Upper-right third molar": 1, "Upper-right second molar": 2, "Upper-right first molar": 3,
+                "Upper-right second premolar": 4, "Upper-right first premolar": 5, "Upper-right canine": 6,
+                "Upper-right lateral incisor": 7, "Upper-right central incisor": 8, "Upper-left central incisor": 9,
+                "Upper-left lateral incisor": 10, "Upper-left canine": 11, "Upper-left first premolar": 12,
+                "Upper-left second premolar": 13, "Upper-left first molar": 14, "Upper-left second molar": 15,
+                "Upper-left third molar": 16, "Lower-left third molar": 17, "Lower-left second molar": 18,
+                "Lower-left first molar": 19, "Lower-left second premolar": 20, "Lower-left first premolar": 21,
+                "Lower-left canine": 22, "Lower-left lateral incisor": 23, "Lower-left central incisor": 24,
+                "Lower-right central incisor": 25, "Lower-right lateral incisor": 26, "Lower-right canine": 27,
+                "Lower-right first premolar": 28, "Lower-right second premolar": 29, "Lower-right first molar": 30,
+                "Lower-right second molar": 31, "Lower-right third molar": 32, "Upper-right second molar (baby)": 33,
+                "Upper-right first molar (baby)": 34, "Upper-right canine (baby)": 35,
+                "Upper-right lateral incisor (baby)": 36, "Upper-right central incisor (baby)": 37,
+                "Upper-left central incisor (baby)": 38, "Upper-left lateral incisor (baby)": 39,
+                "Upper-left canine (baby)": 40, "Upper-left first molar (baby)": 41,
+                "Upper-left second molar (baby)": 42, "Lower-left second molar (baby)": 43,
+                "Lower-left first molar (baby)": 44, "Lower-left canine (baby)": 45,
+                "Lower-left lateral incisor (baby)": 46, "Lower-left central incisor (baby)": 47,
+                "Lower-right central incisor (baby)": 48, "Lower-right lateral incisor (baby)": 49,
+                "Lower-right canine (baby)": 50, "Lower-right first molar (baby)": 51,
+                "Lower-right second molar (baby)": 52, "Mandible": 53, "Maxilla": 54, "Mandibular canal": 55
+            }
+
+        # === NasoMaxillaDentSeg: 6 labels (Maxilla séparée)
+        if model == "NasoMaxillaDentSeg":
+            # Attention: l’ordre/valeurs doivent correspondre à ton training.
+            # Ci-dessous un mapping simple et cohérent avec _updateSegmentationDisplay :
+            return {
+                "Upper Skull": 1,
+                "Mandible": 2,
+                "Maxilla": 3,               # séparée dans ce modèle
+                "Upper Teeth": 4,
+                "Lower Teeth": 5,
+                "Mandibular canal": 6,
+            }
+
+        # === DentalSegmentator & PediatricDentalsegmentator: 5 labels
+        # (Maxilla inclus dans Upper Skull)
+        return {
+            "Upper Skull": 1,
+            "Mandible": 2,
+            "Upper Teeth": 3,
+            "Lower Teeth": 4,
+            "Mandibular canal": 5,
+        }
+
+
     def onInferenceFinished(self, *_):
-        """Gestion complète de la fin d'inférence avec sécurité renforcée"""
+        """Gestion complète de la fin d'inférence avec sécurité renforcée (+ mapping labels par modèle)."""
         if self.isStopping:
             self.onProgressInfo("stop requested")
             self._setApplyVisible(True)
@@ -895,7 +953,7 @@ class SegmentationWidget(qt.QWidget):
             self.onProgressInfo("Start of processing of results")
             self.onProgressInfo("Processing results in progress...")
 
-            # === PHASE 2: Chargement des résultats & affichage des labels bruts ===
+            # === PHASE 2: Chargement des résultats & récupération des nodes ===
             try:
                 self._loadSegmentationResults()
                 segNode = self.getCurrentSegmentationNode()
@@ -903,60 +961,47 @@ class SegmentationWidget(qt.QWidget):
                 if not segNode:
                     raise RuntimeError("No segmentation node found")
 
-                # On lit la segmentation source
                 segmentation = segNode.GetSegmentation()
 
-                # Dictionnaire complet nom→valeur
-                full_label_map = {
-                    "Upper-right third molar": 1,   "Upper-right second molar": 2,
-                    "Upper-right first molar": 3,   "Upper-right second premolar": 4,
-                    "Upper-right first premolar": 5,"Upper-right canine": 6,
-                    "Upper-right lateral incisor": 7, "Upper-right central incisor": 8,
-                    "Upper-left central incisor": 9,   "Upper-left lateral incisor": 10,
-                    "Upper-left canine": 11,          "Upper-left first premolar": 12,
-                    "Upper-left second premolar": 13,  "Upper-left first molar": 14,
-                    "Upper-left second molar": 15,     "Upper-left third molar": 16,
-                    "Lower-left third molar": 17,      "Lower-left second molar": 18,
-                    "Lower-left first molar": 19,      "Lower-left second premolar": 20,
-                    "Lower-left first premolar": 21,   "Lower-left canine": 22,
-                    "Lower-left lateral incisor": 23,  "Lower-left central incisor": 24,
-                    "Lower-right central incisor": 25, "Lower-right lateral incisor": 26,
-                    "Lower-right canine": 27,          "Lower-right first premolar": 28,
-                    "Lower-right second premolar": 29, "Lower-right first molar": 30,
-                    "Lower-right second molar": 31,    "Lower-right third molar": 32,
-                    "Upper-right second molar (baby)": 33, "Upper-right first molar (baby)": 34,
-                    "Upper-right canine (baby)": 35,       "Upper-right lateral incisor (baby)": 36,
-                    "Upper-right central incisor (baby)": 37, "Upper-left central incisor (baby)": 38,
-                    "Upper-left lateral incisor (baby)": 39,  "Upper-left canine (baby)": 40,
-                    "Upper-left first molar (baby)": 41,       "Upper-left second molar (baby)": 42,
-                    "Lower-left second molar (baby)": 43,      "Lower-left first molar (baby)": 44,
-                    "Lower-left canine (baby)": 45,            "Lower-left lateral incisor (baby)": 46,
-                    "Lower-left central incisor (baby)": 47,   "Lower-right central incisor (baby)": 48,
-                    "Lower-right lateral incisor (baby)": 49,  "Lower-right canine (baby)": 50,
-                    "Lower-right first molar (baby)": 51,      "Lower-right second molar (baby)": 52,
-                    "Mandible": 53, "Maxilla": 54, "Mandibular canal": 55
-                }
+                # Dictionnaire nom->valeur dépendant du modèle sélectionné
+                full_label_map = self._get_active_label_map()
 
-                # 1) Récupération et affichage des labels bruts
-                raw_labels = []
+                # 1) Parcours initial des segments: on note les valeurs "raw" (tag ou dict)
+                raw_values = []
                 import vtk
                 for segId in segmentation.GetSegmentIDs():
                     segment = segmentation.GetSegment(segId)
                     name = segment.GetName()
-                    if name not in full_label_map:
-                        self.onProgressInfo(f"[WARN] segment inattendu : «{name}» — ignoré")
+
+                    # Priorité au tag 'LabelValue' s'il existe
+                    tag_val = vtk.mutable("")
+                    has_tag = segment.GetTag("LabelValue", tag_val) and tag_val.get()
+                    value = None
+                    if has_tag:
+                        try:
+                            value = int(tag_val.get())
+                        except ValueError:
+                            value = None
+
+                    # Sinon, on se replie sur le mapping actif
+                    if value is None:
+                        value = full_label_map.get(name)
+
+                    if value is None:
+                        self.onProgressInfo(f"[WARN] unexpected segment «{name}» — ignored")
                         continue
-                    raw_labels.append(full_label_map[name])
-                    # On met à jour le tag pour pouvoir vérifier juste après
-                    segment.SetTag("LabelValue", str(full_label_map[name]))
 
-                raw_labels = sorted(set(raw_labels))
-                self.onProgressInfo(f"Predicted label values (raw): {raw_labels}")
+                    # On (ré)écrit le tag pour garder une trace fiable
+                    segment.SetTag("LabelValue", str(value))
+                    raw_values.append(value)
 
-                # 2) Vérification post-SetTag
+                raw_values = sorted(set(raw_values))
+                self.onProgressInfo(f"Predicted label values (raw): {raw_values}")
+
+                # 2) Vérification des tags
                 for segId in segmentation.GetSegmentIDs():
                     segment = segmentation.GetSegment(segId)
-                    tag_val = vtk.mutable("")                
+                    tag_val = vtk.mutable("")
                     segment.GetTag("LabelValue", tag_val)
                     self.onProgressInfo(
                         f"[DEBUG] Après SetTag, segment «{segment.GetName()}» a LabelValue = {tag_val.get()!r}"
@@ -966,9 +1011,9 @@ class SegmentationWidget(qt.QWidget):
                 raise RuntimeError(f"Failed to load results: {str(e)}")
 
             # === PHASE 3: Export NIfTI manuel, segment par segment ===
+            import numpy as np, vtk as _vtk, os
 
-            # 3.1) On crée un tableau numpy vide de la taille du volume
-            import numpy as np
+            # 3.1) Tableau numpy vide de la taille du volume
             ref_arr = slicer.util.arrayFromVolume(volNode)  # shape (Z,Y,X)
             label_arr = np.zeros(ref_arr.shape, dtype=np.uint16)
 
@@ -977,41 +1022,50 @@ class SegmentationWidget(qt.QWidget):
             for segId in segmentation.GetSegmentIDs():
                 segment = segmentation.GetSegment(segId)
                 name = segment.GetName()
-                if name not in full_label_map:
+
+                # Valeur finale = tag prioritaire, sinon dict actif
+                tag_val = _vtk.mutable("")
+                has_tag = segment.GetTag("LabelValue", tag_val) and tag_val.get()
+                value = None
+                if has_tag:
+                    try:
+                        value = int(tag_val.get())
+                    except ValueError:
+                        value = None
+                if value is None:
+                    value = full_label_map.get(name)
+
+                if value is None:
+                    # Si on ne trouve pas de valeur, on ignore proprement
+                    self.onProgressInfo(f"[WARN] Unknown label for segment «{name}» — skipped")
                     continue
-                value = full_label_map[name]
 
                 # Labelmap temporaire
                 tmpLM = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
-                ids = vtk.vtkStringArray()
+                ids = _vtk.vtkStringArray()
                 ids.InsertNextValue(segId)
                 success = logic.ExportSegmentsToLabelmapNode(
-                    segNode,                       # segmentation node
-                    ids,                           # tableau d’IDs
-                    tmpLM,                         # sortie
-                    volNode,                       # référence spatiale
+                    segNode, ids, tmpLM, volNode,
                     slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY
                 )
                 if not success:
-                    self.onProgressInfo(f"[ERROR] impossible d’exporter le segment «{name}»")
+                    self.onProgressInfo(f"[ERROR] could not export segment «{name}»")
                     slicer.mrmlScene.RemoveNode(tmpLM)
                     continue
 
-                single_arr = slicer.util.arrayFromVolume(tmpLM)  # 0/1 mask
+                single_arr = slicer.util.arrayFromVolume(tmpLM)  # 0/1 mask du segment courant
                 label_arr[single_arr > 0] = value
                 slicer.mrmlScene.RemoveNode(tmpLM)
 
-            # 3.3) On reconstruit un vrai volume labelmap et on l’enregistre
+            # 3.3) Reconstruction d’un volume labelmap complet + sauvegarde NIfTI
             tmpOut = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
             slicer.util.updateVolumeFromArray(tmpOut, label_arr)
             tmpOut.SetSpacing(volNode.GetSpacing())
             tmpOut.SetOrigin(volNode.GetOrigin())
-            # copier la matrice IJK→RAS
-            ijk2ras = vtk.vtkMatrix4x4()
+            ijk2ras = _vtk.vtkMatrix4x4()
             volNode.GetIJKToRASMatrix(ijk2ras)
             tmpOut.SetIJKToRASMatrix(ijk2ras)
 
-            import os
             output_path = os.path.join(self.outputFolderPath, segNode.GetName() + ".nii.gz")
             saved = slicer.util.saveNode(tmpOut, output_path)
             if saved:
@@ -1033,13 +1087,14 @@ class SegmentationWidget(qt.QWidget):
             self._save_state_before_crash()
 
         finally:
-            # === PHASE 5: Nettoyage ===
+            # === PHASE 5: Nettoyage & batch ===
             try:
                 self.onProgressInfo("Start cleaning procedure")
                 if hasattr(self, '_cleanupAfterCase'):
                     self._cleanupAfterCase(volNode, segNode)
                 else:
                     logging.error("Missing _cleanupAfterCase method!")
+
                 # Vidage cache GPU
                 try:
                     import torch
@@ -1048,10 +1103,12 @@ class SegmentationWidget(qt.QWidget):
                         self.onProgressInfo("CUDA cache cleared")
                 except ImportError:
                     pass
+
                 # GC
                 import gc; gc.collect()
                 self.onProgressInfo(f"Memory used: {self._get_memory_usage()}")
-                # Passage au suivant
+
+                # Passage au fichier suivant si batch
                 if hasattr(self, 'folderFiles') and self.folderFiles:
                     self.currentFileIndex += 1
                     self._updateBatchCounter(show_file_name=True)
@@ -1066,6 +1123,7 @@ class SegmentationWidget(qt.QWidget):
                         self.onProgressInfo("Complete treatment completed")
                 else:
                     self._setApplyVisible(True)
+
             except Exception as cleanup_error:
                 logging.critical(f"Final cleaning failure: {cleanup_error}", exc_info=True)
                 self.onProgressInfo(f"CLEANING ERROR: {cleanup_error}")
