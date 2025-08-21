@@ -89,9 +89,8 @@ def main(args):
             #     transformedLandmarks = applyTransformLandmarks(LoadOnlyLandmarks(data['lmT2']), transform.GetInverse())
             #     WriteJson(transformedLandmarks, os.path.join(outpath,patient+'_lm_'+add_name+'.mrk.json'))
 
-        print(idx)
         with open(args.log_path, "r+") as log_f:
-            log_f.write(idx)
+            log_f.write(str(idx))
 
         print(f"""<filter-progress>{0}</filter-progress>""")
         sys.stdout.flush()

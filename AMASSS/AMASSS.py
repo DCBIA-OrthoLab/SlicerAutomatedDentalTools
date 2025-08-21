@@ -844,15 +844,15 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # self.ui.PredScanProgressBar.setMaximum(self.scan_count)
     # self.ui.PredScanProgressBar.setValue(0)
     if not self.isSegmentInput:
-      self.ui.PredScanLabel.setText(f"Scan ready for segmentation : 0 / {self.scan_count}")
+      self.ui.PredScanLabel.setText(f"Scan ready for segmentation : 1 / {self.scan_count}")
     else:
-      self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : 0 / {self.scan_count}")
+      self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : 1 / {self.scan_count}")
 
     self.total_seg_progress = self.scan_count * self.seg_cout
 
     # self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
     # self.ui.PredSegProgressBar.setValue(0)
-    self.ui.PredSegLabel.setText(f"Segmented structures : 0 / {self.total_seg_progress}")
+    self.ui.PredSegLabel.setText(f"Segmented structures : 1 / {self.total_seg_progress}")
 
     self.prediction_step = 0
     self.progress = 0
@@ -890,24 +890,24 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   #       # self.progressBar.setValue(0)
 
 
-    # if progress == 100:
-    #   # self.prediction_step += 1
+  #   if progress == 100:
+  #     # self.prediction_step += 1
 
-    #   if self.prediction_step == 1:
-    #     # self.progressBar.setValue(self.progress)
-    #     self.ui.PredScanProgressBar.setValue(self.progress)
-    #     if not self.isSegmentInput:
-    #       self.ui.PredScanLabel.setText(f"Scan ready for segmentation : {self.progress} / {self.scan_count}")
-    #     else:
-    #       self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : {self.progress} / {self.scan_count}")
+  #     if self.prediction_step == 1:
+  #       # self.progressBar.setValue(self.progress)
+  #       self.ui.PredScanProgressBar.setValue(self.progress)
+  #       if not self.isSegmentInput:
+  #         self.ui.PredScanLabel.setText(f"Scan ready for segmentation : {self.progress} / {self.scan_count}")
+  #       else:
+  #         self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : {self.progress} / {self.scan_count}")
 
-    #   if self.prediction_step == 2:
+  #     if self.prediction_step == 2:
 
-    #     # self.progressBar.setValue(self.progress)
-    #     self.ui.PredSegProgressBar.setValue(self.progress)
-    #     self.ui.PredSegLabel.setText(f"Segmented structures : {self.progress} / {self.total_seg_progress}")
+  #       # self.progressBar.setValue(self.progress)
+  #       self.ui.PredSegProgressBar.setValue(self.progress)
+  #       self.ui.PredSegLabel.setText(f"Segmented structures : {self.progress} / {self.total_seg_progress}")
 
-    #   self.progress += 1
+  #     self.progress += 1
 
 
 
@@ -1379,7 +1379,7 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
       self.process.start()
       
   def install_shapeaxi(self):
-      self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+      self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.10",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
 
   def setup_cli_command(self,file):
       args = self.find_cli_parameters()
@@ -1486,27 +1486,3 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
   
       self.stdout, self.stderr = self.subpro.communicate()
 
-  # def process(self, parameters, showResult=True):
-  #   """
-  #   Run the processing algorithm.
-  #   Can be used without GUI widget.
-  #   """
-
-
-
-  #   logging.info('Processing started')
-
-
-  #   print ('parameters : ', parameters)
-
-
-  #   AMASSSProcess = slicer.modules.amasss_cli
-
-  #   self.cliNode = slicer.cli.run(AMASSSProcess, None, parameters)
-
-  #   # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-  #   # slicer.mrmlScene.RemoveNode(cliNode)
-
-
-
-    return AMASSSProcess

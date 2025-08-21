@@ -8,11 +8,14 @@ import numpy as np
 import torch, itk, cc3d, dicom2nifti
 import SimpleITK as sitk
 import vtk
-import slicer
 import re
-import vtk, qt, slicer
-from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin, pip_install
+import vtk
+
+# (Supposer que LABEL_COLORS et Write(model, outpath) sont déjà définis globalement)
+
+import os, numpy as np, SimpleITK as sitk, vtk
+from vtk.util.numpy_support import vtk_to_numpy
+
 # ── Constantes globales ───────────────────────────────────────────────────────
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -56,120 +59,6 @@ def CorrectHisto(filepath,outpath,min_porcent=0.01,max_porcent=0.95,i_min=-1500,
     return img
 
 
-
-# def Write(vtkdata, output_name):
-# 	outfilename = output_name
-# 	print("Writting:", outfilename)
-# 	polydatawriter = vtk.vtkPolyDataWriter()
-# 	polydatawriter.SetFileName(outfilename)
-# 	polydatawriter.SetInputData(vtkdata)
-# 	polydatawriter.Write()
-
-
-
-
-# import os
-# import numpy as np
-# import SimpleITK as sitk
-# import vtk
-
-# # (Supposer que LABEL_COLORS et Write(model, outpath) sont déjà définis globalement)
-
-# import os, numpy as np, SimpleITK as sitk, vtk
-# from vtk.util.numpy_support import vtk_to_numpy
-
-# def SavePredToVTK(file_path, temp_folder, smoothing, vtk_output_path, model_size="LARGE"):
-#     import os, numpy as np, SimpleITK as sitk, vtk
-
-#     # 1) Lecture
-#     img = sitk.ReadImage(file_path)
-#     arr = sitk.GetArrayFromImage(img)
-
-#     # 2) Prépare le nom de base (sans extensions multiples)
-#     base = os.path.basename(file_path)
-#     for ext in ('.nii.gz','.nrrd.gz','.nii','.nrrd'):
-#         if base.endswith(ext):
-#             base = base[:-len(ext)]
-#             break
-
-#     # 3) On détecte le mode merged
-#     is_merged = base.endswith("_MERGED")
-
-#     # 4) Crée le dossier de sortie si besoin
-#     output_is_dir = vtk_output_path.endswith(os.sep) or os.path.isdir(vtk_output_path)
-#     if output_is_dir:
-#         os.makedirs(vtk_output_path, exist_ok=True)
-
-#     # --- UTIL : écrivain VTK ---
-#     def write_poly(poly, outvtk):
-#         w = vtk.vtkPolyDataWriter()
-#         w.SetFileName(outvtk)
-#         w.SetInputData(poly)
-#         w.Write()
-#         print(f" → Written VTK: {outvtk}", flush=True)
-
-#     # --- UTIL : build + smooth + color ---
-#     def mesh_from_nrrd(nrrd, iters, color_rgb):
-#         r = vtk.vtkNrrdReader()
-#         r.SetFileName(nrrd)
-#         r.Update()
-#         dmc = vtk.vtkDiscreteMarchingCubes()
-#         dmc.SetInputConnection(surf.GetOutputPort())
-#         dmc.GenerateValues(100, 1, 100)
-
-#         # LAPLACIAN smooth
-#         SmoothPolyDataFilter = vtk.vtkSmoothPolyDataFilter()
-#         SmoothPolyDataFilter.SetInputConnection(dmc.GetOutputPort())
-#         SmoothPolyDataFilter.SetNumberOfIterations(smoothing)
-#         SmoothPolyDataFilter.SetFeatureAngle(120.0)
-#         SmoothPolyDataFilter.SetRelaxationFactor(0.6)
-#         SmoothPolyDataFilter.Update()
-
-#         model = SmoothPolyDataFilter.GetOutput()
-
-#         color = vtk.vtkUnsignedCharArray()
-#         color.SetName("Colors")
-#         color.SetNumberOfComponents(3)
-#         color.SetNumberOfTuples( model.GetNumberOfCells() )
-
-#         for i in range(model.GetNumberOfCells()):
-#             color_tup=LABEL_COLORS[label]
-#             color.SetTuple(i, color_tup)
-
-#         model.GetCellData().SetScalars(color)
-
-
-#         # model.GetPointData().SetS
-
-#         # SINC smooth
-#         # smoother = vtk.vtkWindowedSincPolyDataFilter()
-#         # smoother.SetInputConnection(dmc.GetOutputPort())
-#         # smoother.SetNumberOfIterations(30)
-#         # smoother.BoundarySmoothingOff()
-#         # smoother.FeatureEdgeSmoothingOff()
-#         # smoother.SetFeatureAngle(120.0)
-#         # smoother.SetPassBand(0.001)
-#         # smoother.NonManifoldSmoothingOn()
-#         # smoother.NormalizeCoordinatesOn()
-#         # smoother.Update()
-
-#         # print(SmoothPolyDataFilter.GetOutput())
-
-#         # outputFilename = "Test.vtk"
-#         if not isSegmentInput:
-#             if len(present_labels)>1:
-#                 outpath = out_folder + "/VTK files/" + os.path.basename(file_path).split('.')[0].split('_MERGED')[0] + f"_{NAMES_FROM_LABELS[model_size][label]}_model.vtk"
-#             else:
-#                 outpath = out_folder + "/VTK files/" + os.path.basename(file_path).split('.')[0].split('-')[0] + "_model.vtk"
-#         else:
-#             if len(present_labels)>1:
-#                 outpath = out_folder + "/"+ os.path.basename(file_path).split("_Seg")[0].split('_MERGED')[0] + "_VTK/" + os.path.basename(file_path).split('.')[0].split('_MERGED')[0].split('_Seg')[0] + f"_{NAMES_FROM_LABELS[model_size][label]}_model.vtk"
-#             else:
-#                 outpath = out_folder + "/"+ os.path.basename(file_path).split("-Seg")[0] + "_model.vtk"
-#         if not os.path.exists(os.path.dirname(outpath)):
-#             os.makedirs(os.path.dirname(outpath))
-#         Write(model, outpath)
-
 def Write(vtkdata, output_name):
 	outfilename = output_name
 	print("Writting:", outfilename)
@@ -178,18 +67,6 @@ def Write(vtkdata, output_name):
 	polydatawriter.SetInputData(vtkdata)
 	polydatawriter.Write()
 
-
-
-
-import os
-import numpy as np
-import SimpleITK as sitk
-import vtk
-
-# (Supposer que LABEL_COLORS et Write(model, outpath) sont déjà définis globalement)
-
-import os, numpy as np, SimpleITK as sitk, vtk
-from vtk.util.numpy_support import vtk_to_numpy
 
 def SavePredToVTK(file_path, temp_folder, smoothing, vtk_output_path, model_size="LARGE"):
     import os, numpy as np, SimpleITK as sitk, vtk
@@ -373,6 +250,12 @@ def main(args):
     import torch
     import SimpleITK as sitk
 
+    if not os.path.exists(os.path.split(args["log_path"])[0]):
+        os.mkdir(os.path.split(args["log_path"])[0])
+
+    with open(args["log_path"], "w") as log_f:
+        log_f.truncate(0)
+
     print("Start AMASSS_CLI with nnUNet v2 backend", flush=True)
 
     # 1. Préparation du dossier temporaire
@@ -401,6 +284,7 @@ def main(args):
 
     # 4. Boucle sur chaque scan
     for scan_idx, volume_file in enumerate(input_files, start=1):
+        print(scan_idx, volume_file)
         case_id = f"{scan_idx:03d}"
         basename = os.path.basename(volume_file)
         base, ext = os.path.splitext(basename)
@@ -441,6 +325,9 @@ def main(args):
 
         # 4.3 Prédiction et post‑traitement
         for struct_idx, (struct, plans_dir) in enumerate(nnunet_models.items(), start=1):
+            with open(args["log_path"], "r+") as log_f:
+                log_f.write(str(scan_idx))
+
             dataset_name = os.path.basename(os.path.dirname(plans_dir))
             os.environ['nnUNet_results'] = os.path.dirname(os.path.dirname(plans_dir))
             outp = os.path.join(tmp, f"pred_{struct}")
@@ -539,7 +426,9 @@ if __name__=="__main__":
     #   false \
     #   false
 
+
     argv = sys.argv
+    print(argv[13])
     args = {
         "inputVolume":    argv[1],
         "modelDirectory": argv[2],
@@ -549,11 +438,12 @@ if __name__=="__main__":
         "genVtk":         argv[6].lower()=="true",
         "save_in_folder": argv[7].lower()=="true",
         "output_folder":  argv[8],
-        "vtk_smooth":     int(argv[10]),
-        "prediction_ID":  argv[11],
-        "temp_fold":      argv[14],
-        "isSegmentInput": argv[15].lower()=="true",
-        "isDCMInput":     argv[16].lower()=="true",
+        "vtk_smooth":     int(argv[9]),
+        "prediction_ID":  argv[10],
+        "temp_fold":      argv[11],
+        "isSegmentInput": argv[12].lower()=="true",
+        "isDCMInput":     argv[13].lower()=="true",
         "merging_order":  ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC","CBMASK","MANDMASK","MAXMASK"],
+        "log_path": sys.argv[14]
     }
     main(args)

@@ -871,6 +871,9 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             )
 
             self.nb_extension_launch = len(self.list_Processes_Parameters)
+
+            self.onProcessStarted()
+
             self.module_name = self.list_Processes_Parameters[0]["Module"]
             self.displayModule = self.list_Processes_Parameters[0]["Display"]
 
@@ -883,14 +886,16 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             for num_process in range(num_processes):
             
-                command = self.run_conda_tool(0)
-                self.module_name = self.list_Processes_Parameters[0]["Module"]
-                self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                command = self.run_conda_tool(num_process)
+                self.module_name = self.list_Processes_Parameters[num_process]["Module"]
+                print(self.module_name)
+                self.displayModule = self.list_Processes_Parameters[num_process]["Display"]
 
                 # running in // to not block Slicer
                 process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
                 process.start()
                 self.ui.LabelTimer.setHidden(False)
+                self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
                 self.ui.LabelTimer.setText(f"Time : 0.00s")
                 previous_time = self.startTime
                 while process.is_alive():
@@ -909,7 +914,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
                         
                         self.ui.LabelTimer.setText(timer)
-                del self.list_Processes_Parameters[0]
+                # del self.list_Processes_Parameters[0]
 
             self.OnEndProcess(num_process)
 
@@ -1016,13 +1021,13 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #         try:
 
         #                 module=self.list_Processes_Parameters[0]['Module']
-        #                 print(f"in conda tool: {module} wants to run", )
+        #                 print(f"in conda tool: {self.module_name} wants to run", )
 
         #                 args = self.list_Processes_Parameters[0]["Parameter"]
-        #                 self.logic.check_cli_script(f"{module}")
+        #                 self.logic.check_cli_script(f"{self.module_name}")
 
         #                 conda_exe = self.logic.conda.getCondaExecutable()
-        #                 command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{module}"]
+        #                 command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{self.module_name}"]
 
         #                 for key, value in args.items():
         #                     print("key : ",key)
@@ -1147,14 +1152,14 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             return command
 
         else: 
-            module=self.list_Processes_Parameters[process_id]['Module']
-            print(f"in conda tool: {module} wants to run", )
+            self.module_name=self.list_Processes_Parameters[process_id]['Module']
+            print(f"in conda tool: {self.module_name} wants to run", )
 
             args = self.list_Processes_Parameters[process_id]["Parameter"]
-            self.logic.check_cli_script(f"{module}")
+            self.logic.check_cli_script(f"{self.module_name}")
 
             conda_exe = self.logic.conda.getCondaExecutable()
-            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{module}"]
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{self.module_name}"]
 
             for key, value in args.items():
                 print("key : ",key)

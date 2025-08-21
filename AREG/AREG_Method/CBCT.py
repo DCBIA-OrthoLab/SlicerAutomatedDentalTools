@@ -11,7 +11,7 @@ import SimpleITK as sitk
 import numpy as np
 
 from glob import iglob
-# import slicer
+import slicer
 import time
 # import qt
 import platform
@@ -20,8 +20,9 @@ import platform
 class Semi_CBCT(Method):
     def __init__(self, widget):
         super().__init__(widget)
-        self.tempAMASSS_folder = '/tmp'
-        self.tempALI_folder = '/tmp'
+        # Use slicer temp directory with module-specific subdirectories
+        self.tempAMASSS_folder = os.path.join(slicer.util.tempDirectory(), 'amasss')
+        self.tempALI_folder = os.path.join(slicer.util.tempDirectory(), 'ali')
 
     def getGPUUsage(self):
         if platform.system() == "Darwin":
@@ -256,6 +257,9 @@ class Semi_CBCT(Method):
         )
 
     def Process(self, **kwargs):
+        # Create base temp directory for this process
+        base_temp_dir = slicer.util.tempDirectory()
+        os.makedirs(os.path.join(base_temp_dir, "pre_aso"), exist_ok=True)
         list_struct = self.CheckboxisChecked(kwargs["dic_checkbox"])
         full_reg_struct, full_seg_struct = (
             list_struct["Regions of Reference for Registration"],
@@ -275,10 +279,9 @@ class Semi_CBCT(Method):
                 kwargs["slicerDownload"], "Models", "Orientation", "PreASO"
             ),
             "SmallFOV": False,
-            "temp_folder": "/tmp",
+            "temp_folder": os.path.join(base_temp_dir, "pre_aso"),
             "DCMInput": kwargs["isDCMInput"],
         }
-
 
         # PreOrientProcess = slicer.modules.pre_aso_cbct
         PreOrientProcess = "PRE_ASO_CBCT"
@@ -293,7 +296,7 @@ class Semi_CBCT(Method):
 
         # AREG CBCT PROCESS
         AREGProcess = "AREG_CBCT"
-        AReg_temp_folder = "/tmp"#slicer.util.tempDirectory()
+        os.makedirs(os.path.join(base_temp_dir, "areg"), exist_ok=True)
         for i, reg in enumerate(reg_struct.split(" ")):
             parameter_areg_cbct = {
                 "t1_folder": kwargs["input_t1_folder"],
@@ -303,7 +306,7 @@ class Semi_CBCT(Method):
                 "add_name": kwargs["add_in_namefile"],
                 "DCMInput": False,
                 "SegmentationLabel": kwargs["LabelSeg"],
-                "temp_folder": AReg_temp_folder,
+                "temp_folder": os.path.join(base_temp_dir, "areg"),
                 "ApproxReg": kwargs["ApproxStep"],
                 "mask_folder_t1": kwargs["input_t1_mask"],
             }
@@ -393,6 +396,8 @@ class Auto_CBCT(Semi_CBCT):
         )
 
     def Process(self, **kwargs):
+        # Create base temp directory for this process
+        base_temp_dir = slicer.util.tempDirectory()
 
         list_struct = self.CheckboxisChecked(kwargs["dic_checkbox"])
 
@@ -433,6 +438,7 @@ class Auto_CBCT(Semi_CBCT):
         ]
 
         print(f'AMASSS Mask Parameters: {parameter_amasss_mask_t1}\n')
+        os.makedirs(os.path.join(base_temp_dir, "pre_aso"), exist_ok=True)
         centered_T2 = kwargs["input_t2_folder"] + "_Center"
         parameter_pre_aso = {
             "input": kwargs["input_t2_folder"],
@@ -441,7 +447,7 @@ class Auto_CBCT(Semi_CBCT):
                 kwargs["slicerDownload"], "Models", "Orientation", "PreASO"
             ),
             "SmallFOV": False,
-            "temp_folder": "/tmp",
+            "temp_folder": os.path.join(base_temp_dir, "pre_aso"),
             "DCMInput": kwargs["isDCMInput"],
         }
 
@@ -464,7 +470,7 @@ class Auto_CBCT(Semi_CBCT):
 
         # AREGProcess = slicer.modules.areg_cbct
         AREGProcess = "AREG_CBCT"
-        AReg_temp_folder = "/tmp"#slicer.util.tempDirectory()
+        os.makedirs(os.path.join(base_temp_dir, "areg"), exist_ok=True)
         for i, reg in enumerate(reg_struct.split(" ")):
             parameter_areg_cbct = {
                 "t1_folder": kwargs["input_t1_folder"],
@@ -474,7 +480,7 @@ class Auto_CBCT(Semi_CBCT):
                 "add_name": kwargs["add_in_namefile"],
                 "DCMInput": False,
                 "SegmentationLabel": "0",
-                "temp_folder": AReg_temp_folder,
+                "temp_folder": os.path.join(base_temp_dir, "areg"),
                 "ApproxReg": kwargs["ApproxStep"],
                 "mask_folder_t1": "None",
             }
@@ -669,15 +675,15 @@ class Or_Auto_CBCT(Semi_CBCT):
 
         # ====================== ASO Process ======================
         # PRE ASO CBCT
-        temp_folder = "/tmp"#slicer.util.tempDirectory()
+        base_temp_dir = slicer.util.tempDirectory()
         time.sleep(0.01)
-        tempPREASO_folder = "/tmp"#slicer.util.tempDirectory()
+        os.makedirs(os.path.join(base_temp_dir, "pre_aso"), exist_ok=True)
         parameter_pre_aso = {
             "input": kwargs["input_t1_folder"],
-            "output_folder": temp_folder,  # kwargs['input_folder'],
+            "output_folder": base_temp_dir,  # kwargs['input_folder'],
             "model_folder": os.path.join(kwargs["model_folder_2"], "PreASO"),
             "SmallFOV": False,
-            "temp_folder": tempPREASO_folder,
+            "temp_folder": os.path.join(base_temp_dir, "pre_aso"),
             "DCMInput": kwargs["isDCMInput"],
         }
 
@@ -692,10 +698,10 @@ class Or_Auto_CBCT(Semi_CBCT):
 
         # ALI CBCT
         parameter_ali = {
-            "input": temp_folder,
+            "input": base_temp_dir,
             "dir_models": kwargs["model_folder_3"],
             "lm_type": self.format_lm_string(list_lmrk_str),
-            "output_dir": temp_folder,
+            "output_dir": base_temp_dir,
             "temp_fold": self.tempALI_folder,
             "DCMInput": False,
             "spacing": "[1,0.3]",
@@ -711,7 +717,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         # SEMI ASO CBCT
         ASO_T1_Oriented = kwargs["input_t1_folder"] + "Or"
         parameter_semi_aso = {
-            "input": temp_folder,  # kwargs['input_folder'],
+            "input": base_temp_dir,  # kwargs['input_folder'],
             "gold_folder": os.path.join(kwargs["model_folder_2"], OrientationReference),
             "output_folder": ASO_T1_Oriented,
             "add_inname": "Or",
@@ -787,13 +793,14 @@ class Or_Auto_CBCT(Semi_CBCT):
 
         # print('AMASSS Mask Parameters:', parameter_amasss_mask_t1)
         # print()
+        os.makedirs(os.path.join(base_temp_dir, "pre_aso_t2"), exist_ok=True)
         centered_T2 = kwargs["input_t2_folder"] + "_Center"
         parameter_pre_aso = {
             "input": kwargs["input_t2_folder"],
             "output_folder": centered_T2,
             "model_folder": os.path.join(kwargs["model_folder_2"], "PreASO"),
             "SmallFOV": False,
-            "temp_folder": "/tmp",
+            "temp_folder": os.path.join(base_temp_dir, "pre_aso_t2"),
             "DCMInput": kwargs["isDCMInput"],
         }
         print(f"Centering T2 Parameters: {parameter_pre_aso}\n")
@@ -813,7 +820,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         reg_struct = self.TranslateModels(full_reg_struct, False)
 
         AREGProcess = "AREG_CBCT"
-        AReg_temp_folder = "/tmp"#slicer.util.tempDirectory()
+        os.makedirs(os.path.join(base_temp_dir, "areg"), exist_ok=True)
         for i, reg in enumerate(reg_struct.split(" ")):
             parameter_areg_cbct = {
                 "t1_folder": ASO_T1_Oriented,
@@ -823,7 +830,7 @@ class Or_Auto_CBCT(Semi_CBCT):
                 "add_name": kwargs["add_in_namefile"],
                 "DCMInput": kwargs["isDCMInput"],
                 "SegmentationLabel": "0",
-                "temp_folder": AReg_temp_folder,
+                "temp_folder": os.path.join(base_temp_dir, "areg"),
                 "ApproxReg": kwargs["ApproxStep"],
                 "mask_folder_t1": "None",
             }

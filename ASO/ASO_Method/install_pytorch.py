@@ -240,7 +240,7 @@ def install_pytorch_if_needed():
         # Install PyTorch with CUDA 12.8 (adjust as needed)
         cmd = [
             sys.executable, "-m", "pip", "install", 
-            "torch==2.7.0", "torchvision==0.22.0", "torchaudio==2.7.0",
+            "torch==2.7.1", "torchvision==0.22.1", "torchaudio==2.7.1",
             "--index-url", "https://download.pytorch.org/whl/cu128"
         ]
         run_command(cmd)

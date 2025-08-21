@@ -1008,9 +1008,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             num_processes = len(self.list_Processes_Parameters)
             self.start_time = time.time()
             for num_process in range(num_processes):
-                command = self.run_conda_tool(0)
-                self.module_name = self.list_Processes_Parameters[0]["Module"]
-                self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                command = self.run_conda_tool(num_process)
+                self.module_name = self.list_Processes_Parameters[num_process]["Module"]
+                self.displayModule = self.list_Processes_Parameters[num_process]["Display"]
                 # running in // to not block Slicer
                 self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
                 self.process.start()
@@ -1034,7 +1034,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
                         
                         self.ui.LabelTimer.setText(timer)
-                del self.list_Processes_Parameters[0]
+                # del self.list_Processes_Parameters[0]
             self.OnEndProcess(num_process)
                     
     def onProcessStarted(self):
@@ -1231,31 +1231,18 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     value = dentalmodelseg_path_clean
                 command.append(f"\"{value}\"")
             print("*"*50)
-            # print("command : ",command)
             return command
 
-                # # running in // to not block Slicer
-                # self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
-                # self.process.start()
-                # self.ui.LabelTimer.setHidden(False)
-                # self.ui.LabelTimer.setText(f"Time : 0.00s")
-                # previous_time = time.time()
-                # while self.process.is_alive():
-                #     slicer.app.processEvents()
-                #     formatted_time = self.update_ui_time(self.start_time, previous_time)
-                #     self.ui.LabelTimer.setText(f"{formatted_time}")
-
-                # del self.list_Processes_Parameters[0]
-
         else: # module=="SEMI_ASO_CBCT":
-            module=self.list_Processes_Parameters[process_id]['Module']
-            print(f"in conda tool: {module} wants to run", )
+            self.module_name=self.list_Processes_Parameters[process_id]['Module']
+            print(self.list_Processes_Parameters[process_id])
+            print(f"in conda tool: {self.module_name} wants to run", )
 
             args = self.list_Processes_Parameters[process_id]["Parameter"]
-            self.logic.check_cli_script(f"{module}")
+            self.logic.check_cli_script(f"{self.module_name}")
 
             conda_exe = self.logic.conda.getCondaExecutable()
-            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{module}"]
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{self.module_name}"]
 
         for key, value in args.items():
             print("key : ",key)

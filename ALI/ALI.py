@@ -10,7 +10,6 @@ from slicer.util import VTKObservationMixin, pip_install, pip_uninstall
 import webbrowser
 import textwrap
 import importlib.metadata
-import signal
 
 from pathlib import Path
 import platform
@@ -332,6 +331,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     self.nb_patient = 0
     self.time_log = 0
+    self.all_installed = False
     
     # self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
     
@@ -874,35 +874,12 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.onProcessStarted()
 
 
-    if "CrownSegmentationcli" in self.module_name:
-      print("module name : ", self.module_name)
-      self.nb_extension_did += 1
-      self.run_conda_tool("seg")
-      self.module_name = self.list_Processes_Parameters[0]["Module"]
-    if "ALI_IOS" in self.module_name:
-      self.nb_extension_did += 1
-      print("module name : ", self.module_name)
-      self.run_conda_tool("ali")
-      self.OnEndProcess()
-        
-     
-    else: 
-      self.process = slicer.cli.run(
-        self.list_Processes_Parameters[0]["Process"],
-        None,
-        self.list_Processes_Parameters[0]["Parameter"],
-      )
-      self.processObserver = self.process.AddObserver(
-        "ModifiedEvent", self.onProcessUpdate
-      )
-    
-      del self.list_Processes_Parameters[0]
     num_processes = len(self.list_Processes_Parameters)
     self.start_time = time.time()
     for num_process in range(num_processes):
-        command = self.run_conda_tool(0)
-        self.module_name = self.list_Processes_Parameters[0]["Module"]
-        self.displayModule = self.list_Processes_Parameters[0]["Display"]
+        command = self.run_conda_tool(num_process)
+        self.module_name = self.list_Processes_Parameters[num_process]["Module"]
+        self.displayModule = self.list_Processes_Parameters[num_process]["Display"]
         # running in // to not block Slicer
         self.process = threading.Thread(target=self.logic.conda.condaRunCommand, args=(command,))
         self.process.start()
@@ -912,6 +889,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         previous_time = self.startTime
         while self.process.is_alive():
           slicer.app.processEvents()
+          self.onCondaProcessUpdate()
+          self.ui.CancelButton.setVisible(True)
+
           current_time = time.time()
           gap=current_time-previous_time
           if gap>0.3:
@@ -926,7 +906,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
               
             self.ui.TimerLabel.setText(timer)
 
-        del self.list_Processes_Parameters[0]
+        # del self.list_Processes_Parameters[0]
     
     
     self.OnEndProcess(num_process)
@@ -959,17 +939,17 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         lines = file.readlines()
         return lines[-1] if lines else None
   def read_log_path(self):
-      with open(self.log_path, 'r') as f:
+      with open(self.logic.log_path, 'r') as f:
           line = f.readline()
           if line != '':
               return line
   
   def onCondaProcessUpdate(self):
-      if os.path.isfile(self.log_path):
+      if os.path.isfile(self.logic.log_path):
           self.ui.LabelProgressExtension.setText(
               f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
           )
-          time_progress = os.path.getmtime(self.log_path)
+          time_progress = os.path.getmtime(self.logic.log_path)
           line = self.read_log_path()
           if (time_progress != self.time_log) and line:
               progress = line.strip()
@@ -1124,39 +1104,15 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       print("*"*50)
       print("command : ",command)
       
-      # running in // to not block Slicer
-      self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
-      self.process.start()
-      self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
-      self.ui.TimerLabel.setHidden(False)
-      self.ui.TimerLabel.setText(f"Time : 0.00s")
-      previous_time = self.startTime
-      while self.process.is_alive():
-        self.ui.CancelButton.setVisible(True)
-        self.onCondaProcessUpdate()
-        slicer.app.processEvents()
-        current_time = time.time()
-        gap=current_time-previous_time
-        if gap>0.3:
-          currentTime = time.time() - self.startTime
-          previous_time = currentTime
-          if currentTime < 60:
-            timer = f"Time : {int(currentTime)}s"
-          elif currentTime < 3600:
-            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-          else:
-            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
-          
-          self.ui.TimerLabel.setText(timer)
-      
-      del self.list_Processes_Parameters[0]
-    
-    elif type == "ali":
-      args = self.list_Processes_Parameters[0]["Parameter"]
-      self.logic.check_cli_script(f"{module}")
+    else:
+      module=self.list_Processes_Parameters[process_id]['Module']
+      print(f"in conda tool: {self.module_name} wants to run", )
+
+      args = self.list_Processes_Parameters[process_id]["Parameter"]
+      self.logic.check_cli_script(f"{self.module_name}")
       print("args : ", args)
       conda_exe = self.logic.conda.getCondaExecutable()
-      command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{module}"]
+      command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"{self.module_name}"]
 
       for key, value in args.items():
         print("key : ", key)
@@ -1166,34 +1122,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       value = self.logic.windows_to_linux_path(self.logic.log_path)
       command.append(f"\"{value}\"")
       print("command : ",command)
+    return command
 
-      # running in // to not block Slicer
-      self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
-      self.process.start()
-      self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
-      self.ui.TimerLabel.setHidden(False)
-      self.ui.TimerLabel.setText(f"time : 0.00s")
-      previous_time = self.startTime
-
-      while self.process.is_alive():
-        self.ui.CancelButton.setVisible(True)
-        self.onCondaProcessUpdate()
-        slicer.app.processEvents()
-        current_time = time.time()
-        gap=current_time-previous_time
-        if gap>0.3:
-          currentTime = time.time() - self.startTime
-          previous_time = currentTime
-          if currentTime < 60:
-            timer = f"Time : {int(currentTime)}s"
-          elif currentTime < 3600:
-            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-          else:
-            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
-            
-          self.ui.TimerLabel.setText(timer)
-
-      del self.list_Processes_Parameters[0]
       
     
   def onCheckRequirements(self):
@@ -1299,6 +1229,18 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     else:
       self.ui.label_LibsInstallation.setText(f"pytorch3d is already installed")
       print("pytorch3d already installed")
+
+  
+    # start_time = time.time()
+    # previous_time = start_time
+    # formatted_time = self.format_time(0)
+    # self.ui.label_LibsInstallation.setText(f"Installing additional librairies.\ntime: {formatted_time}")
+    # process = self.logic.install_libraries()
+    
+    # while self.logic.process.is_alive():
+    #   slicer.app.processEvents()
+    #   formatted_time = self.update_ui_time(start_time, previous_time)
+    #   self.ui.label_LibsInstallation.setText(f"Installing additional librairies.\ntime: {formatted_time}")
 
     self.all_installed = True   
     return True
@@ -1706,7 +1648,9 @@ class ALILogic(ScriptedLoadableModuleLogic):
     self.cliNode = None
     self.check_log_path()
     self.stdout, self.stderr = '', ''
-    self.pythonVersion = "3.9"  # Default Python version for the conda environment
+    self.pythonVersion = "3.10"  # Default Python version for the conda environment
+
+    # additional_libs = [ "nnunetv2>=2.6.2", "monai==1.5.0", "itk-elastic==0.17.1", "dicom2nifti==2.3.0", "pydicom==2.2.2", "connected-components-3d==3.9.1"]
 
   def init_conda(self):
     # check if CondaSetUp exists
@@ -1747,7 +1691,11 @@ class ALILogic(ScriptedLoadableModuleLogic):
     self.process.start()
     
   def install_shapeaxi(self):
-    self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.pythonVersion,["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+    self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.pythonVersion,["shapeaxi==1.1.1"],)) #run in parallel to not block slicer
+
+  def install_libraries(self):
+    self.conda.condaRunCommand(["python", "-m", "pip", "install", "nnunetv2>=2.6.2", "monai==1.5.0", "itk-elastix==0.17.1", "dicom2nifti==2.3.0", "pydicom==2.2.2", "connected-components-3d==3.9.1"],
+                                self.name_env)
     
   def check_if_pytorch3d(self):
     conda_exe = self.conda.getCondaExecutable()

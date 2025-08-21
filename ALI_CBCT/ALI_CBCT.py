@@ -63,7 +63,7 @@ def main(input):
     scale_spacing = ast.literal_eval(args.spacing)
     speed_per_scale = ast.literal_eval(args.speed_per_scale)
     agent_FOV = ast.literal_eval(args.agent_FOV)
-    lm_type = ast.literal_eval(f"[{args.lm_type}]")
+    lm_type = ast.literal_eval(f"{args.lm_type}")
     spawn_radius = int(args.spawn_radius)
     print("Selected spacings : ", scale_spacing)
 
@@ -182,7 +182,6 @@ def main(input):
 
     start_time = time.time()
 
-
     tot_step = 0
     fails = {}
     outPath = args.output_dir
@@ -192,6 +191,7 @@ def main(input):
             log_f.write(str(idx+1))
 
         print(environment.patient_id)
+        print(len(agent_lst))
         for agent in agent_lst:
             brain = Brain(
                 network_type = DNet,
@@ -203,6 +203,7 @@ def main(input):
                 generate_tensorboard=False,
                 verbose=True
                 )
+            print(agent)
             brain.LoadModels(brain_lst[agent.target])
             agent.SetBrain(brain)
             agent.SetEnvironment(environment)
