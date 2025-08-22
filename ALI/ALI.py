@@ -1080,6 +1080,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       return formatted_time
     
   def run_conda_tool(self, process_id):
+    self.module_name=self.list_Processes_Parameters[process_id]['Module']
+    print(f"in conda tool: {self.module_name} wants to run", )
+
     if "CrownSegmentationcli" in self.list_Processes_Parameters[process_id]['Module']:
       self.logic.check_cli_script("CrownSegmentationcli")
       output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
@@ -1105,8 +1108,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       print("command : ",command)
       
     else:
-      module=self.list_Processes_Parameters[process_id]['Module']
-      print(f"in conda tool: {self.module_name} wants to run", )
 
       args = self.list_Processes_Parameters[process_id]["Parameter"]
       self.logic.check_cli_script(f"{self.module_name}")
@@ -1208,6 +1209,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     else:
       self.ui.label_LibsInstallation.setText(f"Ennvironnement already exists")
     
+    start_time = time.time()
+    previous_time = start_time
+    formatted_time = self.format_time(0)
+    self.ui.label_LibsInstallation.setText(f"Installing additional librairies.\ntime: {formatted_time}")
+    process = self.logic.install_libraries()
     
     ## pytorch3d
 
@@ -1231,16 +1237,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       print("pytorch3d already installed")
 
   
-    # start_time = time.time()
-    # previous_time = start_time
-    # formatted_time = self.format_time(0)
-    # self.ui.label_LibsInstallation.setText(f"Installing additional librairies.\ntime: {formatted_time}")
-    # process = self.logic.install_libraries()
-    
-    # while self.logic.process.is_alive():
-    #   slicer.app.processEvents()
-    #   formatted_time = self.update_ui_time(start_time, previous_time)
-    #   self.ui.label_LibsInstallation.setText(f"Installing additional librairies.\ntime: {formatted_time}")
 
     self.all_installed = True   
     return True
