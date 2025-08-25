@@ -72,7 +72,7 @@ class MonaiUNetHRes(LightningModule):
             include_background=False,
             to_onehot_y=True,
             softmax=True,
-            ce_weight=self.class_weights,
+            weight=self.class_weights,
         )
         self.accuracy = torchmetrics.Accuracy(
             num_classes=out_channels, task="multiclass"

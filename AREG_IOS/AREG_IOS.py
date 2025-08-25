@@ -101,12 +101,17 @@ def main(args):
         name = os.path.basename(dataset.getUpperPath(idx, "T2"))
         WriteSurf(output_icp["source_Or"], args.output, name, args.suffix)
         
-        patient_id = name.split("_T2")[0]
+        if 'Upper' in name:
+            patient_id = os.path.splitext(name.split("_UpperT2")[0])[0]
+        elif 'Lower' in name:
+            patient_id = os.path.splitext(name.split("_LowerT2")[0])[0]
+        else:
+            patient_id = os.path.splitext(name.split("_T2")[0])[0]
         
         if args.areg_mode == "Auto_IOS":
-            aso_tfm_path_T2 = os.path.join(args.T2, f"{patient_id}_T2_SegOr.tfm")
-            aso_tfm_path_T1 = os.path.join(args.T1, f"{patient_id}_T1_SegOr.tfm")
-            out_tfm_T1 = os.path.join(args.output, f"{patient_id}_T1_SegOr.tfm")
+            aso_tfm_path_T2 = os.path.join(args.T2, f"{patient_id}_SegOr.tfm")
+            aso_tfm_path_T1 = os.path.join(args.T1, f"{patient_id}_SegOr.tfm")
+            out_tfm_T1 = os.path.join(args.output, f"{patient_id}_SegOr.tfm")
             
             try:
                 shutil.copy(aso_tfm_path_T1, out_tfm_T1)
@@ -143,8 +148,8 @@ if __name__ == "__main__":
     parser.add_argument("output", type=str)
     parser.add_argument("model", type=str)
     parser.add_argument("suffix", type=str)
-    parser.add_argument("log_path", type=str)
     parser.add_argument("areg_mode", type=str)
+    parser.add_argument("log_path", type=str)
 
     args = parser.parse_args()
     main(args)

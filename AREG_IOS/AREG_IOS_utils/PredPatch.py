@@ -13,7 +13,7 @@ class PredPatch:
 
     def __init__(self, path_model) -> None:
         self.model = MonaiUNetHRes()
-        self.model.load_state_dict(torch.load(path_model)["state_dict"])
+        self.model.load_state_dict(torch.load(path_model,weights_only=False)["state_dict"])
 
         self.device = torch.device("cuda")
         self.model.to(self.device)
