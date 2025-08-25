@@ -119,6 +119,24 @@ def approximation(cbct_folder, mri_folder, output_folder):
                     sitk.WriteTransform(sitk_transform, output_path)
                     print(f"Saved transformation to {output_path}\n\n")
                     
+                    # === Apply transform to MRI and save transformed volume ===
+                    # Reload original MRI to preserve spacing/origin
+                    original_mri_sitk = sitk.ReadImage(mri_path)
+                    transformed_mri = sitk.Resample(
+                        original_mri_sitk,
+                        original_mri_sitk,  # Use same geometry as reference
+                        sitk_transform,
+                        sitk.sitkLinear,
+                        0.0,
+                        original_mri_sitk.GetPixelID()
+                    )
+
+                    # Define volume output path in same folder as transform
+                    mri_out_filename = os.path.basename(mri_path).replace(".nii.gz", "_registered.nii.gz").replace(".nii", "_registered.nii")
+                    mri_out_path = os.path.join(output_folder, mri_out_filename)
+                    sitk.WriteImage(transformed_mri, mri_out_path)
+                    print(f"Saved transformed MRI to {mri_out_path}\n\n")
+                    
                     patient_count += 1
                     if total_patients > 0:
                         progress = patient_count / total_patients

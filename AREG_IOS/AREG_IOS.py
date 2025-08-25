@@ -3,6 +3,7 @@
 # installPackages()
 import os
 import sys
+import shutil
 import argparse
 import platform
 
@@ -32,6 +33,7 @@ if check_platform()=="WSL":
     from AREG_IOS_utils.ICP import ICP
     from AREG_IOS_utils.utils import WriteSurf
     from AREG_IOS_utils.transformation import TransformSurf
+    from AREG_IOS.AREG_IOS_utils.transformation import saveMatrixAsTfm
 
 else : 
     from AREG_IOS_utils import (
@@ -42,6 +44,7 @@ else :
         ICP,
         WriteSurf,
         TransformSurf,
+        saveMatrixAsTfm,
     )
 
 
@@ -97,8 +100,27 @@ def main(args):
 
         name = os.path.basename(dataset.getUpperPath(idx, "T2"))
         WriteSurf(output_icp["source_Or"], args.output, name, args.suffix)
+        
+        if 'Upper' in name:
+            patient_id = os.path.splitext(name.split("_UpperT2")[0])[0]
+        elif 'Lower' in name:
+            patient_id = os.path.splitext(name.split("_LowerT2")[0])[0]
+        else:
+            patient_id = os.path.splitext(name.split("_T2")[0])[0]
+        
+        if args.areg_mode == "Auto_IOS":
+            aso_tfm_path_T2 = os.path.join(args.T2, f"{patient_id}_SegOr.tfm")
+            aso_tfm_path_T1 = os.path.join(args.T1, f"{patient_id}_SegOr.tfm")
+            out_tfm_T1 = os.path.join(args.output, f"{patient_id}_SegOr.tfm")
+            
+            try:
+                shutil.copy(aso_tfm_path_T1, out_tfm_T1)
+                print(f"Saved T1 matrix: {out_tfm_T1}")
+            except Exception as e:
+                print(f"Error copying T1 matrix for {name}: {e}")
 
-
+        saveMatrixAsTfm(output_icp["matrix"], aso_tfm_path_T2, args.output, patient_id, args.suffix, args.areg_mode)
+        
         if lower:
             surf_lower = dataset.getLowerSurf(idx, "T2")
             surf_lower = TransformSurf(surf_lower, output_icp["matrix"])
@@ -112,8 +134,8 @@ def main(args):
 
         # pbar.update(1)
 
-        with open(args.log_path, "r+") as log_f:
-            log_f.write(str(1))
+        with open(args.log_path, "w+") as log_f:
+            log_f.write(str(idx + 1))
 
 
 if __name__ == "__main__":
@@ -126,6 +148,7 @@ if __name__ == "__main__":
     parser.add_argument("output", type=str)
     parser.add_argument("model", type=str)
     parser.add_argument("suffix", type=str)
+    parser.add_argument("areg_mode", type=str)
     parser.add_argument("log_path", type=str)
 
     args = parser.parse_args()

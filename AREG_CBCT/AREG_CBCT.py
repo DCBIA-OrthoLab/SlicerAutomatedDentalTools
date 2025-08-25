@@ -29,6 +29,7 @@ def main(args):
         SegLabel,
         temp_folder,
         Approx,
+        mask_folder_t1,
     ) = (
         args.t1_folder[0],
         args.t2_folder[0],
@@ -38,6 +39,7 @@ def main(args):
         int(args.SegmentationLabel[0]),
         args.temp_folder[0],
         True if args.ApproxReg[0] == "true" else False,
+        None if args.mask_folder_t1[0] == "None" else args.mask_folder_t1[0],
     )
 
     if not os.path.exists(os.path.split(args.log_path)[0]):
@@ -53,7 +55,12 @@ def main(args):
         convertdicom2nifti(t1_folder)
         convertdicom2nifti(t2_folder)
 
-    patients = GetDictPatients(t1_folder, t2_folder, segmentationType=reg_type)
+    patients = GetDictPatients(
+        folder_t1_path=t1_folder,
+        folder_t2_path=t2_folder,
+        segmentationType=reg_type,
+        mask_folder_t1=mask_folder_t1,
+    )
     print("{} Registration".format(translate(reg_type)))
     idx=0
     for patient, data in patients.items():
@@ -82,9 +89,8 @@ def main(args):
             #     transformedLandmarks = applyTransformLandmarks(LoadOnlyLandmarks(data['lmT2']), transform.GetInverse())
             #     WriteJson(transformedLandmarks, os.path.join(outpath,patient+'_lm_'+add_name+'.mrk.json'))
 
-        print(idx)
         with open(args.log_path, "r+") as log_f:
-            log_f.write(idx)
+            log_f.write(str(idx))
 
         print(f"""<filter-progress>{0}</filter-progress>""")
         sys.stdout.flush()
@@ -110,6 +116,7 @@ if __name__ == "__main__":
     parser.add_argument("SegmentationLabel", nargs=1)
     parser.add_argument("temp_folder", nargs=1)
     parser.add_argument("ApproxReg", nargs=1)
+    parser.add_argument("mask_folder_t1", nargs=1)
     parser.add_argument("log_path", type=str)
 
     args = parser.parse_args()

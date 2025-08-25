@@ -570,6 +570,7 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             fromAreg=self.ui.CheckBoxSuffixBased.isChecked(),
             output_folder=self.ui.LineEditOutput.text,
             log_path=self.log_path,
+            is_seg=self.ui.CheckBoxSegmentation.isChecked(),
         )
         self.nb_scans = self.ActualMeth.NbScan(self.ui.LineEditPatient.text, self.ui.LineEditMatrix.text)
         

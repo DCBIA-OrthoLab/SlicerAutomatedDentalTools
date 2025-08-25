@@ -1,5 +1,7 @@
+import SimpleITK as sitk
 import numpy as np
 import vtk
+import os
 
 
 def RotationMatrix(axis, theta):
@@ -47,6 +49,44 @@ def TransformSurf(surf, matrix):
 
     return surf
 
+def read_matrix(tfm_path):
+    """
+    Reads a 3D affine transformation from a .tfm file and returns a 4x4 numpy matrix.
+    """
+    transform = sitk.ReadTransform(tfm_path)
+    
+    if not isinstance(transform, sitk.AffineTransform):
+        raise TypeError(f"Transform at {tfm_path} is not an AffineTransform.")
+
+    matrix = np.eye(4)
+    matrix[:3, :3] = np.array(transform.GetMatrix()).reshape((3, 3))
+    matrix[:3, 3] = np.array(transform.GetTranslation())
+
+    return matrix
+
+def saveMatrixAsTfm(areg_matrix, aso_tfm_path, output_folder, patient_id, suffix, areg_mode):
+    if areg_mode == "Auto_IOS":
+        try:
+            matrix_aso = read_matrix(aso_tfm_path)
+        except Exception as e:
+            print(f"Error reading ASO matrix for {patient_id}: {e}")
+            return
+        
+        final_matrix = np.linalg.inv(areg_matrix @ np.linalg.inv(matrix_aso))
+        composed_path = os.path.join(output_folder, f"{patient_id}_T2_SegOr{suffix}.tfm")
+    else:
+        final_matrix = np.linalg.inv(areg_matrix)
+        composed_path = os.path.join(output_folder, f"{patient_id}_T2_Seg{suffix}.tfm")
+    
+    transform = sitk.AffineTransform(3)
+    rotation = final_matrix[:3, :3].flatten()
+    translation = final_matrix[:3, 3]
+
+    transform.SetMatrix(rotation)
+    transform.SetTranslation(translation.tolist())
+
+    sitk.WriteTransform(transform, composed_path)
+    print(f"Saved composed matrix: {composed_path}")
 
 def RotateTransform(surf, transform):
 

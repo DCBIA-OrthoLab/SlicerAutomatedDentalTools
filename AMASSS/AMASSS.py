@@ -12,10 +12,12 @@ import logging
 import glob
 import time
 import shutil
+import subprocess
+
 import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin, pip_install
-
+from slicer import vtkMRMLCommandLineModuleNode
 import webbrowser
 import pkg_resources
 import importlib
@@ -56,7 +58,7 @@ def createProgressDialog(parent=None, value=0, maximum=100, windowTitle="Startin
 #region ========= GLOBAL VARIABLES =========
 
 # MODEL_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.0-alpha/ALL_MODELS.zip'
-MODEL_LINK = 'https://github.com/lucanchling/AMASSS_CBCT/releases/tag/v1.0.2'
+MODEL_LINK = 'https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/tag/AMASSS_CBCT'
 SCAN_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz'
 
 
@@ -176,7 +178,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.center_all = False # True: center all the scan seg and surfaces in the same position
     self.save_adjusted = False # True: save the contrast adjusted scan
-    self.precision = 50 # Default precision for the segmentation
+  
     self.smoothing = 5 # Default smoothing value for the generated surface
 
 
@@ -277,11 +279,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.PredictFolderLabel.setHidden(True)
 
     # Checkbox to enable usage of CPU memory in case GPU memory is not enough
-    self.ui.host_memory.setChecked(False)
 
-    self.ui.label_4.setVisible(False)
-    self.ui.horizontalSliderCPU.setVisible(False)
-    self.ui.spinBoxCPU.setVisible(False)
+
+    # self.ui.label_4.setVisible(False)
 
     #endregion
 
@@ -294,21 +294,14 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Save adjusted
     # self.ui.SaveAdjustedCheckBox.connect("toggled(bool)", self.UpdateSaveAdjusted)
 
-    # precision
-    self.ui.horizontalSliderPrecision.valueChanged.connect(self.onPrecisionSlider)
-    self.ui.horizontalSliderSmoothing.setVisible(True)
-    self.ui.spinBoxPrecision.valueChanged.connect(self.onPrecisionSpinbox)
-    self.ui.spinBoxPrecision.setVisible(True)
 
     # smoothing
     self.ui.horizontalSliderSmoothing.valueChanged.connect(self.onSmoothingSlider)
     self.ui.spinBoxSmoothing.valueChanged.connect(self.onSmoothingSpinbox)
 
-    self.ui.horizontalSliderGPU.valueChanged.connect(self.onGPUSlider)
-    self.ui.spinBoxGPU.valueChanged.connect(self.onGPUSpinbox)
 
-    self.ui.horizontalSliderCPU.valueChanged.connect(self.onCPUSlider)
-    self.ui.spinBoxCPU.valueChanged.connect(self.onCPUSpinbox)
+
+
 
     self.UpdateSaveSurface(False)
 
@@ -430,17 +423,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.ui.saveInFolder.setVisible(not SegInput)
 
-    self.ui.labelPrecision.setVisible(not SegInput)
-    self.ui.horizontalSliderPrecision.setVisible(not SegInput)
-    self.ui.spinBoxPrecision.setVisible(not SegInput)
-
-    self.ui.label_3.setVisible(not SegInput)
-    self.ui.horizontalSliderGPU.setVisible(not SegInput)
-    self.ui.spinBoxGPU.setVisible(not SegInput)
-
-    self.ui.label_CPU_use.setVisible(not SegInput)
-    self.ui.host_memory.setVisible(not SegInput)
-
 
 
     # self.ui..setVisible(not self.isSegmentInput)
@@ -507,11 +489,24 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.lineEditModelPath.setText(model_folder)
         self.model_ready = True
 
+
+  def openUrlInBrowser(self,url):
+    # on choisit firefox si dispo
+    browser = 'firefox' if shutil.which('firefox') else 'xdg-open'
+    env = os.environ.copy()
+    # empêche le chargement d’atk-bridge
+    env['NO_AT_BRIDGE'] = '1'
+    subprocess.Popen(
+        [browser, url],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
   def onDownloadButton(self):
-    webbrowser.open(MODEL_LINK)
+        self.openUrlInBrowser(MODEL_LINK)
 
   def onDownloadScanButton(self):
-    webbrowser.open(SCAN_LINK)
+        self.openUrlInBrowser(SCAN_LINK)
 
     #endregion
 
@@ -573,14 +568,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     #endregion
 
     #region == MORE OPTIONS ==
-
-  def onPrecisionSlider(self):
-    self.precision = self.ui.horizontalSliderPrecision.value
-    self.ui.spinBoxPrecision.value = self.precision
-
-  def onPrecisionSpinbox(self):
-    self.precision = self.ui.spinBoxPrecision.value
-    self.ui.horizontalSliderPrecision.value = self.precision
 
   def onSmoothingSlider(self):
     self.smoothing = self.ui.horizontalSliderSmoothing.value
@@ -695,6 +682,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     #region == RUN ==
   def onPredictButton(self):
+    import platform
+    # first, install the required libraries and their version
+    # list_libs = [('torch','2.6.0'),('torchvision', "0.21.0"),('blosc2', None), ('torchaudio',"2.6.0"),('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2'),('einops',None),('nibabel',None),('nnunetv2',None)]
 
     if not self.all_installed:
       qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
@@ -739,7 +729,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     param["modelDirectory"] = '/' if self.isSegmentInput else self.ui.lineEditModelPath.text
     param["highDefinition"] = self.use_small_FOV
 
-    param["skullStructure"] = " ".join(selected_seg)
+    param["skullStructure"] = ",".join(selected_seg)
     param["merge"] = self.output_selection
     param["genVtk"] = self.save_surface
     param["save_in_folder"] = self.ui.saveInFolder.isChecked() or self.ui.checkBoxSurfaceSelect.isChecked()
@@ -753,10 +743,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         scan_name= baseName.split(".")
 
         outputdir = self.output_folder
-        if param["save_in_folder"]:
-            outputdir += "/" + scan_name[0] + "_" + "SegOut"
+        # if param["save_in_folder"]:
+        #     outputdir +
 
-        self.vtk_output_folder = outputdir + "/VTK files"
+        self.vtk_output_folder = outputdir 
 
 
       else:
@@ -775,13 +765,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     param["output_folder"] = self.output_folder
 
 
-    param["precision"] = self.precision
+ 
     param["vtk_smooth"] = self.smoothing
 
     param["prediction_ID"] = self.ui.SaveId.text
-
-    param["gpu_usage"] = self.ui.spinBoxGPU.value
-    param["host_memory"] = self.ui.host_memory.isChecked()
 
 
     documentsLocation = qt.QStandardPaths.DocumentsLocation
@@ -854,18 +841,18 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # self.progressBar.connect('canceled()', self.onCancel)
 
 
-    self.ui.PredScanProgressBar.setMaximum(self.scan_count)
-    self.ui.PredScanProgressBar.setValue(0)
+    # self.ui.PredScanProgressBar.setMaximum(self.scan_count)
+    # self.ui.PredScanProgressBar.setValue(0)
     if not self.isSegmentInput:
-      self.ui.PredScanLabel.setText(f"Scan ready for segmentation : 0 / {self.scan_count}")
+      self.ui.PredScanLabel.setText(f"Scan ready for segmentation : 1 / {self.scan_count}")
     else:
-      self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : 0 / {self.scan_count}")
+      self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : 1 / {self.scan_count}")
 
     self.total_seg_progress = self.scan_count * self.seg_cout
 
-    self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
-    self.ui.PredSegProgressBar.setValue(0)
-    self.ui.PredSegLabel.setText(f"Segmented structures : 0 / {self.total_seg_progress}")
+    # self.ui.PredSegProgressBar.setMaximum(self.total_seg_progress)
+    # self.ui.PredSegProgressBar.setValue(0)
+    self.ui.PredSegLabel.setText(f"Segmented structures : 1 / {self.total_seg_progress}")
 
     self.prediction_step = 0
     self.progress = 0
@@ -882,45 +869,45 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 
-  def UpdateProgressBar(self,progress):
+  # def UpdateProgressBar(self,progress):
 
-    # print("UpdateProgressBar")
-    if progress == 200:
-      self.prediction_step += 1
+  #   # print("UpdateProgressBar")
+  #   if progress == 200:
+  #     self.prediction_step += 1
 
-      if self.prediction_step == 1:
-        self.progress = 0
-        # self.progressBar.maximum = self.scan_count
-        # self.progressBar.windowTitle = "Correcting contrast..."
-        # self.progressBar.setValue(0)
+  #     if self.prediction_step == 1:
+  #       self.progress = 0
+  #       # self.progressBar.maximum = self.scan_count
+  #       # self.progressBar.windowTitle = "Correcting contrast..."
+  #       # self.progressBar.setValue(0)
 
-      if self.prediction_step == 2:
-        self.progress = 0
-        self.ui.PredScanProgressBar.setValue(self.scan_count)
+  #     if self.prediction_step == 2:
+  #       self.progress = 0
+  #       self.ui.PredScanProgressBar.setValue(self.scan_count)
 
-        # self.progressBar.maximum = self.total_seg_progress
-        # self.progressBar.windowTitle = "Segmenting scans..."
-        # self.progressBar.setValue(0)
+  #       # self.progressBar.maximum = self.total_seg_progress
+  #       # self.progressBar.windowTitle = "Segmenting scans..."
+  #       # self.progressBar.setValue(0)
 
 
-    if progress == 100:
-      # self.prediction_step += 1
+  #   if progress == 100:
+  #     # self.prediction_step += 1
 
-      if self.prediction_step == 1:
-        # self.progressBar.setValue(self.progress)
-        self.ui.PredScanProgressBar.setValue(self.progress)
-        if not self.isSegmentInput:
-          self.ui.PredScanLabel.setText(f"Scan ready for segmentation : {self.progress} / {self.scan_count}")
-        else:
-          self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : {self.progress} / {self.scan_count}")
+  #     if self.prediction_step == 1:
+  #       # self.progressBar.setValue(self.progress)
+  #       self.ui.PredScanProgressBar.setValue(self.progress)
+  #       if not self.isSegmentInput:
+  #         self.ui.PredScanLabel.setText(f"Scan ready for segmentation : {self.progress} / {self.scan_count}")
+  #       else:
+  #         self.ui.PredScanLabel.setText(f"Ouput generated for segmentation : {self.progress} / {self.scan_count}")
 
-      if self.prediction_step == 2:
+  #     if self.prediction_step == 2:
 
-        # self.progressBar.setValue(self.progress)
-        self.ui.PredSegProgressBar.setValue(self.progress)
-        self.ui.PredSegLabel.setText(f"Segmented structures : {self.progress} / {self.total_seg_progress}")
+  #       # self.progressBar.setValue(self.progress)
+  #       self.ui.PredSegProgressBar.setValue(self.progress)
+  #       self.ui.PredSegLabel.setText(f"Segmented structures : {self.progress} / {self.total_seg_progress}")
 
-      self.progress += 1
+  #     self.progress += 1
 
 
 
@@ -983,11 +970,11 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.PredictionButton.setVisible(not run)
 
     self.ui.CancelButton.setVisible(run)
-    self.ui.PredScanLabel.setVisible(run)
-    self.ui.PredScanProgressBar.setVisible(run)
+    self.ui.PredScanLabel.setVisible(False)
+    self.ui.PredScanProgressBar.setVisible(False)
     if not self.isSegmentInput:
       self.ui.PredSegLabel.setVisible(run)
-      self.ui.PredSegProgressBar.setVisible(run)
+      self.ui.PredSegProgressBar.setVisible(False)
     self.ui.TimerLabel.setVisible(run)
 
 
@@ -1013,7 +1000,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     if self.vtk_output_folder is not None:
-      # print(self.vtk_output_folder)
+      print(self.vtk_output_folder)
       files = []
       # get all .vtk files in self.vtk_output_folder
       for file in os.listdir(self.vtk_output_folder):
@@ -1392,7 +1379,7 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
       self.process.start()
       
   def install_shapeaxi(self):
-      self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.9",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+      self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.10",["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
 
   def setup_cli_command(self,file):
       args = self.find_cli_parameters()
@@ -1499,177 +1486,3 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
   
       self.stdout, self.stderr = self.subpro.communicate()
 
-  # def process(self, parameters, showResult=True):
-  #   """
-  #   Run the processing algorithm.
-  #   Can be used without GUI widget.
-  #   """
-
-
-
-  #   logging.info('Processing started')
-
-
-  #   print ('parameters : ', parameters)
-
-
-  #   AMASSSProcess = slicer.modules.amasss_cli
-
-  #   self.cliNode = slicer.cli.run(AMASSSProcess, None, parameters)
-
-  #   # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-  #   # slicer.mrmlScene.RemoveNode(cliNode)
-
-
-
-  #   return AMASSSProcess
-
-
-#region OLD CODE
-
-
-
-# def GetAvailableSeg(mfold,seg_group):
-#   brain_dic = GetBrain(mfold)
-#   # print(brain_dic)
-#   available_lm = {"Other":[]}
-#   for lm in brain_dic.keys():
-#     if lm in seg_group.keys():
-#       group = seg_group[lm]
-#     else:
-#       group = "Other"
-#     if group not in available_lm.keys():
-#       available_lm[group] = [lm]
-#     else:
-#       available_lm[group].append(lm)
-
-#   return available_lm,brain_dic
-
-
-
-# def GetBrain(dir_path):
-#     brainDic = {}
-#     normpath = os.path.normpath("/".join([dir_path, '**', '']))
-#     for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-#         #  print(img_fn)
-#         if os.path.isfile(img_fn) and ".pth" in img_fn:
-#             lab = os.path.basename(os.path.dirname(os.path.dirname(img_fn)))
-#             num = os.path.basename(os.path.dirname(img_fn))
-#             if lab in brainDic.keys():
-#                 brainDic[lab][num] = img_fn
-#             else:
-#                 network = {num : img_fn}
-#                 brainDic[lab] = network
-
-#     # print(brainDic)
-#     out_dic = {}
-#     for l_key in brainDic.keys():
-#         networks = []
-#         for n_key in range(len(brainDic[l_key].keys())):
-#             networks.append(brainDic[l_key][str(n_key)])
-
-#         out_dic[l_key] = networks
-
-#     return out_dic
-
-
-
-
-  # def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
-  #   """
-  #   Run the processing algorithm.
-  #   Can be used without GUI widget.
-  #   """
-
-  #   if not inputVolume or not outputVolume:
-  #     raise ValueError("Input or output volume is invalid")
-
-  #   import time
-  #   startTime = time.time()
-  #   logging.info('Processing started')
-
-  #   # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-
-  #   cliParams = {
-  #     'InputVolume': inputVolume.GetID(),
-  #     'OutputVolume': outputVolume.GetID(),
-  #     'ThresholdValue' : imageThreshold,
-  #     'ThresholdType' : 'Above' if invert else 'Below'
-  #     }
-  #   cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
-  #   # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-  #   slicer.mrmlScene.RemoveNode(cliNode)
-
-  #   stopTime = time.time()
-  #   logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
-
-
-#
-# AMASSSTest
-#
-
-# class AMASSSTest(ScriptedLoadableModuleTest):
-#   """
-#   This is the test case for your scripted module.
-#   Uses ScriptedLoadableModuleTest base class, available at:
-#   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-#   """
-
-#   def setUp(self):
-#     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
-#     """
-#     slicer.mrmlScene.Clear()
-
-#   def runTest(self):
-#     """Run as few or as many tests as needed here.
-#     """
-#     self.setUp()
-#     self.test_AMASSS1()
-
-#   def test_AMASSS1(self):
-#     """ Ideally you should have several levels of tests.  At the lowest level
-#     tests should exercise the functionality of the logic with different inputs
-#     (both valid and invalid).  At higher levels your tests should emulate the
-#     way the user would interact with your code and confirm that it still works
-#     the way you intended.
-#     One of the most important features of the tests is that it should alert other
-#     developers when their changes will have an impact on the behavior of your
-#     module.  For example, if a developer removes a feature that you depend on,
-#     your test should break so they know that the feature is needed.
-#     """
-
-#     self.delayDisplay("Starting the test")
-
-#     # Get/create input data
-
-#     import SampleData
-#     registerSampleData()
-#     inputVolume = SampleData.downloadSample('AMASSS1')
-#     self.delayDisplay('Loaded test data set')
-
-#     inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-#     self.assertEqual(inputScalarRange[0], 0)
-#     self.assertEqual(inputScalarRange[1], 695)
-
-#     outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-#     threshold = 100
-
-#     # Test the module logic
-
-#     logic = AMASSSLogic()
-
-#     # Test algorithm with non-inverted threshold
-#     logic.process(inputVolume, outputVolume, threshold, True)
-#     outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-#     self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-#     self.assertEqual(outputScalarRange[1], threshold)
-
-#     # Test algorithm with inverted threshold
-#     logic.process(inputVolume, outputVolume, threshold, False)
-#     outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-#     self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-#     self.assertEqual(outputScalarRange[1], inputScalarRange[1])
-
-#     self.delayDisplay('Test passed')
-
-#endregion

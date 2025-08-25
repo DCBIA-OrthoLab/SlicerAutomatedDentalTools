@@ -54,6 +54,10 @@ class LR_CROP_MRI2CBCT(Method):
             out += "Please select an input folder for MRI scans\n"
             ok = False
             
+        if kwargs["input_folder_Seg"] == "":
+            out += "Please select an input folder for Segmentation scans\n"
+            ok = False
+            
         if kwargs["output_folder"] == "":
             out += "Please select an output folder\n"
             ok = False
@@ -70,6 +74,7 @@ class LR_CROP_MRI2CBCT(Method):
         parameter_mri2cbct_lr_crop = {
             "input_folder_CBCT": kwargs["input_folder_CBCT"],
             "input_folder_MRI": kwargs["input_folder_MRI"],
+            "input_folder_Seg": kwargs["input_folder_Seg"],
             "output_folder": kwargs["output_folder"]
         }
         

@@ -101,8 +101,8 @@ def Sort(T1: str, T2: str) -> tuple[list, list]:
             ...,
             {'T1':'path/PX_LowerT1.vtk', 'T2':'path/PX_LowerT2.vtk'}]
     """
-    T1_files = glob.glob(os.path.join(T1, "*"))
-    T2_files = glob.glob(os.path.join(T2, "*"))
+    T1_files = glob.glob(os.path.join(T1, "*.vtk"))
+    T2_files = glob.glob(os.path.join(T2, "*.vtk"))
     # print(f'in sort T1 files : {T1_files}')
 
     if not insideLower(T1_files):  # check if there are Lower arches in list of file

@@ -78,6 +78,13 @@
       <description>Approximation step for registration</description>
     </string>
 
+    <string>
+      <name>mask_folder_t1</name>
+      <label>mask_folder_t1</label>
+      <index>9</index>
+      <description>Folder containing T1 masks</description>
+    </string>
+
     <!-- <string>
       <name>reg_lm</name>
       <label>reg_lm</label>

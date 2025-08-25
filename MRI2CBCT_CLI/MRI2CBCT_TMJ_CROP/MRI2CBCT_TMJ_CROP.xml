@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <index>3</index>
+  <title>MRI2CBCT_TMJ_CROP</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/username/project</documentation-url>
+  <license>Slicer</license>
+  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>cbct_folder</name>
+      <label>cbct_folder</label>
+      <index>0</index>
+      <description>Input Path CBCT folder</description>
+    </string>
+
+    <string>
+      <name>mri_folder</name>
+      <label>mri_folder</label>
+      <index>1</index>
+      <description>Input Path MRI folder</description>
+    </string>
+
+    <string>
+      <name>seg_folder</name>
+      <label>seg_folder</label>
+      <index>2</index>
+      <description>Input Path segmentation folder</description>
+    </string>
+
+    <string>
+      <name>output_folder</name>
+      <label>output_folder</label>
+      <index>3</index>
+      <description>Output Path approximated folder</description>
+    </string>
+
+    <string>
+      <name>model_folder</name>
+      <label>model_folder</label>
+      <index>4</index>
+      <description>Path to nnUNet model folder</description>
+    </string>
+
+    <string>
+      <name>tmp_folder</name>
+      <label>tmp_folder</label>
+      <index>5</index>
+      <description>Temporary folder for nnUNet processing</description>
+    </string>
+
+  </parameters>
+</executable>

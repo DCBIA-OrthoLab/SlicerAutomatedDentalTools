@@ -111,7 +111,22 @@ def SetSpacing(filepath,output_spacing=[0.5, 0.5, 0.5],outpath=-1):
 
         VectorImageType = itk.Image[pixel_type, pixel_dimension]
 
-        if True in [seg in os.path.basename(filepath) for seg in ["seg","Seg"]]:
+        supported_types = [itk.SS, itk.UC, itk.US, itk.F, itk.D]
+
+        is_segmentation = any(seg in os.path.basename(filepath) for seg in ["seg", "Seg"])
+
+        if not is_segmentation and pixel_type not in supported_types:
+            print(f"Unsupported pixel type {pixel_type} for interpolation. Casting to float.")
+            FloatImageType = itk.Image[itk.F, 3]
+            caster = itk.CastImageFilter[VectorImageType, FloatImageType].New()
+            caster.SetInput(img)
+            caster.Update()
+            img = caster.GetOutput()
+            VectorImageType = FloatImageType
+            pixel_type = itk.F  # update pixel type
+
+        # Set appropriate interpolator
+        if is_segmentation:
             InterpolatorType = itk.NearestNeighborInterpolateImageFunction[VectorImageType, itk.D]
             # print("Rescale Seg with spacing :", output_spacing)
         else:

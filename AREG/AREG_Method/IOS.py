@@ -42,7 +42,7 @@ class Auto_IOS(Method):
 
         return False
 
-    def TestScan(self, scan_folder_t1: str, scan_folder_t2: str):
+    def TestScan(self, scan_folder_t1: str, scan_folder_t2: str, mask_folder_t1: str = None) -> str:
         out = ""
         all_files_t1 = self.search(scan_folder_t1, ".vtk", ".stl")
         all_files_t2 = self.search(scan_folder_t2, ".vtk", ".stl")
@@ -174,7 +174,7 @@ class Auto_IOS(Method):
     def TestProcess(self, **kwargs) -> str:
         out = ""
 
-        scan = self.TestScan(kwargs["input_t1_folder"], kwargs["input_t2_folder"])
+        scan = self.TestScan(kwargs["input_t1_folder"], kwargs["input_t2_folder"], None)
         if isinstance(scan, str):
             out = out + f"{scan}\n"
 
@@ -367,6 +367,7 @@ class Auto_IOS(Method):
             "output": kwargs["folder_output"],
             "model": self.getModel(kwargs["model_folder_3"], extension="ckpt"),
             "suffix": kwargs["add_in_namefile"],
+            "areg_mode": "Auto_IOS",
         }
 
         print('-' * 70)
@@ -437,7 +438,7 @@ class Semi_IOS(Auto_IOS):
     def TestProcess(self, **kwargs) -> str:
         out = ""
 
-        scan = self.TestScan(kwargs["input_t1_folder"], kwargs["input_t2_folder"])
+        scan = self.TestScan(kwargs["input_t1_folder"], kwargs["input_t2_folder"], None)
         if isinstance(scan, str):
             out = out + f"{scan}\n"
 
@@ -467,6 +468,7 @@ class Semi_IOS(Auto_IOS):
             "output": kwargs["folder_output"],
             "model": self.getModel(kwargs["model_folder_3"], extension="ckpt"),
             "suffix": kwargs["add_in_namefile"],
+            "areg_mode": "Semi_IOS",
         }
 
         print("parameter", parameter_reg)

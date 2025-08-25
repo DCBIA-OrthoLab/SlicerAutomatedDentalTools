@@ -13,7 +13,7 @@ import time
 from glob import iglob
 import os, json
 import SimpleITK as sitk
-
+import pdb
 # from slicer.util import pip_install, pip_uninstall
 
 from pkg_resources import working_set
@@ -60,7 +60,7 @@ def GetListFiles(folder_path, file_extension):
     return file_list
 
 
-def GetPatients(folder_path, time_point="T1", segmentationType=None):
+def GetPatients(folder_path, time_point="T1", segmentationType=None, mask_folder=None):
     """Return a dictionary with patient id as key"""
     file_extension = [".nii.gz", ".nii", ".nrrd", ".nrrd.gz", ".gipl", ".gipl.gz"]
     json_extension = [".json"]
@@ -91,17 +91,10 @@ def GetPatients(folder_path, time_point="T1", segmentationType=None):
             patients[patient] = {}
 
         if True in [i in basename for i in file_extension]:
-            # if segmentationType+'MASK' in basename:
             if True in [i in basename.lower() for i in ["mask", "seg", "pred"]]:
                 if segmentationType is None:
                     patients[patient]["seg" + time_point] = file
-                else:
-                    if True in [
-                        i in basename.lower()
-                        for i in GetListNamesSegType(segmentationType)
-                    ]:
-                        patients[patient]["seg" + time_point] = file
-
+                # Otherwise, skip for now (handled below)
             else:
                 patients[patient]["scan" + time_point] = file
 
@@ -109,7 +102,38 @@ def GetPatients(folder_path, time_point="T1", segmentationType=None):
             if time_point == "T2":
                 patients[patient]["lm" + time_point] = file
 
+    # If segmentationType is specified, look for masks in mask_folder or fallback to folder_path
+    if segmentationType:
+        target_keywords = GetListNamesSegType(segmentationType)
+        search_folder = mask_folder if mask_folder else folder_path
+        mask_files = GetListFiles(search_folder, file_extension)
+
+        for file in mask_files:
+            basename = os.path.basename(file)
+            patient = (
+                basename.split("_Scan")[0]
+                .split("_scan")[0]
+                .split("_Or")[0]
+                .split("_OR")[0]
+                .split("_MAND")[0]
+                .split("_MD")[0]
+                .split("_MAX")[0]
+                .split("_MX")[0]
+                .split("_CB")[0]
+                .split("_lm")[0]
+                .split("_T2")[0]
+                .split("_T1")[0]
+                .split("_Cl")[0]
+                .split(".")[0]
+            )
+            if True in [kw in basename.lower() for kw in target_keywords]:
+                if patient not in patients:
+                    patients[patient] = {}
+                if "seg" + time_point not in patients[patient]:
+                    patients[patient]["seg" + time_point] = file
+
     return patients
+
 
 
 def GetMatrixPatients(folder_path):
@@ -134,10 +158,11 @@ def GetDictPatients(
     segmentationType=None,
     todo_str="",
     matrix_folder=None,
+    mask_folder_t1=None,
 ):
     """Return a dictionary with patients for both time points"""
     patients_t1 = GetPatients(
-        folder_t1_path, time_point="T1", segmentationType=segmentationType
+        folder_t1_path, time_point="T1", segmentationType=segmentationType, mask_folder=mask_folder_t1
     )
     patients_t2 = GetPatients(folder_t2_path, time_point="T2", segmentationType=None)
     patients = MergeDicts(patients_t1, patients_t2)
@@ -441,6 +466,18 @@ def ElastixApprox(fixed_image, moving_image):
 def ElastixReg(fixed_image, moving_image, initial_transform=None):
     """Perform a registration using elastix with a rigid transform and possibly an initial transform"""
 
+    print(f"Fixed image size: {fixed_image.GetLargestPossibleRegion().GetSize()}")
+    print(f"Moving image size: {moving_image.GetLargestPossibleRegion().GetSize()}")
+    print(f"Fixed image spacing: {fixed_image.GetSpacing()}")
+    print(f"Moving image spacing: {moving_image.GetSpacing()}")
+    print(f"Fixed image origin: {fixed_image.GetOrigin()}")
+    print(f"Moving image origin: {moving_image.GetOrigin()}")
+
+    # For ITK images, you can check the template parameters like this:
+    print(f"Fixed image type: {type(fixed_image)}")
+    print(f"Moving image type: {type(moving_image)}")
+    # Ensure both images have the same pixel type 
+
     elastix_object = itk.ElastixRegistrationMethod.New(fixed_image, moving_image)
     # elastix_object.SetFixedMask(fixed_mask)
 
@@ -472,15 +509,19 @@ def ElastixReg(fixed_image, moving_image, initial_transform=None):
 
 def MaskedImage(fixed_image_path, fixed_seg_path, temp_folder, SegLabel=None):
     """Mask the fixed image with the fixed segmentation and write it to a file"""
-    fixed_image_sitk = sitk.ReadImage(fixed_image_path)
+    fixed_image_sitk = sitk.ReadImage(fixed_image_path) 
     fixed_seg_sitk = sitk.ReadImage(fixed_seg_path)
-    fixed_seg_sitk.SetOrigin(fixed_image_sitk.GetOrigin())
-    fixed_image_masked = applyMask(fixed_image_sitk, fixed_seg_sitk, label=SegLabel)
-
-    # Write the masked image
+    fixed_seg_sitk.SetOrigin(fixed_image_sitk.GetOrigin()) # Ensure segmentation and image have same size 
+    if fixed_image_sitk.GetSize() != fixed_seg_sitk.GetSize(): 
+        print("Error: Image and segmentation size mismatch") 
+        return None 
+    fixed_image_masked = applyMask(fixed_image_sitk, fixed_seg_sitk, label=SegLabel) # Check if masked image is valid 
+    stats = sitk.StatisticsImageFilter() 
+    stats.Execute(fixed_image_masked) 
+    if stats.GetSum() == 0:
+        print("Warning: Masked image is completely zero") 
     output_path = os.path.join(temp_folder, "fixed_image_masked.nii.gz")
     sitk.WriteImage(sitk.Cast(fixed_image_masked, sitk.sitkInt16), output_path)
-
     return output_path
 
 
@@ -493,46 +534,66 @@ def VoxelBasedRegistration(
     SegLabel=None,
 ):
     """Perform a voxel-based registration using elastix"""
-
-    # Read images and segmentations
     fixed_image = itk.imread(fixed_image_path, itk.F)
     moving_image = itk.imread(moving_image_path, itk.F)
+
+    # Debug: Check if images loaded correctly
+    print(f"Fixed image loaded: {fixed_image is not None}")
+    print(f"Moving image loaded: {moving_image is not None}")
+    print(f"Fixed image size: {fixed_image.GetLargestPossibleRegion().GetSize()}")
+    print(f"Moving image size: {moving_image.GetLargestPossibleRegion().GetSize()}")
 
     # Mask the fixed image (using sitk)
     masked_image_path = MaskedImage(
         fixed_image_path, fixed_seg_path, temp_folder, SegLabel=SegLabel
     )
+
+    if masked_image_path is None:
+        print("Error: Masked image creation failed")
+        return None, None
+
+    # Read the masked image back with ITK (ensure consistency)
     fixed_image_masked = itk.imread(masked_image_path, itk.F)
+
+    # Debug: Check masked image
+    print(f"Masked image size: {fixed_image_masked.GetLargestPossibleRegion().GetSize()}")
+    print(f"Masked image spacing: {fixed_image_masked.GetSpacing()}")
 
     # Register images
     Transforms = []
 
     if approx:
         # Approximate registration
+        print("Starting approximate registration...")
         TransformObj_Approx = ElastixApprox(fixed_image, moving_image)
-        transforms_Approx = MatrixRetrieval(TransformObj_Approx)
-        Transforms.append(transforms_Approx)
+        if TransformObj_Approx is not None:
+            transforms_Approx = MatrixRetrieval(TransformObj_Approx)
+            Transforms.append(transforms_Approx)
+        else:
+            print("Approximate registration failed")
+            TransformObj_Approx = None
     else:
         TransformObj_Approx = None
 
-    # Fine tuning
+    # Fine tuning with better error handling
+    print("Starting fine registration...")
     TransformObj_Fine = ElastixReg(
         fixed_image_masked, moving_image, initial_transform=TransformObj_Approx
     )
+
+    if TransformObj_Fine is None:
+        print("Fine registration failed")
+        return None, None
+
     transforms_Fine = MatrixRetrieval(TransformObj_Fine)
     Transforms.append(transforms_Fine)
 
-    # Combine transforms
     transform = ComputeFinalMatrix(Transforms)
-
-    # Resample images and segmentations using the final transform
     resample_t2 = sitk.Cast(
         ResampleImage(sitk.ReadImage(moving_image_path), transform), sitk.sitkInt16
     )
 
     return transform, resample_t2
-
-
 """
 888     888 88888888888 8888888 888       .d8888b.
 888     888     888       888   888      d88P  Y88b
