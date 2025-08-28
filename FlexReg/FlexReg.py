@@ -1479,11 +1479,11 @@ class WidgetParameter:
             print(check_env)
             if check_env:
                 if platform.system() == "Windows":
-                    list_libs_windows = [('numpy',"<2.0",None),('itk',None,None),('torch','2.6.0',None),('monai','==0.7.0',None)] #(lib_name, version, url)
+                    list_libs_windows = [('numpy',"<2.0.0",None),('itk',None,None),('torch','2.6.0',None),('monai','==0.7.0',None)] #(lib_name, version, url)
                     is_installed = install_function(self,list_libs_windows)
                     
                 else:
-                    list_libs_linux = [('numpy',"<2.0",None),('itk',None,None),('torch','2.6.0',None),('monai','==0.7.0',None)] #(lib_name, version, url)
+                    list_libs_linux = [('numpy',"<2.0.0",None),('itk',None,None),('torch','2.6.0',None),('monai','==0.7.0',None)] #(lib_name, version, url)
                     is_installed = install_function(self,list_libs_linux)
                     
             if not is_installed:
@@ -1819,7 +1819,7 @@ class WidgetParameter:
         
         
         self.label_time.setText(f"Checking if miniconda is installed")
-        if "Error" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
+        if "no setup" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
             messageBox = qt.QMessageBox()
             text = textwrap.dedent("""
             Code can't be launch. \nConda is not setup. 
