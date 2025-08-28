@@ -866,25 +866,14 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onPredictButton(self):
         """Function to launch the prediction"""
         
+        is_installed = False
         if self.type == "IOS":
-            is_installed = False
-            check_env = self.onCheckRequirements()
-            print("seg_env: ", check_env)
-            
-            libs = [('itk', None), ('torch', None),('pytorch_lightning',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2')]
-            monai_version = '0.7.0' #'1.5.0' if sys.version_info >= (3, 10) else '0.7.0'
-            libs.append(('monai', monai_version))
-            
-            if check_env:
-                is_installed = install_function(self)
-                
+            check_env = self.onCheckRequirements()         
+            if not check_env:
+                return
             self.logic.check_cli_script()
             
-        else:
-            libs = [('itk', None), ('torch', None),('pytorch_lightning',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2')]
-            monai_version = '1.5.0' if sys.version_info >= (3, 10) else '0.7.0'
-            libs.append(('monai', monai_version))
-            is_installed = install_function(self, libs)
+        is_installed = install_function(self)
 
         if not is_installed:
             qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
