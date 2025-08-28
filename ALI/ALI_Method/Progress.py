@@ -55,7 +55,7 @@ class DisplayALIIOS(Display):
     def __call__(self) -> Tuple[float, str]:
         self.progress += 1
         self.progress_bar = (
-            self.progress / (self.nb_landmark * self.nb_scan_total)
+            self.progress / max(1,(self.nb_landmark * self.nb_scan_total))
         ) * 100
         nb_scan_treat = int(self.progress // self.nb_landmark)
         self.message = f"Landmarks : {round(self.progress)} / {self.nb_landmark * self.nb_scan_total} | Patient : {nb_scan_treat} / {self.nb_scan_total}"
@@ -78,7 +78,7 @@ class DisplayALICBCT(Display):
     def __call__(self) -> Tuple[float, str]:
         self.progress += 0.39
         self.progress_bar = (
-            self.progress / (self.nb_landmark * self.nb_scan_total)
+            self.progress / max(1, (self.nb_landmark * self.nb_scan_total))
         ) * 100
         nb_scan_treat = int(self.progress // self.nb_landmark)
         self.message = f"Landmarks : {round(self.progress)} / {self.nb_landmark * self.nb_scan_total} | Patient : {nb_scan_treat} / {self.nb_scan_total}"
