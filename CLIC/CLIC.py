@@ -94,8 +94,8 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print(f"[DEBUG] condaTestEnv('{self.name_env}') before creation → {exists_before!r}")
         if not exists_before:
             self.sig.log.emit(f"[Conda] Creating env '{self.name_env}'…")
-            print(f"[DEBUG] calling condaCreateEnv({self.name_env}, '3.9', ['numpy','scipy','nibabel','requests'])")
-            self.conda.condaCreateEnv(self.name_env, "3.9", ["numpy","scipy","nibabel","requests"])
+            print(f"[DEBUG] calling condaCreateEnv({self.name_env}, '3.9', ['numpy<2.0.0','scipy','nibabel','requests'])")
+            self.conda.condaCreateEnv(self.name_env, "3.9", ["numpy<2.0.0","scipy","nibabel","requests"])
             exists_after = self.conda.condaTestEnv(self.name_env)
             print(f"[DEBUG] condaTestEnv('{self.name_env}') after creation → {exists_after!r}")
             if not exists_after:
