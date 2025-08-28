@@ -448,11 +448,11 @@ if __name__=="__main__":
         "genVtk":         argv[6].lower()=="true",
         "save_in_folder": argv[7].lower()=="true",
         "output_folder":  argv[8],
-        "vtk_smooth":     int(argv[10]),
-        "prediction_ID":  argv[11],
-        "temp_fold":      argv[14],
-        "isSegmentInput": argv[15].lower()=="true",
-        "isDCMInput":     argv[16].lower()=="true",
+        "vtk_smooth":     int(argv[9]),
+        "prediction_ID":  argv[10],
+        "temp_fold":      argv[11],
+        "isSegmentInput": argv[12].lower()=="true",
+        "isDCMInput":     argv[13].lower()=="true",
         "merging_order":  ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC","CBMASK","MANDMASK","MAXMASK"],
     }
     main(args)
