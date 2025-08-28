@@ -1611,7 +1611,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         
         self.ui.label_LibsInstallation.setText(f"Checking if miniconda is installed")
-        if "Error" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
+        if "no setup" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
             messageBox = qt.QMessageBox()
             text = textwrap.dedent("""
             Code can't be launch. \nConda is not setup. 
