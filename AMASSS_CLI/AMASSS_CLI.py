@@ -13,7 +13,7 @@ import re
 import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin, pip_install
-# ── Constantes globales ───────────────────────────────────────────────────────
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 TRANSLATE = {
@@ -49,7 +49,6 @@ MODELS_GROUP = {
     },
 }
 
-# ── Fonctions utilitaires (inchangées) ──────────────────────────────────────
 def CorrectHisto(filepath,outpath,min_porcent=0.01,max_porcent=0.95,i_min=-1500,i_max=4000):
     print("Correcting scan contrast:", filepath)
     img = sitk.Cast(sitk.ReadImage(filepath), sitk.sitkFloat32)
@@ -79,40 +78,26 @@ def Write(vtkdata, output_name):
 
 
 
-
-import os
-import numpy as np
-import SimpleITK as sitk
-import vtk
-
-# (Supposer que LABEL_COLORS et Write(model, outpath) sont déjà définis globalement)
-
-import os, numpy as np, SimpleITK as sitk, vtk
-from vtk.util.numpy_support import vtk_to_numpy
+# (suppose  LABEL_COLORS and Write(model, outpath) are global variable)
 
 def SavePredToVTK(file_path, temp_folder, smoothing, vtk_output_path, model_size="LARGE"):
     import os, numpy as np, SimpleITK as sitk, vtk
 
-    # 1) Lecture
     img = sitk.ReadImage(file_path)
     arr = sitk.GetArrayFromImage(img)
 
-    # 2) Prépare le nom de base (sans extensions multiples)
     base = os.path.basename(file_path)
     for ext in ('.nii.gz','.nrrd.gz','.nii','.nrrd'):
         if base.endswith(ext):
             base = base[:-len(ext)]
             break
 
-    # 3) On détecte le mode merged
     is_merged = base.endswith("_MERGED")
 
-    # 4) Crée le dossier de sortie si besoin
     output_is_dir = vtk_output_path.endswith(os.sep) or os.path.isdir(vtk_output_path)
     if output_is_dir:
         os.makedirs(vtk_output_path, exist_ok=True)
 
-    # --- UTIL : écrivain VTK ---
     def write_poly(poly, outvtk):
         w = vtk.vtkPolyDataWriter()
         w.SetFileName(outvtk)
@@ -144,25 +129,23 @@ def SavePredToVTK(file_path, temp_folder, smoothing, vtk_output_path, model_size
 
     # ——— MODE MERGED ———
     if is_merged:
-        # 1) On va append tous les sous-maillages colorés label par label
+        # merge all label maps in one map
         append = vtk.vtkAppendPolyData()
         for label in sorted(np.unique(arr)):
             if label == 0:
                 continue
             struct = NAMES_FROM_LABELS[model_size][label]
-            # écriture NRRD temporaire pour ce label
+
             tmp_nrrd = os.path.join(temp_folder, f"temp.nrrd")
             mask = (arr == label).astype(np.uint8)
             img2 = sitk.GetImageFromArray(mask); img2.CopyInformation(img)
             sitk.WriteImage(img2, tmp_nrrd)
-            # extraction + lissage + couleur
             color = LABEL_COLORS.get(label, [255,255,255])
             mesh = mesh_from_nrrd(tmp_nrrd, smoothing, color)
             append.AddInputData(mesh)
         append.Update()
         merged_poly = append.GetOutput()
 
-        # 2) Écriture du polydata final
         outname = f"{base}.vtk"
         if output_is_dir:
             outvtk = os.path.join(vtk_output_path, outname)
@@ -174,17 +157,17 @@ def SavePredToVTK(file_path, temp_folder, smoothing, vtk_output_path, model_size
         return
 
     # ——— MODE SEPARATE ———
-    # On déduit le nom de la structure depuis le suffixe du fichier
+    # save each label map independently
     struct = base.split('_')[-1]  # ex: "MAND", "MAX", etc.
-    # écriture du NRRD binaire
+
     tmp_nrrd = os.path.join(temp_folder, f"temp.nrrd")
     m = (arr > 0).astype(np.uint8)
     i2 = sitk.GetImageFromArray(m); i2.CopyInformation(img)
     sitk.WriteImage(i2, tmp_nrrd)
-    # récupération de l'index et de la couleur
+
     label_index = LABELS[model_size][struct]
     color = LABEL_COLORS.get(label_index, [255,255,255])
-    # build + write
+
     poly = mesh_from_nrrd(tmp_nrrd, smoothing, color)
     outname = f"{base}.vtk"
     outvtk = os.path.join(vtk_output_path, outname) if output_is_dir else os.path.join(os.path.dirname(vtk_output_path), outname)
@@ -274,12 +257,10 @@ def main(args):
 
     print("Start AMASSS_CLI with nnUNet v2 backend", flush=True)
 
-    # 1. Préparation du dossier temporaire
     tmp = args["temp_fold"]
     base_output = args["output_folder"]
     os.makedirs(tmp, exist_ok=True)
 
-    # 2. Construction de la liste des scans à traiter
     input_path = args["inputVolume"]
     extensions = (".nii", ".nii.gz", ".nrrd", ".nrrd.gz")
     if os.path.isdir(input_path):
@@ -291,14 +272,12 @@ def main(args):
     else:
         input_files = [input_path]
     scan_count = len(input_files)
-    print(f"Nombre de scans à traiter : {scan_count}", flush=True)
+    print(f"Number of scans : {scan_count}", flush=True)
 
-    # 3. Début du filtrage Slicer
     start_time = time.time()
     print("<filter-start><filter-name>AMASSS</filter-name></filter-start>", flush=True)
     sys.stdout.flush()
 
-    # 4. Boucle sur chaque scan
     for scan_idx, volume_file in enumerate(input_files, start=1):
         case_id = f"{scan_idx:03d}"
         basename = os.path.basename(volume_file)
@@ -307,22 +286,21 @@ def main(args):
             base, ext2 = os.path.splitext(base)
             ext = ext2 + ext
 
-        # --- Choix du dossier de sortie (grouped ou pas) ---
+        # --- choice of output folder ---
         if args.get("save_in_folder"):
             outdir = os.path.join(base_output, f"{base}_{args['prediction_ID']}_SegOut")
         else:
             outdir = base_output
         os.makedirs(outdir, exist_ok=True)
 
-        print(f"\n--- Traitement du scan {scan_idx}/{scan_count} : {basename} ---", flush=True)
+        print(f"\n--- Processing scan {scan_idx}/{scan_count} : {basename} ---", flush=True)
 
-        # 4.1 Copier et renommer pour nnUNet
         tmp_name = f"p_{case_id}_0000.nii.gz"
         input_vol = os.path.join(tmp, tmp_name)
         shutil.copy(volume_file, input_vol)
-        print(f"→ Copied and renamed to {input_vol}", flush=True)
+        print(f"    Copied and renamed to {input_vol} for nnUnet", flush=True)
 
-        # 4.2 Recherche des modèles nnUNet
+        # 4.2 Searching NNunet
         nnunet_models = {}
         for struct in args["skullStructure"].split(","):
             root = os.path.join(args["modelDirectory"], struct)
@@ -332,13 +310,13 @@ def main(args):
                 nnunet_models[struct] = plans[0]
             print(f"  {struct}: {plans}", flush=True)
         if not nnunet_models:
-            sys.exit("❌ Aucun modèle nnUNet v2 trouvé dans votre arborescence.")
+            sys.exit("❌ No model found.")
 
         total_struct = len(nnunet_models)
         total_steps = scan_count * total_struct
         prediction_segmentation = {}
 
-        # 4.3 Prédiction et post‑traitement
+        # 4.3 Predicting and post-processing
         for struct_idx, (struct, plans_dir) in enumerate(nnunet_models.items(), start=1):
             dataset_name = os.path.basename(os.path.dirname(plans_dir))
             os.environ['nnUNet_results'] = os.path.dirname(os.path.dirname(plans_dir))
@@ -347,7 +325,7 @@ def main(args):
 
             checkpoint = os.path.join(plans_dir, "fold_0", "checkpoint_final.pth")
             if not os.path.isfile(checkpoint):
-                sys.exit(f"❌ Pas de checkpoint trouvé pour {struct} à {checkpoint}")
+                sys.exit(f"❌ No model checkpoint found for {struct} in {checkpoint}")
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
             print(f"  → Predicting {struct} on {device}", flush=True)
@@ -363,25 +341,21 @@ def main(args):
             ]
             subprocess.check_call(cmd)
 
-            # Émission de la progression APRÈS la segmentation
             step = (scan_idx - 1) * total_struct + struct_idx
             fraction = step / total_steps
             print(f"<filter-progress>{fraction:.4f}</filter-progress>", flush=True)
             sys.stdout.flush()
 
-            # Lecture et stockage du masque
             nifti_pred = os.path.join(outp, f"p_{case_id}.nii.gz")
             if not os.path.isfile(nifti_pred):
-                sys.exit(f"❌ Prédiction introuvable : {nifti_pred}")
+                sys.exit(f"❌ File not found : {nifti_pred}")
             img = sitk.ReadImage(nifti_pred)
             arr = sitk.GetArrayFromImage(img)
             mask = (arr > 0).astype(np.uint8)
             prediction_segmentation[struct] = mask
 
-        # 4.4 Sauvegarde des segmentations
         spacing = list(sitk.ReadImage(volume_file).GetSpacing())
 
-        # Cas séparé
         if "SEPARATE" in args["merge"] or len(prediction_segmentation) == 1:
             for struct, mask in prediction_segmentation.items():
                 outfn = os.path.join(outdir, f"{base}_{args['prediction_ID']}_{struct}{ext}")
@@ -391,7 +365,6 @@ def main(args):
                     outdir, tmp, args["genVtk"], args["vtk_smooth"], "LARGE"
                 )
 
-        # Cas fusionné
         if "MERGE" in args["merge"] and len(prediction_segmentation) > 1:
             shape = next(iter(prediction_segmentation.values())).shape
             merged = np.zeros(shape, dtype=np.int16)
@@ -406,11 +379,9 @@ def main(args):
                 outdir, tmp, args["genVtk"], args["vtk_smooth"], "LARGE"
             )
 
-        # Nettoyage temporaire pour ce scan
         shutil.rmtree(tmp, ignore_errors=True)
         os.makedirs(tmp, exist_ok=True)
 
-    # 5. Fin du filtrage
     elapsed = time.time() - start_time
     print(f"<filter-end><filter-name>AMASSS</filter-name><filter-time>{elapsed:.2f}</filter-time></filter-end>", flush=True)
     sys.stdout.flush()
