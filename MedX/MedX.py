@@ -684,7 +684,7 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Run processing when user clicks "Dashboard" button.
         """
-        list_libs = [('numpy', None, None),
+        list_libs = [('numpy<2.0.0', None, None),
                      ('pandas', None, None),
                      ('matplotlib', None, None)]
         
