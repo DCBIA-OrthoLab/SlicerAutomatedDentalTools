@@ -397,6 +397,34 @@ class Auto_CBCT(Semi_CBCT):
         return super().TestScan(
             scan_folder_t1, scan_folder_t2, mask_folder_t1=mask_folder_t1, liste_keys=["scanT1", "scanT2"]
         )
+    
+    def TestProcess(self, **kwargs) -> str:
+        out = ""
+
+        testcheckbox = self.TestCheckbox(kwargs["dic_checkbox"])
+        if testcheckbox is not None:
+            out += testcheckbox
+
+        if kwargs["input_t1_folder"] == "":
+            out += "Please select an input folder for T1 scans\n"
+
+        if kwargs["input_t2_folder"] == "":
+            out += "Please select an input folder for T2 scans\n"
+            
+        if kwargs["folder_output"] == "":
+            out += "Please select an output folder\n"
+
+        if kwargs["add_in_namefile"] == "":
+            out += "Please select an extension for output files\n"
+
+        if kwargs["model_folder_1"] == "":
+            out += "Please select a folder for segmentation models\n"
+
+        if out == "":
+            out = None
+
+        return out
+
 
     def Process(self, **kwargs):
 
