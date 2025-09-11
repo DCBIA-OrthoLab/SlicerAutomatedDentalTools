@@ -63,23 +63,27 @@ def main(args):
             outpath, patient + "_" + reg_type + "Scan" + add_name + ".nii.gz"
         ), os.path.join(outpath, patient + "_" + reg_type + add_name + "_matrix.tfm")
 
-        if not os.path.exists(ScanOutPath):
-            transform, resample_t2 = VoxelBasedRegistration(
-                fixed_image_path=data["scanT1"],
-                moving_image_path=data["scanT2"],
-                fixed_seg_path=data["segT1"],
-                temp_folder=temp_folder,
-                approx=Approx,
-                SegLabel=SegLabel,
-            )
+        folder_name = os.path.basename(ScanOutPath)
+        if not os.path.exists(folder_name):
+            os.makedirs(folder_name)
 
-            if not os.path.exists(outpath):
-                os.makedirs(outpath)
-            sitk.WriteTransform(transform, TransOutPath)
-            sitk.WriteImage(resample_t2, ScanOutPath)
-            # if args.reg_lm:
-            #     transformedLandmarks = applyTransformLandmarks(LoadOnlyLandmarks(data['lmT2']), transform.GetInverse())
-            #     WriteJson(transformedLandmarks, os.path.join(outpath,patient+'_lm_'+add_name+'.mrk.json'))
+        transform, resample_t2 = VoxelBasedRegistration(
+            fixed_image_path=data["scanT1"],
+            moving_image_path=data["scanT2"],
+            fixed_seg_path=data["segT1"],
+            temp_folder=temp_folder,
+            approx=Approx,
+            SegLabel=SegLabel,
+        )
+
+        if not os.path.exists(outpath):
+            os.makedirs(outpath)
+
+        sitk.WriteTransform(transform, TransOutPath)
+        sitk.WriteImage(resample_t2, ScanOutPath)
+        # if args.reg_lm:
+        #     transformedLandmarks = applyTransformLandmarks(LoadOnlyLandmarks(data['lmT2']), transform.GetInverse())
+        #     WriteJson(transformedLandmarks, os.path.join(outpath,patient+'_lm_'+add_name+'.mrk.json'))
 
         print(f"""<filter-progress>{0}</filter-progress>""")
         sys.stdout.flush()
