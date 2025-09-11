@@ -2,17 +2,18 @@
 """
 AMASSS_CLI.py – Adaptation pour nnUNet v2 (MAX, MAND, CB)
 """
-
+import argparse
 import time, os, sys, glob, subprocess, shutil
 import numpy as np
 import torch, itk, cc3d, dicom2nifti
 import SimpleITK as sitk
 import vtk
-import slicer
+# import slicer
 import re
-import vtk, qt, slicer
-from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin, pip_install
+import vtk
+# qt, slicer
+# from slicer.ScriptedLoadableModule import *
+# from slicer.util import VTKObservationMixin, pip_install
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -257,6 +258,13 @@ def main(args):
 
     print("Start AMASSS_CLI with nnUNet v2 backend", flush=True)
 
+    # args['merge']=re.split(r'[, ]+', args['merge'].strip())
+    # args['genVtk']=args['genVtk'].lower()=="true"
+    # args['save_in_folder']=args['save_in_folder'].lower()=="true"
+    # args['isSegmentInput']=args['isSegmentInput'].lower=='true'
+    # args['isDCMInput']=args['isDCMInput'].lower()=='true'
+
+
     tmp = args["temp_fold"]
     base_output = args["output_folder"]
     os.makedirs(tmp, exist_ok=True)
@@ -264,11 +272,14 @@ def main(args):
     input_path = args["inputVolume"]
     extensions = (".nii", ".nii.gz", ".nrrd", ".nrrd.gz")
     if os.path.isdir(input_path):
-        input_files = sorted([
-            os.path.join(input_path, f)
-            for f in os.listdir(input_path)
-            if f.lower().endswith(extensions)
-        ])
+        input_files = []
+        for f in os.listdir(input_path):
+            file = os.path.join(input_path, f)
+            if f.lower().endswith(extensions) :
+                print(f)
+                if ('MASK' not in f):
+                    print('nope')
+                    input_files.append(file)
     else:
         input_files = [input_path]
     scan_count = len(input_files)
@@ -390,6 +401,34 @@ def main(args):
 
 # ── Entrée CLI ────────────────────────────────────────────────────────────────
 if __name__=="__main__":
+
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("inputVolume", nargs=1)
+    # parser.add_argument("modelDirectory", nargs=1) 
+    # parser.add_argument("highDefinition", nargs=1) 
+    # parser.add_argument("skullStructure", nargs=1)
+    # parser.add_argument("merge", nargs=1)
+    # parser.add_argument("genVtk", nargs=1)
+    # parser.add_argument("save_in_folder", nargs=1) 
+    # parser.add_argument("output_folder", nargs=1)
+    # parser.add_argument("precision", nargs=1,type=int) 
+    # parser.add_argument("vtk_smooth", nargs=1,type=int)
+    # parser.add_argument("prediction_ID", nargs=1)
+
+    # parser.add_argument("gpu_usage", nargs=1)
+    # parser.add_argument("cpu_usage", nargs=1)
+            
+    # parser.add_argument("temp_fold", nargs=1)
+    # parser.add_argument("isSegmentInput", nargs=1) 
+    # parser.add_argument("isDCMInput", nargs=1)
+    # parser.add_argument("merging_order", nargs='+', default=["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC","CBMASK","MANDMASK","MAXMASK"])
+
+
+    # args = parser.parse_args()
+
+    # main(args)
+
+
     # Exemple d’appel :
     # python AMASSS_CLI.py \
     #   /path/to/input.nii.gz \
@@ -410,6 +449,7 @@ if __name__=="__main__":
     #   false
 
     argv = sys.argv
+    print(sys.argv)
     args = {
         "inputVolume":    argv[1],
         "modelDirectory": argv[2],
@@ -419,11 +459,17 @@ if __name__=="__main__":
         "genVtk":         argv[6].lower()=="true",
         "save_in_folder": argv[7].lower()=="true",
         "output_folder":  argv[8],
-        "vtk_smooth":     int(argv[9]),
-        "prediction_ID":  argv[10],
-        "temp_fold":      argv[11],
-        "isSegmentInput": argv[12].lower()=="true",
-        "isDCMInput":     argv[13].lower()=="true",
+        "precision":      int(argv[9]),
+        "vtk_smooth":     int(argv[10]),
+        "prediction_ID":  argv[11],
+
+        "gpu_usage":  argv[12],
+        "cpu_usage":      argv[13],
+        
+        "temp_fold":      argv[14],
+        "isSegmentInput": argv[15].lower()=="true",
+        "isDCMInput":     argv[16].lower()=="true",
         "merging_order":  ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC","CBMASK","MANDMASK","MAXMASK"],
     }
+    print(args)
     main(args)
