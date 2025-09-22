@@ -462,21 +462,48 @@ def make_rigid_param_map_stochastic():
 
 def make_rigid_param_map_deterministic():
     po = itk.ParameterObject.New()
-    pm = po.GetDefaultParameterMap("rigid")
+    pm = po.GetDefaultParameterMap("rigid")  # EulerTransform
 
-    # Sampling en grille → déterministe
+    # Déterminisme
+    pm["NumberOfThreads"] = ["1"]
+    pm["UseDirectionCosines"] = ["true"]
     pm["ImageSampler"] = ["Grid"]
-    pm["NumberOfSpatialSamples"] = ["30000"]
-    pm["MaximumNumberOfIterations"] = ["8000"]
-    pm["NewSamplesEveryIteration"] = ["false"] # inutile pour Grid
+    pm["NewSamplesEveryIteration"] = ["false"]
+
+    # Pyramide (coarse → fine)
     pm["NumberOfResolutions"] = ["3"]
+    pm["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
+    pm["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
+    pm["ImagePyramidSchedule"] = ["8","8", "4","4", "2","2"]
+
+    # Metric & interpolation
     pm["Metric"] = ["AdvancedMattesMutualInformation"]
+    pm["NumberOfHistogramBins"] = ["64"]
+    pm["NormalizeGradient"] = ["true"]
+    pm["Interpolator"] = ["LinearInterpolator"]
+
+    # Optimiseur (stable en rigide avec Grid)
     pm["Optimizer"] = ["ConjugateGradient"]
+    pm["MaximumNumberOfIterations"] = ["1500"]
+    pm["MaximumStepLength"] = ["2.0"]
+    pm["MinimumStepLength"] = ["0.001"]
+    pm["ValueTolerance"] = ["1e-6"]
+    pm["GradientTolerance"] = ["1e-6"]
+
+    # Initialisation & échelles
+    pm["AutomaticTransformInitialization"] = ["true"]
+    pm["AutomaticScalesEstimation"] = ["true"]
+
+    # Masque & sorties
     pm["ErodeMask"] = ["true"]
     pm["WriteResultImage"] = ["false"]
 
+    # Compat (ignoré avec Grid, mais ne gêne pas)
+    pm["NumberOfSpatialSamples"] = ["30000"]
+
     po.AddParameterMap(pm)
     return po
+
 
 
 def ElastixApprox(fixed_image, moving_image):
@@ -551,6 +578,8 @@ def VoxelBasedRegistration(
 
     transforms_Fine = MatrixRetrieval(TransformObj_Fine)
     Transforms.append(transforms_Fine)
+
+    print("ccccc")
 
     # Combine transforms
     transform = ComputeFinalMatrix(Transforms)
