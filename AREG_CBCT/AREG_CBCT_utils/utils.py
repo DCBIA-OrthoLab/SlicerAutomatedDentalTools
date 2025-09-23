@@ -440,69 +440,71 @@ def applyMask(image, mask, label):
 """
 
 
-def ElastixApprox(fixed_image, moving_image):
-    """Perform a registration using elastix with a rigid transform as an approximation"""
-    elastix_object = itk.ElastixRegistrationMethod.New(fixed_image, moving_image)
+def make_rigid_param_map_deterministic():
+    # Create a new parameter object and get the default rigid transformation map (EulerTransform)
+    po = itk.ParameterObject.New()
+    pm = po.GetDefaultParameterMap("rigid")
 
-    # ParameterMap
-    parameter_object = itk.ParameterObject.New()
-    default_rigid_parameter_map = parameter_object.GetDefaultParameterMap("rigid")
-    parameter_object.AddParameterMap(default_rigid_parameter_map)
-    parameter_object.SetParameter("WriteResultImage", "false")
+    # Ensure deterministic behavior
+    pm["NumberOfThreads"] = ["1"]
+    pm["UseDirectionCosines"] = ["true"]
+    pm["ImageSampler"] = ["Grid"]
+    pm["NewSamplesEveryIteration"] = ["false"]
 
-    elastix_object.SetParameterObject(parameter_object)
+    # Multi-resolution pyramid settings (from coarse to fine)
+    pm["NumberOfResolutions"] = ["3"]
+    pm["FixedImagePyramid"] = ["FixedSmoothingImagePyramid"]
+    pm["MovingImagePyramid"] = ["MovingSmoothingImagePyramid"]
+    pm["ImagePyramidSchedule"] = ["8","8", "4","4", "2","2"]
 
-    # Additional parameters
-    elastix_object.SetLogToConsole(False)
+    # Metric and interpolation settings
+    pm["Metric"] = ["AdvancedMattesMutualInformation"]
+    pm["NumberOfHistogramBins"] = ["64"]
+    pm["NormalizeGradient"] = ["true"]
+    pm["Interpolator"] = ["LinearInterpolator"]
 
-    # Execute registration
-    elastix_object.UpdateLargestPossibleRegion()
+    # Optimizer configuration for stable rigid registration using grid sampling
+    pm["Optimizer"] = ["ConjugateGradient"]
+    pm["MaximumNumberOfIterations"] = ["1500"]
+    pm["MaximumStepLength"] = ["2.0"]
+    pm["MinimumStepLength"] = ["0.001"]
+    pm["ValueTolerance"] = ["1e-6"]
+    pm["GradientTolerance"] = ["1e-6"]
 
-    TransParamObj = elastix_object.GetTransformParameterObject()
+    # Initialization and scale estimation
+    pm["AutomaticTransformInitialization"] = ["true"]
+    pm["AutomaticScalesEstimation"] = ["true"]
 
-    return TransParamObj
+    # Masking and output settings
+    pm["ErodeMask"] = ["true"]
+    pm["WriteResultImage"] = ["false"]
+
+    # Compatibility setting (ignored with Grid sampler but doesn't interfere)
+    pm["NumberOfSpatialSamples"] = ["30000"]
+
+    po.AddParameterMap(pm)
+    return po
 
 
 def ElastixReg(fixed_image, moving_image, initial_transform=None):
-    """Perform a registration using elastix with a rigid transform and possibly an initial transform"""
-
-    elastix_object = itk.ElastixRegistrationMethod.New(fixed_image, moving_image)
-    # elastix_object.SetFixedMask(fixed_mask)
-
-    # ParameterMap
-    parameter_object = itk.ParameterObject.New()
-    default_rigid_parameter_map = parameter_object.GetDefaultParameterMap("rigid")
-    parameter_object.AddParameterMap(default_rigid_parameter_map)
-    parameter_object.SetParameter("ErodeMask", "true")
-    parameter_object.SetParameter("WriteResultImage", "false")
-    parameter_object.SetParameter("MaximumNumberOfIterations", "10000")
-    parameter_object.SetParameter("NumberOfResolutions", "1")
-    parameter_object.SetParameter("NumberOfSpatialSamples", "10000")
-    # parameter_object.SetParameter("MaximumNumberOfSamplingAttempts", "25")
-
-    elastix_object.SetParameterObject(parameter_object)
+    # Set up and run the Elastix registration method
+    elastix = itk.ElastixRegistrationMethod.New(fixed_image, moving_image)
+    elastix.SetParameterObject(make_rigid_param_map_deterministic())
     if initial_transform is not None:
-        elastix_object.SetInitialTransformParameterObject(initial_transform)
-
-    # Additional parameters
-    elastix_object.SetLogToConsole(False)
-
-    # Execute registration
-    elastix_object.UpdateLargestPossibleRegion()
-
-    TransParamObj = elastix_object.GetTransformParameterObject()
-
-    return TransParamObj
+        elastix.SetInitialTransformParameterObject(initial_transform)
+    elastix.SetLogToConsole(False)
+    elastix.UpdateLargestPossibleRegion()
+    return elastix.GetTransformParameterObject()
 
 
 def MaskedImage(fixed_image_path, fixed_seg_path, temp_folder, SegLabel=None):
-    """Mask the fixed image with the fixed segmentation and write it to a file"""
+    """Apply a segmentation mask to the fixed image and save the result"""
     fixed_image_sitk = sitk.ReadImage(fixed_image_path)
     fixed_seg_sitk = sitk.ReadImage(fixed_seg_path)
     fixed_seg_sitk.SetOrigin(fixed_image_sitk.GetOrigin())
     fixed_image_masked = applyMask(fixed_image_sitk, fixed_seg_sitk, label=SegLabel)
 
-    # Write the masked image
+    # Save the masked image to a temporary location
     output_path = os.path.join(temp_folder, "fixed_image_masked.nii.gz")
     sitk.WriteImage(sitk.Cast(fixed_image_masked, sitk.sitkInt16), output_path)
 
@@ -517,46 +519,36 @@ def VoxelBasedRegistration(
     approx=False,
     SegLabel=None,
 ):
-    """Perform a voxel-based registration using elastix"""
+    """Perform voxel-based registration using Elastix"""
 
-    # Read images and segmentations
-    fixed_image = itk.imread(fixed_image_path, itk.F)
+    # Load the moving image
     moving_image = itk.imread(moving_image_path, itk.F)
 
-    # Mask the fixed image (using sitk)
+    # Apply segmentation mask to the fixed image
     masked_image_path = MaskedImage(
         fixed_image_path, fixed_seg_path, temp_folder, SegLabel=SegLabel
     )
     fixed_image_masked = itk.imread(masked_image_path, itk.F)
 
-    # Register images
+    # Perform registration
     Transforms = []
-
-    if approx:
-        # Approximate registration
-        TransformObj_Approx = ElastixApprox(fixed_image, moving_image)
-        transforms_Approx = MatrixRetrieval(TransformObj_Approx)
-        Transforms.append(transforms_Approx)
-    else:
-        TransformObj_Approx = None
-
-    # Fine tuning
     TransformObj_Fine = ElastixReg(
-        fixed_image_masked, moving_image, initial_transform=TransformObj_Approx
+        fixed_image_masked, moving_image, initial_transform=None
     )
+
+    # Extract transformation matrix and store it
     transforms_Fine = MatrixRetrieval(TransformObj_Fine)
     Transforms.append(transforms_Fine)
 
-    # Combine transforms
+    # Combine all transformations into a final matrix
     transform = ComputeFinalMatrix(Transforms)
 
-    # Resample images and segmentations using the final transform
+    # Resample the moving image using the final transform
     resample_t2 = sitk.Cast(
         ResampleImage(sitk.ReadImage(moving_image_path), transform), sitk.sitkInt16
     )
 
     return transform, resample_t2
-
 
 """
 888     888 88888888888 8888888 888       .d8888b.
