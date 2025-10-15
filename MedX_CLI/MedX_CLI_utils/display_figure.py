@@ -24,7 +24,7 @@ def read_summaries(summary_folder: str) -> dict:
     """
     summaries = {}
     for file_name in os.listdir(summary_folder):
-        if file_name.lower().endswith("_summary.txt"):
+        if file_name.lower().endswith("_pred.txt"):
             patient_id = file_name.split("_")[0]
             with open(os.path.join(summary_folder, file_name), "r", encoding="utf-8") as file:
                 summaries[patient_id] = file.read()
@@ -40,6 +40,11 @@ def extract_numbers(value: str) -> float:
     Returns:
         float: Mean of extracted numbers, or np.nan if no numbers found
     """
+    # If value contains '/', only take the number before the first '/'
+    if '/' in value:
+        first_part = value.split('/')[0]
+        match = re.search(r'\d+(?:\.\d+)?', first_part)
+        return float(match.group(0)) if match else np.nan
     numbers = [float(num) for num in re.findall(r'\d+(?:\.\d+)?', value)]
     return np.mean(numbers) if numbers else np.nan
 
@@ -52,10 +57,12 @@ def update_dictionary(patient_dict: dict, chunk: str) -> None:
         chunk (str): Section of summary text containing key-value pairs
     """
     for line in chunk.split("\n"):
-        key_value = line.split(":")
+        key_value = line.split("=")
         if len(key_value) != 2:
             continue
         key, value = key_value[0].strip(), key_value[1].strip()
+        # Remplace les ';' par ',' dans la valeur
+        value = value.replace(';', ',')
         
         # Skip patient_id to prevent overwriting/merging
         if key == "patient_id":
@@ -127,11 +134,7 @@ def process_summaries(summaries: dict) -> pd.DataFrame:
     for patient_id, summary in summaries.items():
         patient_dict = initialize_key_value_summary()
         patient_dict["patient_id"] = patient_id
-        chunks = re.split(r"\n100 -+", summary)
-        
-        for chunk in chunks:
-            update_dictionary(patient_dict, chunk)
-        
+        update_dictionary(patient_dict, summary)
         patient_data.append(patient_dict)
     
     df = pd.DataFrame(patient_data)
@@ -145,13 +148,27 @@ def process_summaries(summaries: dict) -> pd.DataFrame:
 
     return df
 
-def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
+def generate_dashboard_figure(df: pd.DataFrame, output_folder: str = None) -> plt.Figure:
     """
     Generate and display a comprehensive patient data dashboard.
     
     Args:
         df (pd.DataFrame): Processed dataframe from process_summaries()
     """
+    ## imports déjà présents en haut du fichier
+    try:
+        # output_folder est passé comme variable locale par show_dashboard
+        import inspect
+        frame = inspect.currentframe()
+        args, _, _, values = inspect.getargvalues(frame)
+        output_folder = values.get('output_folder', None)
+    except Exception:
+        output_folder = None
+    if output_folder is None:
+        output_folder = os.getcwd()
+    csv_path = os.path.join(output_folder, "dashboard_full_dataframe.csv")
+    df.to_csv(csv_path, index=False)
+
     # ================== Data Preparation ==================
     # Sticks data
     metrics_titles, means, std_devs = set_left_stick_data(df)
@@ -163,9 +180,9 @@ def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
     
     # Upper left data
     age_dist = set_age_data(df)
-    sleep_disorder_percentage = set_sleep_data(df)
+    true_pct, unknown_pct = set_sleep_data(df)
     tenderness_percentage = set_tenderness_data(df)
-    no_migraine_headache_pct, headache_only_pct, migraine_only_pct, migraine_and_headache_pct = set_migraine_data(df)
+    no_migraine_headache_pct, headache_only_pct, migraine_only_pct, migraine_and_headache_pct, unknown_pct = set_migraine_data(df)
     
     # Lower right data
     pain_levels, pain_percentages = set_muscle_pain_data(df)
@@ -199,14 +216,14 @@ def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
             wedgeprops={'linewidth': 1, 'edgecolor': 'white'})
     ax_age.set_title('Age Distribution', fontsize=16, pad=15, fontweight='semibold')
 
-    # Column 2: Sleep Disorder Prevalence
+    # Column 2: Sleep Disorder Prevalence (adapté deux segments)
     ax_sleep = fig.add_subplot(gs_top_left[0, 1])
-    sleep_colors = ['#ff9999', '#66b3ff']
+    sleep_colors = ['#ff9999', '#bdbdbd']  # rouge, gris
     wedges, texts, autotexts = ax_sleep.pie(
-        [sleep_disorder_percentage, 100 - sleep_disorder_percentage], 
-        labels=None,  # Remove default labels
-        autopct='%1.1f%%', 
-        colors=sleep_colors, 
+        [true_pct, unknown_pct],
+        labels=None,
+        autopct='%1.1f%%',
+        colors=sleep_colors,
         startangle=90,
         wedgeprops={'width': 1, 'edgecolor': 'white', 'linewidth': 1},
         textprops={'fontsize': 10}
@@ -215,51 +232,52 @@ def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
     ax_sleep.set_aspect('equal')
 
     # Add a legend at the bottom
-    legend_labels = ['With Sleep Disorder', 'Without Sleep Disorder']
+    legend_labels = ['With Sleep Disorder', 'Unknown']
     ax_sleep.legend(
-        wedges,  # Use the pie chart wedges for color reference
-        legend_labels,  # Labels for the legend
-        loc='lower center',  # Position the legend at the bottom
-        bbox_to_anchor=(0.5, -0.15),  # Adjust vertical position
-        ncol=1,  # Display legend items in a single row
-        fontsize=10,  # Legend font size
-        frameon=False  # Remove legend border
+        wedges,
+        legend_labels,
+        loc='lower center',
+        bbox_to_anchor=(0.5, -0.15),
+        ncol=1,
+        fontsize=10,
+        frameon=False
     )
 
     # Column 3: Tenderness/Stiffness/Soreness
     ax_tenderness = fig.add_subplot(gs_top_left[0, 2])
-    tenderness_colors = ['#ffcc99', '#c2c2f0']
+    true_pct, false_pct, unknown_pct = set_tenderness_data(df)
+    tenderness_colors = ['#ffcc99', '#c2c2f0', '#bdbdbd']  # orange, violet, gris
     wedges, texts, autotexts = ax_tenderness.pie(
-        [tenderness_percentage, 100 - tenderness_percentage], 
-        labels=None,  # Remove default labels
-        autopct='%1.1f%%', 
-        colors=tenderness_colors, 
+        [true_pct, false_pct, unknown_pct],
+        labels=None,
+        autopct='%1.1f%%',
+        colors=tenderness_colors,
         startangle=90,
         wedgeprops={'width': 1, 'edgecolor': 'white', 'linewidth': 1},
         textprops={'fontsize': 10}
     )
     ax_tenderness.set_title('Muscle Tenderness &\nStiffness & Soreness', fontsize=16, pad=-15, fontweight='semibold')
     ax_tenderness.set_aspect('equal')
-    
+
     # Add a legend at the bottom
-    legend_labels = ['With Symptoms', 'Without Symptoms']
+    legend_labels = ['With Symptoms', 'Without Symptoms', 'Unknown']
     ax_tenderness.legend(
-        wedges,  # Use the pie chart wedges for color reference
-        legend_labels,  # Labels for the legend
-        loc='lower center',  # Position the legend at the bottom
-        bbox_to_anchor=(0.5, -0.15),  # Adjust vertical position
-        ncol=1,  # Display legend items in a single row
-        fontsize=10,  # Legend font size
-        frameon=False  # Remove legend border
+        wedges,
+        legend_labels,
+        loc='lower center',
+        bbox_to_anchor=(0.5, -0.15),
+        ncol=1,
+        fontsize=10,
+        frameon=False
     )
 
     # Column 4: Migraine History
     ax_migraine = fig.add_subplot(gs_top_left[0, 3])  # Migraine subplot position
 
-    # Create the pie chart
-    migraine_data = [no_migraine_headache_pct, migraine_only_pct, headache_only_pct, migraine_and_headache_pct]
-    migraine_labels = ['No Migraine/Headache', 'Migraine', 'Headache', 'Migraine & Headache']
-    migraine_colors = ['#66c2a5', '#8da0cb', '#fc8d62', '#e78ac3']  # Distinct colors
+    # Create the pie chart with unknown segment
+    migraine_data = [headache_only_pct, migraine_and_headache_pct, unknown_pct]
+    migraine_labels = [ 'Headache', 'Migraine & Headache', 'Unknown']
+    migraine_colors = [ '#fc8d62', '#e78ac3', '#bdbdbd']  # Add grey for unknown
     
     
     def autopct_format(pct):
@@ -688,7 +706,7 @@ def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
 def show_dashboard(summary_folder, output_folder):
     summaries = read_summaries(summary_folder)
     df = process_summaries(summaries)
-    fig = generate_dashboard_figure(df)
+    fig = generate_dashboard_figure(df, output_folder)
     
     output_path = os.path.join(output_folder, "dashboard.png")
     fig.savefig(output_path)

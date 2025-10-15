@@ -12,39 +12,77 @@ def set_age_data(df):
 
 def set_sleep_data(df):
     # Sleep disorder data (including chronic fatigue)
-    has_sleep_disorder = df['sleep_disorder_type'].notna() & (df['sleep_disorder_type'] != "")
-    sleep_disorder_percentage = (has_sleep_disorder).mean() * 100
+        sleep_col = "sleep_disorder_type"
+        # print(test.sum())
+        # print("Colonne sleep_disorder_type complète :\n",s)
+        vals = df[sleep_col].astype(str).str.strip().str.lower().replace({"nan": "", "none": ""})
+        # print("Unique values in sleep_disorder_type:", vals.unique())
+        def classify_sleep(val):
+            if val == "unknown":
+                return "unknown"
+            else:
+                return "true"
+
+        categories = vals.apply(classify_sleep)
+        total = len(categories)
+        true_pct = (categories == "true").sum() / total * 100 if total else 0
+        unknown_pct = (categories == "unknown").sum() / total * 100 if total else 0
+        return true_pct, unknown_pct
     
-    return sleep_disorder_percentage
 
 def set_tenderness_data(df):
     # Tenderness/Stiffness/Soreness data
     tenderness_metrics = ["muscle_tenderness_present", "muscle_stiffness_present", "muscle_soreness_present"]
-    tenderness_percentage = (df[tenderness_metrics] == "True").any(axis=1).mean() * 100
-    
-    return tenderness_percentage
+    # print(df["muscle_tenderness_present"])
+    def classify_row(row):
+        vals = [str(row[col]).strip().lower() for col in tenderness_metrics]
+        # Si au moins une colonne n'est pas false/unknown/vide → true
+        if any(v not in ["false", "unknown", ""] for v in vals):
+            return "true"
+        # Si toutes les colonnes sont false → false
+        elif all(v == "false" for v in vals):
+            return "false"
+        # Sinon (au moins une unknown ou vide) → unknown 
+        else:
+            return "unknown"
+
+    categories = df.apply(classify_row, axis=1)
+    total = len(categories)
+    true_pct = (categories == "true").sum() / total * 100 if total else 0
+    false_pct = (categories == "false").sum() / total * 100 if total else 0
+    unknown_pct = (categories == "unknown").sum() / total * 100 if total else 0
+
+    return true_pct, false_pct, unknown_pct
 
 def set_migraine_data(df):
     no_migraine_headache = 0
     headache_only = 0
     migraine_only = 0
     migraine_and_headache = 0
+    unknown_count = 0
 
     # Iterate through the dataframe to categorize patients
     for idx, row in df.iterrows():
-        migraine_history = row['migraine_history']
+        migraine_history = str(row['migraine_history']).strip().lower()
         headache_intensity = row['headache_intensity']
-        
-        if pd.isna(migraine_history) or migraine_history == "":
-            if pd.isna(headache_intensity) or headache_intensity == 0:
+
+        # Handle unknowns and empty strings first
+        if migraine_history in ["unknown", ""] or pd.isna(headache_intensity) or str(headache_intensity).strip().lower() in ["unknown", ""]:
+            unknown_count += 1
+            continue
+
+        if migraine_history == "false":
+            if headache_intensity == 0:
                 no_migraine_headache += 1
             else:
                 headache_only += 1
-        else:
-            if pd.isna(headache_intensity) or headache_intensity == 0:
+        elif migraine_history == "true":
+            if headache_intensity == 0:
                 migraine_only += 1
             else:
                 migraine_and_headache += 1
+        else:
+            unknown_count += 1
 
     # Calculate percentages
     total_patients = len(df)
@@ -52,8 +90,8 @@ def set_migraine_data(df):
     headache_only_pct = (headache_only / total_patients) * 100
     migraine_only_pct = (migraine_only / total_patients) * 100
     migraine_and_headache_pct = (migraine_and_headache / total_patients) * 100
-    
-    return no_migraine_headache_pct, headache_only_pct, migraine_only_pct, migraine_and_headache_pct
+    unknown_pct = (unknown_count / total_patients) * 100
+    return no_migraine_headache_pct, headache_only_pct, migraine_only_pct, migraine_and_headache_pct, unknown_pct
 
 def set_left_stick_data(df):
     metrics = ["headache_intensity", "average_daily_pain_intensity", 
@@ -133,17 +171,17 @@ def set_upper_donuts_data(df):
                 "hearing_loss_present", "jaw_crepitus", "jaw_clicking"]
 
     # Calculate percentages for boolean metrics
-    bool_percentages = {metric: (df[metric] == "True").mean() * 100 
+    bool_percentages = {metric: (df[metric] == "true").mean() * 100 
                         for metric in bool_metrics}
 
-    # Calculate percentage for jaw issues (crepitus or clicking)
-    jaw_issues = (df['jaw_crepitus'] != "") | (df['jaw_clicking'] != "")
-    jaw_issues_percentage = jaw_issues.mean() * 100
+    # Calculate percentage for jaw issues (crepitus or clicking) where value is 'true'
+    jaw_issues = (df['jaw_crepitus'].str.lower() == "true") | (df['jaw_clicking'].str.lower() == "true")
+    jaw_issues_percentage = jaw_issues.sum() / len(df) * 100
 
     # Calculate percentage for mental health issues (anxiety, depression, or stress)
-    mental_health_issues = (df['anxiety_present'] == "True") | \
-                            (df['depression_present'] == "True") | \
-                            (df['stress_present'] == "True")
+    mental_health_issues = (df['anxiety_present'] == "true") | \
+                            (df['depression_present'] == "true") | \
+                            (df['stress_present'] == "true")
     mental_health_percentage = mental_health_issues.mean() * 100
     
     return bool_percentages, jaw_issues_percentage, mental_health_percentage
