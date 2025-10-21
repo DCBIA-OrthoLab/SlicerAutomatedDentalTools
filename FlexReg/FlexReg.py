@@ -62,73 +62,65 @@ def check_lib_installed(lib_name, required_version=None):
 
 # import csv
 
-def install_function(self,list_libs:list):
+def install_function(self, list_libs: list):
     '''
-    Test the necessary libraries and install them with the specific version if needed
-    User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
+    Test the necessary libraries and install them with the specific version if needed.
     '''
-    libs = list_libs
     libs_to_install = []
     libs_to_update = []
     installation_errors = []
-    for lib, version_constraint,url in libs:
+
+    for lib, version_constraint, url in list_libs:
         if not check_lib_installed(lib, version_constraint):
             try:
-            # check if the library is already installed
                 if pkg_resources.get_distribution(lib).version:
                     libs_to_update.append((lib, version_constraint))
             except:
                 libs_to_install.append((lib, version_constraint))
 
     if libs_to_install or libs_to_update:
-          message = "The following changes are required for the libraries:\n"
+        message = "The following changes are required for the libraries:\n"
 
-          #Specify which libraries will be updated with a new version
-          #and which libraries will be installed for the first time
-          if libs_to_update:
-              message += "\n --- Libraries to update (version mismatch): \n"
-              message += "\n".join([f"{lib} (current: {pkg_resources.get_distribution(lib).version}) -> {version_constraint.replace('==','').replace('<=','').replace('>=','').replace('<','').replace('>','')}" for lib, version_constraint in libs_to_update])
-              message += "\n"
-          if libs_to_install:
+        if libs_to_update:
+            message += "\n --- Libraries to update (version mismatch): \n"
+            message += "\n".join([
+                f"{lib} (current: {pkg_resources.get_distribution(lib).version}) -> {version_constraint.replace('==', '').replace('<=', '').replace('>=', '').replace('<', '').replace('>', '')}"
+                for lib, version_constraint in libs_to_update
+            ])
+            message += "\n"
 
-              message += "\n --- Libraries to install:  \n"
-          message += "\n".join([f"{lib}{version_constraint}" if version_constraint else lib for lib, version_constraint in libs_to_install])
+        if libs_to_install:
+            message += "\n --- Libraries to install:  \n"
+            message += "\n".join([
+                f"{lib}{version_constraint}" if version_constraint else lib
+                for lib, version_constraint in libs_to_install
+            ])
 
-          message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
-          message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
+        message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
+        user_choice = slicer.util.confirmYesNoDisplay(message)
 
-          user_choice = slicer.util.confirmYesNoDisplay(message)
-
-          if user_choice:
-            try:
-                for lib, version_constraint in libs_to_install + libs_to_update:
+        if user_choice:
+            for lib, version_constraint in libs_to_install + libs_to_update:
+                try:
                     if not version_constraint:
                         pip_install(lib)
-
                     elif "https:/" in version_constraint:
-                        print("version_constraint", version_constraint)
-                        # download the library from the url
                         pip_install(version_constraint)
                     else:
-                        print("version_constraint else", version_constraint)
-                        lib_version = f'{lib}{version_constraint}' if version_constraint else lib
+                        # Correctly format the library and version constraint
+                        lib_version = f"{lib}{version_constraint}" if version_constraint.startswith(("==", ">=", "<=", ">", "<")) else f"{lib}=={version_constraint}"
                         pip_install(lib_version)
-
-                return True
-            except Exception as e:
+                except Exception as e:
                     installation_errors.append((lib, str(e)))
 
             if installation_errors:
-                error_message = "The following errors occured during installation:\n"
+                error_message = "The following errors occurred during installation:\n"
                 error_message += "\n".join([f"{lib}: {error}" for lib, error in installation_errors])
                 slicer.util.errorDisplay(error_message)
                 return False
-          else :
+        else:
             return False
-
-    else:
-        return True
-
+    return True
 
 #
 # FlexReg
