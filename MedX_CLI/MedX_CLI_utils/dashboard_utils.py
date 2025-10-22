@@ -1,6 +1,8 @@
 import re
 import pandas as pd
 
+# (base) luciacev@ldsodhckkv94:~/training/github/SlicerAutomatedDentalTools$ python3 MedX_CLI/MedX_Dashboard/MedX_Dashboard.py /home/luciacev/Desktop/LLM/Qwen1.5B_full_V3/predictions_500 /home/luciacev/Desktop/LLM/Qwen1.5B_full_V3/Dashboard ff
+
 def set_age_data(df):
     # Age groups calculation
     age_bins = [0, 19, 40, 100]
@@ -55,42 +57,17 @@ def set_tenderness_data(df):
     return true_pct, false_pct, unknown_pct
 
 def set_migraine_data(df):
-    no_migraine_headache = 0
-    headache_only = 0
-    migraine_only = 0
-    migraine_and_headache = 0
-    unknown_count = 0
+    # Calculate migraine_pct: percentage of 'true' in migraine_history
+    migraine_col = df['migraine_history'].astype(str).str.strip().str.lower()
+    migraine_count = (migraine_col == 'true').sum()
+    migraine_pct = (migraine_count / len(df)) * 100 if len(df) > 0 else 0
 
-    # Iterate through the dataframe to categorize patients
-    for idx, row in df.iterrows():
-        migraine_history = str(row['migraine_history']).strip().lower()
-        headache_intensity = row['headache_intensity']
+    # Calculate headache_pct: percentage of non-empty/non-NaN in headache_intensity
+    headache_col = df['headache_intensity']
+    headache_count = headache_col.notna() & (headache_col.astype(str).str.strip() != '')
+    headache_pct = (headache_count.sum() / len(df)) * 100 if len(df) > 0 else 0
 
-        # Handle unknowns and empty strings first
-        if migraine_history in ["unknown", ""] or pd.isna(headache_intensity) or str(headache_intensity).strip().lower() in ["unknown", ""]:
-            unknown_count += 1
-            continue
-
-        if migraine_history == "false":
-            if headache_intensity == 0:
-                no_migraine_headache += 1
-            else:
-                headache_only += 1
-        elif migraine_history == "true":
-            if headache_intensity == 0:
-                migraine_only += 1
-            else:
-                migraine_and_headache += 1
-        else:
-            unknown_count += 1
-
-    # Calculate percentages
-    total_patients = len(df)
-    no_migraine_headache_pct = (no_migraine_headache / total_patients) * 100
-    headache_only_pct = (headache_only / total_patients) * 100
-    migraine_only_pct = (migraine_only / total_patients) * 100
-    migraine_and_headache_pct = (migraine_and_headache / total_patients) * 100
-    unknown_pct = (unknown_count / total_patients) * 100
+    return migraine_pct, headache_pct
     return no_migraine_headache_pct, headache_only_pct, migraine_only_pct, migraine_and_headache_pct, unknown_pct
 
 def set_left_stick_data(df):
@@ -100,34 +77,47 @@ def set_left_stick_data(df):
     metrics_titles = ["Headache\nIntensity", "Daily Pain\nIntensity", "Diet\nScore", "TMJ pain\nRating", "Disability\nRating"]
     
     means = df[metrics].mean()
-    means = means.fillna(0) if means.isna().any() else means
+    # means = means.fillna(0) if means.isna().any() else means
     std_devs = df[metrics].std()
-    std_devs = std_devs.fillna(0) if std_devs.isna().any() else std_devs
+    # std_devs = std_devs.fillna(0) if std_devs.isna().any() else std_devs
     
     return metrics_titles, means, std_devs
 
 def set_middle_stick_data(df):
     def extract_mm_value(value):
         """
-        Extract numerical value from a string like '33mm'.
-        Returns NaN if no match is found.
+        Extract numerical value from a string like '33mm' or '33 mm'.
+        Returns NaN if no match is found or if value is 'unknown', empty, etc.
         """
-        match = re.search(r'\d+', str(value))
-        return float(match.group(0)) if match else 0
+        s = str(value).strip().lower()
+        if s in ["", "unknown", "none", "nan"]:
+            return float('nan')
+        match = re.search(r'(\d+)\s*mm', s)
+        if match:
+            return float(match.group(1))
+        match = re.search(r'(\d+)', s)
+        if match:
+            return float(match.group(1))
+        return float('nan')
 
-    # Apply the function to extract numerical values
-    max_opening = df['maximum_opening'].apply(extract_mm_value) if 'maximum_opening' in df else pd.Series([0] * len(df))
-    max_opening_no_pain = df['maximum_opening_without_pain'].apply(extract_mm_value) if 'maximum_opening_without_pain' in df else pd.Series([0] * len(df))
-    
+    # Apply the function to extract numerical values, ignore non-numeric
+    if 'maximum_opening' in df:
+        max_opening = df['maximum_opening'].apply(extract_mm_value)
+    else:
+        max_opening = pd.Series([float('nan')] * len(df))
+    if 'maximum_opening_without_pain' in df:
+        max_opening_no_pain = df['maximum_opening_without_pain'].apply(extract_mm_value)
+    else:
+        max_opening_no_pain = pd.Series([float('nan')] * len(df))
     return max_opening, max_opening_no_pain
 
 def set_right_stick_data(df):
     possible_locations = {
-        "frontal": ["frontal", "forehead"],
+        "frontal": ["frontal", "forehead", "temple"],
         "temporal": ["temporal", "side of head"],
         "posterior": ["posterior", "back of head"],
         "top of the head": ["top of the head", "vertex"],
-        "temple": ["temple"]
+        "Unknown": ["unknown"]
     }
 
     location_counts = {key: 0 for key in possible_locations}
@@ -147,18 +137,24 @@ def set_right_stick_data(df):
 
 
 def set_joint_pain_data(df):
-    possible_areas = ["TMJ", "Neck", "Shoulder", "Back"]
+    possible_areas = {
+        "TMJ": ["tmj", "tmjs", "temporomandibular joint", "jaw joint"],
+        "Neck": ["neck", "cervical", "cervical spine"],
+        "Shoulder": ["shoulder", "shoulders"],
+        "Back": ["back", "dorsal", "spine", "upper back", "lower back"]
+    }
     joint_pain_counts = {area: 0 for area in possible_areas}
 
     for areas in df['joint_pain_areas']:
         if pd.notna(areas) and areas != "":
             areas_lower = areas.lower()
-            # Match "left TMJ", "right TMJ", or phrases like "TMJ pain on left side"
+            # TMJ: Match left/right/phrases
             if re.search(r'\bleft\b.*tmj|\btmj.*left|\bright\b.*tmj|\btmj.*right|\btmj\b', areas_lower):
                 joint_pain_counts["TMJ"] += 1
-            for area in possible_areas:
-                if area != "TMJ" and area.lower() in areas_lower:
-                    joint_pain_counts[area] += 1
+            else:
+                for area, synonyms in possible_areas.items():
+                    if any(re.search(rf"\b{re.escape(syn)}\b", areas_lower) for syn in synonyms):
+                        joint_pain_counts[area] += 1
 
     total_patients = len(df)
     joint_pain_percentages = {area: (count / total_patients) * 100 
