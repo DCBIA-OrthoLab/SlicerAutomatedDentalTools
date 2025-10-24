@@ -425,22 +425,16 @@ if __name__=="__main__":
     args = {
         "inputVolume":    argv[1],
         "modelDirectory": argv[2],
-        "highDefinition": argv[3].lower()=="true",
-        "skullStructure": argv[4],
-        "merge":          re.split(r'[, ]+', argv[5].strip()),  
-        "genVtk":         argv[6].lower()=="true",
-        "save_in_folder": argv[7].lower()=="true",
-        "output_folder":  argv[8],
-        "precision":      argv[9],
-        "vtk_smooth":     int(argv[10]),
-        "prediction_ID":  argv[11],
-
-        "gpu_usage":  argv[12],
-        "cpu_usage":      argv[13],
-        
-        "temp_fold":      argv[14],
-        "isSegmentInput": argv[15].lower()=="true",
-        "isDCMInput":     argv[16].lower()=="true",
+        "skullStructure": argv[3],
+        "merge":          re.split(r'[, ]+', argv[4].strip()),  
+        "genVtk":         argv[5].lower()=="true",
+        "save_in_folder": argv[6].lower()=="true",
+        "output_folder":  argv[7],
+        "vtk_smooth":     int(argv[8]),
+        "prediction_ID":  argv[9],        
+        "temp_fold":      argv[10],
+        "isSegmentInput": argv[11].lower()=="true",
+        "isDCMInput":     argv[12].lower()=="true",
         "merging_order":  ["SKIN","CV","UAW","CB","MAX","MAND","CAN","RC","CBMASK","MANDMASK","MAXMASK"],
     }
     print(args)
