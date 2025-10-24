@@ -431,7 +431,7 @@ if __name__=="__main__":
         "genVtk":         argv[6].lower()=="true",
         "save_in_folder": argv[7].lower()=="true",
         "output_folder":  argv[8],
-        "precision":      int(argv[9]),
+        "precision":      argv[9],
         "vtk_smooth":     int(argv[10]),
         "prediction_ID":  argv[11],
 
