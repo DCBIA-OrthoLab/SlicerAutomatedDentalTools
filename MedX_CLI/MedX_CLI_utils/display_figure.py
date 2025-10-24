@@ -1,3 +1,6 @@
+
+# (base) luciacev@ldsodhckkv94:~/training/github/SlicerAutomatedDentalTools$ python3 MedX_CLI/MedX_Dashboard/MedX_Dashboard.py /home/luciacev/Desktop/LLM/Qwen1.5B_full_V3/predictions_500 /home/luciacev/Desktop/LLM/Qwen1.5B_full_V3/Dashboard ff
+
 import os
 import re
 import argparse
@@ -24,7 +27,7 @@ def read_summaries(summary_folder: str) -> dict:
     """
     summaries = {}
     for file_name in os.listdir(summary_folder):
-        if file_name.lower().endswith("_summary.txt"):
+        if file_name.lower().endswith("_pred.txt"):
             patient_id = file_name.split("_")[0]
             with open(os.path.join(summary_folder, file_name), "r", encoding="utf-8") as file:
                 summaries[patient_id] = file.read()
@@ -40,6 +43,11 @@ def extract_numbers(value: str) -> float:
     Returns:
         float: Mean of extracted numbers, or np.nan if no numbers found
     """
+    # If value contains '/', only take the number before the first '/'
+    if '/' in value:
+        first_part = value.split('/')[0]
+        match = re.search(r'\d+(?:\.\d+)?', first_part)
+        return float(match.group(0)) if match else np.nan
     numbers = [float(num) for num in re.findall(r'\d+(?:\.\d+)?', value)]
     return np.mean(numbers) if numbers else np.nan
 
@@ -52,10 +60,12 @@ def update_dictionary(patient_dict: dict, chunk: str) -> None:
         chunk (str): Section of summary text containing key-value pairs
     """
     for line in chunk.split("\n"):
-        key_value = line.split(":")
+        key_value = line.split("=")
         if len(key_value) != 2:
             continue
         key, value = key_value[0].strip(), key_value[1].strip()
+        # Remplace les ';' par ',' dans la valeur
+        value = value.replace(';', ',')
         
         # Skip patient_id to prevent overwriting/merging
         if key == "patient_id":
@@ -127,11 +137,7 @@ def process_summaries(summaries: dict) -> pd.DataFrame:
     for patient_id, summary in summaries.items():
         patient_dict = initialize_key_value_summary()
         patient_dict["patient_id"] = patient_id
-        chunks = re.split(r"\n100 -+", summary)
-        
-        for chunk in chunks:
-            update_dictionary(patient_dict, chunk)
-        
+        update_dictionary(patient_dict, summary)
         patient_data.append(patient_dict)
     
     df = pd.DataFrame(patient_data)
@@ -145,13 +151,27 @@ def process_summaries(summaries: dict) -> pd.DataFrame:
 
     return df
 
-def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
+def generate_dashboard_figure(df: pd.DataFrame, output_folder: str = None) -> plt.Figure:
     """
     Generate and display a comprehensive patient data dashboard.
     
     Args:
         df (pd.DataFrame): Processed dataframe from process_summaries()
     """
+    ## imports déjà présents en haut du fichier
+    try:
+        # output_folder est passé comme variable locale par show_dashboard
+        import inspect
+        frame = inspect.currentframe()
+        args, _, _, values = inspect.getargvalues(frame)
+        output_folder = values.get('output_folder', None)
+    except Exception:
+        output_folder = None
+    if output_folder is None:
+        output_folder = os.getcwd()
+    csv_path = os.path.join(output_folder, "dashboard_full_dataframe.csv")
+    df.to_csv(csv_path, index=False)
+
     # ================== Data Preparation ==================
     # Sticks data
     metrics_titles, means, std_devs = set_left_stick_data(df)
@@ -163,9 +183,9 @@ def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
     
     # Upper left data
     age_dist = set_age_data(df)
-    sleep_disorder_percentage = set_sleep_data(df)
+    true_pct, unknown_pct = set_sleep_data(df)
     tenderness_percentage = set_tenderness_data(df)
-    no_migraine_headache_pct, headache_only_pct, migraine_only_pct, migraine_and_headache_pct = set_migraine_data(df)
+    migraine_pct, headache_pct = set_migraine_data(df)
     
     # Lower right data
     pain_levels, pain_percentages = set_muscle_pain_data(df)
@@ -199,14 +219,14 @@ def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
             wedgeprops={'linewidth': 1, 'edgecolor': 'white'})
     ax_age.set_title('Age Distribution', fontsize=16, pad=15, fontweight='semibold')
 
-    # Column 2: Sleep Disorder Prevalence
+    # Column 2: Sleep Disorder Prevalence (adapté deux segments)
     ax_sleep = fig.add_subplot(gs_top_left[0, 1])
-    sleep_colors = ['#ff9999', '#66b3ff']
+    sleep_colors = ['#ff9999', '#bdbdbd']  # rouge, gris
     wedges, texts, autotexts = ax_sleep.pie(
-        [sleep_disorder_percentage, 100 - sleep_disorder_percentage], 
-        labels=None,  # Remove default labels
-        autopct='%1.1f%%', 
-        colors=sleep_colors, 
+        [true_pct, unknown_pct],
+        labels=None,
+        autopct='%1.1f%%',
+        colors=sleep_colors,
         startangle=90,
         wedgeprops={'width': 1, 'edgecolor': 'white', 'linewidth': 1},
         textprops={'fontsize': 10}
@@ -215,97 +235,44 @@ def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
     ax_sleep.set_aspect('equal')
 
     # Add a legend at the bottom
-    legend_labels = ['With Sleep Disorder', 'Without Sleep Disorder']
+    legend_labels = ['With Sleep Disorder', 'Unknown']
     ax_sleep.legend(
-        wedges,  # Use the pie chart wedges for color reference
-        legend_labels,  # Labels for the legend
-        loc='lower center',  # Position the legend at the bottom
-        bbox_to_anchor=(0.5, -0.15),  # Adjust vertical position
-        ncol=1,  # Display legend items in a single row
-        fontsize=10,  # Legend font size
-        frameon=False  # Remove legend border
+        wedges,
+        legend_labels,
+        loc='lower center',
+        bbox_to_anchor=(0.5, -0.15),
+        ncol=1,
+        fontsize=10,
+        frameon=False
     )
 
     # Column 3: Tenderness/Stiffness/Soreness
     ax_tenderness = fig.add_subplot(gs_top_left[0, 2])
-    tenderness_colors = ['#ffcc99', '#c2c2f0']
+    true_pct, false_pct, unknown_pct = set_tenderness_data(df)
+    tenderness_colors = ['#ffcc99', '#c2c2f0', '#bdbdbd']  # orange, violet, gris
     wedges, texts, autotexts = ax_tenderness.pie(
-        [tenderness_percentage, 100 - tenderness_percentage], 
-        labels=None,  # Remove default labels
-        autopct='%1.1f%%', 
-        colors=tenderness_colors, 
+        [true_pct, false_pct, unknown_pct],
+        labels=None,
+        autopct='%1.1f%%',
+        colors=tenderness_colors,
         startangle=90,
         wedgeprops={'width': 1, 'edgecolor': 'white', 'linewidth': 1},
         textprops={'fontsize': 10}
     )
     ax_tenderness.set_title('Muscle Tenderness &\nStiffness & Soreness', fontsize=16, pad=-15, fontweight='semibold')
     ax_tenderness.set_aspect('equal')
-    
+
     # Add a legend at the bottom
-    legend_labels = ['With Symptoms', 'Without Symptoms']
+    legend_labels = ['With Symptoms', 'Without Symptoms', 'Unknown']
     ax_tenderness.legend(
-        wedges,  # Use the pie chart wedges for color reference
-        legend_labels,  # Labels for the legend
-        loc='lower center',  # Position the legend at the bottom
-        bbox_to_anchor=(0.5, -0.15),  # Adjust vertical position
-        ncol=1,  # Display legend items in a single row
-        fontsize=10,  # Legend font size
-        frameon=False  # Remove legend border
+        wedges,
+        legend_labels,
+        loc='lower center',
+        bbox_to_anchor=(0.5, -0.15),
+        ncol=1,
+        fontsize=10,
+        frameon=False
     )
-
-    # Column 4: Migraine History
-    ax_migraine = fig.add_subplot(gs_top_left[0, 3])  # Migraine subplot position
-
-    # Create the pie chart
-    migraine_data = [no_migraine_headache_pct, migraine_only_pct, headache_only_pct, migraine_and_headache_pct]
-    migraine_labels = ['No Migraine/Headache', 'Migraine', 'Headache', 'Migraine & Headache']
-    migraine_colors = ['#66c2a5', '#8da0cb', '#fc8d62', '#e78ac3']  # Distinct colors
-    
-    
-    def autopct_format(pct):
-        return f'{pct:.1f}%' if pct >= 5 else ''
-
-    wedges, texts, autotexts = ax_migraine.pie(
-        migraine_data,
-        labels=None,  # Remove default labels
-        autopct=autopct_format,  # Custom autopct function
-        colors=migraine_colors,
-        startangle=90,
-        wedgeprops={'width': 1, 'edgecolor': 'white', 'linewidth': 1},
-        textprops={'fontsize': 10}
-    )
-
-    # Add leader lines for small slices
-    for i, (wedge, autotext) in enumerate(zip(wedges, autotexts)):
-        if migraine_data[i] < 5:  # Adjust threshold as needed
-            angle = (wedge.theta2 - wedge.theta1) / 2. + wedge.theta1
-            x = 1.2 * np.cos(np.deg2rad(angle))
-            y = 1.2 * np.sin(np.deg2rad(angle))
-            ax_migraine.annotate(
-                f'{migraine_data[i]:.1f}%',
-                xy=(np.cos(np.deg2rad(angle)), np.sin(np.deg2rad(angle))),
-                xytext=(x, y),
-                arrowprops=dict(arrowstyle="-", color='black'),
-                fontsize=10,
-                ha='center',
-                va='center'
-            )
-            
-    # Update the title
-    ax_migraine.set_title('Migraine & Headache', fontsize=16, pad=15, fontweight='semibold')
-
-    # Add a legend
-    ax_migraine.legend(
-        wedges,  # Use the pie chart wedges for color reference
-        migraine_labels,  # Labels for the legend
-        loc='lower center',  # Position the legend at the bottom
-        bbox_to_anchor=(0.5, -0.15),  # Adjust vertical position
-        ncol=2,  # Display legend items in 2 columns
-        fontsize=10,  # Legend font size
-        frameon=False  # Remove legend border
-    )
-
-    ax_migraine.set_aspect('equal')  # Ensure the pie chart is circular
 
 
 
@@ -369,17 +336,31 @@ def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
 
     # Sort locations by percentage (ascending for better horizontal bar visualization)
     sorted_locations = sorted(location_percentages.items(), key=lambda x: x[1])
-    # Modify long labels to be on two lines
     def format_label(label):
         if label == "top of the head":
             return "Top of\nthe head"
+        if label == "frontal":
+            return "Frontal"
+        if label == "temporal":
+            return "Temporal"
+        if label == "posterior":
+            return "Posterior"
+        if label == "Unknown":
+            return "Unknown"
         return label.capitalize()
 
     locations = [format_label(loc[0]) for loc in sorted_locations]
     percentages = [loc[1] for loc in sorted_locations]
 
-    # Define colors for the bars
-    bar_colors = ['#66c2a5', '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854']
+    # Define colors for the bars (Unknown = gris)
+    base_colors = ["#9ce586", "#93A1C2CE", '#8da0cb', '#e78ac3']
+    bar_colors = []
+    for label in locations:
+        if label.lower() == "unknown":
+            bar_colors.append('#bdbdbd')  # gris
+        else:
+            # cycle base colors if needed
+            bar_colors.append(base_colors[len(bar_colors) % len(base_colors)])
 
     # Plot horizontal bars
     bars = ax_headache.barh(locations, percentages, color=bar_colors, alpha=0.7)
@@ -425,6 +406,41 @@ def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
     ax_headache.set_xlim(0, max(percentages)*1.2 if max(percentages) > 0 else 10)
     ax_headache.grid(axis='x', linestyle='--', alpha=0.5)
 
+
+
+
+    # ================== Top Left: Headache Donuts stacked vertically in column 4 ==================
+    gs_migraine_headache = gs_top_left[:, 3].subgridspec(2, 1, hspace=0.12)
+
+    # Migraine Donut (top)
+    ax_migraine_donut = fig.add_subplot(gs_migraine_headache[0, 0])
+    wedges, texts = ax_migraine_donut.pie(
+        [migraine_pct, 100 - migraine_pct],
+        labels=None,
+        colors=['#e78ac3', '#f0f0f0'],
+        startangle=90,
+        wedgeprops={'width': 0.55, 'edgecolor': 'white', 'linewidth': 1},
+        textprops={'fontsize': 10}
+    )
+    ax_migraine_donut.text(0, 0.0, f'{migraine_pct:.1f}%', ha='center', va='center', fontsize=11, fontweight='bold', color='#2d3436')
+    ax_migraine_donut.set_title('Migraine', fontsize=13, pad=1, loc='center', color='#2d3436')
+    ax_migraine_donut.set_aspect('equal')
+    ax_migraine_donut.set_xlim(-1.5, 1.5)
+
+    # Headache Donut (bottom)
+    ax_headache_donut = fig.add_subplot(gs_migraine_headache[1, 0])
+    wedges, texts = ax_headache_donut.pie(
+        [headache_pct, 100 - headache_pct],
+        labels=None,
+        colors=['#8da0cb', '#f0f0f0'],
+        startangle=90,
+        wedgeprops={'width': 0.55, 'edgecolor': 'white', 'linewidth': 1},
+        textprops={'fontsize': 10}
+    )
+    ax_headache_donut.text(0, 0.0, f'{headache_pct:.1f}%', ha='center', va='center', fontsize=11, fontweight='bold', color='#2d3436')
+    ax_headache_donut.set_title('Headache', fontsize=13, pad=1, loc='center', color='#2d3436')
+    ax_headache_donut.set_aspect('equal')
+    ax_headache_donut.set_xlim(-1.5, 1.5)
 
 
 
@@ -628,57 +644,57 @@ def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
     ax_age_distribution.set_xticklabels(age_bins_plot, rotation=22.5, ha='center', fontsize=10)  # Rotate x-labels for readability
                 
     # ================== Bottom Right: Disc Displacement Donuts ==================
-    gs_disc_displacement = gs_bottom_right[1, 1].subgridspec(1, 2, wspace=0.01)
-    # Left TMJ
-    ax_left_tmj = fig.add_subplot(gs_disc_displacement[0, 0])
-    left_labels = ["w/o reduction", "w/ reduction", "reduction not specified", "no displacement"]
-    left_sizes = [left_tmj_data["w/o reduction"], left_tmj_data["w/ reduction"], 
-                left_tmj_data["reduction not specified"], left_tmj_data["no displacement"]]
-    left_colors = ['#ff6b6b', '#ffb366', '#66c2a5', '#8da0cb']
+    # gs_disc_displacement = gs_bottom_right[1, 1].subgridspec(1, 2, wspace=0.01)
+    # # Left TMJ
+    # ax_left_tmj = fig.add_subplot(gs_disc_displacement[0, 0])
+    # left_labels = ["w/o reduction", "w/ reduction", "reduction not specified", "no displacement"]
+    # left_sizes = [left_tmj_data["w/o reduction"], left_tmj_data["w/ reduction"], 
+    #             left_tmj_data["reduction not specified"], left_tmj_data["no displacement"]]
+    # left_colors = ['#ff6b6b', '#ffb366', '#66c2a5', '#8da0cb']
 
-    wedges, texts, autotexts = ax_left_tmj.pie(
-        left_sizes,
-        labels=None,  # Remove default labels
-        autopct='%1.1f%%',
-        colors=left_colors,
-        startangle=90,
-        wedgeprops={'width': 1, 'edgecolor': 'white', 'linewidth': 1},
-        textprops={'fontsize': 9}
-    )
+    # wedges, texts, autotexts = ax_left_tmj.pie(
+    #     left_sizes,
+    #     labels=None,  # Remove default labels
+    #     autopct='%1.1f%%',
+    #     colors=left_colors,
+    #     startangle=90,
+    #     wedgeprops={'width': 1, 'edgecolor': 'white', 'linewidth': 1},
+    #     textprops={'fontsize': 9}
+    # )
 
-    ax_left_tmj.set_title('Left TMJ\nDisc\nDisplacement', fontsize=12, pad=0, fontweight='semibold')
-    ax_left_tmj.legend(
-        wedges,  # Use the pie chart wedges for color reference
-        left_labels,  # Labels for the legend
-        loc='lower center',  # Position the legend at the bottom
-        bbox_to_anchor=(1.125, -0.6),  # Adjust vertical position
-        ncol=1,  # Display legend items in 2 columns
-        fontsize=10,  # Legend font size
-        frameon=False  # Remove legend border
-    )
+    # ax_left_tmj.set_title('Left TMJ\nDisc\nDisplacement', fontsize=12, pad=0, fontweight='semibold')
+    # ax_left_tmj.legend(
+    #     wedges,  # Use the pie chart wedges for color reference
+    #     left_labels,  # Labels for the legend
+    #     loc='lower center',  # Position the legend at the bottom
+    #     bbox_to_anchor=(1.125, -0.6),  # Adjust vertical position
+    #     ncol=1,  # Display legend items in 2 columns
+    #     fontsize=10,  # Legend font size
+    #     frameon=False  # Remove legend border
+    # )
 
-    ax_left_tmj.set_aspect('equal')
+    # ax_left_tmj.set_aspect('equal')
 
-    # Right TMJ
-    ax_right_tmj = fig.add_subplot(gs_disc_displacement[0, 1])
-    right_labels = ["w/o reduction", "w/ reduction", "reduction not specified", "no displacement"]
-    right_sizes = [right_tmj_data["w/o reduction"], right_tmj_data["w/ reduction"], 
-                right_tmj_data["reduction not specified"], right_tmj_data["no displacement"]]
-    right_colors = ['#ff6b6b', '#ffb366', '#66c2a5', '#8da0cb']
+    # # Right TMJ
+    # ax_right_tmj = fig.add_subplot(gs_disc_displacement[0, 1])
+    # right_labels = ["w/o reduction", "w/ reduction", "reduction not specified", "no displacement"]
+    # right_sizes = [right_tmj_data["w/o reduction"], right_tmj_data["w/ reduction"], 
+    #             right_tmj_data["reduction not specified"], right_tmj_data["no displacement"]]
+    # right_colors = ['#ff6b6b', '#ffb366', '#66c2a5', '#8da0cb']
 
-    wedges, texts, autotexts = ax_right_tmj.pie(
-        right_sizes,
-        labels=None,  # Remove default labels
-        autopct='%1.1f%%',
-        colors=right_colors,
-        startangle=90,
-        wedgeprops={'width': 1, 'edgecolor': 'white', 'linewidth': 1},
-        textprops={'fontsize': 9}
-    )
+    # wedges, texts, autotexts = ax_right_tmj.pie(
+    #     right_sizes,
+    #     labels=None,  # Remove default labels
+    #     autopct='%1.1f%%',
+    #     colors=right_colors,
+    #     startangle=90,
+    #     wedgeprops={'width': 1, 'edgecolor': 'white', 'linewidth': 1},
+    #     textprops={'fontsize': 9}
+    # )
 
-    ax_right_tmj.set_title('Right TMJ\nDisc\nDisplacement', fontsize=12, pad=0, fontweight='semibold')
+    # ax_right_tmj.set_title('Right TMJ\nDisc\nDisplacement', fontsize=12, pad=0, fontweight='semibold')
 
-    ax_right_tmj.set_aspect('equal')
+    # ax_right_tmj.set_aspect('equal')
     
     # Final adjustments
     plt.subplots_adjust(top=0.85, bottom=0.07, left=0.04, right=0.98)
@@ -688,7 +704,7 @@ def generate_dashboard_figure(df: pd.DataFrame) -> plt.Figure:
 def show_dashboard(summary_folder, output_folder):
     summaries = read_summaries(summary_folder)
     df = process_summaries(summaries)
-    fig = generate_dashboard_figure(df)
+    fig = generate_dashboard_figure(df, output_folder)
     
     output_path = os.path.join(output_folder, "dashboard.png")
     fig.savefig(output_path)

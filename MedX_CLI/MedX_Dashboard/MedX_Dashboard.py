@@ -14,19 +14,6 @@ def main(args):
     
     show_dashboard(args.summary_folder, args.output_folder)
     
-    #     with open(log_path, "a") as log_f:
-    #         log_f.write(str(1))
-    #
-    #     print(f"""<filter-progress>{0}</filter-progress>""")
-    #     sys.stdout.flush()
-    #     time.sleep(0.2)
-    #     print(f"""<filter-progress>{2}</filter-progress>""")
-    #     sys.stdout.flush()
-    #     time.sleep(0.2)
-    #     print(f"""<filter-progress>{0}</filter-progress>""")
-    #     sys.stdout.flush()
-    #     time.sleep(0.2)
-
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
