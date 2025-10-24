@@ -1112,10 +1112,19 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 ApproxStep=self.ui.ApproxcheckBox.isChecked(),
             )
 
+            # Guard: if Process() returned an empty list, log and return to avoid IndexError
+            if not self.list_Processes_Parameters:
+                logging.error("list_Processes_Parameters is empty after calling ActualMeth.Process()")
+                return
+
             self.nb_extension_launch = len(self.list_Processes_Parameters)
             self.onProcessStarted()
 
-            self.module_name = self.list_Processes_Parameters[0]["Module"]
+            try:
+                self.module_name = self.list_Processes_Parameters[0]["Module"]
+            except Exception:
+                logging.exception("Exception while accessing first process entry")
+                return
             # /!\ Launch of the first process /!\
             print("module name : ", self.module_name)
             # if we are on windows, crownsegmentation and areg ios need to be run in wsl because of Pytorch3D
@@ -1124,8 +1133,15 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     self.run_conda_tool("seg")
                 else:
                     self.nb_extension_did += 1
-                    print("module name : ", self.module_name)
                     self.run_conda_tool("areg")
+
+                # After conda handling, check whether there are more processes in the queue.
+                if not self.list_Processes_Parameters:
+                    try:
+                        self.OnEndProcess()
+                    except Exception:
+                        logging.exception("OnEndProcess failed after conda run")
+                    return
               
             self.process = slicer.cli.run(
                 self.list_Processes_Parameters[0]["Process"],
