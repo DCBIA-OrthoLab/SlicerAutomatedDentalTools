@@ -1143,18 +1143,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         logging.exception("OnEndProcess failed after conda run")
                     return
               
-            self.process = slicer.cli.run(
-                self.list_Processes_Parameters[0]["Process"],
-                None,
-                self.list_Processes_Parameters[0]["Parameter"],
-            )
-            self.module_name = self.list_Processes_Parameters[0]["Module"]
-            self.displayModule = self.list_Processes_Parameters[0]["Display"]
-            self.processObserver = self.process.AddObserver(
-                "ModifiedEvent", self.onProcessUpdate
-            )
-
-            del self.list_Processes_Parameters[0]
 
     def onProcessStarted(self):
         self.ui.label_LibsInstallation.setHidden(True)
