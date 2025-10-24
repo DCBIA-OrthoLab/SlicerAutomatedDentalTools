@@ -82,13 +82,6 @@ def SetSpacing(filepath,output_spacing=[0.5, 0.5, 0.5],outpath=-1):
 
     print("Resample :", filepath, ", with spacing :", output_spacing)
     img = itk.imread(filepath)
-    # arr_img = itk.GetArrayFromImage(img)
-    # print(np.min(arr_img),np.max(arr_img))
-    # arr_img = np.where(arr_img < 2500, arr_img,2500)
-    # print(np.min(arr_img),np.max(arr_img))
-
-    # img_rescale = itk.GetImageFromArray(arr_img)
-
     spacing = np.array(img.GetSpacing())
     output_spacing = np.array(output_spacing)
 

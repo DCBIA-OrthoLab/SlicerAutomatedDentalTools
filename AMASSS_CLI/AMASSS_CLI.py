@@ -8,12 +8,9 @@ import numpy as np
 import torch, itk, cc3d, dicom2nifti
 import SimpleITK as sitk
 import vtk
-# import slicer
 import re
 import vtk
-# qt, slicer
-# from slicer.ScriptedLoadableModule import *
-# from slicer.util import VTKObservationMixin, pip_install
+
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -53,21 +50,7 @@ MODELS_GROUP = {
 def CorrectHisto(filepath,outpath,min_porcent=0.01,max_porcent=0.95,i_min=-1500,i_max=4000):
     print("Correcting scan contrast:", filepath)
     img = sitk.Cast(sitk.ReadImage(filepath), sitk.sitkFloat32)
-    # arr = sitk.GetArrayFromImage(img)
-    # mn, mx = arr.min(), arr.max()
-    # definition=1000
-    # histo,bin_edges = np.histogram(arr,definition)
-    # cum = np.cumsum(histo); cum=(cum-cum.min())/cum.max()
-    # ih = np.where(cum>max_porcent)[0][0]; rh=bin_edges[ih]
-    # il = np.where(cum>min_porcent)[0][0]; rl=bin_edges[il]
-    # rl, rh = max(rl,i_min), min(rh,i_max)
-    # arr = np.clip(arr, rl, rh)
-    # out = sitk.GetImageFromArray(arr); out.CopyInformation(img)
-    # out = sitk.Cast(out, sitk.sitkInt16)
-    # sitk.WriteImage(out, outpath)
     return img
-
-
 
 def Write(vtkdata, output_name):
 	outfilename = output_name
@@ -76,10 +59,6 @@ def Write(vtkdata, output_name):
 	polydatawriter.SetFileName(outfilename)
 	polydatawriter.SetInputData(vtkdata)
 	polydatawriter.Write()
-
-
-
-# (suppose  LABEL_COLORS and Write(model, outpath) are global variable)
 
 def SavePredToVTK(file_path, temp_folder, smoothing, vtk_output_path, model_size="LARGE"):
     import os, numpy as np, SimpleITK as sitk, vtk
@@ -174,10 +153,6 @@ def SavePredToVTK(file_path, temp_folder, smoothing, vtk_output_path, model_size
     outvtk = os.path.join(vtk_output_path, outname) if output_is_dir else os.path.join(os.path.dirname(vtk_output_path), outname)
     write_poly(poly, outvtk)
 
-
-
-
-
 def SetSpacingFromRef(filepath,refFile,interpolator="NearestNeighbor",outpath=-1):
     img = itk.imread(filepath); ref = itk.imread(refFile)
     sp_i, sz_i = np.array(img.GetSpacing()), np.array(itk.size(img))
@@ -238,12 +213,10 @@ def SaveSeg(file_path, spacing ,seg_arr, input_path,temp_path, outputdir,temp_fo
     print("Saving segmentation for ", file_path)
 
     SavePrediction(seg_arr,input_path,temp_path,output_spacing = spacing)
-    # if clean_seg:
-    #     CleanScan(temp_path)
+
     SetSpacingFromRef(
         temp_path,
         input_path,
-        # "Linear",
         outpath=file_path
         )
 
@@ -257,17 +230,13 @@ def main(args):
     import SimpleITK as sitk
 
     print("Start AMASSS_CLI with nnUNet v2 backend", flush=True)
-
-    # args['merge']=re.split(r'[, ]+', args['merge'].strip())
-    # args['genVtk']=args['genVtk'].lower()=="true"
-    # args['save_in_folder']=args['save_in_folder'].lower()=="true"
-    # args['isSegmentInput']=args['isSegmentInput'].lower=='true'
-    # args['isDCMInput']=args['isDCMInput'].lower()=='true'
-
+    print("Initializing temporary folder and output setup...", flush=True)
 
     tmp = args["temp_fold"]
     base_output = args["output_folder"]
     os.makedirs(tmp, exist_ok=True)
+
+    print("Temporary folder and output setup complete.", flush=True)
 
     input_path = args["inputVolume"]
     extensions = (".nii", ".nii.gz", ".nrrd", ".nrrd.gz")
@@ -284,12 +253,14 @@ def main(args):
         input_files = [input_path]
     scan_count = len(input_files)
     print(f"Number of scans : {scan_count}", flush=True)
+    print("Input files identified.", flush=True)
 
     start_time = time.time()
     print("<filter-start><filter-name>AMASSS</filter-name></filter-start>", flush=True)
     sys.stdout.flush()
 
     for scan_idx, volume_file in enumerate(input_files, start=1):
+        print(f"Starting processing of scan {scan_idx}/{scan_count}: {os.path.basename(volume_file)}", flush=True)
         case_id = f"{scan_idx:03d}"
         basename = os.path.basename(volume_file)
         base, ext = os.path.splitext(basename)
@@ -304,14 +275,13 @@ def main(args):
             outdir = base_output
         os.makedirs(outdir, exist_ok=True)
 
-        print(f"\n--- Processing scan {scan_idx}/{scan_count} : {basename} ---", flush=True)
+        print(f"Output directory set to: {outdir}", flush=True)
 
         tmp_name = f"p_{case_id}_0000.nii.gz"
         input_vol = os.path.join(tmp, tmp_name)
         shutil.copy(volume_file, input_vol)
         print(f"    Copied and renamed to {input_vol} for nnUnet", flush=True)
-
-        # 4.2 Searching NNunet
+        print("Searching for nnUNet models...", flush=True)
         nnunet_models = {}
         for struct in args["skullStructure"].split(","):
             root = os.path.join(args["modelDirectory"], struct)
@@ -322,13 +292,16 @@ def main(args):
             print(f"  {struct}: {plans}", flush=True)
         if not nnunet_models:
             sys.exit("❌ No model found.")
+        print(f"Found {len(nnunet_models)} models to process.", flush=True)
 
         total_struct = len(nnunet_models)
         total_steps = scan_count * total_struct
         prediction_segmentation = {}
 
+        print("Starting predictions for all structures...", flush=True)
         # 4.3 Predicting and post-processing
         for struct_idx, (struct, plans_dir) in enumerate(nnunet_models.items(), start=1):
+            print(f"  Predicting structure {struct_idx}/{total_struct}: {struct}", flush=True)
             dataset_name = os.path.basename(os.path.dirname(plans_dir))
             os.environ['nnUNet_results'] = os.path.dirname(os.path.dirname(plans_dir))
             outp = os.path.join(tmp, f"pred_{struct}")
@@ -351,6 +324,7 @@ def main(args):
                 "--disable_tta"
             ]
             subprocess.check_call(cmd)
+            print(f"  Prediction for {struct} completed.", flush=True)
 
             step = (scan_idx - 1) * total_struct + struct_idx
             fraction = step / total_steps
@@ -364,10 +338,13 @@ def main(args):
             arr = sitk.GetArrayFromImage(img)
             mask = (arr > 0).astype(np.uint8)
             prediction_segmentation[struct] = mask
+            print(f"  Loaded prediction mask for {struct}.", flush=True)
 
+        print("All predictions completed for this scan. Starting segmentation saving...", flush=True)
         spacing = list(sitk.ReadImage(volume_file).GetSpacing())
 
         if "SEPARATE" in args["merge"] or len(prediction_segmentation) == 1:
+            print("Saving separate segmentations...", flush=True)
             for struct, mask in prediction_segmentation.items():
                 outfn = os.path.join(outdir, f"{base}_{args['prediction_ID']}_{struct}{ext}")
                 SaveSeg(
@@ -377,6 +354,7 @@ def main(args):
                 )
 
         if "MERGE" in args["merge"] and len(prediction_segmentation) > 1:
+            print("Merging segmentations...", flush=True)
             shape = next(iter(prediction_segmentation.values())).shape
             merged = np.zeros(shape, dtype=np.int16)
             for struct in args["merging_order"]:
@@ -390,36 +368,19 @@ def main(args):
                 outdir, tmp, args["genVtk"], args["vtk_smooth"], "LARGE"
             )
 
+        print(f"Segmentation saving completed for scan {scan_idx}/{scan_count}.", flush=True)
         shutil.rmtree(tmp, ignore_errors=True)
         os.makedirs(tmp, exist_ok=True)
+        print("Temporary files cleaned up.", flush=True)
 
     elapsed = time.time() - start_time
     print(f"<filter-end><filter-name>AMASSS</filter-name><filter-time>{elapsed:.2f}</filter-time></filter-end>", flush=True)
     sys.stdout.flush()
+    print("All scans processed successfully.", flush=True)
     print("Done.", flush=True)
-
 
 # ── Entrée CLI ────────────────────────────────────────────────────────────────
 if __name__=="__main__":
-    # Exemple d’appel :
-    # python AMASSS_CLI.py \
-    #   /path/to/input.nii.gz \
-    #   /path/to/AMASSS_Models \
-    #   false \
-    #   MAND,MAX,CB \
-    #   MERGE,SEPARATE \
-    #   false \
-    #   false \
-    #   /output/dir \
-    #   50 \
-    #   5 \
-    #   Pred \
-    #   1 \
-    #   false \
-    #   /tmp/slicer_amasss \
-    #   false \
-    #   false
-
     argv = sys.argv
     print(sys.argv)
     args = {
