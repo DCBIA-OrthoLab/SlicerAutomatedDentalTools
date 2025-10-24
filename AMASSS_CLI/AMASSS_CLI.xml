@@ -29,102 +29,75 @@
       <description>Path of the model</description>
     </string>
 
-    <boolean>
-      <name>highDefinition</name>
-      <label>highDefinition</label>
-      <index>2</index>
-      <description>Use high definition model</description>
-    </boolean>
 
     <string>
       <name>skullStructure</name>
       <label>skullStructure</label>
-      <index>3</index>
+      <index>2</index>
       <description>structures to segment</description>
     </string>
 
     <string>
       <name>merge</name>
       <label>merge</label>
-      <index>4</index>
+      <index>3</index>
       <description>type of output</description>
     </string>
 
     <boolean>
       <name>genVtk</name>
       <label>genVtk</label>
-      <index>5</index>
+      <index>4</index>
       <description>generate Vtk</description>
     </boolean>
 
     <boolean>
       <name>save_in_folder</name>
       <label>save_in_folder</label>
-      <index>6</index>
+      <index>5</index>
       <description>save in a folder</description>
     </boolean>
 
     <string>
       <name>output_folder</name>
       <label>output_folder</label>
-      <index>7</index>
+      <index>6</index>
       <description>output folder</description>
     </string>
 
-    <integer>
-      <name>precision</name>
-      <label>precision</label>
-      <index>8</index>
-      <description>precision of model</description>
-    </integer>
 
     <integer>
       <name>vtk_smooth</name>
       <label>vtk_smooth</label>
-      <index>9</index>
+      <index>7</index>
       <description>vtk smoothing of the 3d model</description>
     </integer>
 
     <string>
       <name>prediction_ID</name>
       <label>prediction_ID</label>
-      <index>10</index>
+      <index>8</index>
       <description>ID of the prediction</description>
     </string>
-
-    <integer>
-      <name>gpu_usage</name>
-      <label>gpu_usage</label>
-      <index>11</index>
-      <description>Number of GPU to use</description>
-    </integer>
-
-    <boolean>
-      <name>host_memory</name>
-      <label>host_memory</label>
-      <index>12</index>
-      <description>Switch to CPU memory if True</description>
-    </boolean>
-
 
     <string>
       <name>temp_fold</name>
       <label>temp_fold</label>
-      <index>13</index>
+      <index>9</index>
       <description>temp folder</description>
     </string>
 
     <string>
       <name>SegmentInput</name>
       <label>SegmentInput</label>
-      <index>14</index>
+      <index>10</index>
       <description>whether or not the input is a segmentation file</description>
     </string>
 
     <string>
       <name>DCMInput</name>
       <label>DCMInput</label>
-      <index>15</index>
+      <index>11</index>
       <description>temp folder</description>
     </string>
 

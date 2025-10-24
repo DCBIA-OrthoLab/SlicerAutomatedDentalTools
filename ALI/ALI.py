@@ -113,11 +113,7 @@ SURFACE_NETWORK = {
 
   # "Landmarks type" : ['CL','CB','O','DB','MB','R','RIP','OIP']
 
-
 import json
-
-
-
 
 class ALI(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
@@ -320,11 +316,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.landmark_cout = 0 # number of landmark to identify
     self.nb_patient = 0 # number of patients to process
 
-
-
-
-
-
   def setup(self):
     """
     Called when the user opens the module the first time and the widget is initialized.
@@ -391,7 +382,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.lm_selection_area = qt.QWidget()
     self.lm_selection_layout = qt.QHBoxLayout(self.lm_selection_area)
     self.ui.OptionVLayout.addWidget(self.lm_selection_area)
-
     self.tooth_lm = LMTab()
     self.tooth_lm.Clear()
     self.tooth_lm.FillTab(TEETH,True)
@@ -406,21 +396,14 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.ui.InputTypeComboBox.currentIndexChanged.connect(self.SwitchInputType)
     self.SwitchInputType(0)
-
     self.ui.ExtensioncomboBox.currentIndexChanged.connect(self.SwitchInputExtension)
     self.SwitchInputExtension(0)
-
     self.ui.MRMLNodeComboBox.setMRMLScene(slicer.mrmlScene)
     self.ui.MRMLNodeComboBox.currentNodeChanged.connect(self.onNodeChanged)
     self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox.currentNodeID)
-
-
     self.ui.InputComboBox.currentIndexChanged.connect(self.SwitchInput)
     self.SwitchInput(0)
-
     self.ui.DownloadTestPushButton.connect('clicked(bool)',self.TestFiles)
-
-
     #endregion
 
     self.ui.SavePredictCheckBox.connect("toggled(bool)", self.UpdateSaveType)
@@ -428,10 +411,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.SearchSaveFolder.setHidden(False)
     self.ui.SaveFolderLineEdit.setHidden(False)
     self.ui.PredictFolderLabel.setHidden(False)
-
-
-
-
     # Buttons
     self.ui.SearchScanFolder.pressed.connect(
       lambda: self.onSearchScanButton(self.ui.lineEditScanPath)
@@ -523,8 +502,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.lineEditScanPath.setVisible(self.folder_as_input)
     self.ui.SearchScanFolder.setVisible(self.folder_as_input)
     self.ui.SavePredictCheckBox.setEnabled(self.folder_as_input)
-    
-    
+  
     self.ui.SelectNodeLabel.setVisible(not self.folder_as_input)
     self.ui.MRMLNodeComboBox.setVisible(not self.folder_as_input)
     self.ui.FillNodeLlabel.setVisible(not self.folder_as_input)
@@ -561,7 +539,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.output_folder = self.ui.lineEditScanPath.text
       self.ui.SaveFolderLineEdit.text = self.output_folder
 
-
   def CountFileWithExtention(self,path,extentions = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"], exception = ["Seg", "seg", "Pred"]):
 
     count = 0
@@ -575,7 +552,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 count += 1
 
     return count
-
 
   def onSearchScanButton(self, lineEdit):
     scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
@@ -599,7 +575,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # self.ui.PrePredInfo.setText("Number of scans to process : " + str(nbr_scans))
         self.scan_count = nbr_scans
         self.CheckScan()
-        
+      
         
   def TestFiles(self):
     """Function to download and select all the test files"""
@@ -1445,14 +1421,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.invertOutputCheckBox.checked = (
       self._parameterNode.GetParameter("Invert") == "true"
     )
-
-    # Update buttons states and tooltips
-    # if self._parameterNode.GetNodeReference("InputVolume") and self._parameterNode.GetNodeReference("OutputVolume"):
-    #   self.ui.applyButton.toolTip = "Compute output volume"
-    #   self.ui.applyButton.enabled = True
-    # else:
-    #   self.ui.applyButton.toolTip = "Select input and output volume nodes"
-    #   self.ui.applyButton.enabled = False
 
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False

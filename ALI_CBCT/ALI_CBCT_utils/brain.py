@@ -162,10 +162,6 @@ class Brain:
         return torch.argmax(x)
 
     def LoadModels(self,model_lst):
-        # for scale,network in model_lst.items():
-        #     print("Loading model", scale)
-        #     net.load_state_dict(torch.load(model_lst[n],map_location=self.device))
-
         for n,net in enumerate(self.networks):
             print("Loading model", model_lst[self.network_scales[n]])
             net.load_state_dict(torch.load(model_lst[self.network_scales[n]],map_location=self.device))
