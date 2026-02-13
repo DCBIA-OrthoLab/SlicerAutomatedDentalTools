@@ -184,12 +184,22 @@ def main(args):
                 log_f.write(str(index))
             continue
 
-        WriteSurf(
-            output_icp["source_Or"],
-            args.output_folder[0],
-            os.path.basename(file_vtk),
-            args.add_inname[0],
-        )
+        print(f"DEBUG: About to write surface for {file_vtk}")
+        print(f"DEBUG: output_icp source_Or type: {type(output_icp['source_Or'])}")
+        try:
+            WriteSurf(
+                output_icp["source_Or"],
+                args.output_folder[0],
+                os.path.basename(file_vtk),
+                args.add_inname[0],
+            )
+            print(f"DEBUG: WriteSurf completed successfully for {os.path.basename(file_vtk)}")
+        except Exception as write_error:
+            print(f"ERROR in WriteSurf: {str(write_error)}")
+            print(f"  Output folder: {args.output_folder[0]}")
+            print(f"  Filename: {os.path.basename(file_vtk)}")
+            print(f"  Infix: {args.add_inname[0]}")
+            raise
 
         if link:
             surf_lower = ReadSurf(file[jaw.inv()])

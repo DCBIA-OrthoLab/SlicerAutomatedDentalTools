@@ -112,21 +112,55 @@ def LoadJsonLandmarks(ldmk_path, full_landmark=True, list_landmark=[]):
 
 
 def WriteSurf(surf, output_folder, name, inname):
-    dir, name = os.path.split(name)
-    name, extension = os.path.splitext(name)
+    """Write surface to file with proper error handling.
+    
+    Args:
+        surf: VTK polydata surface
+        output_folder: Output directory path
+        name: Filename (can include path)
+        inname: Infix to add to filename (e.g., "Or" -> "A2_SegOr.vtk")
+    """
+    try:
+        dir, name = os.path.split(name)
+        name, extension = os.path.splitext(name)
 
-    if not os.path.exists(output_folder):
-        os.mkdir(output_folder)
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder, exist_ok=True)
 
-    if extension == ".vtk":
-        writer = vtk.vtkPolyDataWriter()
-    elif extension == ".vtp":
-        writer = vtk.vtkXMLPolyDataWriter()
-    elif extension == ".obj":
-        writer = vtk.vtkWriter()
-    writer.SetFileName(os.path.join(output_folder, f"{name}{inname}{extension}"))
-    writer.SetInputData(surf)
-    writer.Update()
+        if extension == ".vtk":
+            writer = vtk.vtkPolyDataWriter()
+        elif extension == ".vtp":
+            writer = vtk.vtkXMLPolyDataWriter()
+        elif extension == ".obj":
+            writer = vtk.vtkOBJWriter()
+        else:
+            # Default to VTK format if extension is not recognized
+            extension = ".vtk"
+            writer = vtk.vtkPolyDataWriter()
+        
+        output_path = os.path.join(output_folder, f"{name}{inname}{extension}")
+        print(f"DEBUG WriteSurf: output_path = {output_path}")
+        print(f"DEBUG WriteSurf: output_folder = {output_folder}")
+        print(f"DEBUG WriteSurf: name = {name}, inname = {inname}, extension = {extension}")
+        
+        writer.SetFileName(output_path)
+        writer.SetInputData(surf)
+        writer.Update()
+        
+        # Verify file was created
+        if not os.path.exists(output_path):
+            raise RuntimeError(f"WriteSurf failed: File {output_path} was not created after writer.Update()")
+        
+        # Check file size
+        file_size = os.path.getsize(output_path)
+        print(f"DEBUG WriteSurf: File created successfully: {output_path} ({file_size} bytes)")
+            
+    except Exception as e:
+        print(f"ERROR in WriteSurf: {str(e)}")
+        print(f"  Output folder: {output_folder}")
+        print(f"  Filename: {name}{inname}{extension}")
+        print(f"  Full path attempted: {output_path if 'output_path' in locals() else 'N/A'}")
+        raise
 
 
 def UpperOrLower(path_filename):
@@ -251,6 +285,11 @@ def PatientNumber(path):
 
 def saveMatrixAsTfm(matrix, output_path):
     assert matrix.shape == (4, 4), "Expected a 4x4 matrix."
+    
+    # Create output directory if it doesn't exist
+    output_dir = os.path.dirname(output_path)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
     
     inverted_matrix = np.linalg.inv(matrix)
     transform = sitk.AffineTransform(3)

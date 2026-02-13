@@ -49,6 +49,8 @@ def ReadSurf(fileName):
             reader.SetFileName(fileName)
             reader.Update()
             surf = reader.GetOutput()
+    else:
+        raise ValueError(f"Unsupported file format: {extension}. Supported formats: .vtk, .vtp, .stl, .obj. File: {fileName}")
 
     return surf
 
