@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CNE_UI</class>
+ <widget class="qMRMLWidget" name="CNE_UI">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>325</width>
+    <height>311</height>
+   </rect>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">
+   QLabel {
+    font-weight: 400;
+    color: #233447;
+   }
+
+  QPushButton#applyButton, QPushButton#downloadTestFilesButton {
+   background-color: #3294cc;
+   color: white;
+   border-radius: 6px;
+   padding: 4px;
+   margin: 0px;
+   min-height: 28px;
+  }
+
+  ctkCollapsibleButton{
+    font-weight: 600;
+    color: #000000;
+    padding: 8px;
+    background-color: #eeeded;
+    border: 1px solid #888888;
+  }
+
+   </string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text">
+      <string>Inputs</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_inputs">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_notesFolder_input">
+        <property name="text">
+         <string>Notes folder:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="ctkPathLineEdit" name="notesFolderLineEdit_input">
+        <property name="filters">
+         <set>ctkPathLineEdit::Dirs</set>
+        </property>
+        <property name="placeholderText" stdset="0">
+         <string>supported types: .docx / .pdf / .txt</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_selectModel">
+        <property name="text">
+         <string>Select Model:</string>
+        </property>
+       </widget>
+      </item>
+    <item row="2" column="1">
+      <layout class="QHBoxLayout" name="layout_modelSelection">
+      <item>
+       <widget class="QRadioButton" name="modelQuickRadioButton">
+        <property name="text">
+        <string>Mini (Light/Fast)</string>
+        </property>
+        <property name="checked">
+        <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="modelProRadioButton">
+        <property name="text">
+        <string>Max (Heavy/Precise)</string>
+        </property>
+       </widget>
+      </item>
+      </layout>
+    </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton">
+     <property name="text">
+      <string>Outputs</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_outputs">
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_notesFolder_output">
+        <property name="text">
+         <string>Summary folder:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="ctkPathLineEdit" name="notesFolderLineEdit_output">
+        <property name="filters">
+         <set>ctkPathLineEdit::Dirs</set>
+        </property>
+        <property name="placeholderText" stdset="0">
+         <string>supported types: .docx / .pdf / .txt</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="layout_buttonsBottom">
+     <item>
+      <widget class="QPushButton" name="downloadTestFilesButton">
+       <property name="enabled">
+      <bool>false</bool>
+       </property>
+       <property name="toolTip">
+      <string>Test Files.</string>
+       </property>
+       <property name="text">
+      <string>Run Test Files</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="applyButton">
+       <property name="enabled">
+      <bool>false</bool>
+       </property>
+       <property name="toolTip">
+      <string>Run the algorithm.</string>
+       </property>
+       <property name="text">
+      <string>Run Clinial Notes</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ctkCollapsibleButton</class>
+   <extends>QWidget</extends>
+   <header>ctkCollapsibleButton.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>ctkPathLineEdit</class>
+   <extends>QWidget</extends>
+   <header>ctkPathLineEdit.h</header>
+  </customwidget>
+  <customwidget>
+   <class>qMRMLWidget</class>
+   <extends>QWidget</extends>
+   <header>qMRMLWidget.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

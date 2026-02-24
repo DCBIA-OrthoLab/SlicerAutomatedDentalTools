@@ -9,7 +9,8 @@ def set_age_data(df):
     age_labels = ['12-19', '20-40', '40+']
     age_groups = pd.cut(df['patient_age'], bins=age_bins, labels=age_labels)
     age_dist = age_groups.value_counts(normalize=True).sort_index() * 100
-    
+    # Drop NaN values
+    age_dist = age_dist.dropna()
     return age_dist
 
 def set_sleep_data(df):
