@@ -98,21 +98,18 @@ def registerSampleData():
 @parameterNodeWrapper
 class CNE_UIParameterNode:
     """
-    The parameters needed by module.
+    Parameters for Clinical Notes Extraction UI.
 
-    inputVolume - The volume to threshold.
-    imageThreshold - The value at which to threshold the input volume.
-    invertThreshold - If true, will invert the threshold.
-    thresholdedVolume - The output volume that will contain the thresholded volume.
-    invertedVolume - The output volume that will contain the inverted thresholded volume.
+    notesFolder_input - Folder containing clinical notes (.docx/.pdf/.txt).
+    modelType - Model type selection: 'Mini' (Light/Fast) or 'Max' (Heavy/Precise).
+    notesType - Notes type selection: 'TMJ' or 'Ortho'.
+    notesFolder_output - Folder for summary output.
     """
 
-    inputVolume: vtkMRMLScalarVolumeNode
-    imageThreshold: Annotated[float, WithinRange(-100, 500)] = 100
-    invertThreshold: bool = False
-    thresholdedVolume: vtkMRMLScalarVolumeNode
-    invertedVolume: vtkMRMLScalarVolumeNode
-
+    notesFolder_input: str = "" # Path to input notes folder
+    modelType: str = ""  # "Mini" or "Max"
+    notesType: str = ""   # "TMJ" or "Ortho"
+    notesFolder_output: str = ""  # Path to output summary folder
 
 #
 # CNE_UIWidget
@@ -140,14 +137,21 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
-        # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
-        # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
-        # "setMRMLScene(vtkMRMLScene*)" slot.
-        uiWidget.setMRMLScene(slicer.mrmlScene)
-
-        # Create logic class. Logic implements all computations that should be possible to run
-        # in batch mode, without a graphical user interface.
+        # Create logic class.
         self.logic = CNE_UILogic()
+
+        # Create QButtonGroup for model type selection
+        import qt
+        self.modelTypeButtonGroup = qt.QButtonGroup()
+        self.modelTypeButtonGroup.addButton(self.ui.modelQuickRadioButton)
+        self.modelTypeButtonGroup.addButton(self.ui.modelProRadioButton)
+        self.modelTypeButtonGroup.setExclusive(True)
+
+        # Create QButtonGroup for notes type selection
+        self.notesTypeButtonGroup = qt.QButtonGroup()
+        self.notesTypeButtonGroup.addButton(self.ui.notesTypeTMJRadioButton)
+        self.notesTypeButtonGroup.addButton(self.ui.notesTypeOrthoRadioButton)
+        self.notesTypeButtonGroup.setExclusive(True)
 
         # Connections
 
@@ -160,6 +164,46 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
+
+
+
+        # -----------------------------------------------------------------------------------
+        # DELETE THIS (default value)
+        # -----------------------------------------------------------------------------------
+        self.ui.notesFolderLineEdit_input.currentPath = "/home/luciacev"
+        self.ui.notesFolderLineEdit_output.currentPath = "/home/luciacev"
+        
+        # Synchroniser les boutons radio avec la valeur du paramètre node
+        self._syncModelTypeRadioWithParameterNode()
+        self._syncNotesTypeRadioWithParameterNode()
+        # Les boutons radio seront synchronisés avec le paramètre node après l'initialisation
+    def _syncModelTypeRadioWithParameterNode(self):
+        if not self._parameterNode:
+            return
+        if self._parameterNode.modelType == "Mini":
+            self.ui.modelQuickRadioButton.checked = True
+        elif self._parameterNode.modelType == "Max":
+            self.ui.modelProRadioButton.checked = True
+        else:
+            self.ui.modelQuickRadioButton.checked = False
+            self.ui.modelProRadioButton.checked = False
+
+    def _syncNotesTypeRadioWithParameterNode(self):
+        if not self._parameterNode:
+            return
+        if self._parameterNode.notesType == "TMJ":
+            self.ui.notesTypeTMJRadioButton.checked = True
+        elif self._parameterNode.notesType == "Ortho":
+            self.ui.notesTypeOrthoRadioButton.checked = True
+        else:
+            self.ui.notesTypeTMJRadioButton.checked = False
+            self.ui.notesTypeOrthoRadioButton.checked = False
+
+
+
+
+
+
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -196,12 +240,6 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.setParameterNode(self.logic.getParameterNode())
 
-        # Select default input nodes if nothing is selected yet to save a few clicks for the user
-        if not self._parameterNode.inputVolume:
-            firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-            if firstVolumeNode:
-                self._parameterNode.inputVolume = firstVolumeNode
-
     def setParameterNode(self, inputParameterNode: CNE_UIParameterNode | None) -> None:
         """
         Set and observe parameter node.
@@ -218,34 +256,78 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._parameterNodeGuiTag = self._parameterNode.connectGui(self.ui)
             self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self._checkCanApply)
             self._checkCanApply()
+            # Synchroniser les boutons radio avec la valeur du paramètre node
+            self._syncModelTypeRadioWithParameterNode()
+            self._syncNotesTypeRadioWithParameterNode()
+
+
 
     def _checkCanApply(self, caller=None, event=None) -> None:
-        if self._parameterNode and self._parameterNode.inputVolume and self._parameterNode.thresholdedVolume:
-            self.ui.applyButton.toolTip = _("Compute output volume")
+        """Active/désactive le bouton appliquer selon si les champs requis sont remplis"""
+        if self._parameterNode:
+            # Toujours activer le bouton
+            self.ui.applyButton.toolTip = _("Renommer les fichiers")
             self.ui.applyButton.enabled = True
-        else:
-            self.ui.applyButton.toolTip = _("Select input and output volume nodes")
-            self.ui.applyButton.enabled = False
+
 
     def onApplyButton(self) -> None:
         """Run processing when user clicks "Apply" button."""
         with slicer.util.tryWithErrorDisplay(_("Failed to compute results."), waitCursor=True):
-            # Compute output
-            self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(),
-                               self.ui.imageThresholdSliderWidget.value, self.ui.invertOutputCheckBox.checked)
+                        
+            print("Button Clicked \n")            
+            # Mettre à jour les paramètres depuis l'interface
+            self._updateParameterNodeFromGUI()
 
-            # Compute inverted output (if needed)
-            if self.ui.invertedOutputSelector.currentNode():
-                # If additional output volume is selected then result with inverted threshold is written there
-                self.logic.process(self.ui.inputSelector.currentNode(), self.ui.invertedOutputSelector.currentNode(),
-                                   self.ui.imageThresholdSliderWidget.value, not self.ui.invertOutputCheckBox.checked, showResult=False)
+            # Utiliser les valeurs du nœud de paramètres
+            notesFolder_input = self._parameterNode.notesFolder_input
+            modelType = self._parameterNode.modelType
+            notesType = self._parameterNode.notesType
+            notesFolder_output = self._parameterNode.notesFolder_output
+
+            # Exécuter le traitement
+            success = self.logic.process(
+                notesFolder_input, modelType,
+                notesType, notesFolder_output
+            )
+
+            if success:
+                slicer.util.messageBox("Sucess run !")
+
+    def _updateParameterNodeFromGUI(self) -> None:
+        """Met à jour le nœud de paramètres à partir de l'interface utilisateur"""
+        if not self._parameterNode:
+            return
+            
+        wasModified = self._parameterNode.StartModify()
+        
+        # Get input/output folder paths from ctkPathLineEdit
+        self._parameterNode.notesFolder_input = self.ui.notesFolderLineEdit_input.currentPath
+        self._parameterNode.notesFolder_output = self.ui.notesFolderLineEdit_output.currentPath
+
+        # Get selected model type radio button
+        if self.ui.modelQuickRadioButton.checked:
+            self._parameterNode.modelType = "Mini"
+        elif self.ui.modelProRadioButton.checked:
+            self._parameterNode.modelType = "Max"
+        else:
+            self._parameterNode.modelType = ""
+
+        # Get selected notes type radio button
+        if self.ui.notesTypeTMJRadioButton.checked:
+            self._parameterNode.notesType = "TMJ"
+        elif self.ui.notesTypeOrthoRadioButton.checked:
+            self._parameterNode.notesType = "Ortho"
+        else:
+            self._parameterNode.notesType = ""
+
+        self._parameterNode.EndModify(wasModified)
+
+
 
 
 #
 # CNE_UILogic
 #
-
-
 class CNE_UILogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
     computation done by your module.  The interface
@@ -263,50 +345,41 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
     def getParameterNode(self):
         return CNE_UIParameterNode(super().getParameterNode())
 
-    def process(self,
-                inputVolume: vtkMRMLScalarVolumeNode,
-                outputVolume: vtkMRMLScalarVolumeNode,
-                imageThreshold: float,
-                invert: bool = False,
-                showResult: bool = True) -> None:
+    def process(self, notesFolder_input: str, modelType: str, 
+                notesType: str, notesFolder_output: str) -> bool:
         """
-        Run the processing algorithm.
-        Can be used without GUI widget.
-        :param inputVolume: volume to be thresholded
-        :param outputVolume: thresholding result
-        :param imageThreshold: values above/below this threshold will be set to 0
-        :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-        :param showResult: show output volume in slice viewers
+        Exécute le processus de summary de fichiers en utilisant le module CLI.
         """
-
-        if not inputVolume or not outputVolume:
-            raise ValueError("Input or output volume is invalid")
-
-        import time
-
-        startTime = time.time()
-        logging.info("Processing started")
-
-        # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-        cliParams = {
-            "InputVolume": inputVolume.GetID(),
-            "OutputVolume": outputVolume.GetID(),
-            "ThresholdValue": imageThreshold,
-            "ThresholdType": "Above" if invert else "Below",
+        import os
+        
+        if not notesFolder_input or not modelType or not notesType or not notesFolder_output:
+            logging.error("Missing Param")
+            return False
+            
+        # Créer le dossier de sortie s'il n'existe pas
+        os.makedirs(notesFolder_output, exist_ok=True)
+            
+        # Accéder au module CLI enregistré dans Slicer
+        CLI_module = slicer.modules.cne_cli
+        
+        # Préparer les paramètres pour le CLI
+        parameters = {
+            "notesFolder_input": notesFolder_input,
+            "modelType": modelType,
+            "notesType": notesType,
+            "notesFolder_output": notesFolder_output,
         }
-        cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
-        # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-        slicer.mrmlScene.RemoveNode(cliNode)
+        print(parameters)
 
-        stopTime = time.time()
-        logging.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
+        # Exécuter le CLI avec slicer.cli.run
+        print("\nRUN CLI")          
+        self.cliNode = slicer.cli.run(CLI_module, None, parameters)
+
 
 
 #
 # CNE_UITest
 #
-
-
 class CNE_UITest(ScriptedLoadableModuleTest):
     """
     This is the test case for your scripted module.
