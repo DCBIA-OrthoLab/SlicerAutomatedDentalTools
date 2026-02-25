@@ -1,21 +1,14 @@
 import logging
 import os
 from typing import Annotated
-
 import vtk
-
 import slicer
 from slicer.i18n import tr as _
 from slicer.i18n import translate
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
-from slicer.parameterNodeWrapper import (
-    parameterNodeWrapper,
-    WithinRange,
-)
-
+from slicer.parameterNodeWrapper import (parameterNodeWrapper,WithinRange,)
 from slicer import vtkMRMLScalarVolumeNode
-
 
 # ------------------------------------------------------------------------------------------------
 # LIB
@@ -27,8 +20,6 @@ def install_function(self,list_libs:list):
     pass #TO DO
 
 
-
-
 class CNE_UI(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
@@ -36,18 +27,14 @@ class CNE_UI(ScriptedLoadableModule):
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("CNE_UI")  # TODO: make this more human readable by adding spaces
-        # TODO: set categories (folders where the module shows up in the module selector)
+        self.parent.title = _("CNE_UI")
         self.parent.categories = ["Automated Dental Tools"]
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = ["John Doe (AnyWare Corp.)"]  # TODO: replace with "Firstname Lastname (Organization)"
-        # TODO: update with short description of the module and a link to online module documentation
-        # _() function marks text as translatable to other languages
+        self.parent.contributors = ["Paul Dumont, University of North Carolina, Chapell Hill"]  
         self.parent.helpText = _("""
-        This is an example of scripted loadable module bundled in an extension.
-        See more information in <a href="https://github.com/organization/projectname#CNE_UI">module documentation</a>.
+        This tool helps to create summaries of clinical notes. 
+        See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools">documentation</a>.
         """)
-        # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = _("""
         This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
         and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
@@ -60,8 +47,6 @@ class CNE_UI(ScriptedLoadableModule):
 #
 # Register sample data sets in Sample Data module
 #
-
-
 def registerSampleData():
     """Add data sets to Sample Data module."""
     # It is always recommended to provide sample data for users to make it easy to try the module,
@@ -110,8 +95,6 @@ def registerSampleData():
 #
 # CNE_UIParameterNode
 #
-
-
 @parameterNodeWrapper
 class CNE_UIParameterNode:
     """
@@ -134,8 +117,6 @@ class CNE_UIParameterNode:
 #
 # CNE_UIWidget
 #
-
-
 class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py

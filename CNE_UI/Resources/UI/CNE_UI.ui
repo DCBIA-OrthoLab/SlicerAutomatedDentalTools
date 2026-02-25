@@ -60,10 +60,11 @@
         </property>
        </widget>
       </item>
+      
       <item row="2" column="0">
        <widget class="QLabel" name="label_selectModel">
         <property name="text">
-         <string>Select Model:</string>
+         <string>Select Model type:</string>
         </property>
        </widget>
       </item>
@@ -73,9 +74,6 @@
        <widget class="QRadioButton" name="modelQuickRadioButton">
         <property name="text">
         <string>Mini (Light/Fast)</string>
-        </property>
-        <property name="checked">
-        <bool>true</bool>
         </property>
        </widget>
       </item>
@@ -88,10 +86,38 @@
       </item>
       </layout>
     </item>
+    <!-- Ajout du choix du type de note -->
+    <item row="3" column="0">
+     <widget class="QLabel" name="label_selectNotesType">
+      <property name="text">
+       <string>Select Notes type:</string>
+      </property>
+     </widget>
+    </item>
+    <item row="3" column="1">
+     <layout class="QHBoxLayout" name="layout_notesTypeSelection">
+      <item>
+       <widget class="QRadioButton" name="notesTypeTMJRadioButton">
+        <property name="text">
+         <string>TMJ</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="notesTypeOrthoRadioButton">
+        <property name="text">
+         <string>Ortho</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
      </layout>
     </widget>
    </item>
+   <!-- Removed invalid <item> block that caused Qt parsing error -->
    <item>
+   
     <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton">
      <property name="text">
       <string>Outputs</string>
