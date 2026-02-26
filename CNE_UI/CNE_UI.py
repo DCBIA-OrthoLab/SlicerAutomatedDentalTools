@@ -131,6 +131,7 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Called when the user opens the module the first time and the widget is initialized."""
         ScriptedLoadableModuleWidget.setup(self)
 
+
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
         uiWidget = slicer.util.loadUI(self.resourcePath("UI/CNE_UI.ui"))
@@ -152,6 +153,14 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.notesTypeButtonGroup.addButton(self.ui.notesTypeTMJRadioButton)
         self.notesTypeButtonGroup.addButton(self.ui.notesTypeOrthoRadioButton)
         self.notesTypeButtonGroup.setExclusive(True)
+
+        # ==========================================================
+        # ---> AJOUTER ICI : Création de la barre de progression <--
+        # ==========================================================
+        self.cliProgressBar = slicer.qSlicerCLIProgressBar()
+        self.cliProgressBar.visible = False 
+        self.layout.addWidget(self.cliProgressBar)
+
 
         # Connections
 
@@ -274,7 +283,9 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Run processing when user clicks "Apply" button."""
         with slicer.util.tryWithErrorDisplay(_("Failed to compute results."), waitCursor=True):
                         
-            print("Button Clicked \n")            
+            print("\n" + "="*50)
+            print("CNE (Clinical Notes Extraction)")
+            print("="*50)           
             # Mettre à jour les paramètres depuis l'interface
             self._updateParameterNodeFromGUI()
 
@@ -284,14 +295,28 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             notesType = self._parameterNode.notesType
             notesFolder_output = self._parameterNode.notesFolder_output
 
-            # Exécuter le traitement
-            success = self.logic.process(
+            # --- English summary of selected parameters ---
+            print(f"Input folder   : {notesFolder_input}")
+            print(f"Output folder  : {notesFolder_output}")
+            print(f"Selected model : {modelType}")
+            print(f"Notes type     : {notesType}")
+            print("-" * 50)
+
+            # On récupère le cliNode renvoyé par la logic
+            cliNode = self.logic.process(
                 notesFolder_input, modelType,
                 notesType, notesFolder_output
             )
 
-            if success:
-                slicer.util.messageBox("Sucess run !")
+            if cliNode:
+                # On connecte le noeud à la barre de progression de l'UI
+                self.cliProgressBar.setCommandLineModuleNode(cliNode)
+                self.cliProgressBar.visible = True
+
+
+
+
+
 
     def _updateParameterNodeFromGUI(self) -> None:
         """Met à jour le nœud de paramètres à partir de l'interface utilisateur"""
@@ -353,29 +378,65 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
         import os
         
         if not notesFolder_input or not modelType or not notesType or not notesFolder_output:
-            logging.error("Missing Param")
-            return False
+            logging.error("Process cancelled: Missing required parameters.")
+            return None # Renvoie None en cas d'erreur
             
-        # Créer le dossier de sortie s'il n'existe pas
         os.makedirs(notesFolder_output, exist_ok=True)
             
-        # Accéder au module CLI enregistré dans Slicer
         CLI_module = slicer.modules.cne_cli
-        
-        # Préparer les paramètres pour le CLI
         parameters = {
             "notesFolder_input": notesFolder_input,
             "modelType": modelType,
             "notesType": notesType,
             "notesFolder_output": notesFolder_output,
         }
-        print(parameters)
-
-        # Exécuter le CLI avec slicer.cli.run
-        print("\nRUN CLI")          
+        
+        print("Launching background process (CLI)...")        
         self.cliNode = slicer.cli.run(CLI_module, None, parameters)
+        
+        # L'Observer pour les logs finaux reste dans la Logic, c'est très bien !
+        self.cliNode.AddObserver(slicer.vtkMRMLCommandLineModuleNode.StatusModifiedEvent, self.onCliModified)
+        
+        # --- MODIFICATION ICI ---
+        # On renvoie le noeud à l'interface au lieu de True
+        return self.cliNode
 
-
+    def onCliProgress(self, caller, event):
+        """Callback déclenché à chaque <filter-progress> du CLI."""
+        # GetProgress() renvoie un chiffre entre 0.0 et 1.0 (ou 0 et 100 selon la version)
+        progress = caller.GetProgress() 
+             
+    def onCliModified(self, caller, event):
+            """Callback triggered when CLI status changes (completed, cancelled, etc.)."""
+            status = caller.GetStatus()
+            
+            if status & (slicer.vtkMRMLCommandLineModuleNode.Completed | slicer.vtkMRMLCommandLineModuleNode.Cancelled):
+                print("Background process finished (CLI)")   
+                print("="*50)
+                
+                # Handle success or cancellation
+                if status == slicer.vtkMRMLCommandLineModuleNode.Completed:
+                    print("CNE (Clinical Notes Extraction) SUCCESSFULL")
+                    # Optional popup for the user
+                    slicer.util.messageBox("Notes extraction is complete!")
+                elif status == slicer.vtkMRMLCommandLineModuleNode.Cancelled:
+                    print("PROCESS CANCELLED BY USER")
+                    
+                print("="*50)
+            
+                # Retrieve standard "prints" from the CLI
+                output_text = caller.GetOutputText() 
+                if output_text:
+                    print("\n--- Detailed CLI Logs ---")
+                    print(output_text.strip()) 
+                    print("---------------------------\n")
+                    
+                # Retrieve Python errors from the CLI (Crucial for debugging!)
+                error_text = caller.GetErrorText()
+                if error_text:
+                    logging.error("\n--- CLI ERRORS ---")
+                    print(error_text.strip())
+                    print("---------------------\n")
 
 #
 # CNE_UITest
