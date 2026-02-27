@@ -42,6 +42,12 @@
       <index>3</index>
       <description>by to file names.</description>
     </string>
+
+    <string>
+      <name>modelPath</name>
+      <label>Model Path</label>
+      <index>4</index>
+    </string>
     
   </parameters>
 

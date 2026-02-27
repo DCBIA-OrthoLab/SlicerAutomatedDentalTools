@@ -3,21 +3,82 @@ import os
 from typing import Annotated
 import vtk
 import slicer
+import qt
 from slicer.i18n import tr as _
 from slicer.i18n import translate
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 from slicer.parameterNodeWrapper import (parameterNodeWrapper,WithinRange,)
 from slicer import vtkMRMLScalarVolumeNode
+import importlib
 
 # ------------------------------------------------------------------------------------------------
 # LIB
 # ------------------------------------------------------------------------------------------------
-def check_lib_installed(lib_name, required_version=None):
-    pass #TO DO
+def check_lib_installed(import_name: str) -> bool:
+    """
+    Silently checks if a Python library is installed and accessible.
+    'import_name' is the name used in the code (e.g., 'llama_cpp').
+    """
+    try:
+        importlib.import_module(import_name)
+        return True
+    except ImportError:
+        return False
 
-def install_function(self,list_libs:list):
-    pass #TO DO
+def install_function(list_libs: list) -> None:
+    """
+    Installs a list of packages via pip in the 3D Slicer environment.
+    Assumes the user has already given permission.
+    """
+    for lib in list_libs:
+        # Show message and prevent Slicer from freezing
+        slicer.util.showStatusMessage(f"Installing {lib}... Please wait.")
+        slicer.app.processEvents() 
+        
+        try:
+            # -------------------------------------------------------------
+            # ASTUCE POUR LINUX/MAC/WINDOWS : Éviter la compilation C++
+            # -------------------------------------------------------------
+            if lib == "llama-cpp-python":
+                # On force pip à télécharger la version pré-compilée (CPU)
+                slicer.util.pip_install("llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu")
+            else:
+                # Comportement normal pour les autres librairies (ex: docx)
+                slicer.util.pip_install(lib)
+            # -------------------------------------------------------------
+                
+            slicer.util.showStatusMessage(f"{lib} successfully installed!", 3000)
+            logging.info(f"Successfully installed {lib}")
+            
+        except Exception as e:
+            slicer.util.errorDisplay(f"Failed to install {lib}.\nError: {str(e)}")
+
+def check_dependencies() -> bool:
+    """
+    Checks dependencies when the Apply button is clicked.
+    Returns True if everything is ready, False if it should be cancelled.
+    """
+    missing_libs = []
+    
+    if not check_lib_installed("llama_cpp"):
+        missing_libs.append("llama-cpp-python")
+
+    if missing_libs:
+        libs_str = ", ".join(missing_libs)
+        msg = f"The CNE module needs to install the following libraries to extract notes:\n\n- {libs_str}\n\nDo you want to proceed with the installation? (This may take a few minutes)"
+        
+        if slicer.util.confirmOkCancelDisplay(msg):
+            install_function(missing_libs)
+            
+            # Double-check to ensure the installation didn't fail
+            if not check_lib_installed("llama_cpp"):
+                return False
+        else:
+            slicer.util.warningDisplay("Installation cancelled. Extraction has been stopped.")
+            return False
+            
+    return True # Everything is good, we can proceed!
 
 
 class CNE_UI(ScriptedLoadableModule):
@@ -106,10 +167,10 @@ class CNE_UIParameterNode:
     notesFolder_output - Folder for summary output.
     """
 
-    notesFolder_input: str = "" # Path to input notes folder
-    modelType: str = ""  # "Mini" or "Max"
-    notesType: str = ""   # "TMJ" or "Ortho"
-    notesFolder_output: str = ""  # Path to output summary folder
+    notesFolder_input: str = "/home/luciacev"
+    modelType: str = "Mini"
+    notesType: str = "TMJ"
+    notesFolder_output: str = "/home/luciacev"
 
 #
 # CNE_UIWidget
@@ -126,6 +187,7 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = None
         self._parameterNode = None
         self._parameterNodeGuiTag = None
+        self._updatingGUIFromParameterNode = False # <-- AJOUTER ICI
 
     def setup(self) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
@@ -142,7 +204,6 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = CNE_UILogic()
 
         # Create QButtonGroup for model type selection
-        import qt
         self.modelTypeButtonGroup = qt.QButtonGroup()
         self.modelTypeButtonGroup.addButton(self.ui.modelQuickRadioButton)
         self.modelTypeButtonGroup.addButton(self.ui.modelProRadioButton)
@@ -171,6 +232,11 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Buttons
         self.ui.applyButton.connect("clicked(bool)", self.onApplyButton)
 
+        self.ui.modelQuickRadioButton.connect("toggled(bool)", self._updateParameterNodeFromGUI)
+        self.ui.modelProRadioButton.connect("toggled(bool)", self._updateParameterNodeFromGUI)
+        self.ui.notesTypeTMJRadioButton.connect("toggled(bool)", self._updateParameterNodeFromGUI)
+        self.ui.notesTypeOrthoRadioButton.connect("toggled(bool)", self._updateParameterNodeFromGUI)
+
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
 
@@ -185,29 +251,37 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Synchroniser les boutons radio avec la valeur du paramètre node
         self._syncModelTypeRadioWithParameterNode()
         self._syncNotesTypeRadioWithParameterNode()
+
+
         # Les boutons radio seront synchronisés avec le paramètre node après l'initialisation
     def _syncModelTypeRadioWithParameterNode(self):
         if not self._parameterNode:
             return
+            
+        self._updatingGUIFromParameterNode = True # On active le verrou
+        
         if self._parameterNode.modelType == "Mini":
             self.ui.modelQuickRadioButton.checked = True
         elif self._parameterNode.modelType == "Max":
             self.ui.modelProRadioButton.checked = True
-        else:
-            self.ui.modelQuickRadioButton.checked = False
-            self.ui.modelProRadioButton.checked = False
+            
+        self._updatingGUIFromParameterNode = False # On désactive le verrou
 
     def _syncNotesTypeRadioWithParameterNode(self):
         if not self._parameterNode:
             return
+            
+        self._updatingGUIFromParameterNode = True
+        
         if self._parameterNode.notesType == "TMJ":
             self.ui.notesTypeTMJRadioButton.checked = True
         elif self._parameterNode.notesType == "Ortho":
             self.ui.notesTypeOrthoRadioButton.checked = True
-        else:
-            self.ui.notesTypeTMJRadioButton.checked = False
-            self.ui.notesTypeOrthoRadioButton.checked = False
-
+            
+        self._updatingGUIFromParameterNode = False
+        # -----------------------------------------------------------------------------------
+        # DELETE THIS (default value)
+        # -----------------------------------------------------------------------------------
 
 
 
@@ -281,6 +355,11 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onApplyButton(self) -> None:
         """Run processing when user clicks "Apply" button."""
+
+        if not check_dependencies():
+            # Si ça renvoie False (annulé ou échec), on s'arrête net sans lancer le CLI
+            return
+
         with slicer.util.tryWithErrorDisplay(_("Failed to compute results."), waitCursor=True):
                         
             print("\n" + "="*50)
@@ -320,7 +399,7 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def _updateParameterNodeFromGUI(self) -> None:
         """Met à jour le nœud de paramètres à partir de l'interface utilisateur"""
-        if not self._parameterNode:
+        if not self._parameterNode or self._updatingGUIFromParameterNode:
             return
             
         wasModified = self._parameterNode.StartModify()
@@ -367,20 +446,103 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
         """Called when the logic class is instantiated. Can be used for initializing member variables."""
         ScriptedLoadableModuleLogic.__init__(self)
 
-    def getParameterNode(self):
+    def getParameterNode(self,):
         return CNE_UIParameterNode(super().getParameterNode())
+    
+    def getModelPath(self, modelType: str):
+        """Returns the local path to the model, downloading it if necessary with a progress popup."""
+        
+        # 1. Configuration of the model based on UI selection
+        if modelType == "Mini":
+            repo_id = "dcbia/Phi-3.5-Mini-Instruct-Ortho"
+            # IMPORTANT : Remplace "model-Q4_K_M.gguf" par le nom exact du fichier que tu as uploadé !
+            fileName = "model-q4_0.gguf" 
+            localModelName = "Phi-3.5-Mini-Ortho.gguf"
+            dialogText = "Downloading Mini AI model (approx. 2.4 GB)..."
+            
+        elif modelType == "Max":
+            repo_id = "dcbia/Meta-Llama-3.1-8B-Instruct-Ortho"
+            # IMPORTANT : Remplace "model-Q4_K_M.gguf" par le nom exact du fichier que tu as uploadé !
+            fileName = "model-q4_0.gguf" 
+            localModelName = "Meta-Llama-3.1-8B-Ortho.gguf"
+            dialogText = "Downloading Max AI model (approx. 4.7 GB)..."
+            
+        else:
+            raise ValueError(f"Unknown model type selected: {modelType}")
+
+        modelUrl = f"https://huggingface.co/{repo_id}/resolve/main/{fileName}"
+        
+        # 2. Directory structure
+        documents = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
+        SlicerDownloadPath = os.path.join(
+            documents,
+            slicer.app.applicationName + "Downloads",
+            "CNE"
+        )
+        
+        if not os.path.exists(SlicerDownloadPath):
+            os.makedirs(SlicerDownloadPath)
+            
+        destPath = os.path.join(SlicerDownloadPath, localModelName)
+
+        # 3. Check and download
+        if not os.path.exists(destPath):
+            print(f"Downloading {modelType} model to: {destPath}")
+            
+            # --- Create the popup (QProgressDialog) ---
+            progressDialog = qt.QProgressDialog(dialogText, "Cancel", 0, 100)
+            progressDialog.setWindowTitle(f"CNE - Preparing {modelType} AI Model")
+            progressDialog.setWindowModality(qt.Qt.WindowModal) 
+            progressDialog.setMinimumDuration(0)
+            progressDialog.show()
+
+            # --- Callback function to update the popup ---
+            def download_progress(count, block_size, total_size):
+                if progressDialog.wasCanceled:
+                    raise Exception("Download cancelled by user.")
+                
+                if total_size > 0:
+                    percent = min(int((count * block_size * 100) / total_size), 100)
+                    progressDialog.setValue(percent)
+                
+                # Forces Slicer to refresh the UI (prevents freezing)
+                slicer.app.processEvents()
+
+            # --- Start the download ---
+            import urllib.request
+            try:
+                urllib.request.urlretrieve(modelUrl, destPath, reporthook=download_progress)
+                progressDialog.setValue(100)
+                slicer.util.showStatusMessage(f"{modelType} model download completed!", 3000)
+                
+            except Exception as e:
+                if os.path.exists(destPath):
+                    os.remove(destPath)
+                slicer.util.errorDisplay(f"Download failed or was cancelled: {e}")
+                progressDialog.close()
+                raise e 
+                
+            finally:
+                progressDialog.close()
+            
+        return destPath
 
     def process(self, notesFolder_input: str, modelType: str, 
                 notesType: str, notesFolder_output: str) -> bool:
-        """
-        Exécute le processus de summary de fichiers en utilisant le module CLI.
-        """
-        import os
         
+        # 1. Vérification des paramètres
         if not notesFolder_input or not modelType or not notesType or not notesFolder_output:
             logging.error("Process cancelled: Missing required parameters.")
-            return None # Renvoie None en cas d'erreur
+            return None
             
+        # 2. Download or locate the requested model
+        try:
+            # <--- ON PASSE LE modelType À LA FONCTION ICI
+            modelPath = self.getModelPath(modelType) 
+        except Exception as e:
+            slicer.util.errorDisplay(f"Failed to load model: {e}")
+            return None
+
         os.makedirs(notesFolder_output, exist_ok=True)
             
         CLI_module = slicer.modules.cne_cli
@@ -389,16 +551,13 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
             "modelType": modelType,
             "notesType": notesType,
             "notesFolder_output": notesFolder_output,
+            "modelPath": modelPath, # <--- ON PASSE LE CHEMIN LOCAL AU CLI
         }
         
-        print("Launching background process (CLI)...")        
+        print(f"Launching CLI with model: {modelPath}")        
         self.cliNode = slicer.cli.run(CLI_module, None, parameters)
-        
-        # L'Observer pour les logs finaux reste dans la Logic, c'est très bien !
         self.cliNode.AddObserver(slicer.vtkMRMLCommandLineModuleNode.StatusModifiedEvent, self.onCliModified)
         
-        # --- MODIFICATION ICI ---
-        # On renvoie le noeud à l'interface au lieu de True
         return self.cliNode
 
     def onCliProgress(self, caller, event):
