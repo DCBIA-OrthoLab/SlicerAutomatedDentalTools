@@ -103,6 +103,16 @@ def CreateListProcess(**kwargs):
 
     list_process = []
 
+    # Load all slicer modules at the beginning
+    ResampleProcess = slicer.modules.mri2cbct_resample_cbct_mri
+    PreOrientProcess = slicer.modules.pre_aso_cbct
+    ALIProcess = slicer.modules.ali_cbct
+    SEMI_ASOProcess = slicer.modules.semi_aso_cbct
+    AMASSSProcess = slicer.modules.amasss_cli
+    AutomatrixProcess = slicer.modules.automatrix_cli
+    AREGProcess = slicer.modules.areg_cbct
+    AsymProcess = slicer.modules.vface_cli
+
     nb_scan = NumberScan(kwargs["InputFolder"])
     patients = GetPatients(kwargs["InputFolder"], time_point="T1")
 
@@ -190,7 +200,6 @@ def CreateListProcess(**kwargs):
             "spacing": [0.3,0.3,0.3],
             "center": "True"
         }
-        ResampleProcess = slicer.modules.mri2cbct_resample_cbct_mri
         list_process.append(
             {
                 "Process": ResampleProcess,
@@ -210,7 +219,6 @@ def CreateListProcess(**kwargs):
             "temp_folder": slicer.util.tempDirectory(),
             "DCMInput": False,
         }
-        PreOrientProcess = slicer.modules.pre_aso_cbct
         list_process.append(
             {
                 "Process": PreOrientProcess,
@@ -235,7 +243,6 @@ def CreateListProcess(**kwargs):
             "spawn_radius": "10",
         }
 
-        ALIProcess = slicer.modules.ali_cbct
         list_process.append(
             {
                 "Process": ALIProcess,
@@ -254,8 +261,6 @@ def CreateListProcess(**kwargs):
             "add_inname": "MAX_Or",
             "list_landmark": 'ANS IF PNS UL6O UR1O UR6O',
         }
-
-        SEMI_ASOProcess = slicer.modules.semi_aso_cbct
 
         list_process.append(
             {
@@ -359,7 +364,6 @@ def CreateListProcess(**kwargs):
                 "spacing": [0.3,0.3,0.3],
                 "center": "True"
             }
-            ResampleProcess = slicer.modules.mri2cbct_resample_cbct_mri
             list_process.append(
                 {
                     "Process": ResampleProcess,
@@ -379,8 +383,6 @@ def CreateListProcess(**kwargs):
                 "temp_folder": slicer.util.tempDirectory(),
                 "DCMInput": False,
             }
-
-            PreOrientProcess = slicer.modules.pre_aso_cbct
 
             list_process.append(
                 {
@@ -413,7 +415,6 @@ def CreateListProcess(**kwargs):
             "SegmentInput": False,
             "DCMInput": False,
         }
-        AMASSSProcess = slicer.modules.amasss_cli
         list_process.append(
             {
                 "Process": AMASSSProcess,
@@ -439,7 +440,6 @@ def CreateListProcess(**kwargs):
             "SegmentInput": False,
             "DCMInput": False,
         }
-        AMASSSProcess = slicer.modules.amasss_cli
         list_process.append(
             {
                 "Process": AMASSSProcess,
@@ -451,7 +451,6 @@ def CreateListProcess(**kwargs):
                 "pause_for_visualization": True,
             },
         )
-
         if kwargs["mode2"] == "Asymmetry Assesment":
             if kwargs["reg_type"] == "CMFReg":
                 t2mask_folder_path = os.path.join(kwargs["OutputFolder"],"T2_Masks")
@@ -468,7 +467,6 @@ def CreateListProcess(**kwargs):
                     "log_path": slicer.util.tempDirectory(),
                     "is_seg": True
                 }
-                AutomatrixProcess = slicer.modules.automatrix_cli
                 list_process.append(
                     {
                         "Process": AutomatrixProcess,
@@ -543,8 +541,6 @@ def CreateListProcess(**kwargs):
             "ApproxReg": False,
             "mask_folder_t1": mask_folder_path,
         }
-
-        AREGProcess = slicer.modules.areg_cbct
 
         list_process.append(
             {
@@ -820,8 +816,6 @@ def CreateListProcess(**kwargs):
                 "agent_FOV": "[64,64,64]",
                 "spawn_radius": "10"
                 }
-        
-        ALIProcess = slicer.modules.ali_cbct
 
         list_process.append(
             {
@@ -878,8 +872,6 @@ def CreateListProcess(**kwargs):
                 "log_path": slicer.util.tempDirectory(),
                 "is_seg": False
                 }
-
-            AutomatrixProcess = slicer.modules.automatrix_cli
 
             list_process.append(
                 {
@@ -1031,8 +1023,6 @@ def CreateListProcess(**kwargs):
                     "agent_FOV": "[64,64,64]",
                     "spawn_radius": "10"
                     }
-            
-            ALIProcess = slicer.modules.ali_cbct
 
             list_process.append(
                 {
@@ -1193,8 +1183,6 @@ def CreateListProcess(**kwargs):
                     "excel_path": os.path.join(measurements_folder_path,"PostProcess_Measurements.xlsx"),
                     "output_path": os.path.join(classification_folder_path,"Classification.xlsx")
             }
-
-            AsymProcess = slicer.modules.vface_cli
 
             list_process.append(
                 {
