@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <title>VFACE_CLI</title>
+  <description>This extension is created to help you to classified the facial asymettry of your patient.</description>
+  <version>0.1.0.</version>
+  <license/>
+  <contributor>Alexandre Buisson (University of North Carolina at Chapel Hill)</contributor>
+  <parameters>
+    <string>
+      <name>model_path</name>
+      <label>model_path</label>
+      <index>0</index>
+      <description>Path to the model trained</description>
+    </string>
+    <string>
+      <name>excel_path</name>
+      <label>excel_path</label>
+      <index>1</index>
+      <description>Path to the excel file</description>
+    </string>
+    <string>
+      <name>output_path</name>
+      <label>output_path</label>
+      <index>2</index>
+      <description>Path to the output folder</description>
+    </string>
+  </parameters>
+</executable>

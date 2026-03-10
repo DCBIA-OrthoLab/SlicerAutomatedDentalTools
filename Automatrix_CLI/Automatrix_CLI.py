@@ -291,9 +291,6 @@ def main(args):
                 except Exception as e:
                     print(f"ERROR processing {scan} with matrix {matrix}: {e}")
                     continue
-        
-            with open(args.log_path, "a") as log_f:
-                log_f.write(str(1))
                             
             print(f"""<filter-progress>{0}</filter-progress>""")
             sys.stdout.flush()

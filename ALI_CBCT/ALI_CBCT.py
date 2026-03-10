@@ -220,12 +220,6 @@ def main(input):
         print(f"Fails for {lm} : {nbr}/{len(environment_lst)}")
 
 
-    try:
-        shutil.rmtree(temp_fold)
-    except OSError as e:
-        print("Error: %s : %s" % (temp_fold, e.strerror))
-
-
 if __name__ == "__main__":
 
     print("Starting ALI-CBCT")
