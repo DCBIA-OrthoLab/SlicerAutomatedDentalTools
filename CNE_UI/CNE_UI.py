@@ -25,34 +25,53 @@ def check_lib_installed(import_name: str) -> bool:
         return True
     except ImportError:
         return False
-
 def install_function(list_libs: list) -> None:
     """
     Installs a list of packages via pip in the 3D Slicer environment.
     Assumes the user has already given permission.
     """
+    import os
+    import logging
+    
+    # --- SLICER LINUX FIX (THE ULTIMATE WORKAROUND) ---
+    # Slicer's Python remembers the Red Hat compiler used to build it.
+    # We must explicitly FORCE pip to use the standard Linux system compilers.
+    original_cc = os.environ.get("CC")
+    original_cxx = os.environ.get("CXX")
+    
+    os.environ["CC"] = "gcc"
+    os.environ["CXX"] = "g++"
+    # --------------------------------------------------
+
     for lib in list_libs:
         # Show message and prevent Slicer from freezing
         slicer.util.showStatusMessage(f"Installing {lib}... Please wait.")
         slicer.app.processEvents() 
         
         try:
-            # -------------------------------------------------------------
-            # ASTUCE POUR LINUX/MAC/WINDOWS : Éviter la compilation C++
-            # -------------------------------------------------------------
             if lib == "llama-cpp-python":
-                # On force pip à télécharger la version pré-compilée (CPU)
+                # We still point to the CPU wheels just in case
                 slicer.util.pip_install("llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu")
             else:
-                # Comportement normal pour les autres librairies (ex: docx)
                 slicer.util.pip_install(lib)
-            # -------------------------------------------------------------
                 
             slicer.util.showStatusMessage(f"{lib} successfully installed!", 3000)
             logging.info(f"Successfully installed {lib}")
             
         except Exception as e:
             slicer.util.errorDisplay(f"Failed to install {lib}.\nError: {str(e)}")
+
+    # --- RESTORE SLICER ENVIRONMENT ---
+    if original_cc is not None:
+        os.environ["CC"] = original_cc
+    else:
+        del os.environ["CC"] # Clean up if it didn't exist before
+        
+    if original_cxx is not None:
+        os.environ["CXX"] = original_cxx
+    else:
+        del os.environ["CXX"]
+    # ----------------------------------
 
 def check_dependencies() -> bool:
     """
@@ -65,8 +84,15 @@ def check_dependencies() -> bool:
         missing_libs.append("llama-cpp-python")
 
     if missing_libs:
-        libs_str = ", ".join(missing_libs)
-        msg = f"The CNE module needs to install the following libraries to extract notes:\n\n- {libs_str}\n\nDo you want to proceed with the installation? (This may take a few minutes)"
+        libs_str = "\n".join([f"- {lib}" for lib in missing_libs])
+        
+        # Professional warning message inspired by Slicer community standards
+        msg = (
+            "The CNE module requires the following libraries to function:\n\n"
+            f"{libs_str}\n\n"
+            "Do you agree to modify Slicer's environment to install them? "
+            "This may take a few minutes.)"
+        )
         
         if slicer.util.confirmOkCancelDisplay(msg):
             install_function(missing_libs)
@@ -79,7 +105,6 @@ def check_dependencies() -> bool:
             return False
             
     return True # Everything is good, we can proceed!
-
 
 class CNE_UI(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -167,10 +192,10 @@ class CNE_UIParameterNode:
     notesFolder_output - Folder for summary output.
     """
 
-    notesFolder_input: str = "/home/luciacev"
+    notesFolder_input: str = ""
     modelType: str = "Mini"
     notesType: str = "TMJ"
-    notesFolder_output: str = "/home/luciacev"
+    notesFolder_output: str = ""
 
 #
 # CNE_UIWidget
@@ -245,8 +270,8 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # -----------------------------------------------------------------------------------
         # DELETE THIS (default value)
         # -----------------------------------------------------------------------------------
-        self.ui.notesFolderLineEdit_input.currentPath = "/home/luciacev"
-        self.ui.notesFolderLineEdit_output.currentPath = "/home/luciacev"
+        self.ui.notesFolderLineEdit_input.currentPath = "/home/luciacev/Desktop/3dSlicer/CNE/input_Ortho"
+        self.ui.notesFolderLineEdit_output.currentPath = "/home/luciacev/Desktop/3dSlicer/CNE/output_Ortho"
         
         # Synchroniser les boutons radio avec la valeur du paramètre node
         self._syncModelTypeRadioWithParameterNode()
@@ -449,25 +474,41 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
     def getParameterNode(self,):
         return CNE_UIParameterNode(super().getParameterNode())
     
-    def getModelPath(self, modelType: str):
+    def getModelPath(self, modelType: str,notesType: str):
         """Returns the local path to the model, downloading it if necessary with a progress popup."""
-        
+        print(notesType,modelType)
+
         # 1. Configuration of the model based on UI selection
-        if modelType == "Mini":
-            repo_id = "dcbia/Phi-3.5-Mini-Instruct-Ortho"
-            # IMPORTANT : Remplace "model-Q4_K_M.gguf" par le nom exact du fichier que tu as uploadé !
-            fileName = "model-q4_0.gguf" 
-            localModelName = "Phi-3.5-Mini-Ortho.gguf"
-            dialogText = "Downloading Mini AI model (approx. 2.4 GB)..."
-            
-        elif modelType == "Max":
-            repo_id = "dcbia/Meta-Llama-3.1-8B-Instruct-Ortho"
-            # IMPORTANT : Remplace "model-Q4_K_M.gguf" par le nom exact du fichier que tu as uploadé !
-            fileName = "model-q4_0.gguf" 
-            localModelName = "Meta-Llama-3.1-8B-Ortho.gguf"
-            dialogText = "Downloading Max AI model (approx. 4.7 GB)..."
-            
+        if notesType == "Ortho":
+            if modelType == "Mini":
+
+                repo_id = "dcbia/Phi-3.5-Mini-Instruct-Ortho"
+                fileName = "model-q4_0.gguf" 
+                localModelName = "Phi-3.5-Mini-Ortho.gguf"
+                dialogText = "Downloading Mini Ortho AI model (approx. 2.4 GB)..."
+                
+            elif modelType == "Max":
+                repo_id = "dcbia/Meta-Llama-3.1-8B-Instruct-Ortho"
+                fileName = "model-q4_0.gguf" 
+                localModelName = "Meta-Llama-3.1-8B-Ortho.gguf"
+                dialogText = "Downloading Max Ortho AI model (approx. 4.7 GB)..."
+
+                # 1. Configuration of the model based on UI selection
+        elif notesType == "TMJ":
+            if modelType == "Mini":
+                repo_id = "dcbia/Qwen-2.5-1.5B-Instruct-TMJ"
+                fileName = "Qwen-2.5-1.5B-Instruct-TMJ-q4_0.gguf" 
+                localModelName = "Qwen-2.5-1.5B-TMJ.gguf"
+                dialogText = "Downloading Mini TMJ AI model (approx. 1 GB)..."
+                
+            elif modelType == "Max":
+                repo_id = "dcbia/Qwen-2.5-7B-Instruct-TMJ"
+                fileName = "Qwen-2.5-7B-Instruct-TMJ-q4_0.gguf" 
+                localModelName = "Qwen-2.5-7B-TMJ.gguf"
+                dialogText = "Downloading Max TMJ AI model (approx. 4.4 GB)..."
+        
         else:
+            # print(f"{repo_id}\n",f"{fileName}\n",localModelName)
             raise ValueError(f"Unknown model type selected: {modelType}")
 
         modelUrl = f"https://huggingface.co/{repo_id}/resolve/main/{fileName}"
@@ -537,8 +578,9 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
             
         # 2. Download or locate the requested model
         try:
-            # <--- ON PASSE LE modelType À LA FONCTION ICI
-            modelPath = self.getModelPath(modelType) 
+            print("Model download")
+            modelPath = self.getModelPath(modelType,notesType) 
+            print("model path", modelPath)
         except Exception as e:
             slicer.util.errorDisplay(f"Failed to load model: {e}")
             return None
