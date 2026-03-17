@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>Matrix_bis</class>
  <widget class="qMRMLWidget" name="Matrix_bis">
@@ -10,7 +10,112 @@
     <height>2482</height>
    </rect>
   </property>
+  <property name="styleSheet">
+   <string notr="true">qMRMLWidget {
+  background-color: #f8f9fa;
+}
+ctkCollapsibleButton {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+ctkCollapsibleButton:hover {
+  border: 1px solid #3498db;
+  background-color: #fbfcfd;
+}
+QLineEdit, QTextEdit {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 6px;
+  selection-background-color: #3498db;
+}
+QLineEdit:focus, QTextEdit:focus {
+  border: 2px solid #3498db;
+}
+QComboBox {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+QComboBox:focus {
+  border: 2px solid #3498db;
+}
+QComboBox::drop-down {
+  width: 20px;
+  border: none;
+}
+QLabel {
+  color: #2c3e50;
+  font-weight: 500;
+}
+QPushButton {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 10pt;
+  padding: 8px;
+  margin-top: 4px;
+}
+QPushButton:hover:!pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+}
+QPushButton:pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+}
+QPushButton:disabled {
+  background-color: #bdc3c7;
+  color: #95a5a6;
+}
+QCheckBox {
+  color: #2c3e50;
+  font-weight: 500;
+  spacing: 6px;
+}
+QCheckBox::indicator {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #e0e6ed;
+  border-radius: 3px;
+  background-color: #ffffff;
+}
+QCheckBox::indicator:hover {
+  border: 1px solid #3498db;
+}
+QProgressBar {
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  background-color: #ffffff;
+  padding: 2px;
+}
+QProgressBar::chunk {
+  background-color: #3498db;
+  border-radius: 3px;
+}
+  </string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
     <widget class="ctkCollapsibleButton" name="resampleCollapsibleButton">
      <property name="enabled">
@@ -20,9 +125,9 @@
       <string>Resample</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_9">
-      <item>
+      <property name="spacing"><number>6</number></property><item>
        <layout class="QHBoxLayout" name="horizontalLayout_5">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QCheckBox" name="CheckBoxT2CBCT">
           <property name="text">
            <string>T1 and T2 CBCT</string>
@@ -63,7 +168,7 @@
       </item>
       <item>
        <layout class="QVBoxLayout" name="verticalLayout_6">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <layout class="QGridLayout" name="gridLayout_7">
           <item row="2" column="0">
            <widget class="QLabel" name="labelT1MRI">
@@ -73,7 +178,7 @@
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="QLineEdit" name="lineEditResampleMRI"/>
+           <widget class="QLineEdit" name="lineEditResampleMRI" />
           </item>
           <item row="4" column="2">
            <widget class="QPushButton" name="SearchButtonResampleSeg">
@@ -104,7 +209,7 @@
            </widget>
           </item>
           <item row="5" column="1">
-           <widget class="QLineEdit" name="lineEditResampleT2Seg"/>
+           <widget class="QLineEdit" name="lineEditResampleT2Seg" />
           </item>
           <item row="1" column="2">
            <widget class="QPushButton" name="SearchButtonResampleT2CBCT">
@@ -135,10 +240,10 @@
            </widget>
           </item>
           <item row="4" column="1">
-           <widget class="QLineEdit" name="lineEditResampleSeg"/>
+           <widget class="QLineEdit" name="lineEditResampleSeg" />
           </item>
           <item row="3" column="1">
-           <widget class="QLineEdit" name="lineEditResampleT2MRI"/>
+           <widget class="QLineEdit" name="lineEditResampleT2MRI" />
           </item>
           <item row="4" column="0">
            <widget class="QLabel" name="labelT1Seg">
@@ -162,17 +267,17 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="QLineEdit" name="lineEditResampleCBCT"/>
+           <widget class="QLineEdit" name="lineEditResampleCBCT" />
           </item>
           <item row="1" column="1">
-           <widget class="QLineEdit" name="lineEditResampleT2CBCT"/>
+           <widget class="QLineEdit" name="lineEditResampleT2CBCT" />
           </item>
          </layout>
         </item>
        </layout>
       </item>
       <item>
-       <widget class="QTableWidget" name="tableWidgetResample"/>
+       <widget class="QTableWidget" name="tableWidgetResample" />
       </item>
       <item>
        <spacer name="verticalSpacer_4">
@@ -192,7 +297,7 @@
       </item>
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_6">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QLabel" name="labelResampling">
           <property name="text">
            <string>No resampling selected</string>
@@ -229,7 +334,7 @@
       </item>
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_3">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QLabel" name="label_10">
           <property name="text">
            <string>Output folder : </string>
@@ -237,7 +342,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="lineEditOuputResample"/>
+         <widget class="QLineEdit" name="lineEditOuputResample" />
         </item>
         <item>
          <widget class="QPushButton" name="SearchOutputFolderResample">
@@ -251,7 +356,7 @@
       <item>
        <widget class="QPushButton" name="pushButtonResample">
         <property name="styleSheet">
-         <string notr="true"/>
+         <string notr="true" />
         </property>
         <property name="text">
          <string>Run resample</string>
@@ -374,7 +479,7 @@
       </item>
       <item row="15" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_9">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <spacer name="horizontalSpacer_3">
           <property name="orientation">
            <enum>Qt::Horizontal</enum>
@@ -418,7 +523,7 @@
       </item>
       <item row="16" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_8">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QLabel" name="label_4">
           <property name="text">
            <string>Input MRI folder:</string>
@@ -426,7 +531,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="LineEditMRI"/>
+         <widget class="QLineEdit" name="LineEditMRI" />
         </item>
         <item>
          <widget class="QComboBox" name="ComboBoxMRI">
@@ -461,13 +566,13 @@
       <item row="17" column="1">
        <widget class="QTableWidget" name="tableWidgetOrient">
         <property name="whatsThis">
-         <string/>
+         <string />
         </property>
        </widget>
       </item>
       <item row="19" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_2">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QPushButton" name="ButtonDefaultOrientMRI">
           <property name="text">
            <string>Default</string>
@@ -491,7 +596,7 @@
       </item>
       <item row="24" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_13">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QLabel" name="label_25">
           <property name="text">
            <string>Output folder: </string>
@@ -499,7 +604,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="lineEditOutputOrientMRI"/>
+         <widget class="QLineEdit" name="lineEditOutputOrientMRI" />
         </item>
         <item>
          <widget class="QPushButton" name="SearchOutputFolderOrientMRI">
@@ -513,7 +618,7 @@
       <item row="25" column="1">
        <widget class="QPushButton" name="pushButtonOrientMRI">
         <property name="styleSheet">
-         <string notr="true"/>
+         <string notr="true" />
         </property>
         <property name="text">
          <string>Orient and Center MRI</string>
@@ -572,7 +677,7 @@
       </item>
       <item row="29" column="1">
        <layout class="QVBoxLayout" name="verticalLayout_2">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <layout class="QGridLayout" name="gridLayout_8">
           <item row="3" column="2">
            <widget class="QPushButton" name="SearchButtonSepOut">
@@ -596,7 +701,7 @@
            </widget>
           </item>
           <item row="3" column="1">
-           <widget class="QLineEdit" name="lineEditSepOut"/>
+           <widget class="QLineEdit" name="lineEditSepOut" />
           </item>
           <item row="0" column="2">
            <widget class="QPushButton" name="SearchButtonSepCBCT">
@@ -606,7 +711,7 @@
            </widget>
           </item>
           <item row="1" column="1">
-           <widget class="QLineEdit" name="lineEditSepMRI"/>
+           <widget class="QLineEdit" name="lineEditSepMRI" />
           </item>
           <item row="3" column="0">
            <widget class="QLabel" name="label_28">
@@ -616,7 +721,7 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="QLineEdit" name="lineEditSepCBCT"/>
+           <widget class="QLineEdit" name="lineEditSepCBCT" />
           </item>
           <item row="0" column="0">
            <widget class="QLabel" name="label_27">
@@ -640,7 +745,7 @@
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="QLineEdit" name="lineEditSepSeg"/>
+           <widget class="QLineEdit" name="lineEditSepSeg" />
           </item>
          </layout>
         </item>
@@ -672,7 +777,7 @@
       <item row="32" column="1">
        <widget class="QPushButton" name="pushButtonCropLR">
         <property name="styleSheet">
-         <string notr="true"/>
+         <string notr="true" />
         </property>
         <property name="text">
          <string>Separate</string>
@@ -717,7 +822,7 @@
      <layout class="QFormLayout" name="formLayout">
       <item row="0" column="0" colspan="2">
        <layout class="QVBoxLayout" name="verticalLayout_4">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <layout class="QGridLayout" name="gridLayout_4">
           <item row="1" column="4">
            <widget class="QPushButton" name="SearchButtonApproxMRI">
@@ -734,10 +839,10 @@
            </widget>
           </item>
           <item row="1" column="1">
-           <widget class="QLineEdit" name="lineEditApproxMRI"/>
+           <widget class="QLineEdit" name="lineEditApproxMRI" />
           </item>
           <item row="0" column="1">
-           <widget class="QLineEdit" name="lineEditApproxCBCT"/>
+           <widget class="QLineEdit" name="lineEditApproxCBCT" />
           </item>
           <item row="0" column="4">
            <widget class="QPushButton" name="SearchButtonApproxCBCT">
@@ -761,7 +866,7 @@
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="QLineEdit" name="lineEditOutputApprox"/>
+           <widget class="QLineEdit" name="lineEditOutputApprox" />
           </item>
           <item row="2" column="4">
            <widget class="QPushButton" name="SearchButtonOutputApprox">
@@ -777,7 +882,7 @@
       <item row="1" column="0" colspan="2">
        <widget class="QPushButton" name="pushButtonApproximateMRI">
         <property name="styleSheet">
-         <string notr="true"/>
+         <string notr="true" />
         </property>
         <property name="text">
          <string>Approximate MRI</string>
@@ -861,13 +966,13 @@
       </item>
       <item row="3" column="1">
        <layout class="QVBoxLayout" name="verticalLayout_7">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <layout class="QGridLayout" name="gridLayout_5">
           <item row="0" column="1">
-           <widget class="QLineEdit" name="lineEditCropTMJCBCT"/>
+           <widget class="QLineEdit" name="lineEditCropTMJCBCT" />
           </item>
           <item row="1" column="1">
-           <widget class="QLineEdit" name="lineEditCropTMJMRI"/>
+           <widget class="QLineEdit" name="lineEditCropTMJMRI" />
           </item>
           <item row="0" column="0">
            <widget class="QLabel" name="label_9">
@@ -912,7 +1017,7 @@
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="QLineEdit" name="lineEditCropTMJSeg"/>
+           <widget class="QLineEdit" name="lineEditCropTMJSeg" />
           </item>
          </layout>
         </item>
@@ -920,7 +1025,7 @@
       </item>
       <item row="4" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_4">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QLabel" name="label_29">
           <property name="text">
            <string>Segmentation Model:</string>
@@ -928,7 +1033,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="lineEditTMJModel"/>
+         <widget class="QLineEdit" name="lineEditTMJModel" />
         </item>
         <item>
          <widget class="QPushButton" name="pushButtonSearchModelTMJ">
@@ -1074,7 +1179,7 @@
          </widget>
         </item>
         <item row="0" column="1">
-         <widget class="QLineEdit" name="lineEditRegMRI"/>
+         <widget class="QLineEdit" name="lineEditRegMRI" />
         </item>
         <item row="2" column="4">
          <widget class="QPushButton" name="pushButtonTestFileRegSeg">
@@ -1098,7 +1203,7 @@
          </widget>
         </item>
         <item row="2" column="1">
-         <widget class="QLineEdit" name="lineEditRegLabel"/>
+         <widget class="QLineEdit" name="lineEditRegLabel" />
         </item>
         <item row="1" column="3">
          <widget class="QPushButton" name="SearchButtonRegCBCT">
@@ -1129,7 +1234,7 @@
          </widget>
         </item>
         <item row="1" column="1">
-         <widget class="QLineEdit" name="lineEditRegCBCT"/>
+         <widget class="QLineEdit" name="lineEditRegCBCT" />
         </item>
         <item row="1" column="2">
          <widget class="QComboBox" name="comboBoxRegCBCT">
@@ -1148,11 +1253,11 @@
        </layout>
       </item>
       <item row="13" column="1">
-       <widget class="QTableWidget" name="tableWidgetNorm"/>
+       <widget class="QTableWidget" name="tableWidgetNorm" />
       </item>
       <item row="14" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QPushButton" name="ButtonCheckBoxDefaultNorm1">
           <property name="text">
            <string>Default 1</string>
@@ -1183,10 +1288,10 @@
       </item>
       <item row="16" column="1">
        <layout class="QVBoxLayout" name="verticalLayout_21">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <layout class="QGridLayout" name="gridLayout_21">
           <item row="1" column="1">
-           <widget class="QLineEdit" name="LineEditOutput"/>
+           <widget class="QLineEdit" name="LineEditOutput" />
           </item>
           <item row="1" column="0">
            <widget class="QLabel" name="label_2">
@@ -1236,7 +1341,7 @@
          <string>Run the algorithm.</string>
         </property>
         <property name="styleSheet">
-         <string notr="true"/>
+         <string notr="true" />
         </property>
         <property name="text">
          <string>Registration</string>
@@ -1245,7 +1350,7 @@
       </item>
       <item row="6" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_10">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QLabel" name="label_21">
           <property name="text">
            <string>Output folder:</string>
@@ -1253,7 +1358,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="lineEditCropTMJOut"/>
+         <widget class="QLineEdit" name="lineEditCropTMJOut" />
         </item>
         <item>
          <widget class="QPushButton" name="SearchButtonTMJOut">
@@ -1269,7 +1374,7 @@
    </item>
    <item>
     <layout class="QVBoxLayout" name="verticalLayout_3">
-     <item>
+     <property name="spacing"><number>6</number></property><item>
       <layout class="QGridLayout" name="gridLayout_6">
        <item row="3" column="0">
         <widget class="QLabel" name="label_time">
@@ -1287,7 +1392,7 @@
           <number>0</number>
          </property>
          <property name="format">
-          <string/>
+          <string />
          </property>
         </widget>
        </item>
@@ -1345,6 +1450,6 @@
    <container>1</container>
   </customwidget>
  </customwidgets>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

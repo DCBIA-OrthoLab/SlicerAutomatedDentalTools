@@ -1866,5 +1866,19 @@ class ALILogic(ScriptedLoadableModuleLogic):
 
         print("command_to_execute in conda run : ",command_execute)
         self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
-
+    import sys
+    
     self.stdout, self.stderr = self.subpro.communicate()
+
+    print("PROCESS OUTPUT")
+    if self.stdout:
+      print(self.stdout)
+    else:
+      print("(No output)")
+    
+    print("PROCESS Error")
+    if self.stderr:
+      print(self.stderr)
+    else:
+      print("(No error)")
+    sys.stdout.flush()

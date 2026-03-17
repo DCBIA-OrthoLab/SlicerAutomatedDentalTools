@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>AMASSS</class>
  <widget class="qMRMLWidget" name="AMASSS">
@@ -10,33 +10,162 @@
     <height>1124</height>
    </rect>
   </property>
+  <property name="styleSheet">
+   <string notr="true">qMRMLWidget {
+  background-color: #f8f9fa;
+}
+ctkCollapsibleButton {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+ctkCollapsibleButton:hover {
+  border: 1px solid #3498db;
+  background-color: #fbfcfd;
+}
+QLineEdit, QTextEdit {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 6px;
+  selection-background-color: #3498db;
+}
+QLineEdit:focus, QTextEdit:focus {
+  border: 2px solid #3498db;
+}
+QComboBox {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+QComboBox:focus {
+  border: 2px solid #3498db;
+}
+QComboBox::drop-down {
+  width: 20px;
+  border: none;
+}
+QLabel {
+  color: #2c3e50;
+  font-weight: 500;
+}
+QPushButton {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 10pt;
+  padding: 8px;
+  margin-top: 4px;
+}
+QPushButton:hover:!pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+}
+QPushButton:pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+}
+QPushButton:disabled {
+  background-color: #bdc3c7;
+  color: #95a5a6;
+}
+QCheckBox {
+  color: #2c3e50;
+  font-weight: 500;
+  spacing: 6px;
+}
+QCheckBox::indicator {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #e0e6ed;
+  border-radius: 3px;
+  background-color: #ffffff;
+}
+QCheckBox::indicator:hover {
+  border: 1px solid #3498db;
+}
+QProgressBar {
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  background-color: #ffffff;
+  padding: 2px;
+}
+QProgressBar::chunk {
+  background-color: #3498db;
+  border-radius: 3px;
+}
+  </string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
     <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
      <property name="text" stdset="0">
       <string>Inputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_16">
+      <property name="spacing">
+       <number>6</number>
+      </property>
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
       <item>
        <layout class="QVBoxLayout" name="verticalLayout_15">
+        <property name="spacing">
+         <number>6</number>
+        </property>
         <property name="leftMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="topMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="rightMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="bottomMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_4">
+          <property name="spacing">
+           <number>8</number>
+          </property>
           <property name="leftMargin">
            <number>0</number>
           </property>
           <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
            <number>0</number>
           </property>
           <property name="bottomMargin">
@@ -44,6 +173,9 @@
           </property>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_4">
+            <property name="spacing">
+             <number>4</number>
+            </property>
             <item>
              <widget class="QLabel" name="label_5">
               <property name="text">
@@ -83,7 +215,7 @@
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_3">
-            <property name="topMargin">
+            <property name="spacing"><number>6</number></property><property name="topMargin">
              <number>0</number>
             </property>
             <property name="rightMargin">
@@ -138,16 +270,16 @@
              </widget>
             </item>
             <item>
-             <widget class="QLineEdit" name="lineEditScanPath"/>
+             <widget class="QLineEdit" name="lineEditScanPath" />
             </item>
             <item>
-             <widget class="QLineEdit" name="lineEditModelPath"/>
+             <widget class="QLineEdit" name="lineEditModelPath" />
             </item>
            </layout>
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_2">
-            <property name="leftMargin">
+            <property name="spacing"><number>6</number></property><property name="leftMargin">
              <number>0</number>
             </property>
             <property name="topMargin">
@@ -162,14 +294,14 @@
             <item>
              <widget class="QLabel" name="emptyLabelNodeSelect">
               <property name="text">
-               <string/>
+               <string />
               </property>
              </widget>
             </item>
             <item>
              <widget class="QLabel" name="label_7">
               <property name="text">
-               <string/>
+               <string />
               </property>
              </widget>
             </item>
@@ -196,7 +328,7 @@
         </item>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_2">
-          <property name="topMargin">
+          <property name="spacing"><number>6</number></property><property name="topMargin">
            <number>0</number>
           </property>
           <item>
@@ -234,17 +366,17 @@
      <layout class="QFormLayout" name="formLayout_1">
       <item row="0" column="0" colspan="2">
        <layout class="QVBoxLayout" name="OptionVLayout">
-        <property name="leftMargin">
+        <property name="spacing"><number>6</number></property><property name="leftMargin">
          <number>0</number>
         </property>
         <property name="topMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="rightMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="bottomMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <item>
          <widget class="QCheckBox" name="smallFOVCheckBox">
@@ -271,35 +403,35 @@
       <string>Outputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_9">
-      <item>
+      <property name="spacing"><number>6</number></property><item>
        <layout class="QVBoxLayout" name="verticalLayout_8">
-        <property name="leftMargin">
-         <number>10</number>
+        <property name="spacing"><number>6</number></property><property name="leftMargin">
+         <number>12</number>
         </property>
         <property name="topMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="rightMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="bottomMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout">
-          <property name="topMargin">
+          <property name="spacing"><number>6</number></property><property name="topMargin">
            <number>0</number>
           </property>
          </layout>
         </item>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_6">
-          <property name="topMargin">
+          <property name="spacing"><number>6</number></property><property name="topMargin">
            <number>0</number>
           </property>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_11">
-            <property name="topMargin">
+            <property name="spacing"><number>6</number></property><property name="topMargin">
              <number>0</number>
             </property>
             <property name="rightMargin">
@@ -336,7 +468,7 @@
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_12">
-            <item>
+            <property name="spacing"><number>6</number></property><item>
              <widget class="QComboBox" name="OutputTypecomboBox">
               <item>
                <property name="text">
@@ -376,7 +508,7 @@
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_14">
-            <property name="rightMargin">
+            <property name="spacing"><number>6</number></property><property name="rightMargin">
              <number>0</number>
             </property>
             <item>
@@ -433,23 +565,23 @@
       <string>Advanced</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_9">
-      <item>
+      <property name="spacing"><number>6</number></property><item>
        <layout class="QVBoxLayout" name="verticalLayout_8">
-        <property name="leftMargin">
-         <number>10</number>
+        <property name="spacing"><number>6</number></property><property name="leftMargin">
+         <number>12</number>
         </property>
         <property name="topMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="rightMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="bottomMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout">
-          <property name="topMargin">
+          <property name="spacing"><number>6</number></property><property name="topMargin">
            <number>0</number>
           </property>
           <item>
@@ -501,12 +633,12 @@
         </item>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_6">
-          <property name="topMargin">
+          <property name="spacing"><number>6</number></property><property name="topMargin">
            <number>0</number>
           </property>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_11">
-            <property name="topMargin">
+            <property name="spacing"><number>6</number></property><property name="topMargin">
              <number>0</number>
             </property>
             <property name="rightMargin">
@@ -523,13 +655,13 @@
              </widget>
             </item>
             <item>
-             <layout class="QVBoxLayout" name="verticalLayout_5"/>
+             <layout class="QVBoxLayout" name="verticalLayout_5"><property name="spacing"><number>6</number></property></layout>
             </item>
            </layout>
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_12">
-            <item>
+            <property name="spacing"><number>6</number></property><item>
              <widget class="QSlider" name="horizontalSliderSmoothing">
               <property name="toolTip">
                <string>Smoothing factor to apply to the generated .vtk surface.</string>
@@ -558,7 +690,7 @@
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_14">
-            <property name="rightMargin">
+            <property name="spacing"><number>6</number></property><property name="rightMargin">
              <number>0</number>
             </property>
             <item>
@@ -572,7 +704,7 @@
              </widget>
             </item>
             <item>
-             <layout class="QVBoxLayout" name="verticalLayout_10"/>
+             <layout class="QVBoxLayout" name="verticalLayout_10"><property name="spacing"><number>6</number></property></layout>
             </item>
            </layout>
           </item>
@@ -591,17 +723,17 @@
      <layout class="QFormLayout" name="formLayout_1">
       <item row="0" column="0" colspan="2">
        <layout class="QVBoxLayout" name="OptionVLayout">
-        <property name="leftMargin">
+        <property name="spacing"><number>6</number></property><property name="leftMargin">
          <number>0</number>
         </property>
         <property name="topMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="rightMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="bottomMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <item>
          <widget class="QLabel" name="PrePredInfo">
@@ -721,6 +853,6 @@
    <container>1</container>
   </customwidget>
  </customwidgets>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>
