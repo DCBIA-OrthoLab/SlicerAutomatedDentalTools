@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>t_crop_volumes</class>
  <widget class="qMRMLWidget" name="t_crop_volumes">
@@ -10,7 +10,112 @@
     <height>899</height>
    </rect>
   </property>
+  <property name="styleSheet">
+   <string notr="true">qMRMLWidget {
+  background-color: #f8f9fa;
+}
+ctkCollapsibleButton {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+ctkCollapsibleButton:hover {
+  border: 1px solid #3498db;
+  background-color: #fbfcfd;
+}
+QLineEdit, QTextEdit {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 6px;
+  selection-background-color: #3498db;
+}
+QLineEdit:focus, QTextEdit:focus {
+  border: 2px solid #3498db;
+}
+QComboBox {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+QComboBox:focus {
+  border: 2px solid #3498db;
+}
+QComboBox::drop-down {
+  width: 20px;
+  border: none;
+}
+QLabel {
+  color: #2c3e50;
+  font-weight: 500;
+}
+QPushButton {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 10pt;
+  padding: 8px;
+  margin-top: 4px;
+}
+QPushButton:hover:!pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+}
+QPushButton:pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+}
+QPushButton:disabled {
+  background-color: #bdc3c7;
+  color: #95a5a6;
+}
+QCheckBox {
+  color: #2c3e50;
+  font-weight: 500;
+  spacing: 6px;
+}
+QCheckBox::indicator {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #e0e6ed;
+  border-radius: 3px;
+  background-color: #ffffff;
+}
+QCheckBox::indicator:hover {
+  border: 1px solid #3498db;
+}
+QProgressBar {
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  background-color: #ffffff;
+  padding: 2px;
+}
+QProgressBar::chunk {
+  background-color: #3498db;
+  border-radius: 3px;
+}
+  </string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
     <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton" native="true">
      <property name="text" stdset="0">
@@ -19,9 +124,9 @@
      <layout class="QFormLayout" name="formLayout_2">
       <item row="1" column="0">
        <layout class="QVBoxLayout" name="verticalLayout_4">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <layout class="QHBoxLayout" name="horizontalLayout_9">
-          <item>
+          <property name="spacing"><number>6</number></property><item>
            <widget class="QLabel" name="label">
             <property name="text">
              <string>Input Folder/File: </string>
@@ -31,7 +136,7 @@
           <item>
            <widget class="QLineEdit" name="editPathF">
             <property name="text">
-             <string/>
+             <string />
             </property>
            </widget>
           </item>
@@ -73,7 +178,7 @@
           <item>
            <widget class="QLineEdit" name="editPathVolume">
             <property name="text">
-             <string/>
+             <string />
             </property>
            </widget>
           </item>
@@ -113,12 +218,12 @@
         <item>
          <widget class="QCheckBox" name="checkBoxCV">
           <property name="text">
-           <string>Use module &quot;Crop Volume&quot; for tilted images</string>
+           <string>Use module "Crop Volume" for tilted images</string>
           </property>
          </widget>
         </item>
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_11"/>
+         <layout class="QHBoxLayout" name="horizontalLayout_11"><property name="spacing"><number>6</number></property></layout>
         </item>
        </layout>
       </item>
@@ -133,9 +238,9 @@
      <layout class="QFormLayout" name="formLayout_4">
       <item row="0" column="0">
        <layout class="QVBoxLayout" name="verticalLayout_5">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <layout class="QHBoxLayout" name="horizontalLayout_12">
-          <item>
+          <property name="spacing"><number>6</number></property><item>
            <widget class="QLabel" name="label_2">
             <property name="text">
              <string>Output Folder: </string>
@@ -145,7 +250,7 @@
           <item>
            <widget class="QLineEdit" name="editPathOutput">
             <property name="text">
-             <string/>
+             <string />
             </property>
            </widget>
           </item>
@@ -160,7 +265,7 @@
         </item>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_14">
-          <item>
+          <property name="spacing"><number>6</number></property><item>
            <widget class="QLabel" name="label_7">
             <property name="text">
              <string>Suffix:</string>
@@ -191,15 +296,15 @@
      </property>
      <layout class="QFormLayout" name="formLayout_3">
       <item row="1" column="0">
-       <layout class="QVBoxLayout" name="verticalLayout_2"/>
+       <layout class="QVBoxLayout" name="verticalLayout_2"><property name="spacing"><number>6</number></property></layout>
       </item>
       <item row="2" column="0">
-       <layout class="QVBoxLayout" name="verticalLayout_3"/>
+       <layout class="QVBoxLayout" name="verticalLayout_3"><property name="spacing"><number>6</number></property></layout>
       </item>
       <item row="0" column="0">
        <widget class="QLabel" name="label_5">
         <property name="text">
-         <string/>
+         <string />
         </property>
        </widget>
       </item>
@@ -223,7 +328,7 @@
    <item>
     <widget class="QLabel" name="label_time">
      <property name="text">
-      <string/>
+      <string />
      </property>
     </widget>
    </item>
@@ -276,6 +381,6 @@
    <container>1</container>
   </customwidget>
  </customwidgets>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

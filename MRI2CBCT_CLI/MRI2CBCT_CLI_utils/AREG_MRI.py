@@ -105,25 +105,54 @@ def registration(cbct_folder,mri_folder,cbct_mask_folder,output_folder,mri_origi
     - Optionally, find the original MRI file.
     - Call process_images to perform registration and save the results.
     """
-    
+
+    cbct_files = [f for f in os.listdir(cbct_folder) if f.endswith(".nii.gz") and "_CBCT_" in f]
+    if not cbct_files:
+
+        raise ValueError(f"No valid CBCT files found in {cbct_folder}. Files must end in .nii.gz and contain '_CBCT_'")
+        
     for cbct_file in os.listdir(cbct_folder):
         if cbct_file.endswith(".nii.gz") and "_CBCT_" in cbct_file:
             patient_id = cbct_file.split("_CBCT_")[0]
-        
+    
             mri_path = get_corresponding_file(mri_folder, patient_id, "_MR_")
-            if mri_path is None :
-                    mri_path = get_corresponding_file(mri_folder, patient_id, "_MRI_")
-                    
-            if mri_original_folder!="None":
-                mri_path_original = get_corresponding_file(mri_original_folder, patient_id, "_MR_")
-                if mri_path_original is None :
-                    mri_path_original = get_corresponding_file(mri_original_folder, patient_id, "_MRI_")
-            
-
+            if mri_path is None:
+                mri_path = get_corresponding_file(mri_folder, patient_id, "_MRI_")
+            if mri_path is None:
+                print("=" * 62)
+                print("ERROR: Could not find MRI file for patient:", patient_id)
+                print("Files must be named following this convention:")
+                print("  CBCT: PATIENTID_CBCT_anything.nii.gz")
+                print("  MRI:  PATIENTID_MR_anything.nii.gz  or  PATIENTID_MRI_anything.nii.gz")
+                print("  MASK: PATIENTID_CBCT_anything.nii.gz")
+                print("=" * 62)
+                raise ValueError(f"No MRI file found for patient {patient_id} in {mri_folder}")
+                
             cbct_mask_path = get_corresponding_file(cbct_mask_folder, patient_id, "_CBCT_")
+            if cbct_mask_path is None:
+                print("=" * 62)
+                print("ERROR: Could not find mask file for patient:", patient_id)
+                print("Files must be named following this convention:")
+                print("  CBCT: PATIENTID_CBCT_anything.nii.gz")
+                print("  MRI:  PATIENTID_MR_anything.nii.gz  or  PATIENTID_MRI_anything.nii.gz")
+                print("  MASK: PATIENTID_CBCT_anything.nii.gz")
+                print("=" * 62)
+                raise ValueError(f"No mask file found for patient {patient_id} in {cbct_mask_folder}")
 
-            process_images(mri_path, cbct_mask_path, output_folder, patient_id, mri_path_original,)
-
+            if mri_original_folder != "None":
+                mri_path_original = get_corresponding_file(mri_original_folder, patient_id, "_MR_")
+                if mri_path_original is None:
+                    mri_path_original = get_corresponding_file(mri_original_folder, patient_id, "_MRI_")
+                if mri_path_original is None:
+                    print("=" * 62)
+                    print("ERROR: Could not find original MRI file for patient:", patient_id)
+                    print("Files must be named following this convention:")
+                    print("  CBCT: PATIENTID_CBCT_anything.nii.gz")
+                    print("  MRI:  PATIENTID_MR_anything.nii.gz  or  PATIENTID_MRI_anything.nii.gz")
+                    print("  MASK: PATIENTID_CBCT_anything.nii.gz")
+                    print("=" * 62)
+                    raise ValueError(f"No original MRI file found for patient {patient_id} in {mri_original_folder}")
+            
 def process_images(mri_path, cbct_mask_path, output_folder, patient_id, mri_path_original):
     """
     Processes MRI and CBCT mask images, performs registration, and saves the results.
@@ -145,8 +174,10 @@ def process_images(mri_path, cbct_mask_path, output_folder, patient_id, mri_path
     try : 
         mri_image = itk.imread(mri_path, itk.F)
         cbct_mask_image = itk.imread(cbct_mask_path, itk.F)
-    except KeyError as e:
-        print(f"An error occurred while reading the images of the patient : {patient_id}")
+    except Exception as e:
+        print("=" * 62)
+        print(f"AN ERROR OCCURED, PLEASE MAKE SURE YOU FILES ARE NOT CORRUPTED AND OF A ACCEPTED FORMAT, EXAMPLE: nii.gz")
+        print("=" * 62)
         print(e)
         print(f"{patient_id} failed")
         return
@@ -156,7 +187,9 @@ def process_images(mri_path, cbct_mask_path, output_folder, patient_id, mri_path
     try : 
         TransformObj_Fine = ElastixReg(cbct_mask_image, mri_image, initial_transform=None)
     except Exception as e:
-        print(f"An error occurred during the registration process on the patient {patient_id} :")
+        print("=" * 62)
+        print(f" REGISTRATION FAILED. PLEASE MAKE SURE THE IMAGES ARE OF SIMILAR SIZE, ORIENTATION, AND APPOXIMATED")
+        print("=" * 62)
         print(e)
         return
     

@@ -10,33 +10,162 @@
     <height>950</height>
    </rect>
   </property>
+  <property name="styleSheet">
+   <string notr="true">qMRMLWidget {
+  background-color: #f8f9fa;
+}
+ctkCollapsibleButton {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+ctkCollapsibleButton:hover {
+  border: 1px solid #3498db;
+  background-color: #fbfcfd;
+}
+QLineEdit, QTextEdit {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 6px;
+  selection-background-color: #3498db;
+}
+QLineEdit:focus, QTextEdit:focus {
+  border: 2px solid #3498db;
+}
+QComboBox {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+QComboBox:focus {
+  border: 2px solid #3498db;
+}
+QComboBox::drop-down {
+  width: 20px;
+  border: none;
+}
+QLabel {
+  color: #2c3e50;
+  font-weight: 500;
+}
+QPushButton {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 10pt;
+  padding: 8px;
+  margin-top: 4px;
+}
+QPushButton:hover:!pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+}
+QPushButton:pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+}
+QPushButton:disabled {
+  background-color: #bdc3c7;
+  color: #95a5a6;
+}
+QCheckBox {
+  color: #2c3e50;
+  font-weight: 500;
+  spacing: 6px;
+}
+QCheckBox::indicator {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #e0e6ed;
+  border-radius: 3px;
+  background-color: #ffffff;
+}
+QCheckBox::indicator:hover {
+  border: 1px solid #3498db;
+}
+QProgressBar {
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  background-color: #ffffff;
+  padding: 2px;
+}
+QProgressBar::chunk {
+  background-color: #3498db;
+  border-radius: 3px;
+}
+  </string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
     <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
      <property name="text">
       <string>Inputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_16">
+      <property name="spacing">
+       <number>6</number>
+      </property>
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
       <item>
        <layout class="QVBoxLayout" name="verticalLayout_15">
+        <property name="spacing">
+         <number>6</number>
+        </property>
         <property name="leftMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="topMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="rightMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="bottomMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_4">
+          <property name="spacing">
+           <number>8</number>
+          </property>
           <property name="leftMargin">
            <number>0</number>
           </property>
           <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
            <number>0</number>
           </property>
           <property name="bottomMargin">
@@ -44,6 +173,9 @@
           </property>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_4">
+            <property name="spacing">
+             <number>4</number>
+            </property>
             <item>
              <widget class="QLabel" name="label_8">
               <property name="text">
@@ -106,6 +238,9 @@
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_3">
+            <property name="spacing">
+             <number>4</number>
+            </property>
             <property name="topMargin">
              <number>0</number>
             </property>
@@ -195,6 +330,9 @@
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_2">
+            <property name="spacing">
+             <number>4</number>
+            </property>
             <property name="leftMargin">
              <number>0</number>
             </property>
@@ -269,6 +407,9 @@
       </item>
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <property name="spacing">
+         <number>8</number>
+        </property>
         <item>
          <widget class="QPushButton" name="DownloadTestPushButton">
           <property name="toolTip">
@@ -297,13 +438,34 @@
       <string>Options</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_10">
+      <property name="spacing">
+       <number>6</number>
+      </property>
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
       <item>
        <layout class="QVBoxLayout" name="OptionVLayout">
+        <property name="spacing">
+         <number>6</number>
+        </property>
         <property name="topMargin">
-         <number>10</number>
+         <number>12</number>
+        </property>
+        <property name="rightMargin">
+         <number>12</number>
         </property>
         <property name="bottomMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <item>
          <widget class="QLabel" name="label_7">
@@ -323,22 +485,43 @@
       <string>Outputs</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_9">
+      <property name="spacing">
+       <number>6</number>
+      </property>
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
       <item>
        <layout class="QVBoxLayout" name="verticalLayout_8">
+        <property name="spacing">
+         <number>8</number>
+        </property>
         <property name="leftMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="topMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="rightMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="bottomMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_9">
+          <property name="spacing">
+           <number>12</number>
+          </property>
           <property name="topMargin">
            <number>0</number>
           </property>
@@ -393,11 +576,17 @@
         </item>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_6">
+          <property name="spacing">
+           <number>8</number>
+          </property>
           <property name="topMargin">
            <number>0</number>
           </property>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_11">
+            <property name="spacing">
+             <number>4</number>
+            </property>
             <property name="topMargin">
              <number>0</number>
             </property>
@@ -415,6 +604,9 @@
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_12">
+            <property name="spacing">
+             <number>4</number>
+            </property>
             <item>
              <widget class="QLineEdit" name="SaveFolderLineEdit">
               <property name="enabled">
@@ -426,6 +618,9 @@
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_14">
+            <property name="spacing">
+             <number>4</number>
+            </property>
             <property name="rightMargin">
              <number>0</number>
             </property>
@@ -460,19 +655,37 @@
       <bool>true</bool>
      </property>
      <layout class="QHBoxLayout" name="horizontalLayout">
+      <property name="spacing">
+       <number>8</number>
+      </property>
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
       <item>
        <layout class="QVBoxLayout" name="verticalLayout_6">
+        <property name="spacing">
+         <number>6</number>
+        </property>
         <property name="leftMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="topMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="rightMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="bottomMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
        </layout>
       </item>
@@ -487,17 +700,20 @@
      <layout class="QFormLayout" name="formLayout_1">
       <item row="0" column="0" colspan="2">
        <layout class="QVBoxLayout" name="OptionVLayout">
+        <property name="spacing">
+         <number>8</number>
+        </property>
         <property name="leftMargin">
          <number>0</number>
         </property>
         <property name="topMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="rightMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <property name="bottomMargin">
-         <number>10</number>
+         <number>12</number>
         </property>
         <item>
          <widget class="QLabel" name="LabelNameExtension">

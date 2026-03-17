@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>CLIC</class>
  <widget class="qMRMLWidget" name="CLIC">
@@ -10,19 +10,124 @@
     <height>800</height>
    </rect>
   </property>
+  <property name="styleSheet">
+   <string notr="true">qMRMLWidget {
+  background-color: #f8f9fa;
+}
+ctkCollapsibleButton {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+ctkCollapsibleButton:hover {
+  border: 1px solid #3498db;
+  background-color: #fbfcfd;
+}
+QLineEdit, QTextEdit {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 6px;
+  selection-background-color: #3498db;
+}
+QLineEdit:focus, QTextEdit:focus {
+  border: 2px solid #3498db;
+}
+QComboBox {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+QComboBox:focus {
+  border: 2px solid #3498db;
+}
+QComboBox::drop-down {
+  width: 20px;
+  border: none;
+}
+QLabel {
+  color: #2c3e50;
+  font-weight: 500;
+}
+QPushButton {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 10pt;
+  padding: 8px;
+  margin-top: 4px;
+}
+QPushButton:hover:!pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+}
+QPushButton:pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+}
+QPushButton:disabled {
+  background-color: #bdc3c7;
+  color: #95a5a6;
+}
+QCheckBox {
+  color: #2c3e50;
+  font-weight: 500;
+  spacing: 6px;
+}
+QCheckBox::indicator {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #e0e6ed;
+  border-radius: 3px;
+  background-color: #ffffff;
+}
+QCheckBox::indicator:hover {
+  border: 1px solid #3498db;
+}
+QProgressBar {
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  background-color: #ffffff;
+  padding: 2px;
+}
+QProgressBar::chunk {
+  background-color: #3498db;
+  border-radius: 3px;
+}
+  </string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
     <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
      <property name="text">
       <string>Inputs</string>
      </property>
      <layout class="QVBoxLayout" name="inputLayout">
-      <item>
-       <layout class="QHBoxLayout" name="inputTypeLayout"/>
+      <property name="spacing"><number>6</number></property><item>
+       <layout class="QHBoxLayout" name="inputTypeLayout"><property name="spacing"><number>6</number></property></layout>
       </item>
       <item>
        <layout class="QHBoxLayout" name="scanPathLayout">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QLabel" name="ScanPathLabel">
           <property name="text">
            <string>Select Scan File/Folder</string>
@@ -33,8 +138,8 @@
       </item>
       <item>
        <layout class="QHBoxLayout" name="fileSelectionLayout">
-        <item>
-         <widget class="QLineEdit" name="lineEditScanPath"/>
+        <property name="spacing"><number>6</number></property><item>
+         <widget class="QLineEdit" name="lineEditScanPath" />
         </item>
         <item>
          <widget class="QPushButton" name="SearchScanFolder">
@@ -46,13 +151,13 @@
        </layout>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="extensionLayout"/>
+       <layout class="QHBoxLayout" name="extensionLayout"><property name="spacing"><number>6</number></property></layout>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="nodeSelectionLayout"/>
+       <layout class="QHBoxLayout" name="nodeSelectionLayout"><property name="spacing"><number>6</number></property></layout>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="modelSelectionLayout"/>
+       <layout class="QHBoxLayout" name="modelSelectionLayout"><property name="spacing"><number>6</number></property></layout>
       </item>
      </layout>
     </widget>
@@ -63,9 +168,9 @@
       <string>Models</string>
      </property>
      <layout class="QVBoxLayout" name="modelsLayout">
-      <item>
+      <property name="spacing"><number>6</number></property><item>
        <layout class="QHBoxLayout" name="downloadModelsLayout">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QPushButton" name="DownloadModelPushButton">
           <property name="text">
            <string>Download Model</string>
@@ -89,7 +194,7 @@
        </widget>
       </item>
       <item>
-       <widget class="QLineEdit" name="lineEditModelPath"/>
+       <widget class="QLineEdit" name="lineEditModelPath" />
       </item>
       <item>
        <widget class="QPushButton" name="SearchModelFolder">
@@ -107,9 +212,9 @@
       <string>Outputs</string>
      </property>
      <layout class="QVBoxLayout" name="outputsLayout">
-      <item>
+      <property name="spacing"><number>6</number></property><item>
        <layout class="QHBoxLayout" name="saveOptionsLayout">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QCheckBox" name="SavePredictCheckBox">
           <property name="text">
            <string>Save Predictions in Input Folder</string>
@@ -125,10 +230,10 @@
         </item>
        </layout>
       </item>
-      <!-- Nouvel item pour saisir le suffixe avant la sélection du dossier de sortie -->
+      
       <item>
        <layout class="QHBoxLayout" name="suffixSelectionLayout">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QLabel" name="SuffixLabel">
           <property name="text">
            <string>Suffix:</string>
@@ -146,7 +251,7 @@
       </item>
       <item>
        <layout class="QHBoxLayout" name="predictFolderLayout">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QLabel" name="PredictFolderLabel">
           <property name="text">
            <string>Prediction Folder</string>
@@ -156,7 +261,7 @@
        </layout>
       </item>
       <item>
-       <widget class="QLineEdit" name="SaveFolderLineEdit"/>
+       <widget class="QLineEdit" name="SaveFolderLineEdit" />
       </item>
      </layout>
     </widget>
@@ -167,7 +272,7 @@
       <string>Compute</string>
      </property>
      <layout class="QVBoxLayout" name="computeLayout">
-      <item>
+      <property name="spacing"><number>6</number></property><item>
        <widget class="QPushButton" name="PredictionButton">
         <property name="text">
          <string>Run</string>
@@ -235,6 +340,6 @@
    <container>1</container>
   </customwidget>
  </customwidgets>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

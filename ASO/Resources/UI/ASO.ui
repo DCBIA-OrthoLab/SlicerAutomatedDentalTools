@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>ASO</class>
  <widget class="qMRMLWidget" name="ASO">
@@ -10,7 +10,112 @@
     <height>954</height>
    </rect>
   </property>
+  <property name="styleSheet">
+   <string notr="true">qMRMLWidget {
+  background-color: #f8f9fa;
+}
+ctkCollapsibleButton {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+ctkCollapsibleButton:hover {
+  border: 1px solid #3498db;
+  background-color: #fbfcfd;
+}
+QLineEdit, QTextEdit {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 6px;
+  selection-background-color: #3498db;
+}
+QLineEdit:focus, QTextEdit:focus {
+  border: 2px solid #3498db;
+}
+QComboBox {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+QComboBox:focus {
+  border: 2px solid #3498db;
+}
+QComboBox::drop-down {
+  width: 20px;
+  border: none;
+}
+QLabel {
+  color: #2c3e50;
+  font-weight: 500;
+}
+QPushButton {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 10pt;
+  padding: 8px;
+  margin-top: 4px;
+}
+QPushButton:hover:!pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+}
+QPushButton:pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+}
+QPushButton:disabled {
+  background-color: #bdc3c7;
+  color: #95a5a6;
+}
+QCheckBox {
+  color: #2c3e50;
+  font-weight: 500;
+  spacing: 6px;
+}
+QCheckBox::indicator {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #e0e6ed;
+  border-radius: 3px;
+  background-color: #ffffff;
+}
+QCheckBox::indicator:hover {
+  border: 1px solid #3498db;
+}
+QProgressBar {
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  background-color: #ffffff;
+  padding: 2px;
+}
+QProgressBar::chunk {
+  background-color: #3498db;
+  border-radius: 3px;
+}
+  </string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
     <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
      <property name="text">
@@ -21,9 +126,9 @@
        <layout class="QGridLayout" name="gridLayout">
         <item row="0" column="0">
          <layout class="QHBoxLayout" name="horizontalLayout">
-          <item>
+          <property name="spacing"><number>6</number></property><item>
            <layout class="QVBoxLayout" name="verticalLayout_2">
-            <item>
+            <property name="spacing"><number>6</number></property><item>
              <widget class="QLabel" name="label">
               <property name="text">
                <string>Input Type</string>
@@ -76,7 +181,7 @@
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_4">
-            <item>
+            <property name="spacing"><number>6</number></property><item>
              <widget class="QComboBox" name="CbInputType">
               <item>
                <property name="text">
@@ -122,25 +227,25 @@
              </widget>
             </item>
             <item>
-             <widget class="QLineEdit" name="lineEditScanLmPath"/>
+             <widget class="QLineEdit" name="lineEditScanLmPath" />
             </item>
             <item>
-             <widget class="QLineEdit" name="lineEditRefFolder"/>
+             <widget class="QLineEdit" name="lineEditRefFolder" />
             </item>
             <item>
-             <widget class="QLineEdit" name="lineEditModelSegOr"/>
+             <widget class="QLineEdit" name="lineEditModelSegOr" />
             </item>
             <item>
-             <widget class="QLineEdit" name="lineEditModelAli"/>
+             <widget class="QLineEdit" name="lineEditModelAli" />
             </item>
            </layout>
           </item>
           <item>
            <layout class="QVBoxLayout" name="verticalLayout_6">
-            <item>
+            <property name="spacing"><number>6</number></property><item>
              <widget class="QLabel" name="label_128797">
               <property name="text">
-               <string/>
+               <string />
               </property>
              </widget>
             </item>
@@ -194,21 +299,21 @@
       <string>Landmark Reference</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_10">
-      <item>
+      <property name="spacing"><number>6</number></property><item>
        <widget class="QStackedWidget" name="stackedWidget">
         <property name="currentIndex">
          <number>2</number>
         </property>
         <widget class="QWidget" name="PageSemiCBCT">
          <layout class="QVBoxLayout" name="verticalLayout_11">
-          <item>
+          <property name="spacing"><number>6</number></property><item>
            <layout class="QVBoxLayout" name="verticalLayout_3">
-            <item>
+            <property name="spacing"><number>6</number></property><item>
              <layout class="QHBoxLayout" name="LayoutLandmarkSemiCBCT">
-              <item>
+              <property name="spacing"><number>6</number></property><item>
                <widget class="QLabel" name="tohideCBCT">
                 <property name="text">
-                 <string/>
+                 <string />
                 </property>
                </widget>
               </item>
@@ -220,9 +325,9 @@
         </widget>
         <widget class="QWidget" name="PageAutoCBCT">
          <layout class="QVBoxLayout" name="verticalLayout_11">
-          <item>
+          <property name="spacing"><number>6</number></property><item>
            <layout class="QVBoxLayout" name="verticalLayout_3">
-            <item>
+            <property name="spacing"><number>6</number></property><item>
              <widget class="QCheckBox" name="checkBoxSmallFOV">
               <property name="text">
                <string>Use Small FOV scans</string>
@@ -231,10 +336,10 @@
             </item>
             <item>
              <layout class="QHBoxLayout" name="LayoutLandmarkAutoCBCT">
-              <item>
+              <property name="spacing"><number>6</number></property><item>
                <widget class="QLabel" name="tohideCBCT">
                 <property name="text">
-                 <string/>
+                 <string />
                 </property>
                </widget>
               </item>
@@ -246,11 +351,11 @@
         </widget>
         <widget class="QWidget" name="PageSemiIOS">
          <layout class="QHBoxLayout" name="horizontalLayout_5">
-          <item>
+          <property name="spacing"><number>6</number></property><item>
            <layout class="QVBoxLayout" name="verticalLayout_1548">
-            <item>
+            <property name="spacing"><number>6</number></property><item>
              <layout class="QVBoxLayout" name="LayoutLandmarkSemiIOS">
-              <item>
+              <property name="spacing"><number>6</number></property><item>
                <widget class="QScrollArea" name="scrollArea_2">
                 <property name="widgetResizable">
                  <bool>true</bool>
@@ -265,7 +370,7 @@
                   </rect>
                  </property>
                  <layout class="QVBoxLayout" name="verticalLayout_14">
-                  <item>
+                  <property name="spacing"><number>6</number></property><item>
                    <widget class="QCheckBox" name="checkBoxOcclusionSemiIOS">
                     <property name="text">
                      <string>Arches Oriented in occlusion</string>
@@ -302,11 +407,11 @@
         </widget>
         <widget class="QWidget" name="PageAutoIOS">
          <layout class="QHBoxLayout" name="horizontalLayout_5">
-          <item>
+          <property name="spacing"><number>6</number></property><item>
            <layout class="QVBoxLayout" name="verticalLayout_5">
-            <item>
+            <property name="spacing"><number>6</number></property><item>
              <layout class="QVBoxLayout" name="LayoutLandmarkAutoIOS">
-              <item>
+              <property name="spacing"><number>6</number></property><item>
                <widget class="QScrollArea" name="scrollArea">
                 <property name="minimumSize">
                  <size>
@@ -327,7 +432,7 @@
                   </rect>
                  </property>
                  <layout class="QVBoxLayout" name="verticalLayout_12">
-                  <item>
+                  <property name="spacing"><number>6</number></property><item>
                    <widget class="QCheckBox" name="checkBoxOcclusionAutoIOS">
                     <property name="text">
                      <string>Arches oriented in occlusion</string>
@@ -375,9 +480,9 @@
      <layout class="QVBoxLayout" name="Output">
       <item>
        <layout class="QVBoxLayout" name="verticalLayout_9">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <layout class="QHBoxLayout" name="horizontalLayout_3">
-          <item>
+          <property name="spacing"><number>6</number></property><item>
            <widget class="QLabel" name="label_9">
             <property name="text">
              <string>Suffix</string>
@@ -395,7 +500,7 @@
         </item>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_2">
-          <item>
+          <property name="spacing"><number>6</number></property><item>
            <widget class="QLabel" name="label_8">
             <property name="text">
              <string>Output folder</string>
@@ -403,7 +508,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QLineEdit" name="lineEditOutputPath"/>
+           <widget class="QLineEdit" name="lineEditOutputPath" />
           </item>
           <item>
            <widget class="QPushButton" name="ButtonOutput">
@@ -425,9 +530,9 @@
       <string>Compute</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_8">
-      <item>
+      <property name="spacing"><number>6</number></property><item>
        <layout class="QVBoxLayout" name="verticalLayout_7">
-        <item>
+        <property name="spacing"><number>6</number></property><item>
          <widget class="QLabel" name="LabelInfoPreProc">
           <property name="text">
            <string>Number of scans to process : 0</string>
@@ -454,14 +559,14 @@
         <item>
          <widget class="QLabel" name="LabelNameExtension">
           <property name="text">
-           <string/>
+           <string />
           </property>
          </widget>
         </item>
         <item>
          <widget class="QLabel" name="LabelProgressExtension">
           <property name="text">
-           <string/>
+           <string />
           </property>
          </widget>
         </item>
@@ -533,6 +638,6 @@
    <container>1</container>
   </customwidget>
  </customwidgets>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>
