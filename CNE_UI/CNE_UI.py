@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 from typing import Annotated
 import vtk
 import slicer
@@ -246,6 +247,12 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.cliProgressBar = slicer.qSlicerCLIProgressBar()
         self.cliProgressBar.visible = False 
         self.layout.addWidget(self.cliProgressBar)
+        
+        # Create cancel button below progress bar
+        self.cliCancelButton = qt.QPushButton("Cancel Processing")
+        self.cliCancelButton.visible = False
+        self.cliCancelButton.connect("clicked(bool)", self.onCancelCliButton)
+        self.layout.addWidget(self.cliCancelButton)
 
 
         # Connections
@@ -256,6 +263,7 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Buttons
         self.ui.applyButton.connect("clicked(bool)", self.onApplyButton)
+        self.ui.downloadTestFilesButton.connect("clicked(bool)", self.onRunTestFilesButton)
 
         self.ui.modelQuickRadioButton.connect("toggled(bool)", self._updateParameterNodeFromGUI)
         self.ui.modelProRadioButton.connect("toggled(bool)", self._updateParameterNodeFromGUI)
@@ -265,20 +273,9 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
 
-
-
-        # -----------------------------------------------------------------------------------
-        # DELETE THIS (default value)
-        # -----------------------------------------------------------------------------------
-        self.ui.notesFolderLineEdit_input.currentPath = "/home/luciacev/Desktop/3dSlicer/CNE/input_Ortho"
-        self.ui.notesFolderLineEdit_output.currentPath = "/home/luciacev/Desktop/3dSlicer/CNE/output_Ortho"
-        
         # Synchroniser les boutons radio avec la valeur du paramètre node
         self._syncModelTypeRadioWithParameterNode()
         self._syncNotesTypeRadioWithParameterNode()
-
-
-        # Les boutons radio seront synchronisés avec le paramètre node après l'initialisation
     def _syncModelTypeRadioWithParameterNode(self):
         if not self._parameterNode:
             return
@@ -378,6 +375,22 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.applyButton.enabled = True
 
 
+    def onRunTestFilesButton(self) -> None:
+        """Run test files when user clicks 'Run Test Files' button."""
+        with slicer.util.tryWithErrorDisplay(_("Failed to download test files."), waitCursor=True):
+            # Get the selected notes type from parameter node
+            self._updateParameterNodeFromGUI()
+            notesType = self._parameterNode.notesType
+            
+            # Copy test files and get the paths
+            input_path, output_path = self.logic.copyTestFiles(notesType)
+            
+            # Update the folder paths in the UI
+            self.ui.notesFolderLineEdit_input.currentPath = input_path
+            self.ui.notesFolderLineEdit_output.currentPath = output_path
+            self._updateParameterNodeFromGUI()
+
+
     def onApplyButton(self) -> None:
         """Run processing when user clicks "Apply" button."""
 
@@ -416,11 +429,29 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 # On connecte le noeud à la barre de progression de l'UI
                 self.cliProgressBar.setCommandLineModuleNode(cliNode)
                 self.cliProgressBar.visible = True
+                self.cliCancelButton.visible = True
+                # Add observer to hide buttons when CLI finishes
+                self.addObserver(cliNode, slicer.vtkMRMLCommandLineModuleNode.StatusModifiedEvent, self.onCliFinished)
 
 
 
 
 
+
+    def onCancelCliButton(self) -> None:
+        """Cancel the running CLI process."""
+        if self.logic and hasattr(self.logic, 'cliNode') and self.logic.cliNode:
+            self.logic.cliNode.Cancel()
+            self.cliProgressBar.visible = False
+            self.cliCancelButton.visible = False
+            slicer.util.warningDisplay("Processing cancelled by user.")
+
+    def onCliFinished(self, caller, event) -> None:
+        """Hide progress bar and cancel button when CLI finishes."""
+        status = caller.GetStatus()
+        if status & (slicer.vtkMRMLCommandLineModuleNode.Completed | slicer.vtkMRMLCommandLineModuleNode.Cancelled):
+            self.cliProgressBar.visible = False
+            self.cliCancelButton.visible = False
 
     def _updateParameterNodeFromGUI(self) -> None:
         """Met à jour le nœud de paramètres à partir de l'interface utilisateur"""
@@ -474,6 +505,75 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
     def getParameterNode(self,):
         return CNE_UIParameterNode(super().getParameterNode())
     
+    def copyTestFiles(self, notesType: str) -> tuple:
+        """Copy test files for the selected notes type from Resources/testfiles to SlicerDownloads/CNE/testfiles/{notesType}.
+        
+        Args:
+            notesType: Either 'TMJ' or 'Ortho' to specify which test files to copy
+            
+        Returns:
+            tuple: (input_folder_path, output_folder_path)
+        """
+        # Get the path to the testfiles directory (relative to this module)
+        moduleDir = os.path.dirname(__file__)
+        sourceTestFilesPath = os.path.join(moduleDir, "Resources", "testfiles")
+        
+        if not os.path.exists(sourceTestFilesPath):
+            raise FileNotFoundError(f"Test files directory not found: {sourceTestFilesPath}")
+        
+        # Define destination path in SlicerDownloads/CNE/testfiles/{notesType}
+        documents = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
+        destBasePath = os.path.join(
+            documents,
+            slicer.app.applicationName + "Downloads",
+            "CNE",
+            "testfiles",
+            notesType
+        )
+        
+        # Create destination directory if it doesn't exist
+        if not os.path.exists(destBasePath):
+            os.makedirs(destBasePath)
+        
+        # Determine which folders to copy based on notesType
+        if notesType == "Ortho":
+            folders_to_copy = ["input_Ortho", "output_Ortho"]
+        elif notesType == "TMJ":
+            folders_to_copy = ["input_TMJ", "output_TMJ"]
+        else:
+            raise ValueError(f"Unknown notes type: {notesType}")
+        
+        # Copy only the relevant folders
+        for folder_name in folders_to_copy:
+            source_folder = os.path.join(sourceTestFilesPath, folder_name)
+            dest_folder = os.path.join(destBasePath, folder_name)
+            
+            if not os.path.exists(source_folder):
+                logging.warning(f"Source folder not found: {source_folder}")
+                continue
+            
+            # Remove destination if it already exists
+            if os.path.exists(dest_folder):
+                shutil.rmtree(dest_folder)
+            
+            # Copy the folder
+            shutil.copytree(source_folder, dest_folder)
+            logging.info(f"Test folder copied from {source_folder} to {dest_folder}")
+            print(f"Test folder download: {dest_folder}")
+        
+        # Determine input and output paths
+        if notesType == "Ortho":
+            input_folder = "input_Ortho"
+            output_folder = "output_Ortho"
+        else:  # TMJ
+            input_folder = "input_TMJ"
+            output_folder = "output_TMJ"
+        
+        input_path = os.path.join(destBasePath, input_folder)
+        output_path = os.path.join(destBasePath, output_folder)
+        
+        return input_path, output_path
+    
     def getModelPath(self, modelType: str,notesType: str):
         """Returns the local path to the model, downloading it if necessary with a progress popup."""
         print(notesType,modelType)
@@ -493,7 +593,7 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
                 localModelName = "Meta-Llama-3.1-8B-Ortho.gguf"
                 dialogText = "Downloading Max Ortho AI model (approx. 4.7 GB)..."
 
-                # 1. Configuration of the model based on UI selection
+        # 1. Configuration of the model based on UI selection
         elif notesType == "TMJ":
             if modelType == "Mini":
                 repo_id = "dcbia/Qwen-2.5-1.5B-Instruct-TMJ"
@@ -518,7 +618,8 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
         SlicerDownloadPath = os.path.join(
             documents,
             slicer.app.applicationName + "Downloads",
-            "CNE"
+            "CNE",
+            "model"
         )
         
         if not os.path.exists(SlicerDownloadPath):
@@ -548,7 +649,7 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
                 
                 # Forces Slicer to refresh the UI (prevents freezing)
                 slicer.app.processEvents()
-
+            
             # --- Start the download ---
             import urllib.request
             try:
@@ -573,7 +674,19 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
         
         # 1. Vérification des paramètres
         if not notesFolder_input or not modelType or not notesType or not notesFolder_output:
-            logging.error("Process cancelled: Missing required parameters.")
+            missing = []
+            if not notesFolder_input:
+                missing.append("Input folder")
+            if not modelType:
+                missing.append("Model type")
+            if not notesType:
+                missing.append("Notes type")
+            if not notesFolder_output:
+                missing.append("Output folder")
+            
+            error_msg = f"Process cancelled: Missing required parameters: {', '.join(missing)}"
+            logging.error(error_msg)
+            slicer.util.errorDisplay(error_msg)
             return None
             
         # 2. Download or locate the requested model
@@ -638,69 +751,3 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
                     logging.error("\n--- CLI ERRORS ---")
                     print(error_text.strip())
                     print("---------------------\n")
-
-#
-# CNE_UITest
-#
-class CNE_UITest(ScriptedLoadableModuleTest):
-    """
-    This is the test case for your scripted module.
-    Uses ScriptedLoadableModuleTest base class, available at:
-    https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
-    """
-
-    def setUp(self):
-        """Do whatever is needed to reset the state - typically a scene clear will be enough."""
-        slicer.mrmlScene.Clear()
-
-    def runTest(self):
-        """Run as few or as many tests as needed here."""
-        self.setUp()
-        self.test_CNE_UI1()
-
-    def test_CNE_UI1(self):
-        """Ideally you should have several levels of tests.  At the lowest level
-        tests should exercise the functionality of the logic with different inputs
-        (both valid and invalid).  At higher levels your tests should emulate the
-        way the user would interact with your code and confirm that it still works
-        the way you intended.
-        One of the most important features of the tests is that it should alert other
-        developers when their changes will have an impact on the behavior of your
-        module.  For example, if a developer removes a feature that you depend on,
-        your test should break so they know that the feature is needed.
-        """
-
-        self.delayDisplay("Starting the test")
-
-        # Get/create input data
-
-        import SampleData
-
-        registerSampleData()
-        inputVolume = SampleData.downloadSample("CNE_UI1")
-        self.delayDisplay("Loaded test data set")
-
-        inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(inputScalarRange[0], 0)
-        self.assertEqual(inputScalarRange[1], 695)
-
-        outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-        threshold = 100
-
-        # Test the module logic
-
-        logic = CNE_UILogic()
-
-        # Test algorithm with non-inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, True)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], threshold)
-
-        # Test algorithm with inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, False)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], inputScalarRange[1])
-
-        self.delayDisplay("Test passed")

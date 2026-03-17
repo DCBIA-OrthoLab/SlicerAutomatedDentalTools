@@ -148,13 +148,13 @@
      <item>
       <widget class="QPushButton" name="downloadTestFilesButton">
        <property name="enabled">
-      <bool>false</bool>
+      <bool>true</bool>
        </property>
        <property name="toolTip">
       <string>Test Files.</string>
        </property>
        <property name="text">
-      <string>Run Test Files</string>
+      <string>Download Test Files</string>
        </property>
       </widget>
      </item>
@@ -167,7 +167,7 @@
       <string>Run the algorithm.</string>
        </property>
        <property name="text">
-      <string>Run Clinial Notes</string>
+      <string>Run</string>
        </property>
       </widget>
      </item>

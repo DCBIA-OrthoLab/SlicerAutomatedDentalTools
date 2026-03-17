@@ -98,7 +98,8 @@ def main(args):
             max_seq_length = 6144
         else:
             max_seq_length = 2048
-
+        max_seq_length = 2048
+        
         # --- ASTUCE POUR RENDRE LE C++ TOTALEMENT SILENCIEUX ---
         old_stderr = os.dup(sys.stderr.fileno())
         fd_devnull = os.open(os.devnull, os.O_WRONLY)
@@ -125,72 +126,91 @@ def main(args):
         # STEP 4 : Inference Loop (Processing Files)
         # ---------------------------------------------------------
         total_files = len(files_to_process)
+        successfully_processed = 0
+        failed_files = []
         
         for i, file_path in enumerate(files_to_process):
             filename = os.path.basename(file_path)
             
-            # Mise à jour fluide de la barre de progression Slicer
-            progress = 0.20 + (0.75 * (i / total_files))
-            print(f"<filter-progress>{progress:.2f}</filter-progress>", flush=True)
-            print(f"<filter-comment>Processing {filename} ({i+1}/{total_files})...</filter-comment>", flush=True)
-            
-            # 1. Lecture du document brut
-            with open(file_path, 'r', encoding='utf-8') as f:
-                clinical_text = f.read()
-            
-            print(f"Generating extraction for {filename}...")
-            
-            # 2. Format prompt using Llama 3.1 chat template
-            prompt = f"""<|start_header_id|>user<|end_header_id|>
-
-{clinical_text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-
-"""
-            
-            # 3. Lancement de l'inférence avec le template chat
-            output = llm(
-                prompt,
-                max_tokens=512,   
-                temperature=0.3,
-                top_p=0.9,
-                echo=False        
-            )
-            
-            # 3. Récupération du résultat brut
-            ai_response = output['choices'][0]['text'].strip()
-            
-            # --- FORMATTAGE DU JSON EN LISTE LISIBLE ---
-            formatted_response = ""
             try:
-                # On cherche où commence et où finit le JSON 
-                start_idx = ai_response.find('{')
-                end_idx = ai_response.rfind('}') + 1
+                # Mise à jour fluide de la barre de progression Slicer
+                progress = 0.20 + (0.75 * (i / total_files))
+                print(f"<filter-progress>{progress:.2f}</filter-progress>", flush=True)
+                print(f"<filter-comment>Processing {filename} ({i+1}/{total_files})...</filter-comment>", flush=True)
                 
-                if start_idx != -1 and end_idx != 0:
-                    json_str = ai_response[start_idx:end_idx]
-                    data = json.loads(json_str) 
+                # 1. Lecture du document brut
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    clinical_text = f.read()
+                
+                print(f"Generating extraction for {filename}...")
+                
+                # 2. Format prompt using Llama 3.1 chat template
+                prompt = f"""<|start_header_id|>user<|end_header_id|>
+
+            {clinical_text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+            """
+                
+                # 3. Lancement de l'inférence avec le template chat
+                output = llm(
+                    prompt,
+                    max_tokens=512,   
+                    temperature=0.3,
+                    top_p=0.9,
+                    echo=False        
+                )
+                
+                # 3. Récupération du résultat brut
+                ai_response = output['choices'][0]['text'].strip()
+                
+                # --- FORMATTAGE DU JSON EN LISTE LISIBLE ---
+                formatted_response = ""
+                try:
+                    # On cherche où commence et où finit le JSON 
+                    start_idx = ai_response.find('{')
+                    end_idx = ai_response.rfind('}') + 1
                     
-                    if "extraction" in data:
-                        data = data["extraction"]
+                    if start_idx != -1 and end_idx != 0:
+                        json_str = ai_response[start_idx:end_idx]
+                        data = json.loads(json_str) 
                         
-                    for key, value in data.items():
-                        formatted_response += f"{key} : {value}\n"
-                else:
+                        if "extraction" in data:
+                            data = data["extraction"]
+                            
+                        for key, value in data.items():
+                            formatted_response += f"{key} : {value}\n"
+                    else:
+                        formatted_response = ai_response
+                        
+                except Exception as e:
+                    print(f"Warning: Could not format JSON for {filename}: {e}")
                     formatted_response = ai_response
-                    
-            except Exception as e:
-                print(f"Warning: Could not format JSON for {filename}: {e}")
-                formatted_response = ai_response
-            # -----------------------------------------------------
-            
-            # 4. Sauvegarde dans le dossier de sortie
-            output_filename = f"Extraction_{filename}"
-            output_filepath = os.path.join(notesFolder_output, output_filename)
-            
-            with open(output_filepath, 'w', encoding='utf-8') as f:
-                f.write(formatted_response) # <-- CORRIGÉ : On écrit bien le texte formatté !
+                # -----------------------------------------------------
                 
-            print(f"Saved: {output_filepath}")      
+                # 4. Sauvegarde dans le dossier de sortie
+                output_filename = f"Extraction_{filename}"
+                output_filepath = os.path.join(notesFolder_output, output_filename)
+                
+                with open(output_filepath, 'w', encoding='utf-8') as f:
+                    f.write(formatted_response)
+                    
+                print(f"✓ Saved: {output_filepath}")
+                successfully_processed += 1
+                
+            except Exception as e:
+                print(f"✗ ERROR processing {filename}: {e}", file=sys.stderr)
+                failed_files.append(filename)
+                traceback.print_exc(file=sys.stderr)
+                # Continue avec le fichier suivant au lieu d'arrêter complètement
+                continue
+        
+        # Résumé final
+        print(f"\n{'='*50}")
+        print(f"Processing complete:")
+        print(f"  ✓ Successfully processed: {successfully_processed}/{total_files}")
+        if failed_files:
+            print(f"  ✗ Failed files: {', '.join(failed_files)}")
+        print(f"{'='*50}\n")      
 
     except ImportError:
         print("ERROR: 'llama-cpp-python' library is not installed in Slicer.", file=sys.stderr)
