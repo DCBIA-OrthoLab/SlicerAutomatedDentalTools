@@ -6,6 +6,20 @@ import shutil
 import argparse
 import platform
 
+# ===== DEPENDENCY CHECK =====
+# Check and fix torch/torchvision compatibility before any imports
+try:
+    # Add parent for deps check
+    areg_ios_path = os.path.dirname(__file__)
+    if areg_ios_path not in sys.path:
+        sys.path.insert(0, areg_ios_path)
+    
+    from AREG_IOS_utils.check_deps import ensure_compatible
+    ensure_compatible()
+except ImportError as e:
+    print("[WARNING] Could not import dependency checker: {}".format(e))
+# ===== END DEPENDENCY CHECK =====
+
 fpath = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(fpath)
 
@@ -91,17 +105,27 @@ def main(args):
         patient_id = name.split("_T2")[0]
         
         if args.areg_mode == "Auto_IOS":
-            aso_tfm_path_T2 = os.path.join(args.T2, f"{patient_id}_T2_SegOr.tfm")
-            aso_tfm_path_T1 = os.path.join(args.T1, f"{patient_id}_T1_SegOr.tfm")
-            out_tfm_T1 = os.path.join(args.output, f"{patient_id}_T1_SegOr.tfm")
+            # The .tfm files are saved in the input folders with pattern: PatientID_SegOr.tfm
+            # Extract just the patient ID (e.g., "A2" from "A2_UpperT2_SegOr.vtk")
+            patient_id_short = patient_id.split("_")[0] if "_" in patient_id else patient_id
+            
+            aso_tfm_path_T1 = os.path.join(args.T1, f"{patient_id_short}_SegOr.tfm")
+            aso_tfm_path_T2 = os.path.join(args.T2, f"{patient_id_short}_SegOr.tfm")
+            out_tfm_T1 = os.path.join(args.output, f"{patient_id_short}_T1_SegOr.tfm")
+            
+            print(f"DEBUG: Looking for T1 tfm at: {aso_tfm_path_T1}")
+            print(f"DEBUG: Looking for T2 tfm at: {aso_tfm_path_T2}")
             
             try:
-                shutil.copy(aso_tfm_path_T1, out_tfm_T1)
-                print(f"Saved T1 matrix: {out_tfm_T1}")
+                if os.path.exists(aso_tfm_path_T1):
+                    shutil.copy(aso_tfm_path_T1, out_tfm_T1)
+                    print(f"Saved T1 matrix: {out_tfm_T1}")
+                else:
+                    print(f"Warning: T1 tfm file not found at {aso_tfm_path_T1}")
             except Exception as e:
                 print(f"Error copying T1 matrix for {name}: {e}")
 
-            saveMatrixAsTfm(output_icp["matrix"], aso_tfm_path_T2, args.output, patient_id, args.suffix, args.areg_mode)
+            saveMatrixAsTfm(output_icp["matrix"], aso_tfm_path_T2, args.output, patient_id_short, args.suffix, args.areg_mode)
         
         if lower:
             surf_lower = dataset.getLowerSurf(idx, "T2")

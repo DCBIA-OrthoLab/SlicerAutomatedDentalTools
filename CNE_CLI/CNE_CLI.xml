@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Examples</category>
+  <index>0</index>
+  <title>CNE_CLI</title>
+  <description><![CDATA[Apply a Gaussian blur to an image]]></description>
+  <version>0.1.0.</version>
+  <documentation-url>https://github.com/username/project</documentation-url>
+  <license/>
+  <contributor>Andras Lasso (PerkLab)</contributor>
+  <acknowledgements><![CDATA[This work is part of the National Alliance for Medical Image Computing (NAMIC), funded by the National Institutes of Health through the NIH Roadmap for Medical Research, Grant U54 EB005149.]]></acknowledgements>
+  
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>notesFolder_input</name>
+      <label>notesFolder_input</label>
+      <index>0</index>
+      <description>Path to the input directory.</description>
+    </string>
+
+    <string>
+      <name>modelType</name>
+      <label>modelType</label>
+      <index>1</index>
+      <description>Path to the output directory.</description>
+    </string>
+
+    <string>
+      <name>notesType</name>
+      <label>notesType</label>
+      <index>2</index>
+      <description>Replace to add to file names.</description>
+    </string>
+
+    <string>
+      <name>notesFolder_output</name>
+      <label>notesFolder_output</label>
+      <index>3</index>
+      <description>by to file names.</description>
+    </string>
+
+    <string>
+      <name>modelPath</name>
+      <label>Model Path</label>
+      <index>4</index>
+    </string>
+    
+  </parameters>
+
+</executable>

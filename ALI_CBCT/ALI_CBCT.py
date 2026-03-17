@@ -92,7 +92,7 @@ def main(input):
     print(f"""<filter-progress>{0}</filter-progress>""")
     sys.stdout.flush()
     time.sleep(0.5)
-    print(f"""<filter-progress>{2}</filter-progress>""")
+    print(f"""<filter-progress>{2}</-progress>""")
     sys.stdout.flush()
     time.sleep(0.5)
     print(f"""<filter-progress>{0}</filter-progress>""")

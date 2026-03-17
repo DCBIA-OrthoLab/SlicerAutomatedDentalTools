@@ -230,6 +230,68 @@ def check_pytorch():
         print("[WARNING] PyTorch not found")
         return None, False
 
+def check_and_fix_torchvision():
+    """Check torchvision compatibility with PyTorch and fix if needed"""
+    try:
+        import torch
+        import torchvision
+        
+        torch_version = tuple(map(int, torch.__version__.split('.')[:2]))
+        torchvision_version = tuple(map(int, torchvision.__version__.split('.')[:2]))
+        
+        print(f"[INFO] Checking torch/torchvision compatibility...")
+        print(f"[INFO] PyTorch: {torch.__version__}")
+        print(f"[INFO] TorchVision: {torchvision.__version__}")
+        
+        # Define compatible pairs (PyTorch major.minor -> TorchVision major.minor)
+        compatible = {
+            (2, 7): (0, 18),  # PyTorch 2.7 -> TorchVision 0.18
+            (2, 6): (0, 17),
+            (2, 5): (0, 17),
+            (2, 4): (0, 16),
+            (2, 3): (0, 16),
+            (2, 2): (0, 15),
+            (2, 1): (0, 15),
+        }
+        
+        expected_tv_version = compatible.get(torch_version)
+        
+        if expected_tv_version is None:
+            print(f"[WARNING] Unknown PyTorch version {torch_version}, skipping compatibility check")
+            return False
+        
+        if torchvision_version[:2] != expected_tv_version:
+            print(f"[ERROR] TorchVision {torchvision.__version__} is incompatible with PyTorch {torch.__version__}")
+            print(f"[INFO] Expected TorchVision 0.{expected_tv_version[1]}.x for PyTorch {torch.__version__}")
+            print(f"[INFO] Fixing torchvision installation...")
+            
+            # Reinstall compatible torchvision
+            expected_tv_full = f"0.{expected_tv_version[1]}.1"
+            cmd = [
+                sys.executable, "-m", "pip", "install", "--force-reinstall",
+                f"torchvision=={expected_tv_full}",
+                "--index-url", "https://download.pytorch.org/whl/cu128"
+            ]
+            
+            result = run_command(cmd, check=False)
+            
+            if result.returncode == 0:
+                print(f"[SUCCESS] TorchVision fixed to {expected_tv_full}")
+                return True
+            else:
+                print(f"[ERROR] Failed to fix TorchVision")
+                return False
+        else:
+            print(f"[SUCCESS] PyTorch and TorchVision are compatible")
+            return False
+            
+    except ImportError:
+        print("[WARNING] Could not check torchvision compatibility")
+        return False
+    except Exception as e:
+        print(f"[WARNING] Error checking torchvision: {e}")
+        return False
+
 def install_pytorch_if_needed():
     """Install PyTorch with CUDA support if not present or insufficient"""
     torch_version, has_cuda = check_pytorch()
@@ -240,7 +302,7 @@ def install_pytorch_if_needed():
         # Install PyTorch with CUDA 12.8 (adjust as needed)
         cmd = [
             sys.executable, "-m", "pip", "install", 
-            "torch==2.7.0", "torchvision==0.22.0", "torchaudio==2.7.0",
+            "torch==2.7.0", "torchvision==0.18.1", "torchaudio==2.7.0",
             "--index-url", "https://download.pytorch.org/whl/cu128"
         ]
         run_command(cmd)
@@ -365,6 +427,9 @@ def main():
         # Install/verify PyTorch
         torch_version = install_pytorch_if_needed()
         print(f"[SUCCESS] PyTorch {torch_version} ready")
+        
+        # Check and fix torchvision compatibility
+        check_and_fix_torchvision()
         
         # Check and install GCC if needed
         gcc_ok = check_and_install_gcc()

@@ -27,7 +27,7 @@ def read_summaries(summary_folder: str) -> dict:
     """
     summaries = {}
     for file_name in os.listdir(summary_folder):
-        if file_name.lower().endswith("_pred.txt"):
+        if file_name.lower().endswith("_summary.txt"):
             patient_id = file_name.split("_")[0]
             with open(os.path.join(summary_folder, file_name), "r", encoding="utf-8") as file:
                 summaries[patient_id] = file.read()
@@ -60,7 +60,7 @@ def update_dictionary(patient_dict: dict, chunk: str) -> None:
         chunk (str): Section of summary text containing key-value pairs
     """
     for line in chunk.split("\n"):
-        key_value = line.split("=")
+        key_value = line.split(":")
         if len(key_value) != 2:
             continue
         key, value = key_value[0].strip(), key_value[1].strip()
@@ -597,51 +597,58 @@ def generate_dashboard_figure(df: pd.DataFrame, output_folder: str = None) -> pl
     # Define colors for the rectangles
     rectangle_colors = ['#66c2a5', '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854', '#ffcc99', '#c2c2f0', '#ff9999', '#66b3ff']
 
-    # Plot rectangles for age distribution
-    for idx, (age_bin, mean_age, std_age) in enumerate(zip(age_bins_plot, mean_ages, std_ages)):
-        # Rectangle properties
-        rect_height = 2 * std_age  # Height of the rectangle is 2 * SD
-        rect_bottom = mean_age - std_age  # Bottom of the rectangle is mean - SD
-        rect = plt.Rectangle(
-            (idx - 0.4, rect_bottom),  # X position (left edge of the rectangle)
-            0.8,  # Width of the rectangle
-            rect_height,  # Height of the rectangle
-            color=rectangle_colors[idx % len(rectangle_colors)],  # Color of the rectangle
-            alpha=0.7  # Transparency
-        )
-        ax_age_distribution.add_patch(rect)
+    if len(age_bins_plot) > 0:
+        # Plot rectangles for age distribution
+        for idx, (age_bin, mean_age, std_age) in enumerate(zip(age_bins_plot, mean_ages, std_ages)):
+            # Rectangle properties
+            rect_height = 2 * std_age  # Height of the rectangle is 2 * SD
+            rect_bottom = mean_age - std_age  # Bottom of the rectangle is mean - SD
+            rect = plt.Rectangle(
+                (idx - 0.4, rect_bottom),  # X position (left edge of the rectangle)
+                0.8,  # Width of the rectangle
+                rect_height,  # Height of the rectangle
+                color=rectangle_colors[idx % len(rectangle_colors)],  # Color of the rectangle
+                alpha=0.7  # Transparency
+            )
+            ax_age_distribution.add_patch(rect)
 
-        # Add a vertical line for pain onset SD (centered on the mean age)
-        ax_age_distribution.vlines(
-            idx,  # X position (center of the rectangle)
-            mean_age - std_pain[idx],  # Y start position (mean age - SD)
-            mean_age + std_pain[idx],  # Y end position (mean age + SD)
-            colors='#2d3436',  # Color of the line
-            linewidths=1.5  # Line width
-        )
-        
-        # Add value labels with mean and SD for pain onset
-        ax_age_distribution.text(
-            idx,  # X position (center of the rectangle)
-            mean_age - std_pain[idx] - 0.3,  # Y position
-            f'{mean_pain[idx]:.1f} ± {std_pain[idx]:.1f}',  # Text to display
-            ha='center',  # Horizontal alignment
-            va='top',  # Vertical alignment
-            fontsize=8,  # Font size
-            color='#2d3436',  # Text color
-            fontweight='bold'  # Bold text
-        )
+            # Add a vertical line for pain onset SD (centered on the mean age)
+            ax_age_distribution.vlines(
+                idx,  # X position (center of the rectangle)
+                mean_age - std_pain[idx],  # Y start position (mean age - SD)
+                mean_age + std_pain[idx],  # Y end position (mean age + SD)
+                colors='#2d3436',  # Color of the line
+                linewidths=1.5  # Line width
+            )
+            
+            # Add value labels with mean and SD for pain onset
+            ax_age_distribution.text(
+                idx,  # X position (center of the rectangle)
+                mean_age - std_pain[idx] - 0.3,  # Y position
+                f'{mean_pain[idx]:.1f} ± {std_pain[idx]:.1f}',  # Text to display
+                ha='center',  # Horizontal alignment
+                va='top',  # Vertical alignment
+                fontsize=8,  # Font size
+                color='#2d3436',  # Text color
+                fontweight='bold'  # Bold text
+            )
 
-    # Formatting for the y-axis (age distribution)
-    ax_age_distribution.set_title('Age Distribution with Pain Onset SD', fontsize=14, pad=10, fontweight='semibold')
-    ax_age_distribution.set_ylabel('Age (Years)', fontsize=12)
-    ax_age_distribution.set_xlabel('Age Group', fontsize=12)
-    ax_age_distribution.grid(axis='y', linestyle='--', alpha=0.5)  # Add grid lines
-    ax_age_distribution.set_ylim(0, max(mean_ages) + max(std_ages) + 15)  # Set y-axis limit dynamically
+        # Formatting for the y-axis (age distribution)
+        ax_age_distribution.set_title('Age Distribution with Pain Onset SD', fontsize=14, pad=10, fontweight='semibold')
+        ax_age_distribution.set_ylabel('Age (Years)', fontsize=12)
+        ax_age_distribution.set_xlabel('Age Group', fontsize=12)
+        ax_age_distribution.grid(axis='y', linestyle='--', alpha=0.5)  # Add grid lines
+        ax_age_distribution.set_ylim(0, max(mean_ages) + max(std_ages) + 15)  # Set y-axis limit dynamically
 
-    # Set x-ticks to the age bins
-    ax_age_distribution.set_xticks(range(len(age_bins_plot)))  # Set x-ticks
-    ax_age_distribution.set_xticklabels(age_bins_plot, rotation=22.5, ha='center', fontsize=10)  # Rotate x-labels for readability
+        # Set x-ticks to the age bins
+        ax_age_distribution.set_xticks(range(len(age_bins_plot)))  # Set x-ticks
+        ax_age_distribution.set_xticklabels(age_bins_plot, rotation=22.5, ha='center', fontsize=10)  # Rotate x-labels for readability
+    else:
+        # No data available
+        ax_age_distribution.text(0.5, 0.5, 'No data available', ha='center', va='center', fontsize=12, transform=ax_age_distribution.transAxes)
+        ax_age_distribution.set_title('Age Distribution with Pain Onset SD', fontsize=14, pad=10, fontweight='semibold')
+        ax_age_distribution.set_xlim(0, 1)
+        ax_age_distribution.set_ylim(0, 1)
     
     # Final adjustments
     plt.subplots_adjust(top=0.85, bottom=0.07, left=0.04, right=0.98)

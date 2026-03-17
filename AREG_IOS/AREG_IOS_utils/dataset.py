@@ -100,8 +100,14 @@ def Sort(T1: str, T2: str) -> tuple[list, list]:
             ...,
             {'T1':'path/PX_LowerT1.vtk', 'T2':'path/PX_LowerT2.vtk'}]
     """
-    T1_files = glob.glob(os.path.join(T1, "*"))
-    T2_files = glob.glob(os.path.join(T2, "*"))
+    # Get all files and filter to only surface files (exclude .tfm transformation files)
+    all_T1_files = glob.glob(os.path.join(T1, "*"))
+    all_T2_files = glob.glob(os.path.join(T2, "*"))
+    
+    # Filter to only include surface files (.vtk, .vtp, .stl, .obj), exclude .tfm
+    surface_extensions = ('.vtk', '.vtp', '.stl', '.obj')
+    T1_files = [f for f in all_T1_files if f.lower().endswith(surface_extensions)]
+    T2_files = [f for f in all_T2_files if f.lower().endswith(surface_extensions)]
 
     if not insideLower(T1_files):  # check if there are Lower arches in list of file
         # if there are not lower arches
