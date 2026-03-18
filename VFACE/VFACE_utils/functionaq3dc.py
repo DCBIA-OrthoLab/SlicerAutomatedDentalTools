@@ -1,7 +1,6 @@
 import os
 import sys
 
-# S'assurer que le répertoire local est en priorité dans sys.path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
@@ -46,16 +45,13 @@ except:
     slicer.util.pip_install("openpyxl")
     import openpyxl
 
-# Forcer l'import des classes locales avec un chemin absolu
 import importlib.util
 import sys
 
-# Supprimer les modules potentiellement en cache
 modules_to_remove = [name for name in sys.modules.keys() if name.startswith('Classes.')]
 for module_name in modules_to_remove:
     del sys.modules[module_name]
 
-# Import explicite depuis le répertoire local
 local_classes_path = os.path.join(current_dir, "Classes")
 sys.path.insert(0, local_classes_path)
 
@@ -73,7 +69,6 @@ try:
     )
     
 except ImportError as e:
-    # Import direct avec chemin absolu si l'import relatif échoue
     spec = importlib.util.spec_from_file_location("Classes.Measure", os.path.join(local_classes_path, "Measure.py"))
     measure_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(measure_module)
