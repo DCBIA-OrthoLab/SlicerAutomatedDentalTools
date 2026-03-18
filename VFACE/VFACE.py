@@ -5,19 +5,24 @@ import urllib.request
 import shutil
 import zipfile
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 import importlib
 try:
-    import Progress
+    from VFACE_utils import Progress
     importlib.reload(Progress)
-    from Progress import DisplayALICBCT,DisplayAMASSS,DisplayASOCBCT,Display
+    from VFACE_utils.Progress import DisplayALICBCT,DisplayAMASSS,DisplayASOCBCT,Display
     
-    import createlistprocess
+    from VFACE_utils import createlistprocess
     importlib.reload(createlistprocess)
-    from createlistprocess import CreateListProcess
+    from VFACE_utils.createlistprocess import CreateListProcess
 
 except Exception as e:
-    from Progress import DisplayALICBCT,DisplayAMASSS,DisplayASOCBCT,Display
-    from createlistprocess import CreateListProcess
+    logger.error(f"Error loading VFACE utilities: {e}")
+    from VFACE_utils.Progress import DisplayALICBCT,DisplayAMASSS,DisplayASOCBCT,Display
+    from VFACE_utils.createlistprocess import CreateListProcess
 
 import vtk
 
@@ -36,12 +41,15 @@ import qt
 
 
 #
-# VFACE
+# VFACE Module
 #
 
 
 class VFACE(ScriptedLoadableModule):
-    """Uses ScriptedLoadableModule base class, available at:
+    """
+    VFACE (Vertical Facial Asymmetry Classification Engine)
+    
+    Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
@@ -50,7 +58,13 @@ class VFACE(ScriptedLoadableModule):
         self.parent.title = _("V FACE")
         self.parent.categories = ["Automated Dental Tools"]
         self.parent.contributors = ["Alexandre Buisson (University of North Carolina at Chapel Hill)"] 
-        self.parent.helpText = _("""This extension is created to help you to classified the facial asymettry of your patient.""")
+        self.parent.helpText = _("""
+        VFACE - Vertical Facial Asymmetry Classification Engine
+        
+        This extension helps classify facial asymmetry in dental patients.
+        It provides automated measurement extraction and machine learning-based classification
+        of facial structures including mandible and maxilla.
+        """)
         slicer.app.connect("startupCompleted()", registerSampleData)
 
 
@@ -60,48 +74,53 @@ class VFACE(ScriptedLoadableModule):
 
 
 def registerSampleData():
-    """Add data sets to Sample Data module."""
-    # It is always recommended to provide sample data for users to make it easy to try the module,
-    # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
+    """
+    Add sample data sets to the Sample Data module for easy demonstration.
+    
+    This function registers test datasets that can be downloaded and used
+    to quickly test the module functionality without requiring real patient data.
+    """
+    try:
+        import SampleData
 
-    import SampleData
+        iconsPath = os.path.join(os.path.dirname(__file__), "Resources/Icons")
 
-    iconsPath = os.path.join(os.path.dirname(__file__), "Resources/Icons")
+        # To ensure that the source code repository remains small (can be downloaded and installed quickly)
+        # it is recommended to store data sets that are larger than a few MB in a Github release.
 
-    # To ensure that the source code repository remains small (can be downloaded and installed quickly)
-    # it is recommended to store data sets that are larger than a few MB in a Github release.
+        # VFACE1 - First test dataset
+        SampleData.SampleDataLogic.registerCustomSampleDataSource(
+            # Category and sample name displayed in Sample Data module
+            category="VFACE",
+            sampleName="VFACE1",
+            # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
+            # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
+            thumbnailFileName=os.path.join(iconsPath, "VFACE1.png"),
+            # Download URL and target file name
+            uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+            fileNames="VFACE1.nrrd",
+            # Checksum to ensure file integrity. Can be computed by this command:
+            #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
+            checksums="SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+            # This node name will be used when the data set is loaded
+            nodeNames="VFACE1",
+        )
 
-    # VFACE1
-    SampleData.SampleDataLogic.registerCustomSampleDataSource(
-        # Category and sample name displayed in Sample Data module
-        category="VFACE",
-        sampleName="VFACE1",
-        # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
-        # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, "VFACE1.png"),
-        # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        fileNames="VFACE1.nrrd",
-        # Checksum to ensure file integrity. Can be computed by this command:
-        #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
-        checksums="SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        # This node name will be used when the data set is loaded
-        nodeNames="VFACE1",
-    )
-
-    # VFACE2
-    SampleData.SampleDataLogic.registerCustomSampleDataSource(
-        # Category and sample name displayed in Sample Data module
-        category="VFACE",
-        sampleName="VFACE2",
-        thumbnailFileName=os.path.join(iconsPath, "VFACE2.png"),
-        # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        fileNames="VFACE2.nrrd",
-        checksums="SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        # This node name will be used when the data set is loaded
-        nodeNames="VFACE2",
-    )
+        # VFACE2 - Second test dataset
+        SampleData.SampleDataLogic.registerCustomSampleDataSource(
+            # Category and sample name displayed in Sample Data module
+            category="VFACE",
+            sampleName="VFACE2",
+            thumbnailFileName=os.path.join(iconsPath, "VFACE2.png"),
+            # Download URL and target file name
+            uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+            fileNames="VFACE2.nrrd",
+            checksums="SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+            # This node name will be used when the data set is loaded
+            nodeNames="VFACE2",
+        )
+    except Exception as e:
+        logger.error(f"Error registering sample data: {e}")
 
 
 #
@@ -112,24 +131,30 @@ def registerSampleData():
 @parameterNodeWrapper
 class VFACEParameterNode:
     """
-    The parameters needed by module.
-
-    inputVolume - The volume to threshold.
-    imageThreshold - The value at which to threshold the input volume.
-    invertThreshold - If true, will invert the threshold.
-    thresholdedVolume - The output volume that will contain the thresholded volume.
-    invertedVolume - The output volume that will contain the inverted thresholded volume.
+    Parameter node for VFACE module.
+    
+    Contains the key parameters required by the module:
+    - InputFolder: Path to the input directory containing scan files
+    - OutputFolder: Path where processed outputs will be saved
+    - MeasurementsFolder: Path containing measurement reference files
     """
 
     InputFolder: str
     OutputFolder: str
     MeasurementsFolder: str
 
+
 #
-# VFACEWidget
+# VFACE Widget
 #
+
 class PopUpWindow(qt.QDialog):
-    """Class to generate a popup window with text and button (either radio or checkbox)"""
+    """
+    Custom dialog window for displaying messages and interactive controls.
+    
+    Supports radio buttons, checkboxes, or simple message display.
+    Provides user-friendly interface for multi-selection or single-choice operations.
+    """
 
     def __init__(
         self,
@@ -139,6 +164,16 @@ class PopUpWindow(qt.QDialog):
         type=None,
         tocheck=None,
     ):
+        """
+        Initialize the popup window.
+        
+        Args:
+            title: Window title
+            text: Text message to display
+            listename: List of item names for selection
+            type: Dialog type - 'radio' for single selection, 'checkbox' for multiple
+            tocheck: Items to pre-check (for checkbox mode)
+        """
         qt.QWidget.__init__(self)
         self.setWindowTitle(title)
         layout = qt.QGridLayout()
@@ -148,22 +183,23 @@ class PopUpWindow(qt.QDialog):
         self.type = type
 
         if self.type == "radio":
-            self.radiobutton(layout)
+            self._setup_radio_buttons(layout)
 
         elif self.type == "checkbox":
-            self.checkbox(layout)
+            self._setup_checkboxes(layout)
             if tocheck is not None:
-                self.toCheck(tocheck)
+                self._check_items(tocheck)
 
         elif text is not None:
             label = qt.QLabel(text)
             layout.addWidget(label)
-            # add ok button to close the window
+            # Add OK button to close the window
             button = qt.QPushButton("OK")
             button.connect("clicked()", self.onClickedOK)
             layout.addWidget(button)
 
-    def checkbox(self, layout):
+    def _setup_checkboxes(self, layout):
+        """Create and arrange checkbox controls."""
         j = 0
         for i in range(len(self.listename)):
             button = qt.QCheckBox(self.listename[i])
@@ -171,40 +207,48 @@ class PopUpWindow(qt.QDialog):
             if i % 20 == 0:
                 j += 1
             layout.addWidget(button, i % 20, j)
-        # Add a button to select and deselect all
+        
+        # Add a button to select all items
         button = qt.QPushButton("Select All")
         button.connect("clicked()", self.onClickedSelectAll)
         layout.addWidget(button, len(self.listename) + 1, j - 2)
+        
+        # Add a button to deselect all items
         button = qt.QPushButton("Deselect All")
         button.connect("clicked()", self.onClickedDeselectAll)
         layout.addWidget(button, len(self.listename) + 1, j - 1)
 
-        # Add a button to close the dialog
+        # Add a button to confirm selection
         button = qt.QPushButton("OK")
         button.connect("clicked()", self.onClickedCheckbox)
         layout.addWidget(button, len(self.listename) + 1, j)
 
-    def toCheck(self, tocheck):
+    def _check_items(self, tocheck):
+        """Pre-check specified items."""
         for i in range(len(self.listename)):
             if self.listename[i] in tocheck:
                 self.ListButtons[i].setChecked(True)
 
     def onClickedSelectAll(self):
+        """Handle select all button click."""
         for button in self.ListButtons:
             button.setChecked(True)
 
     def onClickedDeselectAll(self):
+        """Handle deselect all button click."""
         for button in self.ListButtons:
             button.setChecked(False)
 
     def onClickedCheckbox(self):
+        """Handle checkbox confirmation."""
         TrueFalse = [button.isChecked() for button in self.ListButtons]
         self.checked = [
             self.listename[i] for i in range(len(self.listename)) if TrueFalse[i]
         ]
         self.accept()
 
-    def radiobutton(self, layout):
+    def _setup_radio_buttons(self, layout):
+        """Create and arrange radio button controls."""
         for i in range(len(self.listename)):
             radiobutton = qt.QRadioButton(self.listename[i])
             self.ListButtons.append(radiobutton)
@@ -212,25 +256,36 @@ class PopUpWindow(qt.QDialog):
             layout.addWidget(radiobutton, i, 0)
 
     def onClickedRadio(self):
+        """Handle radio button selection."""
         self.checked = self.listename[
             [button.isChecked() for button in self.ListButtons].index(True)
         ]
         self.accept()
 
     def onClickedOK(self):
+        """Handle OK button click."""
         self.accept()
 
 
 
 class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
-    """Uses ScriptedLoadableModuleWidget base class, available at:
+    """
+    VFACE Widget - Main user interface for the module.
+    
+    Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent=None) -> None:
-        """Called when the user opens the module the first time and the widget is initialized."""
+        """
+        Initialize the widget when the user opens the module.
+        
+        Args:
+            parent: Parent widget
+        """
         ScriptedLoadableModuleWidget.__init__(self, parent)
-        VTKObservationMixin.__init__(self)  # needed for parameter node observation
+        VTKObservationMixin.__init__(self)  # Needed for parameter node observation
+        
         self.logic = None
         self._parameterNode = None
         self._parameterNodeGuiTag = None
@@ -244,16 +299,24 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.current_output_to_load = None
         self.current_process_info = None
 
-    def reloadCustomModules(self):
-        import importlib
-        import sys
-
-        modules_to_reload = ['createlistprocess', 'Progress', 'functionaq3dc']
+    def reloadCustomModules(self) -> None:
+        """
+        Reload custom utility modules to ensure latest changes are loaded.
         
-        for module_name in modules_to_reload:
-            if module_name in sys.modules:
-                importlib.reload(sys.modules[module_name])
-        print("All files have been reload properly")
+        This is useful during development and when modules have been updated.
+        """
+        try:
+            import importlib
+            import sys
+
+            modules_to_reload = ['createlistprocess', 'Progress', 'functionaq3dc']
+            
+            for module_name in modules_to_reload:
+                if module_name in sys.modules:
+                    importlib.reload(sys.modules[module_name])
+            logger.info("All utility modules reloaded successfully")
+        except Exception as e:
+            logger.error(f"Error reloading custom modules: {e}")
 
     def setup(self) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
@@ -296,7 +359,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Buttons
         self.ui.applyButton.connect("clicked(bool)", self.onApplyButton)
-        self.ui.CheckDependecyButton.connect("clicked(bool)", self.CheckDepedency)
+        self.ui.CheckDependencyButton.connect("clicked(bool)", self.CheckDependency)
         self.ui.cancelButton.connect("clicked(bool)", self.onCancelButton)
 
         self.ui.continueButton.setVisible(False)
@@ -380,50 +443,68 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._checkCanApply()
 
     def _checkCanApply(self, caller=None, event=None) -> None:
-
+        """
+        Validate if the apply button should be enabled based on selected options and folder paths.
+        
+        Updates button state and tooltip based on current parameter configuration.
+        """
         if not self._parameterNode:
             self.ui.applyButton.enabled = False
+            return
 
-        else:
-            self._parameterNode.InputFolder = self.ui.PathLineEdit.currentPath
-            self._parameterNode.OutputFolder = self.ui.PathLineEdit_2.currentPath
-            self._parameterNode.MeasurementsFolder = self.ui.PathLineEdit_3.currentPath
+        # Update parameter node with current values
+        self._parameterNode.InputFolder = self.ui.PathLineEdit.currentPath
+        self._parameterNode.OutputFolder = self.ui.PathLineEdit_2.currentPath
+        self._parameterNode.MeasurementsFolder = self.ui.PathLineEdit_3.currentPath
 
-            if self.ui.comboBox2.currentText == "Visualization (Heatmaps)" and self.ui.comboBox3.currentText == "File already Registered":
+        # Determine required folders based on selected options
+        viz_mode = self.ui.comboBox2.currentText
+        file_mode = self.ui.comboBox3.currentText
+        t2_path = self.ui.PathLineEdit_4.currentPath
         
-                if self._parameterNode.InputFolder != "" and self._parameterNode.OutputFolder!="" and self.ui.PathLineEdit_4.currentPath != "":
-                    self.ui.applyButton.toolTip = _("Click to classify your patient asymettry")
-                    self.ui.applyButton.enabled = True
-                else:
-                    self.ui.applyButton.toolTip = _("Fill in the different folder path")
-                    self.ui.applyButton.enabled = False
-
-            elif self.ui.comboBox3.currentText == "File already Registered":
-        
-                if self._parameterNode.InputFolder != "" and self._parameterNode.OutputFolder!="" and self._parameterNode.MeasurementsFolder != "" and self.ui.PathLineEdit_4.currentPath != "":
-                    self.ui.applyButton.toolTip = _("Click to classify your patient asymettry")
-                    self.ui.applyButton.enabled = True
-                else:
-                    self.ui.applyButton.toolTip = _("Fill in the different folder path")
-                    self.ui.applyButton.enabled = False
-
-            elif self.ui.comboBox2.currentText == "Visualization (Heatmaps)":
-        
-                if self._parameterNode.InputFolder != "" and self._parameterNode.OutputFolder!="":
-                    self.ui.applyButton.toolTip = _("Click to classify your patient asymettry")
-                    self.ui.applyButton.enabled = True
-                else:
-                    self.ui.applyButton.toolTip = _("Fill in the different folder path")
-                    self.ui.applyButton.enabled = False
-
+        # Case 1: Visualization with pre-registered files
+        if viz_mode == "Visualization (Heatmaps)" and file_mode == "File already Registered":
+            if (self._parameterNode.InputFolder != "" and 
+                self._parameterNode.OutputFolder != "" and 
+                t2_path != ""):
+                self.ui.applyButton.toolTip = _("Click to classify patient facial asymmetry")
+                self.ui.applyButton.enabled = True
             else:
-                if self._parameterNode.InputFolder != "" and self._parameterNode.OutputFolder!="" and self._parameterNode.MeasurementsFolder != "":
-                    self.ui.applyButton.toolTip = _("Click to classify your patient asymettry")
-                    self.ui.applyButton.enabled = True
+                self.ui.applyButton.toolTip = _("Please fill in all required folder paths")
+                self.ui.applyButton.enabled = False
 
-                else:
-                    self.ui.applyButton.toolTip = _("Fill in the different folder path")
-                    self.ui.applyButton.enabled = False
+        # Case 2: Pre-registered files with measurements
+        elif file_mode == "File already Registered":
+            if (self._parameterNode.InputFolder != "" and 
+                self._parameterNode.OutputFolder != "" and 
+                self._parameterNode.MeasurementsFolder != "" and 
+                t2_path != ""):
+                self.ui.applyButton.toolTip = _("Click to classify patient facial asymmetry")
+                self.ui.applyButton.enabled = True
+            else:
+                self.ui.applyButton.toolTip = _("Please fill in all required folder paths")
+                self.ui.applyButton.enabled = False
+
+        # Case 3: Visualization only
+        elif viz_mode == "Visualization (Heatmaps)":
+            if (self._parameterNode.InputFolder != "" and 
+                self._parameterNode.OutputFolder != ""):
+                self.ui.applyButton.toolTip = _("Click to classify patient facial asymmetry")
+                self.ui.applyButton.enabled = True
+            else:
+                self.ui.applyButton.toolTip = _("Please fill in all required folder paths")
+                self.ui.applyButton.enabled = False
+
+        # Case 4: Full processing pipeline
+        else:
+            if (self._parameterNode.InputFolder != "" and 
+                self._parameterNode.OutputFolder != "" and 
+                self._parameterNode.MeasurementsFolder != ""):
+                self.ui.applyButton.toolTip = _("Click to classify patient facial asymmetry")
+                self.ui.applyButton.enabled = True
+            else:
+                self.ui.applyButton.toolTip = _("Please fill in all required folder paths")
+                self.ui.applyButton.enabled = False
 
     def DownloadAllFiles(self) -> None:
 
@@ -524,40 +605,54 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             print(f"{folder_name} has been successfully installed")
 
-    def CheckDepedency(self):
-        print("=== Checking and installing Python dependencies ===")
+    def CheckDependency(self) -> None:
+        """
+        Check and install required Python dependencies for VFACE module.
         
+        Verifies installation of joblib and lightgbm, installs if missing,
+        and downloads required model files.
+        """
         try:
-            import joblib
-            print(f"✓ joblib is already installed (version: {joblib.__version__})")
-        except ImportError:
-            print("✗ joblib not found, installing...")
+            logger.info("=== Checking and installing Python dependencies ===")
+            
+            # Check and install joblib
             try:
-                print("Installing joblib...")
-                slicer.util.pip_install('joblib')
                 import joblib
-                print(f"✓ joblib successfully installed (version: {joblib.__version__})")
-            except Exception as e:
-                print(f"✗ Failed to install joblib: {str(e)}")
-                raise e
-        try:
-            import lightgbm
-            print(f"✓ lightgbm is already installed (version: {lightgbm.__version__})")
-        except ImportError:
-            print("✗ lightgbm not found, installing...")
+                logger.info(f"✓ joblib is already installed (version: {joblib.__version__})")
+            except ImportError:
+                logger.warning("✗ joblib not found, installing...")
+                try:
+                    logger.info("Installing joblib...")
+                    slicer.util.pip_install('joblib')
+                    import joblib
+                    logger.info(f"✓ joblib successfully installed (version: {joblib.__version__})")
+                except Exception as e:
+                    logger.error(f"✗ Failed to install joblib: {str(e)}")
+                    raise
+            
+            # Check and install lightgbm
             try:
-                print("Installing lightgbm... (this may take a while)")
-                slicer.util.pip_install('lightgbm')
                 import lightgbm
-                print(f"✓ lightgbm successfully installed (version: {lightgbm.__version__})")
-            except Exception as e:
-                print(f"✗ Failed to install lightgbm: {str(e)}")
-                raise e
-        
-        print("\n=== Python dependencies check completed ===")
-        print("--- Downloading model files ---")
-        self.DownloadAllFiles()
-        print(f"✓ Every dependency has been successfully installed")
+                logger.info(f"✓ lightgbm is already installed (version: {lightgbm.__version__})")
+            except ImportError:
+                logger.warning("✗ lightgbm not found, installing...")
+                try:
+                    logger.info("Installing lightgbm... (this may take a while)")
+                    slicer.util.pip_install('lightgbm')
+                    import lightgbm
+                    logger.info(f"✓ lightgbm successfully installed (version: {lightgbm.__version__})")
+                except Exception as e:
+                    logger.error(f"✗ Failed to install lightgbm: {str(e)}")
+                    raise
+            
+            logger.info("=== Python dependencies check completed ===")
+            logger.info("--- Downloading model files ---")
+            self.DownloadAllFiles()
+            logger.info("✓ All dependencies have been successfully installed")
+            
+        except Exception as e:
+            logger.error(f"Error during dependency check: {e}")
+            raise
 
     def onComboBoxChanged(self, text):
         """Called when the main comboBox value changes"""
@@ -630,7 +725,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                 model_vface = os.path.join(self.SlicerDownloadPath,"V_FACE"))
 
         self.ui.applyButton.enabled = False
-        self.ui.CheckDependecyButton.enabled = False
+        self.ui.CheckDependencyButton.enabled = False
         self.ui.cancelButton.setVisible(True)
         self.ui.label_3.setVisible(True)
         self.ui.progressBar.setVisible(True)
@@ -639,10 +734,15 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.executeProcess(self.list_process[0])
         del self.list_process[0]
 
-    def onContinueButton(self):
-        print("Continuing process after visualization...")
+    def onContinueButton(self) -> None:
+        """
+        Handle continue button click to resume processing after visualization.
+        
+        Called after user has reviewed visualization and is ready to proceed with next steps.
+        """
+        logger.info("Continuing process after visualization...")
         self.ui.continueButton.setVisible(False)
-        self.ui.cancelButton.setVisible(True)  # Réafficher le bouton cancel
+        self.ui.cancelButton.setVisible(True)
         self.paused_for_visualization = False
         self.ui.label_3.setVisible(True)
         self.ui.progressBar.setVisible(True)
@@ -654,9 +754,12 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             self.OnEndProcess()
 
-    def onCancelButton(self):
-        """Called when the cancel button is clicked"""
-        # Afficher une boîte de dialogue de confirmation
+    def onCancelButton(self) -> None:
+        """
+        Handle cancel button click with user confirmation.
+        
+        Displays confirmation dialog before canceling the current process.
+        """
         msgBox = qt.QMessageBox()
         msgBox.setWindowTitle("Confirm Cancellation")
         msgBox.setText("Are you sure you want to cancel the current process?")
@@ -668,48 +771,50 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if result == qt.QMessageBox.Yes:
             self.cancelProcess()
     
-    def cancelProcess(self):
-        """Annule le processus en cours"""
-        print("Canceling process...")
+    def cancelProcess(self) -> None:
+        """
+        Cancel the currently running process (CLI or Python).
         
-        # Arrêter le processus CLI s'il est en cours
+        Handles cleanup of resources and resets UI after cancellation.
+        """
+        logger.info("Canceling process...")
+        
+        # Stop CLI process if running
         if hasattr(self, 'cliNode') and self.cliNode:
             try:
                 self.cliNode.Cancel()
-                print("CLI process canceled")
+                logger.info("CLI process canceled")
             except Exception as e:
-                print(f"Error canceling CLI process: {e}")
+                logger.error(f"Error canceling CLI process: {e}")
         
-        # Arrêter le processus Python s'il est en cours
+        # Stop Python process if running
         if hasattr(self, 'python_process') and self.python_process:
             try:
-                # Si c'est run_bds, nous devons arrêter la segmentation
+                # Special handling for segmentation processes
                 if hasattr(self.python_process, '__name__') and 'bds' in self.python_process.__name__:
-                    # Importer et arrêter la logique de segmentation
                     try:
                         import sys
-                        import os
                         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                         if parent_dir not in sys.path:
                             sys.path.insert(0, parent_dir)
                         
                         from segmentation_logic import SegmentationLogic
-                        # Créer une instance temporaire pour arrêter tous les processus
+                        # Create temporary instance to stop all processes
                         temp_logic = SegmentationLogic()
                         temp_logic.stop()
-                        print("Segmentation process canceled")
+                        logger.info("Segmentation process canceled")
                     except Exception as e:
-                        print(f"Error stopping segmentation: {e}")
+                        logger.error(f"Error stopping segmentation: {e}")
                 
                 self.python_process_completed = True
-                print("Python process canceled")
+                logger.info("Python process canceled")
             except Exception as e:
-                print(f"Error canceling Python process: {e}")
+                logger.error(f"Error canceling Python process: {e}")
         
-        # Réinitialiser l'interface
+        # Reset interface state
         self.list_process = []
         self.ui.applyButton.enabled = True
-        self.ui.CheckDependecyButton.enabled = True
+        self.ui.CheckDependencyButton.enabled = True
         self.ui.cancelButton.setVisible(False)
         self.ui.label_3.setVisible(False)
         self.ui.progressBar.setVisible(False)
@@ -718,30 +823,37 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if hasattr(self, 'continueButton'):
             self.ui.continueButton.setVisible(False)
         
-        print("Process cancellation completed")
+        logger.info("Process cancellation completed")
         self.cancelCurrentProcess()
 
-    def cancelCurrentProcess(self):
-        """Cancel the currently running process"""
-        print("Cancelling current process...")
+    def cancelCurrentProcess(self) -> None:
+        """
+        Cancel the currently running process with cleanup.
+        
+        Removes observers and clears process list, then displays confirmation dialog.
+        """
+        logger.info("Cancelling current process...")
         
         if hasattr(self, 'cliNode') and self.cliNode is not None:
             try:
                 self.cliNode.Cancel()
                 self.removeObserver(self.cliNode, vtk.vtkCommand.ModifiedEvent, self.onCliUpdated)
-                print("Process cancelled")
+                logger.info("Process cancelled")
             except Exception as e:
-                print(f"Error cancelling CLI process: {e}")
+                logger.error(f"Error cancelling CLI process: {e}")
         
         self.list_process.clear()
-
         self.resetUIAfterCancel()
 
-        s = PopUpWindow(title="Process Cancelled", text="The process has been successfully cancelled.")
-        s.exec_()
+        confirmation = PopUpWindow(title="Process Cancelled", text="The process has been successfully cancelled.")
+        confirmation.exec_()
 
-    def resetUIAfterCancel(self):
-        """Reset UI elements after cancellation"""
+    def resetUIAfterCancel(self) -> None:
+        """
+        Reset all UI elements to their initial state after process cancellation.
+        
+        Hides progress indicators, re-enables buttons, and clears internal state.
+        """
         self.ui.label_3.setVisible(False)
         self.ui.progressBar.setVisible(False)
         self.ui.progressBar.setValue(0)
@@ -749,7 +861,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.cancelButton.setVisible(False)
         
         self.ui.applyButton.enabled = True
-        self.ui.CheckDependecyButton.enabled = True
+        self.ui.CheckDependencyButton.enabled = True
 
         self.paused_for_visualization = False
         self.current_output_to_load = None
@@ -758,41 +870,64 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ActualProcess = 1
         self.NumberProcess = 0
         
-        print("Interface reset after cancellation")
+        logger.info("Interface reset after cancellation")
 
-    def loadOutputInSlicer(self, output_path):
-        """Charge l'output dans le visualiseur Slicer"""
+    def loadOutputInSlicer(self, output_path: str) -> bool:
+        """
+        Load processed output into Slicer viewer for visualization.
+        
+        Supports volume formats (.nrrd, .nii, .nii.gz) and model format (.vtk).
+        Automatically configures appropriate layout and view settings.
+        
+        Args:
+            output_path: Path to the output file to load
+            
+        Returns:
+            bool: True if loading was successful, False otherwise
+        """
         try:
-            if output_path and os.path.exists(output_path):
+            if not output_path or not os.path.exists(output_path):
+                logger.warning(f"Output path does not exist: {output_path}")
+                return False
 
-                if output_path.endswith(('.nrrd', '.nii', '.nii.gz')):
-                    # Volume
-                    volume_node = slicer.util.loadVolume(output_path)
-                    if volume_node:
-
-                        slicer.util.setSliceViewerLayers(background=volume_node)
-                        slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
-                        slicer.util.resetSliceViews()
-                        print(f"Volume loaded : {output_path}")
-                        return True
-                elif output_path.endswith('.vtk'):
-                    # Model
-                    model_node = slicer.util.loadModel(output_path)
-                    if model_node:
-                        slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView)
-                        threeDView = slicer.app.layoutManager().threeDWidget(0).threeDView()
-                        threeDView.resetFocalPoint()
-                        print(f"Model loaded : {output_path}")
-                        return True
+            if output_path.endswith(('.nrrd', '.nii', '.nii.gz')):
+                # Load volume file
+                volume_node = slicer.util.loadVolume(output_path)
+                if volume_node:
+                    slicer.util.setSliceViewerLayers(background=volume_node)
+                    slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
+                    slicer.util.resetSliceViews()
+                    logger.info(f"Volume loaded: {output_path}")
+                    return True
+                    
+            elif output_path.endswith('.vtk'):
+                # Load model file
+                model_node = slicer.util.loadModel(output_path)
+                if model_node:
+                    slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView)
+                    threeDView = slicer.app.layoutManager().threeDWidget(0).threeDView()
+                    threeDView.resetFocalPoint()
+                    logger.info(f"Model loaded: {output_path}")
+                    return True
+                    
         except Exception as e:
-            print(f"Error during the loading of {output_path}: {e}")
+            logger.error(f"Error loading output file {output_path}: {e}")
         
         return False
 
-    def shouldPauseAfterProcess(self, process_info):
+    def shouldPauseAfterProcess(self, process_info: dict) -> bool:
+        """
+        Determine if process execution should pause for visualization review.
+        
+        Args:
+            process_info: Process information dictionary
+            
+        Returns:
+            bool: True if pause is requested, False otherwise
+        """
         return process_info.get("pause_for_visualization", False)
 
-    def getOutputPathForModule(self, module_name):
+    def getOutputPathForModule(self, module_name: str) -> str:
         output_paths = {
             "Orient T1 (CB)": os.path.join(self._parameterNode.OutputFolder, "Oriented Scans", "Oriented relative CB"),
             "Orient T1 (MAX)": os.path.join(self._parameterNode.OutputFolder, "Oriented Scans", "Oriented relative MAX"),
@@ -990,13 +1125,13 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             timer = f"{int(total_time/3600)}h, {int(total_time%3600/60)}min and {int(total_time%60)}s"
 
-        print(f"PROCESS DONE in {timer}")
+        logger.info(f"PROCESS COMPLETED in {timer}")
 
         self.ui.label_3.setVisible(False)
         self.ui.progressBar.setVisible(False)
         self.ui.continueButton.setVisible(False)
         self.ui.cancelButton.setVisible(False)
-        self.ui.CheckDependecyButton.enabled = True
+        self.ui.CheckDependencyButton.enabled = True
         self.paused_for_visualization = False
         self.ActualProcess = 1
         self.NumberProcess = 0
@@ -1005,43 +1140,59 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.current_output_to_load = None
         self.current_process_info = None
 
-        s = PopUpWindow(title="Process Done",text="Successfully done")
-        s.exec_()
+        completion_dialog = PopUpWindow(title="Process Complete", text="Processing completed successfully!")
+        completion_dialog.exec_()
         self._checkCanApply()
 
+        # Clean up temporary files if requested
         if not self.ui.checkBox.isChecked():
-            list_not_to_clean = []
+            files_to_keep = []
             if "Visualization" in self.ui.comboBox2.currentText:
-                list_not_to_clean.append("Heatmaps")
-                list_not_to_clean.append("VTK Files")
+                files_to_keep.append("Heatmaps")
+                files_to_keep.append("VTK Files")
             if "Quantification" in self.ui.comboBox2.currentText:
-                list_not_to_clean.append("Measurements")
-                list_not_to_clean.append("Classification")
+                files_to_keep.append("Measurements")
+                files_to_keep.append("Classification")
 
-            output_path = Path(self._parameterNode.OutputFolder)
-            for item in output_path.iterdir():
-                if item.is_dir():
-                    if item.name not in list_not_to_clean:
+            try:
+                output_path = Path(self._parameterNode.OutputFolder)
+                for item in output_path.iterdir():
+                    if item.is_dir() and item.name not in files_to_keep:
                         shutil.rmtree(item)
+                        logger.info(f"Cleaned temporary folder: {item.name}")
+            except Exception as e:
+                logger.error(f"Error cleaning temporary files: {e}")
             
             
             
 
 class VFACELogic(ScriptedLoadableModuleLogic):
-    """This class should implement all the actual
-    computation done by your module.  The interface
-    should be such that other python code can import
-    this class and make use of the functionality without
-    requiring an instance of the Widget.
+    """
+    Logic class for VFACE module.
+    
+    This class implements all computations and should be designed such that
+    other python code can import it and use its functionality without requiring
+    an instance of the Widget.
+    
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self) -> None:
-        """Called when the logic class is instantiated. Can be used for initializing member variables."""
+        """
+        Initialize the logic class.
+        
+        Called when the logic instance is created. Can be used for initializing member variables.
+        """
         ScriptedLoadableModuleLogic.__init__(self)
 
-    def getParameterNode(self):
+    def getParameterNode(self) -> VFACEParameterNode:
+        """
+        Get the VFACE parameter node.
+        
+        Returns:
+            VFACEParameterNode: The parameter node for this module
+        """
         return VFACEParameterNode(super().getParameterNode())
 
     def process(self,

@@ -4,7 +4,11 @@ set(MODULE_NAME VFACE)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  createlistprocess.py
+  VFACE_utils/__init__.py
+  VFACE_utils/Progress.py
+  VFACE_utils/createlistprocess.py
+  VFACE_utils/functionaq3dc.py
+  VFACE_utils/_batch_worker.py
   )
 
 set(MODULE_PYTHON_RESOURCES

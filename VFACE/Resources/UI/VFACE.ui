@@ -369,7 +369,7 @@ QLabel {
     </widget>
    </item>
    <item>
-    <widget class="QPushButton" name="CheckDependecyButton">
+    <widget class="QPushButton" name="CheckDependencyButton">
      <property name="enabled">
       <bool>true</bool>
      </property>
