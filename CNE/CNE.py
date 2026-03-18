@@ -107,14 +107,14 @@ def check_dependencies() -> bool:
             
     return True # Everything is good, we can proceed!
 
-class CNE_UI(ScriptedLoadableModule):
+class CNE(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("CNE_UI")
+        self.parent.title = _("CNE")
         self.parent.categories = ["Automated Dental Tools"]
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
         self.parent.contributors = ["Paul Dumont, University of North Carolina, Chapell Hill"]  
@@ -149,7 +149,7 @@ def registerSampleData():
     # CNE_UI1
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
-        category="CNE_UI",
+        category="CNE",
         sampleName="CNE_UI1",
         # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
         # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
@@ -167,7 +167,7 @@ def registerSampleData():
     # CNE_UI2
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
-        category="CNE_UI",
+        category="CNE",
         sampleName="CNE_UI2",
         thumbnailFileName=os.path.join(iconsPath, "CNE_UI2.png"),
         # Download URL and target file name
@@ -180,10 +180,10 @@ def registerSampleData():
 
 
 #
-# CNE_UIParameterNode
+# CNEParameterNode
 #
 @parameterNodeWrapper
-class CNE_UIParameterNode:
+class CNEParameterNode:
     """
     Parameters for Clinical Notes Extraction UI.
 
@@ -199,9 +199,9 @@ class CNE_UIParameterNode:
     notesFolder_output: str = ""
 
 #
-# CNE_UIWidget
+# CNEWidget
 #
-class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
+class CNEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -222,12 +222,12 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath("UI/CNE_UI.ui"))
+        uiWidget = slicer.util.loadUI(self.resourcePath("UI/CNE.ui"))
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
         # Create logic class.
-        self.logic = CNE_UILogic()
+        self.logic = CNELogic()
 
         # Create QButtonGroup for model type selection
         self.modelTypeButtonGroup = qt.QButtonGroup()
@@ -345,7 +345,7 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.setParameterNode(self.logic.getParameterNode())
 
-    def setParameterNode(self, inputParameterNode: CNE_UIParameterNode | None) -> None:
+    def setParameterNode(self, inputParameterNode: CNEParameterNode | None) -> None:
         """
         Set and observe parameter node.
         Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
@@ -486,9 +486,9 @@ class CNE_UIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 #
-# CNE_UILogic
+# CNELogic
 #
-class CNE_UILogic(ScriptedLoadableModuleLogic):
+class CNELogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -503,7 +503,7 @@ class CNE_UILogic(ScriptedLoadableModuleLogic):
         ScriptedLoadableModuleLogic.__init__(self)
 
     def getParameterNode(self,):
-        return CNE_UIParameterNode(super().getParameterNode())
+        return CNEParameterNode(super().getParameterNode())
     
     def copyTestFiles(self, notesType: str) -> tuple:
         """Copy test files for the selected notes type from Resources/testfiles to SlicerDownloads/CNE/testfiles/{notesType}.
