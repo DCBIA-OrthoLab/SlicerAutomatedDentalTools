@@ -326,8 +326,12 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Additional widgets can be instantiated manually and added to self.layout.
     uiWidget = slicer.util.loadUI(self.resourcePath('UI/ALI.ui'))
     self.layout.addWidget(uiWidget)
+    self.uiWidget = uiWidget  # Store reference for styling
 
     self.ui = slicer.util.childWidgetVariables(uiWidget)
+    
+    # Apply dark mode styling if needed
+    self._applyDarkModeStylesheet(uiWidget)
 
     # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
     # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
@@ -1314,12 +1318,206 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.all_installed = True   
     return True
 
+  def _applyDarkModeStylesheet(self, uiWidget) -> None:
+    """Apply dark mode stylesheet to labels and collapsible buttons if Slicer is in dark mode."""
+    # Check if Slicer is using a dark theme
+    app = qt.QApplication.instance()
+    palette = app.palette()
+    
+    # Determine if dark mode is active by checking the window background color
+    bg_color = palette.color(qt.QPalette.Window)
+    is_dark_mode = bg_color.lightness() < 128  # If background is darker than middle gray
+    
+    if is_dark_mode:
+      # Dark mode stylesheet
+      dark_stylesheet = """
+      /* Labels in dark mode */
+      QLabel {
+        font-weight: 500;
+        color: #e0e0e0 !important;
+      }
+      
+      /* Collapsible buttons in dark mode */
+      ctkCollapsibleButton {
+        font-weight: 600 !important;
+        color: #ffffff !important;
+        padding: 8px;
+        background-color: #3a3a3a !important;
+        border: 1px solid #555555 !important;
+        border-radius: 6px;
+      }
+      
+      ctkCollapsibleButton:hover {
+        background-color: #454545 !important;
+        border: 1px solid #777777 !important;
+      }
+      
+      ctkCollapsibleButton:pressed {
+        background-color: #2a2a2a !important;
+        border: 1px solid #444444 !important;
+      }
+      
+      /* Push buttons in dark mode */
+      QPushButton {
+        background-color: #2a6fb8 !important;
+        color: #ffffff !important;
+        border-radius: 6px;
+        padding: 8px;
+        font-weight: 600;
+        border: 1px solid #1a5fa8 !important;
+      }
+      
+      QPushButton:hover {
+        background-color: #3a7fd8 !important;
+        border: 1px solid #2a6fb8 !important;
+      }
+      
+      QPushButton:pressed {
+        background-color: #1a5fa8 !important;
+        border: 1px solid #0a4f98 !important;
+      }
+      
+      /* Radio buttons in dark mode */
+      QRadioButton {
+        color: #e0e0e0 !important;
+        spacing: 5px;
+      }
+      
+      QRadioButton::indicator {
+        width: 14px;
+        height: 14px;
+      }
+      
+      QRadioButton::indicator:unchecked {
+        background-color: #444444;
+        border: 1px solid #666666;
+        border-radius: 7px;
+      }
+      
+      QRadioButton::indicator:unchecked:hover {
+        background-color: #555555;
+        border: 1px solid #777777;
+      }
+      
+      QRadioButton::indicator:checked {
+        background-color: #2a6fb8;
+        border: 1px solid #1a5fa8;
+        border-radius: 7px;
+      }
+      
+      /* Line edits and text edits in dark mode */
+      QLineEdit, QTextEdit, ctkPathLineEdit {
+        color: #e0e0e0 !important;
+        background-color: #2a2a2a !important;
+        border: 1px solid #444444 !important;
+        border-radius: 4px;
+      }
+      
+      QLineEdit:focus, QTextEdit:focus {
+        border: 2px solid #3a7fd8 !important;
+      }
+      
+      /* ComboBox in dark mode */
+      QComboBox {
+        color: #e0e0e0 !important;
+        background-color: #2a2a2a !important;
+        border: 1px solid #444444 !important;
+        border-radius: 4px;
+      }
+      
+      QComboBox:focus {
+        border: 2px solid #3a7fd8 !important;
+      }
+      """
+      
+      # Apply stylesheet to all widgets
+      for widget in uiWidget.findChildren(qt.QWidget):
+        widget.setStyleSheet(widget.styleSheet + dark_stylesheet)
+    
+    else:
+      # Light mode stylesheet - restore from .ui file style
+      light_stylesheet = """
+      /* Labels in light mode */
+      QLabel {
+        color: #2c3e50;
+        font-weight: 500;
+      }
+      
+      /* Collapsible buttons in light mode */
+      ctkCollapsibleButton {
+        background-color: #ffffff !important;
+        border: 1px solid #e0e6ed !important;
+        border-radius: 6px;
+        margin-bottom: 8px;
+        font-weight: 600;
+        padding: 6px 10px;
+      }
+      
+      ctkCollapsibleButton:hover {
+        background-color: #fbfcfd !important;
+        border: 1px solid #3498db !important;
+      }
+      
+      /* Push buttons in light mode */
+      QPushButton {
+        background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db) !important;
+        color: white !important;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 10pt;
+        padding: 8px;
+        margin-top: 4px;
+      }
+      
+      QPushButton:hover {
+        background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5ab3ff, stop:1 #4aa4dc) !important;
+      }
+      
+      QPushButton:pressed {
+        background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3b93df, stop:1 #2988bb) !important;
+      }
+      
+      /* Line edits and text edits in light mode */
+      QLineEdit, QTextEdit, ctkPathLineEdit {
+        background-color: #ffffff;
+        border: 1px solid #e0e6ed;
+        border-radius: 4px;
+        padding: 6px;
+        selection-background-color: #3498db;
+      }
+      
+      QLineEdit:focus, QTextEdit:focus {
+        border: 2px solid #3498db;
+      }
+      
+      /* ComboBox in light mode */
+      QComboBox {
+        background-color: #ffffff;
+        border: 1px solid #e0e6ed;
+        border-radius: 4px;
+        padding: 4px 6px;
+      }
+      
+      QComboBox:focus {
+        border: 2px solid #3498db;
+      }
+      
+      QComboBox::drop-down {
+        width: 20px;
+        border: none;
+      }
+      """
+      
+      # Apply stylesheet to all widgets
+      for widget in uiWidget.findChildren(qt.QWidget):
+        widget.setStyleSheet(widget.styleSheet + light_stylesheet)
 
   def cleanup(self):
     """
     Called when the application closes and the module widget is destroyed.
     """
-    if self.logic.cliNode is not None:
+    if self.logic is not None and hasattr(self.logic, 'cliNode') and self.logic.cliNode is not None:
       # if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
       self.logic.cliNode.Cancel()
 
@@ -1486,6 +1684,148 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.progressBar.setVisible(run)
 
     self.ui.TimerLabel.setVisible(run)
+
+  def _updateAllLabelsColor(self, parent, color):
+    """
+    Recursively update the color of all QLabel widgets in the hierarchy.
+    """
+    # Update current widget if it's a QLabel
+    if isinstance(parent, qt.QLabel):
+      try:
+        parent.setStyleSheet(f"color: #{color.name().lstrip('#')};")
+      except:
+        pass
+    
+    # Recursively update all children
+    if hasattr(parent, 'children'):
+      for child in parent.children():
+        self._updateAllLabelsColor(child, color)
+
+  def _updateDynamicWidgetsColor(self, parent):
+    """
+    Recursively update the color of dynamically created widgets (QCheckBox, QPushButton, etc).
+    """
+    # Update QCheckBox text color
+    if isinstance(parent, qt.QCheckBox):
+      try:
+        parent.setStyleSheet("color: #ffffff;")
+      except:
+        pass
+    
+    # Update QPushButton text color (for Switch tab selection button in LMTab)
+    if isinstance(parent, qt.QPushButton):
+      try:
+        parent.setStyleSheet("color: #ffffff;")
+      except:
+        pass
+    
+    # Recursively update all children
+    if hasattr(parent, 'children'):
+      for child in parent.children():
+        self._updateDynamicWidgetsColor(child)
+
+  def _updateMRMLNodeComboBoxColor(self, parent):
+    """
+    Recursively update the color of qMRMLNodeComboBox widgets.
+    These widgets need special handling as they don't respond well to standard CSS.
+    """
+    # Import at function level to handle qMRMLNodeComboBox
+    try:
+      # Check if widget is qMRMLNodeComboBox
+      widget_class_name = parent.__class__.__name__
+      if 'qMRMLNodeComboBox' in widget_class_name:
+        try:
+          # Force dark background and white text
+          parent.setStyleSheet("""
+            qMRMLNodeComboBox {
+              background-color: #3c3c3c;
+              color: #ffffff;
+              border: 1px solid #555555;
+              padding: 4px;
+            }
+          """)
+          # Also try to update any child widgets
+          if hasattr(parent, 'children'):
+            for child in parent.children():
+              try:
+                child.setStyleSheet("color: #ffffff; background-color: #3c3c3c;")
+              except:
+                pass
+        except:
+          pass
+    except:
+      pass
+    
+    # Recursively update all children
+    if hasattr(parent, 'children'):
+      for child in parent.children():
+        self._updateMRMLNodeComboBoxColor(child)
+
+  def _updateLineEditAndComboBoxDarkMode(self, parent):
+    """
+    Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
+    """
+    # Update QLabel
+    if isinstance(parent, qt.QLabel):
+      try:
+        parent.setStyleSheet("""
+          QLabel {
+            color: #ffffff;
+            font-weight: 500;
+          }
+        """)
+      except:
+        pass
+    
+    # Update QLineEdit
+    if isinstance(parent, qt.QLineEdit):
+      try:
+        parent.setStyleSheet("""
+          QLineEdit {
+            background-color: #3c3c3c;
+            border: 1px solid #555555;
+            border-radius: 4px;
+            padding: 6px;
+            color: #ffffff;
+          }
+          QLineEdit:focus {
+            border: 2px solid #5dade2;
+          }
+        """)
+      except:
+        pass
+    
+    # Update QComboBox
+    if isinstance(parent, qt.QComboBox):
+      try:
+        parent.setStyleSheet("""
+          QComboBox {
+            background-color: #3c3c3c;
+            border: 1px solid #555555;
+            border-radius: 4px;
+            padding: 4px 6px;
+            color: #ffffff;
+          }
+          QComboBox:focus {
+            border: 2px solid #5dade2;
+          }
+          QComboBox::drop-down {
+            width: 20px;
+            border: none;
+          }
+          QComboBox QAbstractItemView {
+            background-color: #3c3c3c;
+            color: #ffffff;
+            selection-background-color: #5dade2;
+          }
+        """)
+      except:
+        pass
+    
+    # Recursively update all children
+    if hasattr(parent, 'children'):
+      for child in parent.children():
+        self._updateLineEditAndComboBoxDarkMode(child)
 
 class LMTab:
     def __init__(self) -> None:
