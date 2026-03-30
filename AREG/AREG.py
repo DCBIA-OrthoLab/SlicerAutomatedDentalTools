@@ -332,6 +332,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
         uiWidget = slicer.util.loadUI(self.resourcePath("UI/AREG.ui"))
+        self.uiWidget = uiWidget  # Store reference for styling
         self.layout.addWidget(uiWidget)
 
         self.ui = slicer.util.childWidgetVariables(uiWidget)
@@ -496,6 +497,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         self.ui.LabelSelectcomboBox.setVisible(False)
         self.ui.label_10.setVisible(False)
+        
+        # Apply dark mode styles
+        self.applyDarkModeStyles()
 
     """
 
@@ -1324,6 +1328,280 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("csv_file : ",csv_file)
         if os.path.exists(csv_file):
           os.remove(csv_file)
+
+    def applyDarkModeStyles(self):
+      """
+      Apply dark mode styles to the UI widgets if Slicer's dark mode is enabled.
+      """
+      # Check if Slicer is in dark mode
+      app = qt.QApplication.instance()
+      palette = app.palette()
+      
+      # Get the background color to detect dark mode
+      bg_color = palette.color(qt.QPalette.Window)
+      bg_brightness = bg_color.lightness()
+      
+      # If background is dark (lightness < 128), apply dark mode stylesheet
+      if bg_brightness < 128:
+        # Dark mode stylesheet
+        dark_stylesheet = """
+/* Dark mode */
+qMRMLWidget {
+  background-color: #2b2b2b;
+  color: #ffffff;
+}
+ctkCollapsibleButton {
+  background-color: #1e1e1e;
+  border: 1px solid #404040;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  padding: 6px 10px;
+  color: #ffffff;
+}
+ctkCollapsibleButton:hover {
+  border: 1px solid #5dade2;
+  background-color: #252525;
+}
+QLineEdit, QTextEdit {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 6px;
+  selection-background-color: #5dade2;
+  color: #ffffff;
+}
+QLineEdit:focus, QTextEdit:focus {
+  border: 2px solid #5dade2;
+}
+QComboBox {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #ffffff;
+}
+QComboBox:focus {
+  border: 2px solid #5dade2;
+}
+QComboBox::drop-down {
+  width: 20px;
+  border: none;
+}
+QComboBox::down-arrow {
+  image: none;
+}
+QComboBox QAbstractItemView {
+  background-color: #3c3c3c;
+  color: #ffffff;
+  selection-background-color: #5dade2;
+}
+QLabel {
+  color: #ffffff;
+  font-weight: 500;
+}
+QPushButton {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 10pt;
+  padding: 8px;
+  margin-top: 4px;
+}
+QPushButton:hover:!pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7bbcef, stop:1 #5dade2);
+}
+QPushButton:pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1e638d);
+}
+QPushButton:disabled {
+  background-color: #555555;
+  color: #888888;
+}
+QCheckBox {
+  color: #ffffff;
+  font-weight: 500;
+  spacing: 6px;
+}
+QCheckBox::indicator {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  background-color: #3c3c3c;
+}
+QCheckBox::indicator:hover {
+  border: 1px solid #5dade2;
+}
+QCheckBox::indicator:checked {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #5dade2;
+  border-radius: 3px;
+  background-color: #5dade2;
+  image: url(:/Icons/SmallCheckMark.png);
+}
+QCheckBox::indicator:checked:hover {
+  border: 1px solid #7bbcef;
+  background-color: #7bbcef;
+}
+QProgressBar {
+  border: 1px solid #555555;
+  border-radius: 4px;
+  background-color: #3c3c3c;
+  padding: 2px;
+  color: #ffffff;
+}
+QProgressBar::chunk {
+  background-color: #5dade2;
+  border-radius: 3px;
+}
+qMRMLNodeComboBox {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #ffffff;
+}
+qMRMLNodeComboBox:focus {
+  border: 2px solid #5dade2;
+}
+        """
+        # Apply dark stylesheet to UI widget
+        self.uiWidget.setStyleSheet(dark_stylesheet)
+        
+        # Update QLineEdit and QComboBox for dark mode
+        self._updateLineEditAndComboBoxDarkMode(self.uiWidget)
+        
+        # Update dynamically created checkboxes
+        self._updateDynamicCheckboxesDarkMode()
+
+    def _updateLineEditAndComboBoxDarkMode(self, parent):
+      """
+      Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
+      """
+      # Update QLabel
+      if isinstance(parent, qt.QLabel):
+        try:
+          parent.setStyleSheet("""
+            QLabel {
+              color: #ffffff;
+              font-weight: 500;
+            }
+          """)
+        except:
+          pass
+      
+      # Update QLineEdit
+      if isinstance(parent, qt.QLineEdit):
+        try:
+          parent.setStyleSheet("""
+            QLineEdit {
+              background-color: #3c3c3c;
+              border: 1px solid #555555;
+              border-radius: 4px;
+              padding: 6px;
+              color: #ffffff;
+            }
+            QLineEdit:focus {
+              border: 2px solid #5dade2;
+            }
+          """)
+        except:
+          pass
+      
+      # Update QComboBox
+      if isinstance(parent, qt.QComboBox):
+        try:
+          parent.setStyleSheet("""
+            QComboBox {
+              background-color: #3c3c3c;
+              border: 1px solid #555555;
+              border-radius: 4px;
+              padding: 4px 6px;
+              color: #ffffff;
+            }
+            QComboBox:focus {
+              border: 2px solid #5dade2;
+            }
+            QComboBox::drop-down {
+              width: 20px;
+              border: none;
+            }
+            QComboBox QAbstractItemView {
+              background-color: #3c3c3c;
+              color: #ffffff;
+              selection-background-color: #5dade2;
+            }
+          """)
+        except:
+          pass
+      
+      # Recursively update all children
+      if hasattr(parent, 'children'):
+        for child in parent.children():
+          self._updateLineEditAndComboBoxDarkMode(child)
+    
+    def _updateDynamicCheckboxesDarkMode(self):
+      """
+      Apply dark mode styles to all dynamically created checkboxes.
+      """
+      checkbox_stylesheet = """
+        QCheckBox {
+          color: #ffffff;
+          font-weight: 500;
+          spacing: 6px;
+        }
+        QCheckBox::indicator {
+          width: 18px;
+          height: 18px;
+          border: 1px solid #555555;
+          border-radius: 3px;
+          background-color: #3c3c3c;
+        }
+        QCheckBox::indicator:hover {
+          border: 1px solid #5dade2;
+        }
+        QCheckBox::indicator:checked {
+          width: 18px;
+          height: 18px;
+          border: 1px solid #5dade2;
+          border-radius: 3px;
+          background-color: #5dade2;
+          image: url(:/Icons/SmallCheckMark.png);
+        }
+        QCheckBox::indicator:checked:hover {
+          border: 1px solid #7bbcef;
+          background-color: #7bbcef;
+        }
+      """
+      
+      # Style all QCheckBox widgets recursively from uiWidget
+      self._styleAllCheckboxes(self.uiWidget, checkbox_stylesheet)
+      
+      # Also try to style Method.merge_seg_checkbox if accessible
+      try:
+        if hasattr(self.ui, 'AREG_Method') and hasattr(self.ui.AREG_Method, 'merge_seg_checkbox'):
+          self.ui.AREG_Method.merge_seg_checkbox.setStyleSheet(checkbox_stylesheet)
+      except:
+        pass
+    
+    def _styleAllCheckboxes(self, parent, stylesheet):
+      """
+      Recursively find and style all QCheckBox widgets in the widget tree.
+      """
+      if isinstance(parent, qt.QCheckBox):
+        try:
+          parent.setStyleSheet(stylesheet)
+        except:
+          pass
+      
+      # Recursively process all children
+      if hasattr(parent, 'children'):
+        for child in parent.children():
+          self._styleAllCheckboxes(child, stylesheet)
 
     def onCancel(self):
         try:
