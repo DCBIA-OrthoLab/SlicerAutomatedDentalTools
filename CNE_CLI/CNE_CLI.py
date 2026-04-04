@@ -98,7 +98,6 @@ def main(args):
             max_seq_length = 6144
         else:
             max_seq_length = 2048
-        max_seq_length = 2048
         
         # --- ASTUCE POUR RENDRE LE C++ TOTALEMENT SILENCIEUX ---
         old_stderr = os.dup(sys.stderr.fileno())
