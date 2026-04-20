@@ -193,11 +193,50 @@ class PopUpWindow(qt.QDialog):
             button = qt.QPushButton("OK")
             button.connect("clicked()", self.onClickedOK)
             layout.addWidget(button)
+        
+        # Apply dark mode styling
+        self.applyPopUpDarkMode()
 
     def checkbox(self, layout):
         j = 0
+        # Check if dark mode
+        app = qt.QApplication.instance()
+        palette = app.palette()
+        bg_color = palette.color(qt.QPalette.Window)
+        is_dark_mode = bg_color.lightness() < 128
+        
+        checkbox_stylesheet = """
+          QCheckBox {
+            color: #ffffff;
+            background-color: transparent;
+            font-weight: 500;
+          }
+          QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+            border: 1px solid #555555;
+            border-radius: 3px;
+            background-color: #3c3c3c;
+          }
+          QCheckBox::indicator:hover {
+            border: 1px solid #5dade2;
+          }
+          QCheckBox::indicator:checked {
+            border: 1px solid #5dade2;
+            background-color: #5dade2;
+            image: url(:/Icons/SmallCheckMark.png);
+          }
+          QCheckBox::indicator:checked:hover {
+            border: 1px solid #7bbcef;
+            background-color: #7bbcef;
+          }
+        """
+        
         for i in range(len(self.listename)):
             button = qt.QCheckBox(self.listename[i])
+            # Apply dark mode style directly if needed
+            if is_dark_mode:
+                button.setStyleSheet(checkbox_stylesheet)
             self.ListButtons.append(button)
             if i % 20 == 0:
                 j += 1
@@ -251,6 +290,216 @@ class PopUpWindow(qt.QDialog):
     def onClickedOK(self):
         self.accept()
 
+    def applyPopUpDarkMode(self):
+        """Apply dark mode styling to the popup window and all its widgets."""
+        app = qt.QApplication.instance()
+        palette = app.palette()
+        bg_color = palette.color(qt.QPalette.Window)
+        if bg_color.lightness() < 128:
+            # Dark mode stylesheet for popup
+            dark_stylesheet = """
+QDialog {
+  background-color: #2b2b2b;
+  color: #ffffff;
+}
+QLabel {
+  color: #ffffff;
+  background-color: transparent;
+}
+QPushButton {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  padding: 8px;
+}
+QPushButton:hover:!pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7bbcef, stop:1 #5dade2);
+}
+QPushButton:pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1e638d);
+}
+QCheckBox {
+  color: #ffffff;
+  background-color: transparent;
+  font-weight: 500;
+}
+QCheckBox::indicator {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  background-color: #3c3c3c;
+}
+QCheckBox::indicator:hover {
+  border: 1px solid #5dade2;
+}
+QCheckBox::indicator:checked {
+  border: 1px solid #5dade2;
+  background-color: #5dade2;
+  image: url(:/Icons/SmallCheckMark.png);
+}
+QCheckBox::indicator:checked:hover {
+  border: 1px solid #7bbcef;
+  background-color: #7bbcef;
+}
+QRadioButton {
+  color: #ffffff;
+  background-color: transparent;
+  font-weight: 500;
+}
+QRadioButton::indicator {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #555555;
+  border-radius: 9px;
+  background-color: #3c3c3c;
+}
+QRadioButton::indicator:hover {
+  border: 1px solid #5dade2;
+}
+QRadioButton::indicator:checked {
+  border: 1px solid #5dade2;
+  background-color: #5dade2;
+}
+            """
+            self.setStyleSheet(dark_stylesheet)
+            
+            # Style checkboxes from ListButtons directly
+            for button in self.ListButtons:
+                self._styleCheckboxWidget(button)
+            
+            # Recursively style all checkboxes and radiobuttons
+            self._stylePopUpWidgets(self)
+    
+    def _styleCheckboxWidget(self, widget):
+        """Style a single checkbox or radiobutton widget."""
+        checkbox_stylesheet = """
+          QCheckBox {
+            color: #ffffff;
+            background-color: transparent;
+            font-weight: 500;
+          }
+          QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+            border: 1px solid #555555;
+            border-radius: 3px;
+            background-color: #3c3c3c;
+          }
+          QCheckBox::indicator:hover {
+            border: 1px solid #5dade2;
+          }
+          QCheckBox::indicator:checked {
+            border: 1px solid #5dade2;
+            background-color: #5dade2;
+            image: url(:/Icons/SmallCheckMark.png);
+          }
+          QCheckBox::indicator:checked:hover {
+            border: 1px solid #7bbcef;
+            background-color: #7bbcef;
+          }
+        """
+        
+        radio_stylesheet = """
+          QRadioButton {
+            color: #ffffff;
+            background-color: transparent;
+            font-weight: 500;
+          }
+          QRadioButton::indicator {
+            width: 18px;
+            height: 18px;
+            border: 1px solid #555555;
+            border-radius: 9px;
+            background-color: #3c3c3c;
+          }
+          QRadioButton::indicator:hover {
+            border: 1px solid #5dade2;
+          }
+          QRadioButton::indicator:checked {
+            border: 1px solid #5dade2;
+            background-color: #5dade2;
+          }
+        """
+        
+        try:
+            if isinstance(widget, qt.QCheckBox):
+                widget.setStyleSheet(checkbox_stylesheet)
+            elif isinstance(widget, qt.QRadioButton):
+                widget.setStyleSheet(radio_stylesheet)
+        except:
+            pass
+    
+    def _stylePopUpWidgets(self, parent):
+        """Recursively style all checkboxes and radiobuttons in the popup."""
+        checkbox_stylesheet = """
+          QCheckBox {
+            color: #ffffff;
+            background-color: transparent;
+            font-weight: 500;
+          }
+          QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+            border: 1px solid #555555;
+            border-radius: 3px;
+            background-color: #3c3c3c;
+          }
+          QCheckBox::indicator:hover {
+            border: 1px solid #5dade2;
+          }
+          QCheckBox::indicator:checked {
+            border: 1px solid #5dade2;
+            background-color: #5dade2;
+            image: url(:/Icons/SmallCheckMark.png);
+          }
+          QCheckBox::indicator:checked:hover {
+            border: 1px solid #7bbcef;
+            background-color: #7bbcef;
+          }
+        """
+        
+        radio_stylesheet = """
+          QRadioButton {
+            color: #ffffff;
+            background-color: transparent;
+            font-weight: 500;
+          }
+          QRadioButton::indicator {
+            width: 18px;
+            height: 18px;
+            border: 1px solid #555555;
+            border-radius: 9px;
+            background-color: #3c3c3c;
+          }
+          QRadioButton::indicator:hover {
+            border: 1px solid #5dade2;
+          }
+          QRadioButton::indicator:checked {
+            border: 1px solid #5dade2;
+            background-color: #5dade2;
+          }
+        """
+        
+        if isinstance(parent, qt.QCheckBox):
+            try:
+                parent.setStyleSheet(checkbox_stylesheet)
+            except:
+                pass
+        
+        if isinstance(parent, qt.QRadioButton):
+            try:
+                parent.setStyleSheet(radio_stylesheet)
+            except:
+                pass
+        
+        # Recursively process all children
+        if hasattr(parent, 'children'):
+            for child in parent.children():
+                self._stylePopUpWidgets(child)
+
 
 #
 # ASOWidget
@@ -285,6 +534,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Additional widgets can be instantiated manually and added to self.layout.
         uiWidget = slicer.util.loadUI(self.resourcePath("UI/ASO.ui"))
         self.layout.addWidget(uiWidget)
+        self.uiWidget = uiWidget  # Store reference for styling
 
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
@@ -292,6 +542,9 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
         # "setMRMLScene(vtkMRMLScene*)" slot.
         uiWidget.setMRMLScene(slicer.mrmlScene)
+
+        # Apply dark mode styling if needed
+        self.applyDarkModeStyles()
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
@@ -1152,6 +1405,40 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Function to create the checkbox at the beginning of the program"""
         if not tohide is None:
             tohide.setHidden(True)
+        
+        # Check if dark mode
+        app = qt.QApplication.instance()
+        palette = app.palette()
+        bg_color = palette.color(qt.QPalette.Window)
+        is_dark_mode = bg_color.lightness() < 128
+        
+        checkbox_stylesheet = """
+          QCheckBox {
+            color: #ffffff;
+            background-color: transparent;
+            font-weight: 500;
+          }
+          QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+            border: 1px solid #555555;
+            border-radius: 3px;
+            background-color: #3c3c3c;
+          }
+          QCheckBox::indicator:hover {
+            border: 1px solid #5dade2;
+          }
+          QCheckBox::indicator:checked {
+            border: 1px solid #5dade2;
+            background-color: #5dade2;
+            image: url(:/Icons/SmallCheckMark.png);
+          }
+          QCheckBox::indicator:checked:hover {
+            border: 1px solid #7bbcef;
+            background-color: #7bbcef;
+          }
+        """
+        
         dic = Method.DicLandmark()
         dicchebox = {}
         dicchebox2 = {}
@@ -1169,6 +1456,9 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     checkbox2 = QCheckBox()
                     checkbox.setText(landmark)
                     checkbox2.setText(landmark)
+                    if is_dark_mode:
+                        checkbox.setStyleSheet(checkbox_stylesheet)
+                        checkbox2.setStyleSheet(checkbox_stylesheet)
                     checkbox2.toggled.connect(checkbox.setChecked)
                     checkbox.toggled.connect(checkbox2.setChecked)
                     widget.addWidget(checkbox)
@@ -1230,6 +1520,40 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Function to create the checkbox at the beginning of the program for IOS"""
         diccheckbox = {"Adult": {}, "Child": {}}
         tohide.setHidden(True)
+        
+        # Check if dark mode
+        app = qt.QApplication.instance()
+        palette = app.palette()
+        bg_color = palette.color(qt.QPalette.Window)
+        is_dark_mode = bg_color.lightness() < 128
+        
+        checkbox_stylesheet = """
+          QCheckBox {
+            color: #ffffff;
+            background-color: transparent;
+            font-weight: 500;
+          }
+          QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+            border: 1px solid #555555;
+            border-radius: 3px;
+            background-color: #3c3c3c;
+          }
+          QCheckBox::indicator:hover {
+            border: 1px solid #5dade2;
+          }
+          QCheckBox::indicator:checked {
+            border: 1px solid #5dade2;
+            background-color: #5dade2;
+            image: url(:/Icons/SmallCheckMark.png);
+          }
+          QCheckBox::indicator:checked:hover {
+            border: 1px solid #7bbcef;
+            background-color: #7bbcef;
+          }
+        """
+        
         dic_teeth = {
             1: "A",
             2: "B",
@@ -1261,9 +1585,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             pixmap = QPixmap(self.resourcePath(f"Image/{i}_resize_child.png"))
             label.setPixmap(pixmap)
             widget = QWidget()
+            widget.setStyleSheet("background-color: transparent;")  # Make parent transparent
             check = QCheckBox()
             check.setText(dic_teeth[i])
             check.setEnabled(False)
+            if is_dark_mode:
+                check.setStyleSheet(checkbox_stylesheet)
             layout_check = QHBoxLayout(widget)
             layout_check.addWidget(check)
 
@@ -1314,9 +1641,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             pixmap = QPixmap(self.resourcePath(f"Image/{i}_resize.png"))
             label.setPixmap(pixmap)
             widget = QWidget()
+            widget.setStyleSheet("background-color: transparent;")  # Make parent transparent
             check = QCheckBox()
             check.setText(dic[i])
             check.setEnabled(False)
+            if is_dark_mode:
+                check.setStyleSheet(checkbox_stylesheet)
             layout_check = QHBoxLayout(widget)
             layout_check.addWidget(check)
 
@@ -1334,9 +1664,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             pixmap = QPixmap(self.resourcePath(f"Image/{i+16}_resize.png"))
             label.setPixmap(pixmap)
             widget = QWidget()
+            widget.setStyleSheet("background-color: transparent;")  # Make parent transparent
             check = QCheckBox()
             check.setText(dic[i + 16])
             check.setEnabled(False)
+            if is_dark_mode:
+                check.setStyleSheet(checkbox_stylesheet)
             layout_check = QHBoxLayout(widget)
             layout_check.addWidget(check)
 
@@ -1354,9 +1687,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             pixmap = QPixmap(self.resourcePath(f"Image/{i+10}_resize_child.png"))
             label.setPixmap(pixmap)
             widget = QWidget()
+            widget.setStyleSheet("background-color: transparent;")  # Make parent transparent
             check = QCheckBox()
             check.setText(dic_teeth[i + 10])
             check.setEnabled(False)
+            if is_dark_mode:
+                check.setStyleSheet(checkbox_stylesheet)
             layout_check = QHBoxLayout(widget)
             layout_check.addWidget(check)
 
@@ -1572,6 +1908,9 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
             self.logic.cliNode.Cancel()
 
+        # Apply dark mode if enabled
+        self.applyDarkModeStyles()
+
         self.removeObservers()
 
     def enter(self):
@@ -1701,6 +2040,279 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self._parameterNode.EndModify(wasModified)
 
+    def applyDarkModeStyles(self):
+        app = qt.QApplication.instance()
+        palette = app.palette()
+        bg_color = palette.color(qt.QPalette.Window)
+        if bg_color.lightness() < 128:
+            # Complete dark mode stylesheet
+            dark_stylesheet = """
+ctkCollapsibleButton {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  padding: 6px 10px;
+  color: #ffffff;
+}
+ctkCollapsibleButton:hover {
+  border: 1px solid #5dade2;
+  background-color: #454545;
+}
+QLineEdit, QTextEdit {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 6px;
+  color: #ffffff;
+  selection-background-color: #5dade2;
+}
+QLineEdit:focus, QTextEdit:focus {
+  border: 2px solid #5dade2;
+}
+QComboBox {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #ffffff;
+}
+QComboBox:focus {
+  border: 2px solid #5dade2;
+}
+QComboBox::drop-down {
+  width: 20px;
+  border: none;
+}
+QComboBox QAbstractItemView {
+  background-color: #3c3c3c;
+  color: #ffffff;
+  selection-background-color: #5dade2;
+}
+QLabel {
+  color: #ffffff;
+  font-weight: 500;
+  background-color: transparent;
+}
+QPushButton {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 10pt;
+  padding: 8px;
+  margin-top: 4px;
+}
+QPushButton:hover:!pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7bbcef, stop:1 #5dade2);
+}
+QPushButton:pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1e638d);
+}
+QPushButton:disabled {
+  background-color: #555555;
+  color: #888888;
+}
+QCheckBox {
+  color: #ffffff;
+  font-weight: 500;
+  spacing: 6px;
+  background-color: transparent;
+}
+QCheckBox::indicator {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  background-color: #3c3c3c;
+}
+QCheckBox::indicator:hover {
+  border: 1px solid #5dade2;
+}
+QCheckBox::indicator:checked {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #5dade2;
+  border-radius: 3px;
+  background-color: #5dade2;
+  image: url(:/Icons/SmallCheckMark.png);
+}
+QCheckBox::indicator:checked:hover {
+  border: 1px solid #7bbcef;
+  background-color: #7bbcef;
+}
+QProgressBar {
+  border: 1px solid #555555;
+  border-radius: 4px;
+  background-color: #3c3c3c;
+  padding: 2px;
+  color: #ffffff;
+}
+QProgressBar::chunk {
+  background-color: #5dade2;
+  border-radius: 3px;
+}
+QSpinBox, QDoubleSpinBox {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #ffffff;
+}
+QSpinBox:focus, QDoubleSpinBox:focus {
+  border: 2px solid #5dade2;
+}
+QSlider::groove:horizontal {
+  background-color: #555555;
+  border-radius: 4px;
+}
+QSlider::handle:horizontal {
+  background-color: #5dade2;
+  width: 12px;
+  margin: -4px 0;
+  border-radius: 6px;
+}
+QSlider::handle:horizontal:hover {
+  background-color: #7bbcef;
+}
+qMRMLNodeComboBox {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #ffffff;
+}
+qMRMLNodeComboBox:focus {
+  border: 2px solid #5dade2;
+}
+            """
+            self.uiWidget.setStyleSheet(dark_stylesheet)
+            
+            # Update QLineEdit, QComboBox, and QLabel for dark mode
+            self._updateLineEditAndComboBoxDarkMode(self.uiWidget)
+            
+            # Update dynamically created checkboxes
+            self._updateDynamicCheckboxesDarkMode()
+
+    def _updateLineEditAndComboBoxDarkMode(self, parent):
+      """
+      Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
+      """
+      # Update QLabel
+      if isinstance(parent, qt.QLabel):
+        try:
+          parent.setStyleSheet("""
+            QLabel {
+              color: #ffffff;
+              font-weight: 500;
+            }
+          """)
+        except:
+          pass
+      
+      # Update QLineEdit
+      if isinstance(parent, qt.QLineEdit):
+        try:
+          parent.setStyleSheet("""
+            QLineEdit {
+              background-color: #3c3c3c;
+              border: 1px solid #555555;
+              border-radius: 4px;
+              padding: 6px;
+              color: #ffffff;
+            }
+            QLineEdit:focus {
+              border: 2px solid #5dade2;
+            }
+          """)
+        except:
+          pass
+      
+      # Update QComboBox
+      if isinstance(parent, qt.QComboBox):
+        try:
+          parent.setStyleSheet("""
+            QComboBox {
+              background-color: #3c3c3c;
+              border: 1px solid #555555;
+              border-radius: 4px;
+              padding: 4px 6px;
+              color: #ffffff;
+            }
+            QComboBox:focus {
+              border: 2px solid #5dade2;
+            }
+            QComboBox::drop-down {
+              width: 20px;
+              border: none;
+            }
+            QComboBox QAbstractItemView {
+              background-color: #3c3c3c;
+              color: #ffffff;
+              selection-background-color: #5dade2;
+            }
+          """)
+        except:
+          pass
+      
+      # Recursively update all children
+      if hasattr(parent, 'children'):
+        for child in parent.children():
+          self._updateLineEditAndComboBoxDarkMode(child)
+    
+    def _updateDynamicCheckboxesDarkMode(self):
+      """
+      Apply dark mode styles to all dynamically created checkboxes.
+      """
+      checkbox_stylesheet = """
+        QCheckBox {
+          color: #ffffff;
+          font-weight: 500;
+          spacing: 6px;
+        }
+        QCheckBox::indicator {
+          width: 18px;
+          height: 18px;
+          border: 1px solid #555555;
+          border-radius: 3px;
+          background-color: #3c3c3c;
+        }
+        QCheckBox::indicator:hover {
+          border: 1px solid #5dade2;
+        }
+        QCheckBox::indicator:checked {
+          width: 18px;
+          height: 18px;
+          border: 1px solid #5dade2;
+          border-radius: 3px;
+          background-color: #5dade2;
+          image: url(:/Icons/SmallCheckMark.png);
+        }
+        QCheckBox::indicator:checked:hover {
+          border: 1px solid #7bbcef;
+          background-color: #7bbcef;
+        }
+      """
+      
+      # Style all QCheckBox widgets recursively from uiWidget
+      self._styleAllCheckboxes(self.uiWidget, checkbox_stylesheet)
+    
+    def _styleAllCheckboxes(self, parent, stylesheet):
+      """
+      Recursively find and style all QCheckBox widgets in the widget tree.
+      """
+      if isinstance(parent, qt.QCheckBox):
+        try:
+          parent.setStyleSheet(stylesheet)
+        except:
+          pass
+      
+      # Recursively process all children
+      if hasattr(parent, 'children'):
+        for child in parent.children():
+          self._styleAllCheckboxes(child, stylesheet)
 
 """
                 d8888  .d8888b.   .d88888b.      888       .d88888b.   .d8888b.  8888888  .d8888b.

@@ -11,7 +11,8 @@
    </rect>
   </property>
   <property name="styleSheet">
-   <string notr="true">qMRMLWidget {
+   <string notr="true">/* Light mode (default) */
+qMRMLWidget {
   background-color: #f8f9fa;
 }
 ctkCollapsibleButton {
@@ -21,10 +22,47 @@ ctkCollapsibleButton {
   margin-bottom: 8px;
   font-weight: 600;
   padding: 6px 10px;
+  color: #2c3e50;
 }
 ctkCollapsibleButton:hover {
+ctkCollapsibleButton:dark {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  color: #ffffff;
+}
+ctkCollapsibleButton:dark:hover {
+  border: 1px solid #5dade2;
+  background-color: #4c4c4c;
+}
   border: 1px solid #3498db;
+ctkCollapsibleButton:dark {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  color: #ffffff;
+}
+ctkCollapsibleButton:dark:hover {
+  border: 1px solid #5dade2;
+  background-color: #4c4c4c;
+}
   background-color: #fbfcfd;
+ctkCollapsibleButton:dark {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  color: #ffffff;
+}
+ctkCollapsibleButton:dark:hover {
+  border: 1px solid #5dade2;
+  background-color: #4c4c4c;
+}
+}
+ctkCollapsibleButton:dark {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  color: #ffffff;
+}
+ctkCollapsibleButton:dark:hover {
+  border: 1px solid #5dade2;
+  background-color: #4c4c4c;
 }
 QLineEdit, QTextEdit {
   background-color: #ffffff;
@@ -32,6 +70,7 @@ QLineEdit, QTextEdit {
   border-radius: 4px;
   padding: 6px;
   selection-background-color: #3498db;
+  color: #2c3e50;
 }
 QLineEdit:focus, QTextEdit:focus {
   border: 2px solid #3498db;
@@ -41,6 +80,7 @@ QComboBox {
   border: 1px solid #e0e6ed;
   border-radius: 4px;
   padding: 4px 6px;
+  color: #2c3e50;
 }
 QComboBox:focus {
   border: 2px solid #3498db;
@@ -48,6 +88,9 @@ QComboBox:focus {
 QComboBox::drop-down {
   width: 20px;
   border: none;
+}
+QComboBox::down-arrow {
+  image: none;
 }
 QLabel {
   color: #2c3e50;
@@ -88,15 +131,61 @@ QCheckBox::indicator {
 QCheckBox::indicator:hover {
   border: 1px solid #3498db;
 }
+QCheckBox::indicator:checked {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #3498db;
+  border-radius: 3px;
+  background-color: #3498db;
+  image: url(:/Icons/SmallCheckMark.png);
+}
+QCheckBox::indicator:checked:hover {
+  border: 1px solid #2980b9;
+  background-color: #2980b9;
+}
+QSpinBox {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #2c3e50;
+}
+QSpinBox:focus {
+  border: 2px solid #3498db;
+}
+QSlider::groove:horizontal {
+  border: 1px solid #e0e6ed;
+  height: 8px;
+  background-color: #ffffff;
+  border-radius: 4px;
+}
+QSlider::handle:horizontal {
+  background-color: #3498db;
+  border: 1px solid #3498db;
+  width: 16px;
+  margin: -4px 0;
+  border-radius: 8px;
+}
 QProgressBar {
   border: 1px solid #e0e6ed;
   border-radius: 4px;
   background-color: #ffffff;
   padding: 2px;
+  color: #2c3e50;
 }
 QProgressBar::chunk {
   background-color: #3498db;
   border-radius: 3px;
+}
+qMRMLNodeComboBox {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #2c3e50;
+}
+qMRMLNodeComboBox:focus {
+  border: 2px solid #3498db;
 }
   </string>
   </property>
@@ -501,6 +590,20 @@ QProgressBar::chunk {
              <widget class="QLineEdit" name="SaveFolderLineEdit">
               <property name="enabled">
                <bool>true</bool>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">
+QLineEdit {
+  background-color: #ffffff;
+  border: 1px solid #e0e6ed;
+  border-radius: 4px;
+  padding: 6px;
+  color: #2c3e50;
+}
+QLineEdit:focus {
+  border: 2px solid #3498db;
+}
+               </string>
               </property>
              </widget>
             </item>
