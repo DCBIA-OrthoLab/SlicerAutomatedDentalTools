@@ -344,6 +344,7 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Additional widgets can be instantiated manually and added to self.layout.
         uiWidget = slicer.util.loadUI(self.resourcePath('UI/MedX.ui'))
         self.layout.addWidget(uiWidget)
+        self.uiWidget = uiWidget  # Store reference for styling
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
         # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
@@ -407,6 +408,9 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.progress=0
 
         self.ui.progressBar.setVisible(False)
+        
+        # Apply dark mode styling
+        self.applyDarkModeStyles()
         self.ui.progressBar.setRange(0,100)
         self.ui.progressBar.setTextVisible(True)
         self.ui.label_info.setVisible(False)
@@ -442,6 +446,202 @@ class MedXWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             surface_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
             self.ui.lineEditOutDashboard.setText(surface_folder)
 
+    def applyDarkModeStyles(self):
+        """Apply dark mode styling to the widget if needed"""
+        app = qt.QApplication.instance()
+        palette = app.palette()
+        bg_color = palette.color(qt.QPalette.Window)
+        if bg_color.lightness() < 128:
+            # Complete dark mode stylesheet
+            dark_stylesheet = """
+QLineEdit, QTextEdit {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 6px;
+  color: #ffffff;
+  selection-background-color: #5dade2;
+}
+QLineEdit:focus, QTextEdit:focus {
+  border: 2px solid #5dade2;
+}
+QComboBox {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #ffffff;
+}
+QComboBox:focus {
+  border: 2px solid #5dade2;
+}
+QComboBox::drop-down {
+  width: 20px;
+  border: none;
+}
+QComboBox QAbstractItemView {
+  background-color: #3c3c3c;
+  color: #ffffff;
+  selection-background-color: #5dade2;
+}
+QLabel {
+  color: #ffffff !important;
+  font-weight: 500;
+  background-color: transparent;
+}
+QPushButton {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 10pt;
+  padding: 8px;
+  margin-top: 4px;
+}
+QPushButton:hover:!pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7bbcef, stop:1 #5dade2);
+}
+QPushButton:pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1e638d);
+}
+QPushButton:disabled {
+  background-color: #555555;
+  color: #888888;
+}
+QCheckBox {
+  color: #ffffff;
+  font-weight: 500;
+  spacing: 6px;
+  background-color: transparent;
+}
+QCheckBox::indicator {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  background-color: #3c3c3c;
+}
+QCheckBox::indicator:hover {
+  border: 1px solid #5dade2;
+}
+QCheckBox::indicator:checked {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #5dade2;
+  border-radius: 3px;
+  background-color: #5dade2;
+  image: url(:/Icons/SmallCheckMark.png);
+}
+QCheckBox::indicator:checked:hover {
+  border: 1px solid #7bbcef;
+  background-color: #7bbcef;
+}
+QProgressBar {
+  border: 1px solid #555555;
+  border-radius: 4px;
+  background-color: #3c3c3c;
+  padding: 2px;
+  color: #ffffff;
+}
+QProgressBar::chunk {
+  background-color: #5dade2;
+  border-radius: 3px;
+}
+QSpinBox, QDoubleSpinBox {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #ffffff;
+}
+QSpinBox:focus, QDoubleSpinBox:focus {
+  border: 2px solid #5dade2;
+}
+QSlider::groove:horizontal {
+  background-color: #555555;
+  border-radius: 4px;
+}
+QSlider::handle:horizontal {
+  background-color: #5dade2;
+  width: 12px;
+  margin: -4px 0;
+  border-radius: 6px;
+}
+QSlider::handle:horizontal:hover {
+  background-color: #7bbcef;
+}
+            """
+            self.uiWidget.setStyleSheet(dark_stylesheet)
+            
+            # Update QLineEdit, QComboBox, and QLabel for dark mode
+            self._updateLineEditAndComboBoxDarkMode(self.uiWidget)
+
+    def _updateLineEditAndComboBoxDarkMode(self, parent):
+        """
+        Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
+        """
+        # Update QLabel
+        if isinstance(parent, qt.QLabel):
+            try:
+                parent.setStyleSheet("""
+                    QLabel {
+                      color: #ffffff;
+                      font-weight: 500;
+                    }
+                """)
+            except:
+                pass
+        
+        # Update QLineEdit
+        if isinstance(parent, qt.QLineEdit):
+            try:
+                parent.setStyleSheet("""
+                    QLineEdit {
+                      background-color: #3c3c3c;
+                      border: 1px solid #555555;
+                      border-radius: 4px;
+                      padding: 6px;
+                      color: #ffffff;
+                    }
+                    QLineEdit:focus {
+                      border: 2px solid #5dade2;
+                    }
+                """)
+            except:
+                pass
+        
+        # Update QComboBox
+        if isinstance(parent, qt.QComboBox):
+            try:
+                parent.setStyleSheet("""
+                    QComboBox {
+                      background-color: #3c3c3c;
+                      border: 1px solid #555555;
+                      border-radius: 4px;
+                      padding: 4px 6px;
+                      color: #ffffff;
+                    }
+                    QComboBox:focus {
+                      border: 2px solid #5dade2;
+                    }
+                    QComboBox::drop-down {
+                      width: 20px;
+                      border: none;
+                    }
+                    QComboBox QAbstractItemView {
+                      background-color: #3c3c3c;
+                      color: #ffffff;
+                      selection-background-color: #5dade2;
+                    }
+                """)
+            except:
+                pass
+        
+        # Recursively update all children
+        if hasattr(parent, 'children'):
+            for child in parent.children():
+                self._updateLineEditAndComboBoxDarkMode(child)
 
     def cleanup(self):
         """

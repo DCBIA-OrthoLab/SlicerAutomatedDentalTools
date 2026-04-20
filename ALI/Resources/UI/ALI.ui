@@ -23,8 +23,44 @@ ctkCollapsibleButton {
   padding: 6px 10px;
 }
 ctkCollapsibleButton:hover {
+ctkCollapsibleButton:dark {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  color: #ffffff;
+}
+ctkCollapsibleButton:dark:hover {
+  border: 1px solid #5dade2;
+  background-color: #4c4c4c;
+}
   border: 1px solid #3498db;
+ctkCollapsibleButton:dark {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  color: #ffffff;
+}
+ctkCollapsibleButton:dark:hover {
+  border: 1px solid #5dade2;
+  background-color: #4c4c4c;
+}
   background-color: #fbfcfd;
+ctkCollapsibleButton:dark {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  color: #ffffff;
+}
+ctkCollapsibleButton:dark:hover {
+  border: 1px solid #5dade2;
+  background-color: #4c4c4c;
+}
+}
+ctkCollapsibleButton:dark {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  color: #ffffff;
+}
+ctkCollapsibleButton:dark:hover {
+  border: 1px solid #5dade2;
+  background-color: #4c4c4c;
 }
 QLineEdit, QTextEdit {
   background-color: #ffffff;
@@ -87,6 +123,18 @@ QCheckBox::indicator {
 }
 QCheckBox::indicator:hover {
   border: 1px solid #3498db;
+}
+QCheckBox::indicator:checked {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #3498db;
+  border-radius: 3px;
+  background-color: #3498db;
+  image: url(:/Icons/SmallCheckMark.png);
+}
+QCheckBox::indicator:checked:hover {
+  border: 1px solid #2980b9;
+  background-color: #2980b9;
 }
 QProgressBar {
   border: 1px solid #e0e6ed;

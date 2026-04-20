@@ -5,10 +5,10 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
-from Progress import DisplayASOCBCT,DisplayAMASSS,DisplayAREGCBCT,DisplayALICBCT
+from .Progress import DisplayASOCBCT,DisplayAMASSS,DisplayAREGCBCT,DisplayALICBCT
 from glob import iglob
 import slicer
-from functionaq3dc import AQ3DCLogic, AQ3DCWidget
+from .functionaq3dc import AQ3DCLogic, AQ3DCWidget
 import qt
 import re
 import shutil
@@ -1250,19 +1250,19 @@ def run_bds(input_path, output_path, model_name="DentalSegmentator", device="cud
         )
         
         if success:
-            print(f"[BDS] ✅ Dental segmentation completed successfully")
+            print(f"[BDS] Dental segmentation completed successfully")
             print(f"[BDS] Results saved to: {output_path}")
         else:
-            print(f"[BDS] ❌ Dental segmentation failed")
+            print(f"[BDS] Dental segmentation failed")
             
         return success
         
     except ImportError as e:
-        print(f"[BDS] ❌ Failed to import segmentation logic: {str(e)}")
+        print(f"[BDS] Failed to import segmentation logic: {str(e)}")
         print(f"[BDS] Make sure segmentation_logic.py is in the parent directory")
         return False
     except Exception as e:
-        print(f"[BDS] ❌ Error in dental segmentation: {str(e)}")
+        print(f"[BDS] Error in dental segmentation: {str(e)}")
         return False
 
 def reorganizeStat(patient_compute):
@@ -1906,12 +1906,9 @@ def read_vtk(file_path):
     if not raw_output or raw_output.GetNumberOfPoints() == 0:
         raise ValueError(f"Failed to read or empty polydata from: {file_path}")
 
-    # DeepCopy pour couper le lien avec le pipeline du reader
-    # Sans cela, le reader et ses buffers internes restent en mémoire
     polydata = vtk.vtkPolyData()
     polydata.DeepCopy(raw_output)
 
-    # Couper explicitement le pipeline VTK
     reader.SetFileName("")
     reader.RemoveAllInputs()
     del reader
@@ -1931,7 +1928,6 @@ def write_vtk(polydata, file_path):
     writer.SetInputData(polydata)
     writer.Write()
 
-    # Couper le pipeline du writer
     writer.RemoveAllInputs()
     del writer
 
@@ -1949,35 +1945,29 @@ def clean_and_triangulate(polydata):
     print(f"Input polydata: {num_points} points, {num_cells} cells")
     
     try:
-        # --- Étape 1 : Cleaning ---
         print("Cleaning polydata...")
         cleaner = vtk.vtkCleanPolyData()
         cleaner.SetInputData(polydata)
         cleaner.PointMergingOn()
         cleaner.Update()
 
-        # DeepCopy pour couper le lien avec le pipeline du cleaner
         cleaned = vtk.vtkPolyData()
         cleaned.DeepCopy(cleaner.GetOutput())
 
-        # Détruire le cleaner et son pipeline
         cleaner.RemoveAllInputs()
         del cleaner
         
         if not cleaned or cleaned.GetNumberOfPoints() == 0:
             raise ValueError("Cleaning resulted in empty polydata")
         
-        # --- Étape 2 : Triangulation ---
         print("Triangulating polydata...")
         triangle_filter = vtk.vtkTriangleFilter()
         triangle_filter.SetInputData(cleaned)
         triangle_filter.Update()
 
-        # DeepCopy pour couper le lien avec le pipeline du triangle filter
         triangulated = vtk.vtkPolyData()
         triangulated.DeepCopy(triangle_filter.GetOutput())
 
-        # Détruire le filtre et libérer le cleaned intermédiaire
         triangle_filter.RemoveAllInputs()
         del triangle_filter
         del cleaned
@@ -1994,7 +1984,6 @@ def clean_and_triangulate(polydata):
 def compute_distance(polydata1, polydata2, signed=True):
     print("Starting distance computation...")
     
-    # Validation des données d'entrée
     if not polydata1 or polydata1.GetNumberOfPoints() == 0:
         raise ValueError("Invalid or empty polydata1")
     if not polydata2 or polydata2.GetNumberOfPoints() == 0:
@@ -2008,21 +1997,18 @@ def compute_distance(polydata1, polydata2, signed=True):
     print(f"Polydata1: {num_points1} points, {num_cells1} cells")
     print(f"Polydata2: {num_points2} points, {num_cells2} cells")
     
-    # Calcul de la complexité totale (points + cellules)
     total_complexity = num_points1 + num_points2 + num_cells1 + num_cells2
     
-    # Seuils adaptatifs basés sur la complexité totale
-    if total_complexity > 5000000:  # Très gros datasets
+    if total_complexity > 5000000:
         print(f"Very large dataset detected (complexity: {total_complexity}). Using aggressive subsampling.")
         return compute_distance_subsampled(polydata1, polydata2, signed, target_points=300000)
-    elif total_complexity > 2000000:  # Gros datasets
+    elif total_complexity > 2000000:
         print(f"Large dataset detected (complexity: {total_complexity}). Using subsampling approach.")
         return compute_distance_subsampled(polydata1, polydata2, signed, target_points=500000)
-    elif total_complexity > 1000000:  # Datasets moyens
+    elif total_complexity > 1000000:
         print(f"Medium dataset detected (complexity: {total_complexity}). Using optimized approach.")
         return compute_distance_subsampled(polydata1, polydata2, signed, target_points=750000)
     
-    # Pour les petits datasets, utiliser l'approche standard
     return compute_distance_standard(polydata1, polydata2, signed)
 
 
@@ -2034,7 +2020,6 @@ def compute_distance_subsampled(polydata1, polydata2, signed=True, target_points
     print("Using subsampled distance computation...")
     
     try:
-        # Sous-échantillonner polydata1 si nécessaire
         if polydata1.GetNumberOfPoints() > target_points:
             print(f"Subsampling polydata1 from {polydata1.GetNumberOfPoints()} to ~{target_points} points")
             ratio1 = target_points / polydata1.GetNumberOfPoints()
@@ -2042,7 +2027,6 @@ def compute_distance_subsampled(polydata1, polydata2, signed=True, target_points
         else:
             pd1_subsampled = polydata1
         
-        # Sous-échantillonner polydata2 si nécessaire  
         if polydata2.GetNumberOfPoints() > target_points:
             print(f"Subsampling polydata2 from {polydata2.GetNumberOfPoints()} to ~{target_points} points")
             ratio2 = target_points / polydata2.GetNumberOfPoints()
@@ -2052,27 +2036,21 @@ def compute_distance_subsampled(polydata1, polydata2, signed=True, target_points
         
         print(f"Computing distance on subsampled data: {pd1_subsampled.GetNumberOfPoints()} vs {pd2_subsampled.GetNumberOfPoints()} points")
         
-        # Calculer la distance sur les données sous-échantillonnées
         result_subsampled = compute_distance_standard(pd1_subsampled, pd2_subsampled, signed)
         
-        # Nettoyer les données sous-échantillonnées
         if pd1_subsampled != polydata1:
             pd1_subsampled = None
         if pd2_subsampled != polydata2:
             pd2_subsampled = None
         gc.collect()
         
-        # Pour les très gros datasets, retourner directement le résultat sous-échantillonné
-        # plutôt que d'essayer l'interpolation qui peut être coûteuse
         if polydata1.GetNumberOfPoints() > 1000000:
             print("Very large dataset - returning subsampled result directly")
             return result_subsampled
         
-        # Interpoler les résultats sur le dataset original pour les datasets modérés
         print("Interpolating results back to original resolution...")
         result_full = interpolate_distance_to_original(result_subsampled, polydata1)
-        
-        # Nettoyer le résultat intermédiaire
+
         result_subsampled = None
         gc.collect()
         
@@ -2082,10 +2060,8 @@ def compute_distance_subsampled(polydata1, polydata2, signed=True, target_points
         print(f"Error in subsampled computation: {e}")
         print("Falling back to simplified approach...")
         
-        # Nettoyage en cas d'erreur
         gc.collect()
         
-        # Fallback ultime : créer un résultat avec des distances nulles
         return create_fallback_result(polydata1, signed)
 
 
@@ -2099,7 +2075,6 @@ def create_fallback_result(polydata, signed=True):
         output = vtk.vtkPolyData()
         output.DeepCopy(polydata)
         
-        # Créer un tableau de distances nulles
         distance_name = "SignedDistance" if signed else "AbsoluteDistance"
         distance_array = vtk.vtkDoubleArray()
         distance_array.SetName(distance_name)
@@ -2107,7 +2082,6 @@ def create_fallback_result(polydata, signed=True):
         distance_array.FillComponent(0, 0.0)
         output.GetPointData().SetScalars(distance_array)
         
-        # Ajouter le tableau constant
         const_array = vtk.vtkDoubleArray()
         const_array.SetName("Original")
         const_array.SetNumberOfTuples(output.GetNumberOfPoints())
@@ -2138,11 +2112,9 @@ def subsample_polydata(polydata, ratio):
         
         raw_result = decimate.GetOutput()
         
-        # Si la décimation n'a pas suffisamment réduit, utiliser vtkMaskPoints
         if raw_result.GetNumberOfPoints() > ratio * polydata.GetNumberOfPoints() * 1.5:
             print("Decimation not sufficient, using point masking...")
             
-            # Libérer le decimate d'abord
             decimate.RemoveAllInputs()
             del decimate
             
@@ -2156,7 +2128,6 @@ def subsample_polydata(polydata, ratio):
             points_to_poly.SetInputData(mask.GetOutput())
             points_to_poly.Update()
             
-            # DeepCopy pour couper le pipeline
             result = vtk.vtkPolyData()
             result.DeepCopy(points_to_poly.GetOutput())
             
@@ -2164,7 +2135,6 @@ def subsample_polydata(polydata, ratio):
             mask.RemoveAllInputs()
             del points_to_poly, mask
         else:
-            # DeepCopy pour couper le pipeline du decimate
             result = vtk.vtkPolyData()
             result.DeepCopy(raw_result)
             
@@ -2176,7 +2146,6 @@ def subsample_polydata(polydata, ratio):
         
     except Exception as e:
         print(f"Error in subsampling: {e}")
-        # Fallback: retourner le polydata original avec un avertissement
         print("Warning: Using original data without subsampling")
         return polydata
 
@@ -2188,33 +2157,28 @@ def interpolate_distance_to_original(distance_result, original_polydata):
     print("Creating result with original geometry...")
     
     try:
-        # Approche plus simple : créer une copie et assigner des distances par défaut
         output = vtk.vtkPolyData()
         output.DeepCopy(original_polydata)
         
-        # Créer un tableau de distances par défaut (zéro)
         distance_array = vtk.vtkDoubleArray()
         distance_array.SetName("SignedDistance")
         distance_array.SetNumberOfTuples(output.GetNumberOfPoints())
-        distance_array.FillComponent(0, 0.0)  # Valeur par défaut
+        distance_array.FillComponent(0, 0.0)
         
-        # Essayer d'interpoler si possible
         source_distance_array = distance_result.GetPointData().GetArray("SignedDistance") or distance_result.GetPointData().GetArray("Distance")
         if source_distance_array:
             print("Attempting simple interpolation...")
             
-            # Interpolation très simple basée sur la distance euclidienne
             source_points = distance_result.GetPoints()
             target_points = output.GetPoints()
             
-            for i in range(min(1000, output.GetNumberOfPoints())):  # Limiter pour éviter le timeout
+            for i in range(min(1000, output.GetNumberOfPoints())):
                 target_point = target_points.GetPoint(i)
                 
-                # Trouver le point le plus proche dans les données source
                 closest_distance = float('inf')
                 closest_value = 0.0
                 
-                for j in range(min(100, distance_result.GetNumberOfPoints())):  # Limiter la recherche
+                for j in range(min(100, distance_result.GetNumberOfPoints())):
                     source_point = source_points.GetPoint(j)
                     dist = ((target_point[0] - source_point[0])**2 + 
                            (target_point[1] - source_point[1])**2 + 
@@ -2232,7 +2196,6 @@ def interpolate_distance_to_original(distance_result, original_polydata):
         
         output.GetPointData().SetScalars(distance_array)
         
-        # Ajouter le tableau constant
         const_array = vtk.vtkDoubleArray()
         const_array.SetName("Original")
         const_array.SetNumberOfTuples(output.GetNumberOfPoints())
@@ -2276,22 +2239,17 @@ def compute_distance_standard(polydata1, polydata2, signed=True):
         if not raw_output or raw_output.GetNumberOfPoints() == 0:
             raise ValueError("Distance computation failed - empty output")
         
-        # === CLÉ : DeepCopy pour couper le lien avec le pipeline du filtre ===
-        # Sans cela, le CellLocator interne (~centaines de MB) reste en mémoire
         output = vtk.vtkPolyData()
         output.DeepCopy(raw_output)
         
-        # Détruire explicitement le filtre et ses structures internes
         distance_filter.RemoveAllInputs()
         del distance_filter
         del raw_output
         
         print("Processing results...")
-        # Nettoyer les données cellulaires
         if output.GetCellData().GetArray("Distance"):
             output.GetCellData().RemoveArray("Distance")
         
-        # Renommer le tableau de distances
         distance_name = "SignedDistance" if signed else "AbsoluteDistance"
         distance_array = output.GetPointData().GetArray("Distance")
         if distance_array:
