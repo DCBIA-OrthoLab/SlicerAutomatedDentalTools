@@ -1,5 +1,5 @@
-from Classes.Point import Point
-from Classes.Line import Line
+from .Point import Point
+from .Line import Line
 import numpy as np
 from typing import Union
 import math

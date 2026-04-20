@@ -798,7 +798,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         if parent_dir not in sys.path:
                             sys.path.insert(0, parent_dir)
                         
-                        from segmentation_logic import SegmentationLogic
+                        from VFACE_utils.segmentation_logic import SegmentationLogic
                         # Create temporary instance to stop all processes
                         temp_logic = SegmentationLogic()
                         temp_logic.stop()
