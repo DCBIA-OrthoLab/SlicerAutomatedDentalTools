@@ -56,7 +56,7 @@ local_classes_path = os.path.join(current_dir, "Classes")
 sys.path.insert(0, local_classes_path)
 
 try:
-    from Classes import (
+    from VFACE_utils import (
         Angle,
         Distance,
         Diff2Measure,

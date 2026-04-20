@@ -1231,7 +1231,7 @@ def run_bds(input_path, output_path, model_name="DentalSegmentator", device="cud
         sys.path.insert(0, parent_dir)
     
     try:
-        from segmentation_logic import run_dental_segmentation, ExportFormat
+        from VFACE_utils.segmentation_logic import run_dental_segmentation, ExportFormat
         
         print(f"[BDS] Starting dental segmentation...")
         print(f"[BDS] Input folder: {input_path}")
