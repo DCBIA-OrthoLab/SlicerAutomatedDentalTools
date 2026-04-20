@@ -40,6 +40,101 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
 
+        # Apply stylesheet to parent
+        styleSheet = """
+        qMRMLWidget {
+          background-color: #f8f9fa;
+        }
+        ctkCollapsibleButton {
+          background-color: #ffffff;
+          border: 1px solid #e0e6ed;
+          border-radius: 6px;
+          margin-bottom: 8px;
+          font-weight: 600;
+          padding: 6px 10px;
+        }
+        ctkCollapsibleButton:hover {
+          border: 1px solid #3498db;
+          background-color: #fbfcfd;
+        }
+        QLineEdit, QTextEdit {
+          background-color: #ffffff;
+          border: 1px solid #e0e6ed;
+          border-radius: 4px;
+          padding: 6px;
+          selection-background-color: #3498db;
+        }
+        QLineEdit:focus, QTextEdit:focus {
+          border: 2px solid #3498db;
+        }
+        QComboBox {
+          background-color: #ffffff;
+          border: 1px solid #e0e6ed;
+          border-radius: 4px;
+          padding: 4px 6px;
+        }
+        QComboBox:focus {
+          border: 2px solid #3498db;
+        }
+        QComboBox::drop-down {
+          width: 20px;
+          border: none;
+        }
+        QLabel {
+          color: #2c3e50;
+          font-weight: 500;
+        }
+        QPushButton {
+          background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+          color: white;
+          border: none;
+          border-radius: 6px;
+          font-weight: 600;
+          font-size: 10pt;
+          padding: 8px;
+          margin-top: 4px;
+        }
+        QPushButton:hover:!pressed {
+          background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+        }
+        QPushButton:pressed {
+          background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+        }
+        QPushButton:disabled {
+          background-color: #bdc3c7;
+          color: #95a5a6;
+        }
+        QCheckBox {
+          color: #2c3e50;
+          font-weight: 500;
+          spacing: 6px;
+        }
+        QCheckBox::indicator {
+          width: 18px;
+          height: 18px;
+          border: 1px solid #e0e6ed;
+          border-radius: 3px;
+          background-color: #ffffff;
+        }
+        QCheckBox::indicator:hover {
+          border: 1px solid #3498db;
+        }
+        QProgressBar {
+          border: 1px solid #e0e6ed;
+          border-radius: 4px;
+          background-color: #ffffff;
+          padding: 2px;
+        }
+        QProgressBar::chunk {
+          background-color: #3498db;
+          border-radius: 3px;
+        }
+        """
+        self.parent.setStyleSheet(styleSheet)
+        
+        # Add margins to left and right
+        self.layout.setContentsMargins(15, 0, 15, 0)
+
         # Input Directory Section
         self.inputLabel = qt.QLabel("Files to be Anonymized")
         self.layout.addWidget(self.inputLabel)
@@ -122,7 +217,6 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
         # Anonymize Button
         self.anonymizeButton = qt.QPushButton("Anonymize Files")
         self.anonymizeButton.toolTip = "Run the anonymization process."
-        self.anonymizeButton.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; padding: 10px; }")
         self.layout.addWidget(self.anonymizeButton)
         self.anonymizeButton.connect('clicked(bool)', self.onAnonymizeButton)
 

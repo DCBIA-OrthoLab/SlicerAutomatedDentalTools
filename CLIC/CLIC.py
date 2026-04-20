@@ -44,7 +44,58 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def __init__(self, parent=None):
         super().__init__(parent)
         VTKObservationMixin.__init__(self)
-        self.conda         = CondaSetUpCall()
+        self.conda = CondaSetUpCall()
+        
+        # Patch: Fix conda executable path (remove duplicate /bin/bin) or use system conda
+        original_getCondaExecutable = self.conda.getCondaExecutable
+        original_getCondaPath = self.conda.getCondaPath
+        
+        def fixed_getCondaExecutable():
+            path = original_getCondaExecutable()
+            print(f"[DEBUG] original getCondaExecutable returned: {path!r}")
+            
+            # Fix duplicate /bin/bin
+            if path and "/bin/bin/" in path:
+                path = path.replace("/bin/bin/", "/bin/")
+                print(f"[DEBUG] Fixed duplicate /bin/bin → {path!r}")
+            
+            # Check if path exists
+            if path and os.path.exists(path):
+                print(f"[DEBUG] Conda executable exists: {path}")
+                return path
+            
+            # Try to find conda in PATH
+            import shutil
+            conda_in_path = shutil.which("conda")
+            if conda_in_path and os.path.exists(conda_in_path):
+                print(f"[DEBUG] Using system conda from PATH: {conda_in_path}")
+                return conda_in_path
+            
+            # Last resort: try common anaconda location
+            common_conda = "/home/luciacev/anaconda3/bin/conda"
+            if os.path.exists(common_conda):
+                print(f"[DEBUG] Using anaconda conda: {common_conda}")
+                return common_conda
+            
+            print(f"[WARNING] Could not find working conda, falling back to: {path}")
+            return path
+        
+        def fixed_getCondaPath():
+            """Return conda base directory - patch Slicer bug and use system conda"""
+            path = original_getCondaPath()
+            print(f"[DEBUG] original getCondaPath returned: {path!r}")
+            
+            # If we found anaconda, use its path
+            common_conda_path = "/home/luciacev/anaconda3"
+            if os.path.exists(common_conda_path):
+                print(f"[DEBUG] Using anaconda conda path: {common_conda_path}")
+                return common_conda_path
+            
+            return path
+        
+        self.conda.getCondaExecutable = fixed_getCondaExecutable
+        self.conda.getCondaPath = fixed_getCondaPath
+        
         self.ui_q          = queue.Queue()
         self.input_path    = None
         self.model_dir     = None
@@ -91,7 +142,7 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def _ensure_env(self) -> bool:
         # DEBUG: entrée dans la fonction
-        print(f"[DEBUG] _ensure_env called, name_env='{self.name_env}'")
+        print(f"[DEBUGG] _ensure_env called, name_env='{self.name_env}'")
 
         # 1) create/test env
         exists_before = self.conda.condaTestEnv(self.name_env)
@@ -252,9 +303,16 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def _collect_scans(self, root) -> List[Path]:
         p = Path(root)
         exts = (".nii", ".nii.gz", ".nrrd", ".mha", ".mhd")
+        
+        def is_valid_scan(f):
+            """Check if file has valid scan extension (including multi-part like .nii.gz)"""
+            name_lower = f.name.lower()
+            return any(name_lower.endswith(ext) for ext in exts)
+        
         if p.is_dir():
-            dcm = [d for d in p.iterdir() if d.is_dir() and any(f.suffix.lower() in exts for f in d.iterdir())]
-            return sorted(dcm) if dcm else sorted(f for f in p.iterdir() if f.suffix.lower() in exts)
+            # Look for subdirs containing valid scans
+            dcm = [d for d in p.iterdir() if d.is_dir() and any(is_valid_scan(f) for f in d.iterdir())]
+            return sorted(dcm) if dcm else sorted(f for f in p.iterdir() if is_valid_scan(f))
         return [p]
 
     def _download_model(self):
