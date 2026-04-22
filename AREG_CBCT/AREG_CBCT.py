@@ -63,10 +63,6 @@ def main(args):
             outpath, patient + "_" + reg_type + "Scan" + add_name + ".nii.gz"
         ), os.path.join(outpath, patient + "_" + reg_type + add_name + "_matrix.tfm")
 
-        folder_name = os.path.basename(ScanOutPath)
-        if not os.path.exists(folder_name):
-            os.makedirs(folder_name)
-
         transform, resample_t2 = VoxelBasedRegistration(
             fixed_image_path=data["scanT1"],
             moving_image_path=data["scanT2"],
