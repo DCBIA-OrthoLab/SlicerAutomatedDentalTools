@@ -224,7 +224,6 @@ class PopUpWindow(qt.QDialog):
           QCheckBox::indicator:checked {
             border: 1px solid #5dade2;
             background-color: #5dade2;
-            image: url(:/Icons/SmallCheckMark.png);
           }
           QCheckBox::indicator:checked:hover {
             border: 1px solid #7bbcef;
@@ -338,7 +337,6 @@ QCheckBox::indicator:hover {
 QCheckBox::indicator:checked {
   border: 1px solid #5dade2;
   background-color: #5dade2;
-  image: url(:/Icons/SmallCheckMark.png);
 }
 QCheckBox::indicator:checked:hover {
   border: 1px solid #7bbcef;
@@ -394,7 +392,6 @@ QRadioButton::indicator:checked {
           QCheckBox::indicator:checked {
             border: 1px solid #5dade2;
             background-color: #5dade2;
-            image: url(:/Icons/SmallCheckMark.png);
           }
           QCheckBox::indicator:checked:hover {
             border: 1px solid #7bbcef;
@@ -453,7 +450,6 @@ QRadioButton::indicator:checked {
           QCheckBox::indicator:checked {
             border: 1px solid #5dade2;
             background-color: #5dade2;
-            image: url(:/Icons/SmallCheckMark.png);
           }
           QCheckBox::indicator:checked:hover {
             border: 1px solid #7bbcef;
@@ -1431,7 +1427,6 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           QCheckBox::indicator:checked {
             border: 1px solid #5dade2;
             background-color: #5dade2;
-            image: url(:/Icons/SmallCheckMark.png);
           }
           QCheckBox::indicator:checked:hover {
             border: 1px solid #7bbcef;
@@ -1527,32 +1522,59 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         bg_color = palette.color(qt.QPalette.Window)
         is_dark_mode = bg_color.lightness() < 128
         
-        checkbox_stylesheet = """
-          QCheckBox {
-            color: #ffffff;
-            background-color: transparent;
-            font-weight: 500;
-          }
-          QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-            border: 1px solid #555555;
-            border-radius: 3px;
-            background-color: #3c3c3c;
-          }
-          QCheckBox::indicator:hover {
-            border: 1px solid #5dade2;
-          }
-          QCheckBox::indicator:checked {
-            border: 1px solid #5dade2;
-            background-color: #5dade2;
-            image: url(:/Icons/SmallCheckMark.png);
-          }
-          QCheckBox::indicator:checked:hover {
-            border: 1px solid #7bbcef;
-            background-color: #7bbcef;
-          }
-        """
+        # Create stylesheet based on mode
+        if is_dark_mode:
+            checkbox_stylesheet = """
+              QCheckBox {
+                color: #ffffff;
+                background-color: transparent;
+                font-weight: 500;
+              }
+              QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                background-color: #3c3c3c;
+              }
+              QCheckBox::indicator:hover {
+                border: 1px solid #5dade2;
+              }
+              QCheckBox::indicator:checked {
+                border: 1px solid #5dade2;
+                background-color: #5dade2;
+              }
+              QCheckBox::indicator:checked:hover {
+                border: 1px solid #7bbcef;
+                background-color: #7bbcef;
+              }
+            """
+        else:
+            checkbox_stylesheet = """
+              QCheckBox {
+                color: #000000;
+                background-color: transparent;
+                font-weight: 500;
+              }
+              QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 1px solid #cccccc;
+                border-radius: 3px;
+                background-color: #ffffff;
+              }
+              QCheckBox::indicator:hover {
+                border: 1px solid #0099cc;
+              }
+              QCheckBox::indicator:checked {
+                border: 1px solid #0099cc;
+                background-color: #0099cc;
+              }
+              QCheckBox::indicator:checked:hover {
+                border: 1px solid #0077aa;
+                background-color: #0077aa;
+              }
+            """
         
         dic_teeth = {
             1: "A",
@@ -1584,18 +1606,13 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             label = QLabel()
             pixmap = QPixmap(self.resourcePath(f"Image/{i}_resize_child.png"))
             label.setPixmap(pixmap)
-            widget = QWidget()
-            widget.setStyleSheet("background-color: transparent;")  # Make parent transparent
             check = QCheckBox()
             check.setText(dic_teeth[i])
             check.setEnabled(False)
-            if is_dark_mode:
-                check.setStyleSheet(checkbox_stylesheet)
-            layout_check = QHBoxLayout(widget)
-            layout_check.addWidget(check)
+            check.setStyleSheet(checkbox_stylesheet)
 
-            layout.addWidget(widget, 1, i + 3)
             layout.addWidget(label, 0, i + 3)
+            layout.addWidget(check, 1, i + 3)
             list.append(check)
         diccheckbox["Child"]["Upper"] = list
         upper += list
@@ -1640,18 +1657,13 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             label = QLabel()
             pixmap = QPixmap(self.resourcePath(f"Image/{i}_resize.png"))
             label.setPixmap(pixmap)
-            widget = QWidget()
-            widget.setStyleSheet("background-color: transparent;")  # Make parent transparent
             check = QCheckBox()
             check.setText(dic[i])
             check.setEnabled(False)
-            if is_dark_mode:
-                check.setStyleSheet(checkbox_stylesheet)
-            layout_check = QHBoxLayout(widget)
-            layout_check.addWidget(check)
+            check.setStyleSheet(checkbox_stylesheet)
 
-            layout.addWidget(widget, 3, i)
             layout.addWidget(label, 2, i)
+            layout.addWidget(check, 3, i)
 
             list.append(check)
 
@@ -1663,17 +1675,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             label = QLabel()
             pixmap = QPixmap(self.resourcePath(f"Image/{i+16}_resize.png"))
             label.setPixmap(pixmap)
-            widget = QWidget()
-            widget.setStyleSheet("background-color: transparent;")  # Make parent transparent
             check = QCheckBox()
             check.setText(dic[i + 16])
             check.setEnabled(False)
-            if is_dark_mode:
-                check.setStyleSheet(checkbox_stylesheet)
-            layout_check = QHBoxLayout(widget)
-            layout_check.addWidget(check)
+            check.setStyleSheet(checkbox_stylesheet)
 
-            layout.addWidget(widget, 4, 17 - i)
+            layout.addWidget(check, 4, 17 - i)
             layout.addWidget(label, 5, 17 - i)
 
             list.append(check)
@@ -1686,17 +1693,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             label = QLabel()
             pixmap = QPixmap(self.resourcePath(f"Image/{i+10}_resize_child.png"))
             label.setPixmap(pixmap)
-            widget = QWidget()
-            widget.setStyleSheet("background-color: transparent;")  # Make parent transparent
             check = QCheckBox()
             check.setText(dic_teeth[i + 10])
             check.setEnabled(False)
-            if is_dark_mode:
-                check.setStyleSheet(checkbox_stylesheet)
-            layout_check = QHBoxLayout(widget)
-            layout_check.addWidget(check)
+            check.setStyleSheet(checkbox_stylesheet)
 
-            layout.addWidget(widget, 6, i + 3)
+            layout.addWidget(check, 6, i + 3)
             layout.addWidget(label, 7, i + 3)
 
             list.append(check)
@@ -2137,7 +2139,6 @@ QCheckBox::indicator:checked {
   border: 1px solid #5dade2;
   border-radius: 3px;
   background-color: #5dade2;
-  image: url(:/Icons/SmallCheckMark.png);
 }
 QCheckBox::indicator:checked:hover {
   border: 1px solid #7bbcef;
@@ -2288,7 +2289,6 @@ qMRMLNodeComboBox:focus {
           border: 1px solid #5dade2;
           border-radius: 3px;
           background-color: #5dade2;
-          image: url(:/Icons/SmallCheckMark.png);
         }
         QCheckBox::indicator:checked:hover {
           border: 1px solid #7bbcef;
