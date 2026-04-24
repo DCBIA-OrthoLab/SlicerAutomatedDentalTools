@@ -4,7 +4,6 @@ from slicer.ScriptedLoadableModule import *
 import logging
 import ctk
 import qt
-import pandas as pd
 import uuid
 import warnings
 import sys
@@ -40,97 +39,15 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
 
-        # Apply stylesheet to parent
-        styleSheet = """
-        qMRMLWidget {
-          background-color: #f8f9fa;
-        }
-        ctkCollapsibleButton {
-          background-color: #ffffff;
-          border: 1px solid #e0e6ed;
-          border-radius: 6px;
-          margin-bottom: 8px;
-          font-weight: 600;
-          padding: 6px 10px;
-        }
-        ctkCollapsibleButton:hover {
-          border: 1px solid #3498db;
-          background-color: #fbfcfd;
-        }
-        QLineEdit, QTextEdit {
-          background-color: #ffffff;
-          border: 1px solid #e0e6ed;
-          border-radius: 4px;
-          padding: 6px;
-          selection-background-color: #3498db;
-        }
-        QLineEdit:focus, QTextEdit:focus {
-          border: 2px solid #3498db;
-        }
-        QComboBox {
-          background-color: #ffffff;
-          border: 1px solid #e0e6ed;
-          border-radius: 4px;
-          padding: 4px 6px;
-        }
-        QComboBox:focus {
-          border: 2px solid #3498db;
-        }
-        QComboBox::drop-down {
-          width: 20px;
-          border: none;
-        }
-        QLabel {
-          color: #2c3e50;
-          font-weight: 500;
-        }
-        QPushButton {
-          background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
-          color: white;
-          border: none;
-          border-radius: 6px;
-          font-weight: 600;
-          font-size: 10pt;
-          padding: 8px;
-          margin-top: 4px;
-        }
-        QPushButton:hover:!pressed {
-          background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
-        }
-        QPushButton:pressed {
-          background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
-        }
-        QPushButton:disabled {
-          background-color: #bdc3c7;
-          color: #95a5a6;
-        }
-        QCheckBox {
-          color: #2c3e50;
-          font-weight: 500;
-          spacing: 6px;
-        }
-        QCheckBox::indicator {
-          width: 18px;
-          height: 18px;
-          border: 1px solid #e0e6ed;
-          border-radius: 3px;
-          background-color: #ffffff;
-        }
-        QCheckBox::indicator:hover {
-          border: 1px solid #3498db;
-        }
-        QProgressBar {
-          border: 1px solid #e0e6ed;
-          border-radius: 4px;
-          background-color: #ffffff;
-          padding: 2px;
-        }
-        QProgressBar::chunk {
-          background-color: #3498db;
-          border-radius: 3px;
-        }
-        """
+        # Detect dark mode
+        isDarkMode = self._isDarkMode()
+        
+        # Apply stylesheet to parent based on theme
+        styleSheet = self._getStyleSheet(isDarkMode)
         self.parent.setStyleSheet(styleSheet)
+        
+        # Store reference for potential theme changes
+        self.isDarkMode = isDarkMode
         
         # Add margins to left and right
         self.layout.setContentsMargins(15, 0, 15, 0)
@@ -231,6 +148,236 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
 
         # Add vertical spacer
         self.layout.addStretch(1)
+
+    def _isDarkMode(self):
+        """Check if the application is in dark mode"""
+        try:
+            # Get the palette of the main application
+            palette = slicer.app.palette()
+            # Check if the background is dark by checking luminance
+            bgColor = palette.color(qt.QPalette.Window)
+            luminance = (0.299 * bgColor.red() + 0.587 * bgColor.green() + 0.114 * bgColor.blue()) / 255.0
+            return luminance < 0.5
+        except:
+            return False
+
+    def _getStyleSheet(self, isDarkMode):
+        """Generate stylesheet based on theme"""
+        if isDarkMode:
+            # Dark mode colors
+            return """
+            qMRMLWidget {
+              background-color: #2b2b2b;
+            }
+            ctkCollapsibleButton {
+              background-color: #383838;
+              border: 1px solid #454545;
+              border-radius: 6px;
+              margin-bottom: 8px;
+              font-weight: 600;
+              padding: 6px 10px;
+              color: #e0e0e0;
+            }
+            ctkCollapsibleButton:hover {
+              border: 1px solid #3498db;
+              background-color: #414141;
+            }
+            QLineEdit, QTextEdit {
+              background-color: #353535;
+              border: 1px solid #454545;
+              border-radius: 4px;
+              padding: 6px;
+              color: #e0e0e0;
+              selection-background-color: #3498db;
+            }
+            QLineEdit:focus, QTextEdit:focus {
+              border: 2px solid #3498db;
+              background-color: #383838;
+            }
+            QComboBox {
+              background-color: #353535;
+              border: 1px solid #454545;
+              border-radius: 4px;
+              padding: 4px 6px;
+              color: #e0e0e0;
+            }
+            QComboBox:focus {
+              border: 2px solid #3498db;
+            }
+            QComboBox::drop-down {
+              width: 20px;
+              border: none;
+            }
+            QComboBox QAbstractItemView {
+              background-color: #353535;
+              color: #e0e0e0;
+              selection-background-color: #3498db;
+              border: 1px solid #454545;
+            }
+            QLabel {
+              color: #e0e0e0;
+              font-weight: 500;
+            }
+            QPushButton {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 10pt;
+              padding: 8px;
+              margin-top: 4px;
+            }
+            QPushButton:hover:!pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+            }
+            QPushButton:pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+            }
+            QPushButton:disabled {
+              background-color: #555555;
+              color: #888888;
+            }
+            QCheckBox {
+              color: #e0e0e0;
+              font-weight: 500;
+              spacing: 6px;
+            }
+            QCheckBox::indicator {
+              width: 18px;
+              height: 18px;
+              border: 1px solid #555555;
+              border-radius: 3px;
+              background-color: #353535;
+            }
+            QCheckBox::indicator:hover {
+              border: 1px solid #3498db;
+              background-color: #3d3d3d;
+            }
+            QCheckBox::indicator:checked {
+              background-color: #3498db;
+              border: 1px solid #3498db;
+              image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='white' d='M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z'/></svg>");
+            }
+            QProgressBar {
+              border: 1px solid #454545;
+              border-radius: 4px;
+              background-color: #353535;
+              padding: 2px;
+              color: #e0e0e0;
+            }
+            QProgressBar::chunk {
+              background-color: #3498db;
+              border-radius: 3px;
+            }
+            """
+        else:
+            # Light mode colors (original)
+            return """
+            qMRMLWidget {
+              background-color: #f8f9fa;
+            }
+            ctkCollapsibleButton {
+              background-color: #ffffff;
+              border: 1px solid #e0e6ed;
+              border-radius: 6px;
+              margin-bottom: 8px;
+              font-weight: 600;
+              padding: 6px 10px;
+              color: #2c3e50;
+            }
+            ctkCollapsibleButton:hover {
+              border: 1px solid #3498db;
+              background-color: #fbfcfd;
+            }
+            QLineEdit, QTextEdit {
+              background-color: #ffffff;
+              border: 1px solid #e0e6ed;
+              border-radius: 4px;
+              padding: 6px;
+              color: #2c3e50;
+              selection-background-color: #3498db;
+            }
+            QLineEdit:focus, QTextEdit:focus {
+              border: 2px solid #3498db;
+            }
+            QComboBox {
+              background-color: #ffffff;
+              border: 1px solid #e0e6ed;
+              border-radius: 4px;
+              padding: 4px 6px;
+              color: #2c3e50;
+            }
+            QComboBox:focus {
+              border: 2px solid #3498db;
+            }
+            QComboBox::drop-down {
+              width: 20px;
+              border: none;
+            }
+            QComboBox QAbstractItemView {
+              background-color: #ffffff;
+              color: #2c3e50;
+              selection-background-color: #e8f4f8;
+              border: 1px solid #e0e6ed;
+            }
+            QLabel {
+              color: #2c3e50;
+              font-weight: 500;
+            }
+            QPushButton {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 10pt;
+              padding: 8px;
+              margin-top: 4px;
+            }
+            QPushButton:hover:!pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+            }
+            QPushButton:pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+            }
+            QPushButton:disabled {
+              background-color: #bdc3c7;
+              color: #95a5a6;
+            }
+            QCheckBox {
+              color: #2c3e50;
+              font-weight: 500;
+              spacing: 6px;
+            }
+            QCheckBox::indicator {
+              width: 18px;
+              height: 18px;
+              border: 1px solid #e0e6ed;
+              border-radius: 3px;
+              background-color: #ffffff;
+            }
+            QCheckBox::indicator:hover {
+              border: 1px solid #3498db;
+              background-color: #fbfcfd;
+            }
+            QCheckBox::indicator:checked {
+              background-color: #3498db;
+              border: 1px solid #3498db;
+              image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='white' d='M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z'/></svg>");
+            }
+            QProgressBar {
+              border: 1px solid #e0e6ed;
+              border-radius: 4px;
+              background-color: #ffffff;
+              padding: 2px;
+              color: #2c3e50;
+            }
+            QProgressBar::chunk {
+              background-color: #3498db;
+              border-radius: 3px;
+            }
+            """
 
     def install_dependencies(self):
         try:
@@ -508,6 +655,7 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
             slicer.app.processEvents()
 
         # Save mappings
+        import pandas as pd
         mappings_df = pd.DataFrame(file_mappings)
         if not mappings_df.empty:
             mappings_df.to_csv(csv_file_path, index=False)
