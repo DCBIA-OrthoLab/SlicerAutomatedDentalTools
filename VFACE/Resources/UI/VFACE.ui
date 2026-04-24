@@ -16,51 +16,6 @@
     <verstretch>0</verstretch>
    </sizepolicy>
   </property>
-  <property name="styleSheet">
-   <string notr="true">qMRMLWidget {
-  background-color: #f8f9fa;
-}
-ctkCollapsibleButton {
-  background-color: #ffffff;
-  border: 1px solid #e0e6ed;
-  border-radius: 6px;
-  margin-bottom: 8px;
-  font-weight: 600;
-  padding: 6px 10px;
-}
-ctkCollapsibleButton:hover {
-  border: 1px solid #3498db;
-  background-color: #fbfcfd;
-}
-QLineEdit, QTextEdit {
-  background-color: #ffffff;
-  border: 1px solid #e0e6ed;
-  border-radius: 4px;
-  padding: 6px;
-  selection-background-color: #3498db;
-}
-QLineEdit:focus, QTextEdit:focus {
-  border: 2px solid #3498db;
-}
-QComboBox {
-  background-color: #ffffff;
-  border: 1px solid #e0e6ed;
-  border-radius: 4px;
-  padding: 4px 6px;
-}
-QComboBox:focus {
-  border: 2px solid #3498db;
-}
-QComboBox::drop-down {
-  width: 20px;
-  border: none;
-}
-QLabel {
-  color: #2c3e50;
-  font-weight: 500;
-}
-  </string>
-  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="spacing">
     <number>8</number>
@@ -139,9 +94,6 @@ QLabel {
       </item>
       <item row="0" column="0">
        <widget class="QLabel" name="label_5">
-        <property name="styleSheet">
-         <string notr="true">color: #34495e; font-weight: 600;</string>
-        </property>
         <property name="text">
          <string>Mode</string>
         </property>
@@ -149,9 +101,6 @@ QLabel {
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="label_4">
-        <property name="styleSheet">
-         <string notr="true">color: #34495e; font-weight: 600;</string>
-        </property>
         <property name="text">
          <string>Analysis Type</string>
         </property>
@@ -178,9 +127,6 @@ QLabel {
       </item>
       <item row="2" column="0">
        <widget class="QLabel" name="label_5">
-        <property name="styleSheet">
-         <string notr="true">color: #34495e; font-weight: 600;</string>
-        </property>
         <property name="text">
          <string>Where start?</string>
         </property>
@@ -188,9 +134,6 @@ QLabel {
       </item>
       <item row="3" column="0">
        <widget class="QLabel" name="modeLabel">
-        <property name="styleSheet">
-         <string notr="true">color: #34495e; font-weight: 600;</string>
-        </property>
         <property name="text">
          <string>T1 Folder</string>
         </property>
@@ -201,9 +144,6 @@ QLabel {
         <property name="visible">
          <bool>false</bool>
         </property>
-        <property name="styleSheet">
-         <string notr="true">color: #34495e; font-weight: 600;</string>
-        </property>
         <property name="text">
          <string>T2 Folder</string>
         </property>
@@ -211,9 +151,6 @@ QLabel {
       </item>
       <item row="5" column="0">
        <widget class="QLabel" name="excellabel">
-        <property name="styleSheet">
-         <string notr="true">color: #34495e; font-weight: 600;</string>
-        </property>
         <property name="text">
          <string>List of measurements + ML readable result folder</string>
         </property>
@@ -221,9 +158,6 @@ QLabel {
       </item>
       <item row="6" column="0">
        <widget class="QLabel" name="label">
-        <property name="styleSheet">
-         <string notr="true">color: #34495e; font-weight: 600;</string>
-        </property>
         <property name="text">
          <string>Output folder</string>
         </property>
@@ -288,9 +222,6 @@ QLabel {
       </item>
       <item row="7" column="0">
        <widget class="QLabel" name="label_2">
-        <property name="styleSheet">
-         <string notr="true">color: #34495e; font-weight: 600;</string>
-        </property>
         <property name="text">
          <string>Registration Type</string>
         </property>
@@ -300,9 +231,6 @@ QLabel {
        <widget class="QLabel" name="label_6">
         <property name="text">
          <string>Keep Intermediate files</string>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">color: #34495e; font-weight: 600;</string>
         </property>
        </widget>
       </item>
@@ -318,9 +246,6 @@ QLabel {
        <widget class="QLabel" name="label_7">
         <property name="text">
          <string>Intermediate Output Check</string>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">color: #34495e; font-weight: 600;</string>
         </property>
        </widget>
       </item>
@@ -353,9 +278,6 @@ QLabel {
    </item>
    <item>
     <widget class="QLabel" name="label_3">
-     <property name="styleSheet">
-      <string notr="true">color: #34495e; font-weight: 600;</string>
-     </property>
      <property name="text">
       <string>Module lance</string>
      </property>
@@ -376,31 +298,6 @@ QLabel {
      <property name="toolTip">
       <string>Check if the depedencies are correctly installed</string>
      </property>
-     <property name="styleSheet">
-      <string notr="true">
-    
-  QPushButton {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 10pt;
-  padding: 8px;
-  margin-top: 4px;
-}
-QPushButton:hover:!pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
-}
-QPushButton:pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
-}
-QPushButton:disabled {
-  background-color: #bdc3c7;
-  color: #95a5a6;
-}
-      </string>
-     </property>
      <property name="text">
       <string>Check and/or Download Depedencies</string>
      </property>
@@ -414,31 +311,6 @@ QPushButton:disabled {
      <property name="toolTip">
       <string>Run the algorithm with the specified parameters.</string>
      </property>
-     <property name="styleSheet">
-      <string notr="true">
-      
-  QPushButton {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 10pt;
-  padding: 8px;
-  margin-top: 4px;
-}
-QPushButton:hover:!pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
-}
-QPushButton:pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
-}
-QPushButton:disabled {
-  background-color: #bdc3c7;
-  color: #95a5a6;
-}
-      </string>
-     </property>
      <property name="text">
       <string>▶ Apply</string>
      </property>
@@ -447,31 +319,6 @@ QPushButton:disabled {
 
   <item>
     <widget class="QPushButton" name="continueButton">
-     <property name="styleSheet">
-      <string notr="true">
-      
-  QPushButton {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 10pt;
-  padding: 8px;
-  margin-top: 4px;
-}
-QPushButton:hover:!pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
-}
-QPushButton:pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
-}
-QPushButton:disabled {
-  background-color: #bdc3c7;
-  color: #95a5a6;
-}
-      </string>
-     </property>
      <property name="text">
       <string>Continue on next step</string>
      </property>
@@ -488,31 +335,6 @@ QPushButton:disabled {
      </property>
      <property name="toolTip">
       <string>Cancel the current running process</string>
-     </property>
-     <property name="styleSheet">
-      <string notr="true">
-      
-  QPushButton {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e74c3c, stop:1 #c0392b);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 10pt;
-  padding: 8px;
-  margin-top: 4px;
-}
-QPushButton:hover:!pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ec7063, stop:1 #a93226);
-}
-QPushButton:pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a93226, stop:1 #922b21);
-}
-QPushButton:disabled {
-  background-color: #bdc3c7;
-  color: #95a5a6;
-}
-      </string>
      </property>
      <property name="text">
       <string>✖ Cancel</string>

@@ -330,6 +330,15 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
+        # Detect dark mode and apply stylesheet
+        isDarkMode = self._isDarkMode()
+        styleSheet = self._getStyleSheet(isDarkMode)
+        uiWidget.setStyleSheet(styleSheet)
+        
+        # Also apply label-specific stylesheet
+        self._applyLabelStyleSheets(isDarkMode)
+        self._applyButtonStyleSheets(isDarkMode)
+
         # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
         # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
         # "setMRMLScene(vtkMRMLScene*)" slot.
@@ -378,6 +387,266 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.initializeParameterNode()
         self.ui.label_3.setVisible(False)
         self.ui.progressBar.setVisible(False)
+
+    def _isDarkMode(self) -> bool:
+        """Check if the application is in dark mode."""
+        try:
+            palette = slicer.app.palette()
+            bgColor = palette.color(qt.QPalette.Window)
+            luminance = (0.299 * bgColor.red() + 0.587 * bgColor.green() + 0.114 * bgColor.blue()) / 255.0
+            return luminance < 0.5
+        except:
+            return False
+
+    def _getStyleSheet(self, isDarkMode: bool) -> str:
+        """Generate stylesheet based on theme."""
+        if isDarkMode:
+            return """
+            qMRMLWidget {
+              background-color: #2b2b2b;
+            }
+            ctkCollapsibleButton {
+              background-color: #383838;
+              border: 1px solid #454545;
+              border-radius: 6px;
+              margin-bottom: 8px;
+              font-weight: 600;
+              padding: 6px 10px;
+              color: #e0e0e0;
+            }
+            ctkCollapsibleButton:hover {
+              border: 1px solid #3498db;
+              background-color: #414141;
+            }
+            QLineEdit, QTextEdit {
+              background-color: #353535;
+              border: 1px solid #454545;
+              border-radius: 4px;
+              padding: 6px;
+              color: #e0e0e0;
+              selection-background-color: #3498db;
+            }
+            QLineEdit:focus, QTextEdit:focus {
+              border: 2px solid #3498db;
+              background-color: #383838;
+            }
+            QComboBox {
+              background-color: #353535;
+              border: 1px solid #454545;
+              border-radius: 4px;
+              padding: 4px 6px;
+              color: #e0e0e0;
+            }
+            QComboBox:focus {
+              border: 2px solid #3498db;
+            }
+            QComboBox::drop-down {
+              width: 20px;
+              border: none;
+            }
+            QComboBox QAbstractItemView {
+              background-color: #353535;
+              color: #e0e0e0;
+              selection-background-color: #3498db;
+              border: 1px solid #454545;
+            }
+            QProgressBar {
+              border: 1px solid #454545;
+              border-radius: 4px;
+              background-color: #353535;
+              padding: 2px;
+              color: #e0e0e0;
+            }
+            QProgressBar::chunk {
+              background-color: #3498db;
+              border-radius: 3px;
+            }
+            """
+        else:
+            return """
+            qMRMLWidget {
+              background-color: #f8f9fa;
+            }
+            ctkCollapsibleButton {
+              background-color: #ffffff;
+              border: 1px solid #e0e6ed;
+              border-radius: 6px;
+              margin-bottom: 8px;
+              font-weight: 600;
+              padding: 6px 10px;
+              color: #2c3e50;
+            }
+            ctkCollapsibleButton:hover {
+              border: 1px solid #3498db;
+              background-color: #fbfcfd;
+            }
+            QLineEdit, QTextEdit {
+              background-color: #ffffff;
+              border: 1px solid #e0e6ed;
+              border-radius: 4px;
+              padding: 6px;
+              color: #2c3e50;
+              selection-background-color: #3498db;
+            }
+            QLineEdit:focus, QTextEdit:focus {
+              border: 2px solid #3498db;
+            }
+            QComboBox {
+              background-color: #ffffff;
+              border: 1px solid #e0e6ed;
+              border-radius: 4px;
+              padding: 4px 6px;
+              color: #2c3e50;
+            }
+            QComboBox:focus {
+              border: 2px solid #3498db;
+            }
+            QComboBox::drop-down {
+              width: 20px;
+              border: none;
+            }
+            QComboBox QAbstractItemView {
+              background-color: #ffffff;
+              color: #2c3e50;
+              selection-background-color: #3498db;
+              border: 1px solid #e0e6ed;
+            }
+            QProgressBar {
+              border: 1px solid #e0e6ed;
+              border-radius: 4px;
+              background-color: #ffffff;
+              padding: 2px;
+              color: #2c3e50;
+            }
+            QProgressBar::chunk {
+              background-color: #3498db;
+              border-radius: 3px;
+            }
+            """
+
+    def _applyLabelStyleSheets(self, isDarkMode: bool) -> None:
+        """Apply label-specific stylesheets."""
+        if isDarkMode:
+            labelStyle = "color: #b0b0b0; font-weight: 600;"
+        else:
+            labelStyle = "color: #34495e; font-weight: 600;"
+        
+        # List of labels to style
+        labels = [
+            'label_5', 'label_4', 'label_2', 'label_6', 'label_7', 'label_3', 'label', 'modeLabel', 't2label', 'excellabel'
+        ]
+        
+        for labelName in labels:
+            if hasattr(self.ui, labelName):
+                label = getattr(self.ui, labelName)
+                label.setStyleSheet(labelStyle)
+
+    def _applyButtonStyleSheets(self, isDarkMode: bool) -> None:
+        """Apply button-specific stylesheets."""
+        if isDarkMode:
+            # Dark mode button styles
+            standardButtonStyle = """
+            QPushButton {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 10pt;
+              padding: 8px;
+              margin-top: 4px;
+            }
+            QPushButton:hover:!pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+            }
+            QPushButton:pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+            }
+            QPushButton:disabled {
+              background-color: #555555;
+              color: #888888;
+            }
+            """
+            
+            cancelButtonStyle = """
+            QPushButton {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e74c3c, stop:1 #c0392b);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 10pt;
+              padding: 8px;
+              margin-top: 4px;
+            }
+            QPushButton:hover:!pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ec7063, stop:1 #a93226);
+            }
+            QPushButton:pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a93226, stop:1 #922b21);
+            }
+            QPushButton:disabled {
+              background-color: #555555;
+              color: #888888;
+            }
+            """
+        else:
+            # Light mode button styles
+            standardButtonStyle = """
+            QPushButton {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 10pt;
+              padding: 8px;
+              margin-top: 4px;
+            }
+            QPushButton:hover:!pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+            }
+            QPushButton:pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+            }
+            QPushButton:disabled {
+              background-color: #bdc3c7;
+              color: #95a5a6;
+            }
+            """
+            
+            cancelButtonStyle = """
+            QPushButton {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e74c3c, stop:1 #c0392b);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 10pt;
+              padding: 8px;
+              margin-top: 4px;
+            }
+            QPushButton:hover:!pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ec7063, stop:1 #a93226);
+            }
+            QPushButton:pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a93226, stop:1 #922b21);
+            }
+            QPushButton:disabled {
+              background-color: #bdc3c7;
+              color: #95a5a6;
+            }
+            """
+        
+        # Apply standard style to most buttons
+        for buttonName in ['applyButton', 'CheckDependencyButton', 'continueButton']:
+            if hasattr(self.ui, buttonName):
+                button = getattr(self.ui, buttonName)
+                button.setStyleSheet(standardButtonStyle)
+        
+        # Apply cancel style to cancel button
+        if hasattr(self.ui, 'cancelButton'):
+            self.ui.cancelButton.setStyleSheet(cancelButtonStyle)
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""

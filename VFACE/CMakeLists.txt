@@ -5,10 +5,15 @@ set(MODULE_NAME VFACE)
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   VFACE_utils/__init__.py
-  VFACE_utils/Progress.py
+  VFACE_utils/_batch_worker.py
   VFACE_utils/createlistprocess.py
   VFACE_utils/functionaq3dc.py
-  VFACE_utils/_batch_worker.py
+  VFACE_utils/Group_landmark.py
+  VFACE_utils/Line.py
+  VFACE_utils/Measure.py
+  VFACE_utils/Point.py
+  VFACE_utils/Progress.py
+  VFACE_utils/segmentation_logic.py
   )
 
 set(MODULE_PYTHON_RESOURCES
