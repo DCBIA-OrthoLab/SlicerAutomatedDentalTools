@@ -1,6 +1,4 @@
-import pandas as pd
 import itertools
-
 
 class Group_landmark:
     """
@@ -61,6 +59,7 @@ class Group_landmark:
     """
 
     def __init__(self, path_listlandmarks) -> None:
+        import pandas as pd
         self.group_landmark = dict()
         reader = pd.read_excel(path_listlandmarks)
         header_before = "b suisv"  # random str
