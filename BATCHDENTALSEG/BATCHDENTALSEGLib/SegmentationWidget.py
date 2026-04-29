@@ -5,6 +5,8 @@ import SegmentEditorEffects
 import ctk
 import numpy as np
 import qt
+import subprocess
+import sys
 import sys
 import slicer
 import logging
@@ -297,6 +299,10 @@ class SegmentationWidget(qt.QWidget):
         self._timeout_timer = qt.QTimer()  # Timeout forcé
         self._timeout_timer.timeout.connect(self._emergency_stop)
         self._timeout_timer.setInterval(300_000)  # 5 min timeout
+        self._inferenceFinalized = False
+        self._doneVolumeSeen = False
+        self._fallbackCheckAttempts = 0
+        self._fallbackLastOutputSize = None
 
     def _setup_logging(self):
         """Journalisation dans un fichier pour débogage post-crash."""
@@ -666,10 +672,12 @@ class SegmentationWidget(qt.QWidget):
         self.currentInfoTextEdit.clear()
         self._setApplyVisible(False)
 
-        # ---------- Étape 1 : installation deps async ----------
-        packages = ["numpy<2.0", "numexpr<2.10","psutil"]   # complétez votre liste
+        slicer.util.pip_install("light-the-torch")
+        subprocess.check_call([sys.executable, "-m", "light_the_torch", "install", "torch", "torchvision"])
+        slicer.util.pip_install("numexpr>=2.10.2")
+        packages = ["numpy<2.0", "numexpr>=2.10.2","psutil"]
 
-        _log = logging.getLogger("BATCHDENTALSEG")   # nom de votre extension
+        _log = logging.getLogger("BATCHDENTALSEG")
 
         def _onLine(line: str):
             self.currentInfoTextEdit.append(line)    # QTextEdit
@@ -774,6 +782,10 @@ class SegmentationWidget(qt.QWidget):
 
     def onApplyClickedForVolume(self, volumeNode):
         from SlicerNNUNetLib import Parameter
+        self._inferenceFinalized = False
+        self._doneVolumeSeen = False
+        self._fallbackCheckAttempts = 0
+        self._fallbackLastOutputSize = None
         selectedModel = self.modelComboBox.currentText
         if selectedModel == "PediatricDentalsegmentator":
             self.onProgressInfo(f"Selected Model: {selectedModel}")
@@ -939,6 +951,12 @@ class SegmentationWidget(qt.QWidget):
 
     def onInferenceFinished(self, *_):
         """Gestion complète de la fin d'inférence avec sécurité renforcée (+ mapping labels par modèle)."""
+        if self._inferenceFinalized:
+            self.onProgressInfo("[DEBUG][SegWidget] onInferenceFinished ignored (already finalized)")
+            return
+        self._inferenceFinalized = True
+        print(f"[DEBUG][SegWidget] onInferenceFinished called. isStopping={self.isStopping}")
+        self.onProgressInfo(f"[DEBUG][SegWidget] onInferenceFinished received (isStopping={self.isStopping})")
         if self.isStopping:
             self.onProgressInfo("stop requested")
             self._setApplyVisible(True)
@@ -1515,6 +1533,8 @@ class SegmentationWidget(qt.QWidget):
         return segmentationNode.GetSegmentation().GetSegment(segmentId)
 
     def onInferenceError(self, errorMsg):
+        print(f"[DEBUG][SegWidget] onInferenceError called: {errorMsg}")
+        self.onProgressInfo(f"[DEBUG][SegWidget] onInferenceError received: {errorMsg}")
         if self.isStopping:
             return
         self._setApplyVisible(True)
@@ -1526,7 +1546,53 @@ class SegmentationWidget(qt.QWidget):
         self.currentInfoTextEdit.insertPlainText(infoMsg + "\n")
         self.moveTextEditToEnd(self.currentInfoTextEdit)
         self.insertDatedInfoLogs(infoMsg)
+        if "done with volume" in infoMsg.lower():
+            self._doneVolumeSeen = True
+            self._fallbackCheckAttempts = 0
+            self._fallbackLastOutputSize = None
+            debugMsg = "[DEBUG][SegWidget] 'done with volume' detected, starting fallback completion check"
+            self.currentInfoTextEdit.insertPlainText(debugMsg + "\n")
+            self.moveTextEditToEnd(self.currentInfoTextEdit)
+            self.insertDatedInfoLogs(debugMsg)
+            qt.QTimer.singleShot(1500, self._checkInferenceCompletionFallback)
         slicer.app.processEvents()
+
+    def _checkInferenceCompletionFallback(self):
+        if self._inferenceFinalized or not self._doneVolumeSeen:
+            return
+
+        self._fallbackCheckAttempts += 1
+
+        outFilePath = None
+        outFileSize = None
+        try:
+            outFilePath = self.logic._outFile
+            outFileSize = Path(outFilePath).stat().st_size
+        except Exception:
+            outFilePath = None
+
+        processState = None
+        try:
+            processState = self.logic.inferenceProcess.process.state()
+        except Exception:
+            processState = None
+
+        self.onProgressInfo(
+            f"[DEBUG][SegWidget] Fallback check #{self._fallbackCheckAttempts}: "
+            f"state={processState}, outFile={outFilePath}, size={outFileSize}"
+        )
+
+        if outFilePath and outFileSize is not None and outFileSize > 0:
+            if self._fallbackLastOutputSize == outFileSize:
+                self.onProgressInfo("[DEBUG][SegWidget] Output file stable, forcing finalization")
+                qt.QTimer.singleShot(0, self.onInferenceFinished)
+                return
+            self._fallbackLastOutputSize = outFileSize
+
+        if self._fallbackCheckAttempts < 40:
+            qt.QTimer.singleShot(1500, self._checkInferenceCompletionFallback)
+        else:
+            self.onProgressInfo("[DEBUG][SegWidget] Fallback completion check timeout (no stable output file)")
 
     @staticmethod
     def removeImageIOError(infoMsg):
@@ -1634,13 +1700,9 @@ class SegmentationWidget(qt.QWidget):
             slicer.util.warningDisplay("Please select at least one export format before exporting.")
             return
 
-        folderPath = qt.QFileDialog.getExistingDirectory(self, "Please select the export folder")
-        if not folderPath:
-            return
-
-        with slicer.util.tryWithErrorDisplay(f"Export to {folderPath} failed.", waitCursor=True):
-            self.exportSegmentation(segmentationNode, folderPath, selectedFormats)
-            slicer.util.infoDisplay(f"Export successful to {folderPath}.")
+        with slicer.util.tryWithErrorDisplay(f"Export to {self.outputFolderPath} failed.", waitCursor=True):
+            self.exportSegmentation(segmentationNode, self.outputFolderPath, selectedFormats)
+            slicer.util.infoDisplay(f"Export successful to {self.outputFolderPath}.")
 
     def exportSegmentation(self, segNode, folderPath, selectedFormats):
         """
@@ -1887,6 +1949,7 @@ class SegmentationWidget(qt.QWidget):
 
     def _connectSegmentationLogic(self):
         if self.logic is None:
+            print("[DEBUG][SegWidget] _connectSegmentationLogic skipped: logic is None")
             return
         self.logic.progressInfo.connect(self.onProgressInfo)
         self.logic.errorOccurred.connect(self.onInferenceError)
