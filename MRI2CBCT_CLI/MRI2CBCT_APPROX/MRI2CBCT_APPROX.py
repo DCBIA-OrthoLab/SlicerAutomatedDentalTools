@@ -7,6 +7,20 @@ import shutil
 from pathlib import Path
 
 import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_Approx")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 fpath = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(fpath)
 from MRI2CBCT_CLI_utils import approximation, get_transformation, crop_volume
@@ -67,9 +81,9 @@ def delete_folder(folder_path):
     """
     if os.path.exists(folder_path):
         shutil.rmtree(folder_path)
-        print(f"The folder '{folder_path}' has been deleted successfully.")
+        logger.info(f"The folder '{folder_path}' has been deleted successfully.")
     else:
-        print(f"The folder '{folder_path}' does not exist.")
+        logger.info(f"The folder '{folder_path}' does not exist.")
         
 def run_script_crop_volumes(ROI_file, transformation_folder, first_approximation_folder, cbct_folder, output_folder):
     """
@@ -101,6 +115,6 @@ def main():
     run_script_first_approximation(args.cbct_folder, args.mri_folder, args.output_folder)
 
 if __name__ == "__main__":
-    print("Debug: MRI2CBCT_APPROX module is being loaded")
+    logger.info("Debug: MRI2CBCT_APPROX module is being loaded")
 
     main()

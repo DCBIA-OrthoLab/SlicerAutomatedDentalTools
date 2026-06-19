@@ -4,6 +4,20 @@ import numpy as np
 from AREG_IOS_utils.utils import ReadSurf, LoadJsonLandmarks, VTKMatrixToNumpy
 from AREG_IOS_utils.transformation import ApplyTransform
 
+import logging
+import sys
+# ===== Logging Configuration =====
+logger = logging.getLogger("AREG_IOS_ICP")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 class ICP:
     def __init__(self, list_icp, option=None) -> None:

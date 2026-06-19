@@ -4,3 +4,4 @@
 SlicerAutomatedDentalTools-debug/BATCHDENTALSEG/Resources/ML/Dataset111_453CT/nnUNetTrainer__nnUNetPlans__3d_fullres/fold_0/checkpoint_final.pth
 BATCHDENTALSEG/Resources/ML/Dataset111_453CT_v100.zip
 BATCHDENTALSEG/Resources/ML/**/*.pth
+VFACE/Resources/ML/**/*.pth

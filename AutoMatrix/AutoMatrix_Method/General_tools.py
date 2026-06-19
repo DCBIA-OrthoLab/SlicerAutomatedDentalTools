@@ -2,6 +2,21 @@ from pathlib import Path
 import os
 import glob
 
+import logging
+import sys
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("AutoMatrix_general_tools")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 def search(path, *args):
         """
         Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
@@ -94,7 +109,7 @@ def GetPatients(file_path:str,matrix_path:str):
                 fname, extension2 = os.path.splitext(os.path.basename(fname))
                 extension = extension2+extension
             except :
-                print("not a .nii.gz")
+                logger.error("The file is not in the format .nii.gz")
 
             if extension ==".vtk" or extension ==".vtp" or extension ==".stl" or extension ==".off" or extension ==".obj" or extension==".nii" or extension==".nii.gz" or extension==".nrrd" or extension==".mrk.json":
                 files = [file_path]

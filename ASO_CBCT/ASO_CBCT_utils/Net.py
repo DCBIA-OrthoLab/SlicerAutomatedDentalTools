@@ -18,6 +18,21 @@ import pytorch_lightning as pl
 
 from monai.networks.nets.densenet import DenseNet169
 
+import logging
+import sys
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("ASO_CBCT_Net")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 # Different Network
 
 

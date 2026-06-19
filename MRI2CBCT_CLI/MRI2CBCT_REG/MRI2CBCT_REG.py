@@ -6,6 +6,20 @@ import re
 import shutil
 
 import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_reg")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 fpath = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(fpath)
 from MRI2CBCT_CLI_utils import invert_mri_intensity, normalize, apply_mask_f, registration
@@ -77,7 +91,6 @@ def run_script_apply_mask(cbct_folder, cbct_label2,folder_general, suffix,upper_
     min_norm (float): Minimum value for normalization.
     is_mri (bool): Whether the input files are MRI files (default: False).
     """
-    print("folder_general : ",folder_general)
     if is_mri:
         mask_folder = os.path.join(folder_general,"a3_MRI_inv_norm_mask",f"percentile=[{lower_percentile},{upper_percentile}]_norm=[{min_norm},{max_norm}]")
     else:
@@ -133,9 +146,9 @@ def extract_values(input_string):
 def delete_folder(folder_path):
     if os.path.exists(folder_path):
         shutil.rmtree(folder_path)
-        print(f"The folder '{folder_path}' has been deleted successfully.")
+        logger.info(f"The folder '{folder_path}' has been deleted successfully.")
     else:
-        print(f"The folder '{folder_path}' does not exist.")
+        logger.info(f"The folder '{folder_path}' does not exist.")
 
 def main():
     parser = argparse.ArgumentParser(description="Run multiple Python scripts with arguments")

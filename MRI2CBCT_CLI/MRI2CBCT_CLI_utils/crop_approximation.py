@@ -8,6 +8,21 @@ import torch.nn.functional as F
 from sklearn.model_selection import ParameterSampler
 from torchreg import AffineRegistration
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_utils_crop_approx")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 from MRI2CBCT_CLI_utils.nmi import NMI
 
 def save_as_nifti(moving_tensor, static_path, output_path):
@@ -29,7 +44,7 @@ def save_as_nifti(moving_tensor, static_path, output_path):
         new_nifti = nib.Nifti1Image(moving_tensor, static_nifti.affine, static_nifti.header)
     
     # Save the new NIfTI image to disk
-    print("Saved registered image to:", output_path)
+    logger.info(f"Saved registered image to: {output_path}")
     nib.save(new_nifti, output_path)
 
 def save_affine_transform(matrix, output_path):
@@ -53,7 +68,7 @@ def save_affine_transform(matrix, output_path):
 
     # Save the transform to a file
     sitk.WriteTransform(affine_transform, output_path)
-    print(f"Affine transformation matrix saved to {output_path}")
+    logger.info(f"Affine transformation matrix saved to {output_path}")
 
 def compute_transform_matrix(fixed_volume_affine, moving_volume_affine):
     """
@@ -229,13 +244,13 @@ def get_transformation(cbct_folder, mean_folder, output_folder):
                             constant_values=0
                         )
 
-                        print(f"\nUsing {device.upper()} -- Registering CBCT: {cbct_path} with mean: {mean_path}")
+                        logger.info(f"\nUsing {device.upper()} -- Registering CBCT: {cbct_path} with mean: {mean_path}")
 
                         # Convert NumPy arrays to torch tensors
                         moving_normed = torch.from_numpy(moving_padded_np).float().to(device)
                         static_normed = torch.from_numpy(static_np_normalized).float().to(device)
 
-                        print(f"Testing parameters: {params}")
+                        logger.info(f"Testing parameters: {params}")
 
                         # Initialize NMI loss function for rigid registration
                         nmi_loss_function_rigid = NMI(intensity_range=None, nbins=64, sigma=params['sigma_rigid'], use_mask=False)
@@ -253,26 +268,24 @@ def get_transformation(cbct_folder, mean_folder, output_folder):
 
                         # Compute the final loss
                         final_loss = -nmi_loss_function_rigid.metric(moved_image[None, None], static_normed[None, None])
-                        print(f"Final Loss (NMI): {final_loss}")
+                        logger.info(f"Final Loss (NMI): {final_loss}")
 
                         # Check if this is the best loss so far
                         if final_loss < best_loss and final_loss > 1e-5:
                             best_loss = final_loss
                             best_params = params
-                            print(f"New best parameters found with loss: {best_loss}")
+                            logger.info(f"New best parameters found with loss: {best_loss}")
 
                             # Save the registered image using your save_as_nifti function
                             output_path = os.path.join(output_folder, f'{patient_id}_CBCT_transform.nii.gz')
                             save_as_nifti(moved_image, mean_path, output_path)
 
-                            # Print the transformation matrix for debugging
                             transform_matrix = compute_transform_matrix(static_nii.affine, moving_nii.affine)
-                            print("Transformation Matrix from Volume A to Volume B:")
-                            print(transform_matrix)
+                            logger.info("Transformation Matrix from Volume A to Volume B:")
+                            logger.info(transform_matrix)
 
-                    # Print the best result at the end
-                    print(f"Best parameters: {best_params}")
-                    print(f"Best NMI loss: {best_loss}")
+                    logger.info(f"Best parameters: {best_params}")
+                    logger.info(f"Best NMI loss: {best_loss}")
                     
 def crop_volume(ROI_file, transformation_folder, first_approximation_folder, cbct_folder, cropped_cbct_folder):
     """
@@ -298,11 +311,11 @@ def crop_volume(ROI_file, transformation_folder, first_approximation_folder, cbc
                 transformation_path = os.path.join(transformation_folder, f"{patient_id}_transform.tfm")
 
                 if not os.path.exists(transformation_path):
-                    print(f"Transformation file missing for {patient_id}")
+                    logger.warning(f"Transformation file missing for {patient_id}")
                     continue
 
                 if not os.path.exists(cbct_path):
-                    print(f"CBCT file missing for {patient_id}")
+                    logger.warning(f"CBCT file missing for {patient_id}")
                     continue
 
                 # Apply the transformation to the ROI
@@ -331,7 +344,7 @@ def crop_volume(ROI_file, transformation_folder, first_approximation_folder, cbc
                 cbct_output_path = os.path.join(cropped_cbct_folder, f"{patient_id}_CBCT_approx_crop.nii.gz")
                 sitk.WriteImage(cbct_cropped, cbct_output_path)
 
-                print(f"Cropped and saved images for {patient_id}")
+                logger.info(f"Cropped and saved images for {patient_id}")
 
 def main():
     parser = argparse.ArgumentParser(description='Register CBCT images with the mean CBCT.')

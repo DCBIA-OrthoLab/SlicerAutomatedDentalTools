@@ -2,6 +2,20 @@ from abc import ABC, abstractmethod
 import os
 from typing import Tuple
 
+import logging
+import sys
+# ===== Logging Configuration =====
+logger = logging.getLogger("AREG_Progress")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 class Display(ABC):
     def __init__(self) -> None:
@@ -117,6 +131,24 @@ class DisplayAREGCBCT(Display):
         if kwds["progress"] == 200 and kwds["updateProgessBar"] == False:
             out = True
         return out
+    
+class DisplayAREGIOSCBCT(Display):
+    def __init__(self, nb_progress) -> None:
+        self.nb_progress_total = nb_progress
+        self.time_log = 0
+        super().__init__()
+
+    def __call__(self, **kwds) -> Tuple[float, str]:
+        self.progress += 1
+        self.progress_bar = self.progress / self.nb_progress_total * 100
+        self.message = f"Scan : {self.progress} / {self.nb_progress_total}"
+        return self.progress_bar, self.message
+
+    def isProgress(self, **kwds) -> bool:
+        out = False
+        if kwds["progress"] == 200 and kwds["updateProgessBar"] == False:
+            out = True
+        return out
 
 
 class DisplayAMASSS(Display):
@@ -186,6 +218,31 @@ class DisplayASOCBCT(Display):
 
 
 class DisplayALICBCT(Display):
+    def __init__(self, nb_landmark, nb_scan) -> None:
+        self.nb_landmark = nb_landmark
+        self.nb_scan_total = nb_scan
+        self.pred_step = 0
+        super().__init__()
+
+    def __call__(self) -> Tuple[float, str]:
+        self.progress += 0.39
+        self.progress_bar = (
+            self.progress / (self.nb_landmark * self.nb_scan_total)
+        ) * 100
+        nb_scan_treat = int(self.progress // self.nb_landmark)
+        self.message = f"Landmarks : {round(self.progress)} / {self.nb_landmark * self.nb_scan_total} | Patient : {nb_scan_treat} / {self.nb_scan_total}"
+        return self.progress_bar, self.message
+
+    def isProgress(self, **kwds) -> bool:
+        out = False
+        if kwds["progress"] == 200:
+            self.pred_step += 1
+        if kwds["progress"] == 100 and kwds["updateProgessBar"] == False:
+            if self.pred_step > 3:
+                out = True
+        return out
+    
+class DisplayALIIOS(Display):
     def __init__(self, nb_landmark, nb_scan) -> None:
         self.nb_landmark = nb_landmark
         self.nb_scan_total = nb_scan

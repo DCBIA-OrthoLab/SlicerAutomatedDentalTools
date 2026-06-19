@@ -1,5 +1,19 @@
 import re
 import pandas as pd
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MedX_dashboard_utils")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 # (base) luciacev@ldsodhckkv94:~/training/github/SlicerAutomatedDentalTools$ python3 MedX_CLI/MedX_Dashboard/MedX_Dashboard.py /home/luciacev/Desktop/LLM/Qwen1.5B_full_V3/predictions_500 /home/luciacev/Desktop/LLM/Qwen1.5B_full_V3/Dashboard ff
 
@@ -35,13 +49,12 @@ def set_tenderness_data(df):
     tenderness_metrics = ["muscle_tenderness_present", "muscle_stiffness_present", "muscle_soreness_present"]
     def classify_row(row):
         vals = [str(row[col]).strip().lower() for col in tenderness_metrics]
-        # Si au moins une colonne n'est pas false/unknown/vide → true
+        # If at least a column is not false/unknown/vide return true
         if any(v not in ["false", "unknown", ""] for v in vals):
             return "true"
-        # Si toutes les colonnes sont false → false
+        # If all columns are false return false
         elif all(v == "false" for v in vals):
             return "false"
-        # Sinon (au moins une unknown ou vide) → unknown 
         else:
             return "unknown"
 

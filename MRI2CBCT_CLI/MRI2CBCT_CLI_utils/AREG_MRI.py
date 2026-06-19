@@ -4,6 +4,21 @@ import itk
 import SimpleITK as sitk
 import numpy as np
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_utils_areg_mri")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 def ComputeFinalMatrix(Transforms):
     """Compute the final matrix from the list of matrices and translations"""
     Rotation, Translation = [], []
@@ -119,24 +134,24 @@ def registration(cbct_folder,mri_folder,cbct_mask_folder,output_folder,mri_origi
             if mri_path is None:
                 mri_path = get_corresponding_file(mri_folder, patient_id, "_MRI_")
             if mri_path is None:
-                print("=" * 62)
-                print("ERROR: Could not find MRI file for patient:", patient_id)
-                print("Files must be named following this convention:")
-                print("  CBCT: PATIENTID_CBCT_anything.nii.gz")
-                print("  MRI:  PATIENTID_MR_anything.nii.gz  or  PATIENTID_MRI_anything.nii.gz")
-                print("  MASK: PATIENTID_CBCT_anything.nii.gz")
-                print("=" * 62)
+                logger.error("=" * 62)
+                logger.error("ERROR: Could not find MRI file for patient:", patient_id)
+                logger.error("Files must be named following this convention:")
+                logger.error("  CBCT: PATIENTID_CBCT_anything.nii.gz")
+                logger.error("  MRI:  PATIENTID_MR_anything.nii.gz  or  PATIENTID_MRI_anything.nii.gz")
+                logger.error("  MASK: PATIENTID_CBCT_anything.nii.gz")
+                logger.error("=" * 62)
                 raise ValueError(f"No MRI file found for patient {patient_id} in {mri_folder}")
                 
             cbct_mask_path = get_corresponding_file(cbct_mask_folder, patient_id, "_CBCT_")
             if cbct_mask_path is None:
-                print("=" * 62)
-                print("ERROR: Could not find mask file for patient:", patient_id)
-                print("Files must be named following this convention:")
-                print("  CBCT: PATIENTID_CBCT_anything.nii.gz")
-                print("  MRI:  PATIENTID_MR_anything.nii.gz  or  PATIENTID_MRI_anything.nii.gz")
-                print("  MASK: PATIENTID_CBCT_anything.nii.gz")
-                print("=" * 62)
+                logger.error("=" * 62)
+                logger.error("ERROR: Could not find mask file for patient:", patient_id)
+                logger.error("Files must be named following this convention:")
+                logger.error("  CBCT: PATIENTID_CBCT_anything.nii.gz")
+                logger.error("  MRI:  PATIENTID_MR_anything.nii.gz  or  PATIENTID_MRI_anything.nii.gz")
+                logger.error("  MASK: PATIENTID_CBCT_anything.nii.gz")
+                logger.error("=" * 62)
                 raise ValueError(f"No mask file found for patient {patient_id} in {cbct_mask_folder}")
 
             if mri_original_folder != "None":
@@ -144,13 +159,13 @@ def registration(cbct_folder,mri_folder,cbct_mask_folder,output_folder,mri_origi
                 if mri_path_original is None:
                     mri_path_original = get_corresponding_file(mri_original_folder, patient_id, "_MRI_")
                 if mri_path_original is None:
-                    print("=" * 62)
-                    print("ERROR: Could not find original MRI file for patient:", patient_id)
-                    print("Files must be named following this convention:")
-                    print("  CBCT: PATIENTID_CBCT_anything.nii.gz")
-                    print("  MRI:  PATIENTID_MR_anything.nii.gz  or  PATIENTID_MRI_anything.nii.gz")
-                    print("  MASK: PATIENTID_CBCT_anything.nii.gz")
-                    print("=" * 62)
+                    logger.error("=" * 62)
+                    logger.error("ERROR: Could not find original MRI file for patient:", patient_id)
+                    logger.error("Files must be named following this convention:")
+                    logger.error("  CBCT: PATIENTID_CBCT_anything.nii.gz")
+                    logger.error("  MRI:  PATIENTID_MR_anything.nii.gz  or  PATIENTID_MRI_anything.nii.gz")
+                    logger.error("  MASK: PATIENTID_CBCT_anything.nii.gz")
+                    logger.error("=" * 62)
                     raise ValueError(f"No original MRI file found for patient {patient_id} in {mri_original_folder}")
             
 def process_images(mri_path, cbct_mask_path, output_folder, patient_id, mri_path_original):
@@ -175,11 +190,11 @@ def process_images(mri_path, cbct_mask_path, output_folder, patient_id, mri_path
         mri_image = itk.imread(mri_path, itk.F)
         cbct_mask_image = itk.imread(cbct_mask_path, itk.F)
     except Exception as e:
-        print("=" * 62)
-        print(f"AN ERROR OCCURED, PLEASE MAKE SURE YOU FILES ARE NOT CORRUPTED AND OF A ACCEPTED FORMAT, EXAMPLE: nii.gz")
-        print("=" * 62)
-        print(e)
-        print(f"{patient_id} failed")
+        logger.error("=" * 62)
+        logger.error(f"AN ERROR OCCURED, PLEASE MAKE SURE YOU FILES ARE NOT CORRUPTED AND OF A ACCEPTED FORMAT, EXAMPLE: nii.gz")
+        logger.error("=" * 62)
+        logger.error(e)
+        logger.error(f"{patient_id} failed")
         return
 
     Transforms = []
@@ -187,10 +202,10 @@ def process_images(mri_path, cbct_mask_path, output_folder, patient_id, mri_path
     try : 
         TransformObj_Fine = ElastixReg(cbct_mask_image, mri_image, initial_transform=None)
     except Exception as e:
-        print("=" * 62)
-        print(f" REGISTRATION FAILED. PLEASE MAKE SURE THE IMAGES ARE OF SIMILAR SIZE, ORIENTATION, AND APPOXIMATED")
-        print("=" * 62)
-        print(e)
+        logger.error("=" * 62)
+        logger.error(f" REGISTRATION FAILED. PLEASE MAKE SURE THE IMAGES ARE OF SIMILAR SIZE, ORIENTATION, AND APPOXIMATED")
+        logger.error("=" * 62)
+        logger.error(e)
         return
     
     transforms_Fine = MatrixRetrieval(TransformObj_Fine)
@@ -214,7 +229,7 @@ def process_images(mri_path, cbct_mask_path, output_folder, patient_id, mri_path
         original_mri_sitk.GetPixelID()
     )
     sitk.WriteImage(transformed_mri, output_image_path)
-    print(f"Saved transformed MRI to {output_image_path}\n\n")
+    logger.info(f"Saved transformed MRI to {output_image_path}\n\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='AREG MRI folder')

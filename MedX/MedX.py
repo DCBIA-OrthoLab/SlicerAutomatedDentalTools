@@ -1,5 +1,3 @@
-
-import logging
 import os,sys,time,zipfile,urllib.request,shutil
 
 import vtk
@@ -35,6 +33,20 @@ import threading
 import subprocess
 import io
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MedX")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 def check_lib_installed(lib_name, required_version=None):
     '''
@@ -69,7 +81,7 @@ def check_lib_installed(lib_name, required_version=None):
             # Just check if it's installed
             return True
     except Exception as e:
-        print(f"Version check failed: {e}")
+        logger.error(f"Version check failed: {e}")
         return False
 
 # import csv
@@ -119,11 +131,11 @@ def install_function(self,list_libs:list):
                         pip_install(lib)
 
                     elif "https:/" in version_constraint:
-                        print("version_constraint", version_constraint)
+                        logger.info(f"version_constraint {version_constraint}")
                         # download the library from the url
                         pip_install(version_constraint)
                     else:
-                        print("version_constraint else", version_constraint)
+                        logger.info(f"version_constraint else {version_constraint}")
                         lib_version = f'{lib}{version_constraint}' if version_constraint else lib
                         pip_install(lib_version)
 
@@ -846,7 +858,6 @@ QSlider::handle:horizontal:hover {
 
         try:
             check_env = self.onCheckRequirements(list_libs)
-            print("seg_env: ", check_env)
         except Exception as e:
             qt.QMessageBox.warning(self.parent, "Warning", f"An error occurred while checking requirements: {str(e)}")
             return
@@ -879,8 +890,6 @@ QSlider::handle:horizontal:hover {
         self.onProcessStarted()
         
         module = self.list_Processes_Parameters[0]["Module"]
-        # /!\ Launch of the first process /!\
-        print("module name : ", module)
         
         self.ui.SummarizeButton.setEnabled(False)
         self.run_conda_tool()
@@ -906,7 +915,6 @@ QSlider::handle:horizontal:hover {
             output_folder=self.ui.lineEditOutDashboard.text,
         )
 
-        # print('error',error)
         if isinstance(error, str):
             qt.QMessageBox.warning(self.parent, "Warning", error.replace(",", "\n"))
             return
@@ -925,8 +933,6 @@ QSlider::handle:horizontal:hover {
         self.onProcessStarted()
         
         module = self.list_Processes_Parameters[0]["Module"]
-        # /!\ Launch of the first process /!\
-        print("module name : ", module)
         
         self.ui.DashboardButton.setEnabled(False)
         self.process = slicer.cli.run(
@@ -1072,15 +1078,15 @@ QSlider::handle:horizontal:hover {
         
     def run_conda_tool(self):
         args = self.list_Processes_Parameters[0]["Parameter"]
-        print("args : ", args)
+        logger.info(f"args : {args}")
         conda_exe = self.logic.conda.getCondaExecutable()
         command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"MedX_Summarize"]
         for key, value in args.items():
-            print("key : ", key)
+            logger.info(f"key : {key}")
             if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
                 value = self.logic.windows_to_linux_path(value)
             command.append(f"\"{value}\"")
-        print("command : ",command)
+        logger.info(f"command : {command}")
 
         # running in // to not block Slicer
         self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
@@ -1158,20 +1164,20 @@ QSlider::handle:horizontal:hover {
         if caller.GetStatus() & caller.Completed:
             if caller.GetStatus() & caller.ErrorsMask:
                 # error
-                print("\n\n ========= PROCESSED ========= \n")
+                logger.info("\n\n ========= PROCESSED ========= \n")
 
-                print(self.process.GetOutputText())
-                print("\n\n ========= ERROR ========= \n")
+                logger.info(self.process.GetOutputText())
+                logger.info("\n\n ========= ERROR ========= \n")
                 errorText = self.process.GetErrorText()
-                print("CLI execution failed: \n \n" + errorText)
+                logger.error("CLI execution failed: \n \n" + errorText)
                 self.onCancel()
 
             else:
-                print("\n\n ========= PROCESSED ========= \n")
+                logger.info("\n\n ========= PROCESSED ========= \n")
 
-                print(self.process.GetOutputText())
+                logger.info(self.process.GetOutputText())
                 try:
-                    print("name process : ",self.list_Processes_Parameters[0]["Process"])
+                    logger.info(f"name process : {self.list_Processes_Parameters[0]["Process"]}")
                     self.process = slicer.cli.run(
                             self.list_Processes_Parameters[0]["Process"],
                             None,
@@ -1231,7 +1237,7 @@ QSlider::handle:horizontal:hover {
 
         else :
             # success
-            print('PROCESS DONE.')
+            logger.info('PROCESS DONE.')
             self.ui.progressBar.setValue(100)
             self.ui.progressBar.setFormat("100%")
             self.ui.label_info.setText("Number of processed files : "+str(self.nbFiles)+"/"+str(self.nbFiles))
@@ -1281,13 +1287,13 @@ QSlider::handle:horizontal:hover {
             
         total_time = time.time() - self.startTime
         average_time = total_time / self.nb_scans
-        print("PROCESS DONE.")
-        print(
+        logger.info("PROCESS DONE.")
+        logger.info(
             "Done in {} min and {} sec".format(
                 int(total_time / 60), int(total_time % 60)
             )
         )
-        print(
+        logger.info(
             "Average time per patient : {} min and {} sec".format(
                 int(average_time / 60), int(average_time % 60)
             )
@@ -1296,7 +1302,7 @@ QSlider::handle:horizontal:hover {
 
         stopTime = time.time()
 
-        logging.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+        logger.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
 
         s = PopUpWindow(
             title="Process Done",
@@ -1320,7 +1326,7 @@ QSlider::handle:horizontal:hover {
         
     def onCancel(self):
         self.logic.cancel_process()
-        print("\n\n ========= PROCESS CANCELED ========= \n")
+        logger.info("\n\n ========= PROCESS CANCELED ========= \n")
         
         self.RunningUI(False)
 
@@ -1405,7 +1411,7 @@ class MedXLogic(ScriptedLoadableModuleLogic):
         conda_exe = self.conda.getCondaExecutable()
         command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
         result = self.conda.condaRunCommand(command)
-        print("output CHECK python path: ", result)
+        logger.info(f"output CHECK python path: {result}")
         if "True" in result :
             return True
         return False
@@ -1422,7 +1428,7 @@ class MedXLogic(ScriptedLoadableModuleLogic):
         conda_exe = self.conda.getCondaExecutable()
         argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
         results = self.conda.condaRunCommand(argument)
-        print("output GIVE python path: ", results)
+        logger.info(f"output GIVE python path: {results}")
         
     def windows_to_linux_path(self,windows_path):
         '''
@@ -1443,7 +1449,7 @@ class MedXLogic(ScriptedLoadableModuleLogic):
             self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
         else:
             os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
-        print("Cancellation requested. Terminating process...")
+        logger.info("Cancellation requested. Terminating process...")
 
         self.subpro.wait() ## important
         self.cancel = True
@@ -1472,7 +1478,7 @@ class MedXLogic(ScriptedLoadableModuleLogic):
 
             user = self.conda.getUser()
             command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
-            print("command_to_execute in condaRunCommand : ",command_to_execute)
+            logger.info(f"command_to_execute in condaRunCommand : {command_to_execute}")
 
             self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
                               text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
@@ -1484,7 +1490,7 @@ class MedXLogic(ScriptedLoadableModuleLogic):
             for com in command :
                 command_execute = command_execute+ " "+com
 
-            print("command_to_execute in conda run : ",command_execute)
+            logger.info(f"command_to_execute in conda run : {command_execute}")
             self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
     
         self.stdout, self.stderr = self.subpro.communicate()

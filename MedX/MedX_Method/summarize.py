@@ -3,6 +3,20 @@ from MedX_Method.Progress import DisplayMedX
 import slicer
 import os
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MedX_summarize")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 class MedX_Summarize_Method(Method):
     def __init__(self, widget):
@@ -66,10 +80,8 @@ class MedX_Summarize_Method(Method):
             "output_folder": kwargs["output_folder"],
             "log_path": kwargs["log_path"],
         }
-        
-        print('-' * 70)
-        print("parameter MedX : ", parameter_MedX)
-        print('-' * 70)
+
+        logger.info(f"Parameter MedX : {parameter_MedX}")
         
         MedXProcess = slicer.modules.medx_summarize
 

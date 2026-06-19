@@ -4,6 +4,21 @@ import numpy as np
 from FlexReg_Method.utils import ReadSurf, LoadJsonLandmarks, VTKMatrixToNumpy
 from FlexReg_Method.transformation import ApplyTransform
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("FlexReg_ICP")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 class ICP:
     def __init__(self, list_icp, option=None) -> None:
@@ -13,7 +28,6 @@ class ICP:
         self.option = option
 
     def copy(self, source):
-        print("type de source : ",type(source))
         if isinstance(source, (dict, list, np.ndarray)):
             source_copy = source.copy()
 

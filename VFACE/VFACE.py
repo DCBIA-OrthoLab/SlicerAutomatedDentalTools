@@ -4,10 +4,19 @@ from typing import Annotated
 import urllib.request
 import shutil
 import zipfile
+import sys
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# ===== Logging Configuration =====
+logger = logging.getLogger("VFACE")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 import importlib
 try:
@@ -330,6 +339,15 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
+        # Detect dark mode and apply stylesheet
+        isDarkMode = self._isDarkMode()
+        styleSheet = self._getStyleSheet(isDarkMode)
+        uiWidget.setStyleSheet(styleSheet)
+        
+        # Also apply label-specific stylesheet
+        self._applyLabelStyleSheets(isDarkMode)
+        self._applyButtonStyleSheets(isDarkMode)
+
         # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
         # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
         # "setMRMLScene(vtkMRMLScene*)" slot.
@@ -361,6 +379,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.applyButton.connect("clicked(bool)", self.onApplyButton)
         self.ui.CheckDependencyButton.connect("clicked(bool)", self.CheckDependency)
         self.ui.cancelButton.connect("clicked(bool)", self.onCancelButton)
+        self.ui.DefaultListButton.connect("clicked(bool)", self.onDefaultButton)
 
         self.ui.continueButton.setVisible(False)
         self.ui.continueButton.connect("clicked(bool)", self.onContinueButton)
@@ -378,6 +397,266 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.initializeParameterNode()
         self.ui.label_3.setVisible(False)
         self.ui.progressBar.setVisible(False)
+
+    def _isDarkMode(self) -> bool:
+        """Check if the application is in dark mode."""
+        try:
+            palette = slicer.app.palette()
+            bgColor = palette.color(qt.QPalette.Window)
+            luminance = (0.299 * bgColor.red() + 0.587 * bgColor.green() + 0.114 * bgColor.blue()) / 255.0
+            return luminance < 0.5
+        except:
+            return False
+
+    def _getStyleSheet(self, isDarkMode: bool) -> str:
+        """Generate stylesheet based on theme."""
+        if isDarkMode:
+            return """
+            qMRMLWidget {
+              background-color: #2b2b2b;
+            }
+            ctkCollapsibleButton {
+              background-color: #383838;
+              border: 1px solid #454545;
+              border-radius: 6px;
+              margin-bottom: 8px;
+              font-weight: 600;
+              padding: 6px 10px;
+              color: #e0e0e0;
+            }
+            ctkCollapsibleButton:hover {
+              border: 1px solid #3498db;
+              background-color: #414141;
+            }
+            QLineEdit, QTextEdit {
+              background-color: #353535;
+              border: 1px solid #454545;
+              border-radius: 4px;
+              padding: 6px;
+              color: #e0e0e0;
+              selection-background-color: #3498db;
+            }
+            QLineEdit:focus, QTextEdit:focus {
+              border: 2px solid #3498db;
+              background-color: #383838;
+            }
+            QComboBox {
+              background-color: #353535;
+              border: 1px solid #454545;
+              border-radius: 4px;
+              padding: 4px 6px;
+              color: #e0e0e0;
+            }
+            QComboBox:focus {
+              border: 2px solid #3498db;
+            }
+            QComboBox::drop-down {
+              width: 20px;
+              border: none;
+            }
+            QComboBox QAbstractItemView {
+              background-color: #353535;
+              color: #e0e0e0;
+              selection-background-color: #3498db;
+              border: 1px solid #454545;
+            }
+            QProgressBar {
+              border: 1px solid #454545;
+              border-radius: 4px;
+              background-color: #353535;
+              padding: 2px;
+              color: #e0e0e0;
+            }
+            QProgressBar::chunk {
+              background-color: #3498db;
+              border-radius: 3px;
+            }
+            """
+        else:
+            return """
+            qMRMLWidget {
+              background-color: #f8f9fa;
+            }
+            ctkCollapsibleButton {
+              background-color: #ffffff;
+              border: 1px solid #e0e6ed;
+              border-radius: 6px;
+              margin-bottom: 8px;
+              font-weight: 600;
+              padding: 6px 10px;
+              color: #2c3e50;
+            }
+            ctkCollapsibleButton:hover {
+              border: 1px solid #3498db;
+              background-color: #fbfcfd;
+            }
+            QLineEdit, QTextEdit {
+              background-color: #ffffff;
+              border: 1px solid #e0e6ed;
+              border-radius: 4px;
+              padding: 6px;
+              color: #2c3e50;
+              selection-background-color: #3498db;
+            }
+            QLineEdit:focus, QTextEdit:focus {
+              border: 2px solid #3498db;
+            }
+            QComboBox {
+              background-color: #ffffff;
+              border: 1px solid #e0e6ed;
+              border-radius: 4px;
+              padding: 4px 6px;
+              color: #2c3e50;
+            }
+            QComboBox:focus {
+              border: 2px solid #3498db;
+            }
+            QComboBox::drop-down {
+              width: 20px;
+              border: none;
+            }
+            QComboBox QAbstractItemView {
+              background-color: #ffffff;
+              color: #2c3e50;
+              selection-background-color: #3498db;
+              border: 1px solid #e0e6ed;
+            }
+            QProgressBar {
+              border: 1px solid #e0e6ed;
+              border-radius: 4px;
+              background-color: #ffffff;
+              padding: 2px;
+              color: #2c3e50;
+            }
+            QProgressBar::chunk {
+              background-color: #3498db;
+              border-radius: 3px;
+            }
+            """
+
+    def _applyLabelStyleSheets(self, isDarkMode: bool) -> None:
+        """Apply label-specific stylesheets."""
+        if isDarkMode:
+            labelStyle = "color: #b0b0b0; font-weight: 600;"
+        else:
+            labelStyle = "color: #34495e; font-weight: 600;"
+        
+        # List of labels to style
+        labels = [
+            'label_5', 'label_4', 'label_2', 'label_6', 'label_7', 'label_3', 'label', 'modeLabel', 't2label', 'excellabel'
+        ]
+        
+        for labelName in labels:
+            if hasattr(self.ui, labelName):
+                label = getattr(self.ui, labelName)
+                label.setStyleSheet(labelStyle)
+
+    def _applyButtonStyleSheets(self, isDarkMode: bool) -> None:
+        """Apply button-specific stylesheets."""
+        if isDarkMode:
+            # Dark mode button styles
+            standardButtonStyle = """
+            QPushButton {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 10pt;
+              padding: 8px;
+              margin-top: 4px;
+            }
+            QPushButton:hover:!pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+            }
+            QPushButton:pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+            }
+            QPushButton:disabled {
+              background-color: #555555;
+              color: #888888;
+            }
+            """
+            
+            cancelButtonStyle = """
+            QPushButton {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e74c3c, stop:1 #c0392b);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 10pt;
+              padding: 8px;
+              margin-top: 4px;
+            }
+            QPushButton:hover:!pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ec7063, stop:1 #a93226);
+            }
+            QPushButton:pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a93226, stop:1 #922b21);
+            }
+            QPushButton:disabled {
+              background-color: #555555;
+              color: #888888;
+            }
+            """
+        else:
+            # Light mode button styles
+            standardButtonStyle = """
+            QPushButton {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 10pt;
+              padding: 8px;
+              margin-top: 4px;
+            }
+            QPushButton:hover:!pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
+            }
+            QPushButton:pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
+            }
+            QPushButton:disabled {
+              background-color: #bdc3c7;
+              color: #95a5a6;
+            }
+            """
+            
+            cancelButtonStyle = """
+            QPushButton {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e74c3c, stop:1 #c0392b);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 10pt;
+              padding: 8px;
+              margin-top: 4px;
+            }
+            QPushButton:hover:!pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ec7063, stop:1 #a93226);
+            }
+            QPushButton:pressed {
+              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a93226, stop:1 #922b21);
+            }
+            QPushButton:disabled {
+              background-color: #bdc3c7;
+              color: #95a5a6;
+            }
+            """
+        
+        # Apply standard style to most buttons
+        for buttonName in ['applyButton', 'CheckDependencyButton', 'continueButton','DefaultListButton']:
+            if hasattr(self.ui, buttonName):
+                button = getattr(self.ui, buttonName)
+                button.setStyleSheet(standardButtonStyle)
+        
+        # Apply cancel style to cancel button
+        if hasattr(self.ui, 'cancelButton'):
+            self.ui.cancelButton.setStyleSheet(cancelButtonStyle)
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -549,13 +828,13 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         folder_name=os.path.join(name, subfolder_name),
                     )
             else:
-                print(f"Warning: Unknown type for {name}: {type(url_or_dict)}")
+                logger.warning(f"Warning: Unknown type for {name}: {type(url_or_dict)}")
             
     def DownloadUnzip(self, url, directory, folder_name=None, num_downl=1, total_downloads=1):
 
         out_path = os.path.join(directory, folder_name)
         if not os.path.exists(out_path):
-            print("Downloading {}...".format(folder_name.split(os.sep)[-1]))
+            logger.info("Downloading {}...".format(folder_name.split(os.sep)[-1]))
             os.makedirs(out_path)
 
             temp_path = os.path.join(directory, "temp.zip")
@@ -603,7 +882,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # Delete the zip file
             os.remove(temp_path)
 
-            print(f"{folder_name} has been successfully installed")
+            logger.info(f"{folder_name} has been successfully installed")
 
     def CheckDependency(self) -> None:
         """
@@ -618,37 +897,37 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # Check and install joblib
             try:
                 import joblib
-                logger.info(f"✓ joblib is already installed (version: {joblib.__version__})")
+                logger.info(f"joblib is already installed (version: {joblib.__version__})")
             except ImportError:
-                logger.warning("✗ joblib not found, installing...")
+                logger.warning("joblib not found, installing...")
                 try:
                     logger.info("Installing joblib...")
                     slicer.util.pip_install('joblib')
                     import joblib
-                    logger.info(f"✓ joblib successfully installed (version: {joblib.__version__})")
+                    logger.info(f"joblib successfully installed (version: {joblib.__version__})")
                 except Exception as e:
-                    logger.error(f"✗ Failed to install joblib: {str(e)}")
+                    logger.error(f"Failed to install joblib: {str(e)}")
                     raise
             
             # Check and install lightgbm
             try:
                 import lightgbm
-                logger.info(f"✓ lightgbm is already installed (version: {lightgbm.__version__})")
+                logger.info(f"lightgbm is already installed (version: {lightgbm.__version__})")
             except ImportError:
-                logger.warning("✗ lightgbm not found, installing...")
+                logger.warning("lightgbm not found, installing...")
                 try:
                     logger.info("Installing lightgbm... (this may take a while)")
                     slicer.util.pip_install('lightgbm')
                     import lightgbm
-                    logger.info(f"✓ lightgbm successfully installed (version: {lightgbm.__version__})")
+                    logger.info(f"lightgbm successfully installed (version: {lightgbm.__version__})")
                 except Exception as e:
-                    logger.error(f"✗ Failed to install lightgbm: {str(e)}")
+                    logger.error(f"Failed to install lightgbm: {str(e)}")
                     raise
             
             logger.info("=== Python dependencies check completed ===")
             logger.info("--- Downloading model files ---")
             self.DownloadAllFiles()
-            logger.info("✓ All dependencies have been successfully installed")
+            logger.info("All dependencies have been successfully installed")
             
         except Exception as e:
             logger.error(f"Error during dependency check: {e}")
@@ -656,16 +935,18 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onComboBoxChanged(self, text):
         """Called when the main comboBox value changes"""
-        print(f"ComboBox changed to: {text}")
+        logger.info(f"ComboBox changed to: {text}")
 
     def onComboBox2Changed(self, text):
         
         if text == "Visualization (Heatmaps)":
             self.ui.excellabel.setVisible(False)
             self.ui.PathLineEdit_3.setVisible(False)
+            self.ui.DefaultListButton.setVisible(False)
         else:
             self.ui.excellabel.setVisible(True)
             self.ui.PathLineEdit_3.setVisible(True)
+            self.ui.DefaultListButton.setVisible(True)
 
         self._checkCanApply()
 
@@ -753,6 +1034,18 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             del self.list_process[0]
         else:
             self.OnEndProcess()
+    
+    def onDefaultButton(self):
+        if not os.path.exists(self.SlicerDownloadPath):
+            os.makedirs(self.SlicerDownloadPath)
+
+        self.DownloadUnzip(
+            url="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/VFACE/DefaultList.zip",
+            directory=self.SlicerDownloadPath,
+            folder_name="V_FACE/DefaultList",
+        )
+        if os.path.exists(os.path.join(self.SlicerDownloadPath,"V_FACE/DefaultList")):
+            self.ui.PathLineEdit_3.setCurrentPath(os.path.join(self.SlicerDownloadPath,"V_FACE/DefaultList"))
 
     def onCancelButton(self) -> None:
         """
@@ -798,7 +1091,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         if parent_dir not in sys.path:
                             sys.path.insert(0, parent_dir)
                         
-                        from segmentation_logic import SegmentationLogic
+                        from VFACE_utils.segmentation_logic import SegmentationLogic
                         # Create temporary instance to stop all processes
                         temp_logic = SegmentationLogic()
                         temp_logic.stop()
@@ -976,57 +1269,55 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
         
         if is_slicer_module:
-            print(f"{self.module_name} is executed.")
+            logger.info(f"{self.module_name} is executed.")
             self.cliNode = slicer.cli.run(process, None, parameters)
             self.addObserver(self.cliNode, vtk.vtkCommand.ModifiedEvent, self.onCliUpdated)
         else:
-            print(f"{self.module_name} is executed.")
+            logger.info(f"{self.module_name} is executed.")
             self.ui.label_3.setText(f"Process : {self.module_name} ({self.ActualProcess}/{self.NumberProcess})")
             
-            # Pour les processus Python longs, utiliser un timer pour maintenir la réactivité
+            # For long Python process, use a timer to maintain reactivity
             self.python_process = process
             self.python_parameters = parameters
             self.python_process_completed = False
             self.python_process_error = None
             
-            # Démarrer le processus dans un timer pour permettre les processEvents
+            #Start process with a timer
             self.startPythonProcess()
 
     def startPythonProcess(self):
-        """Démarre un processus Python avec gestion de la réactivité"""
+        """Start a Python process"""
         try:
             if callable(self.python_process):
-                # Exécuter le processus
+                # Execute the process
                 result = self.python_process(**self.python_parameters)
-                print(f"Result of {self.module_name}: {result}")
+                logger.info(f"Result of {self.module_name}: {result}")
                 self.python_process_completed = True
             else:
-                print(f"Error: {self.python_process} is not a callable function")
+                logger.error(f"Error: {self.python_process} is not a callable function")
                 self.python_process_error = "Process is not callable"
                 self.python_process_completed = True
                 
         except Exception as e:
-            print(f"Error during the execution of {self.module_name}: {e}")
+            logger.error(f"Error during the execution of {self.module_name}: {e}")
             import traceback
             traceback.print_exc()
             self.python_process_error = str(e)
             self.python_process_completed = True
         
-        # Programmer la vérification de fin de processus
         import qt
         qt.QTimer.singleShot(100, self.checkPythonProcessStatus)
 
     def checkPythonProcessStatus(self):
-        """Vérifie le statut du processus Python"""
+        """Check Python process status"""
         if self.python_process_completed:
             self.onProcessCompleted()
         else:
-            # Continuer à vérifier le statut
             import qt
             qt.QTimer.singleShot(100, self.checkPythonProcessStatus)
 
     def onProcessCompleted(self):
-        print("\n\n ========= PROCESSED ========= \n")
+        logger.info("\n\n ========= PROCESSED ========= \n")
 
         if self.shouldPauseAfterProcess(self.current_process_info) and self.ui.checkBox_2.isChecked():
             output_path = self.getOutputPathForModule(self.module_name)
@@ -1036,7 +1327,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     self.current_output_to_load = output_path
                     self.ui.continueButton.setVisible(True)
                     self.ui.label_3.setText(f"Result of {self.module_name} loaded - Click on Continue to start next steps")
-                    print(f"Process on pause after {self.module_name}. Result loaded.")
+                    logger.info(f"Process on pause after {self.module_name}. Result loaded.")
                     return
 
         try:
@@ -1059,8 +1350,8 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             self.removeObserver(cliNode, vtk.vtkCommand.ModifiedEvent, self.onCliUpdated)
 
-            print("\n\n ========= PROCESSED ========= \n")
-            print(caller.GetOutputText())
+            logger.info("\n\n ========= PROCESSED ========= \n")
+            logger.info(caller.GetOutputText())
             
             if self.shouldPauseAfterProcess(self.current_process_info) and self.ui.checkBox_2.isChecked():
                 output_path = self.getOutputPathForModule(self.module_name)
@@ -1070,12 +1361,12 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         self.current_output_to_load = output_path
                         self.ui.continueButton.setVisible(True)
                         self.ui.label_3.setText(f"Result of {self.module_name} loaded - Click on Continue to start next steps")
-                        print(f"Process on pause after {self.module_name}. Result loaded.")
+                        logger.info(f"Process on pause after {self.module_name}. Result loaded.")
                         self.ui.progressBar.setValue(0)
                         return
             
             try:
-                # Exécuter le processus suivant
+                # Run next process
                 self.ui.progressBar.setValue(0)
                 self.executeProcess(self.list_process[0])
                 self.ActualProcess += 1
@@ -1217,7 +1508,7 @@ class VFACELogic(ScriptedLoadableModuleLogic):
         import time
 
         startTime = time.time()
-        logging.info("Processing started")
+        logger.info("Processing started")
 
         # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
         cliParams = {
@@ -1231,7 +1522,7 @@ class VFACELogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(cliNode)
 
         stopTime = time.time()
-        logging.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
+        logger.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
 
 
 #

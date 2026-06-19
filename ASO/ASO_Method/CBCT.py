@@ -6,6 +6,19 @@ import slicer
 import json
 import time
 import qt
+import logging
+import sys
+# ===== Logging Configuration =====
+logger = logging.getLogger("ASO_Method_CBCT")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 
 class CBCT(Method):
@@ -382,7 +395,6 @@ class Semi_CBCT(CBCT):
             "add_inname": kwargs["add_in_namefile"],
             "list_landmark": list_lmrk_str,
         }
-        print("parameter", parameter_semi_aso)
 
         OrientProcess = slicer.modules.semi_aso_cbct
         
@@ -524,13 +536,9 @@ class Auto_CBCT(CBCT):
             else self.NumberScanDCM(kwargs["input_folder"])
         )
 
-        print('-' * 70)
-        print("parameter PRE_ASO : ", parameter_pre_aso)
-        print('-' * 70)
-        print("parameter ALI : ", parameter_ali)
-        print('-' * 70)
-        print("parameter SEMI_ASO : ", parameter_semi_aso)
-        print('-' * 70)
+        logger.info(f"Parameter PRE_ASO :  {parameter_pre_aso}")
+        logger.info(f"Parameter ALI :  {parameter_ali}")
+        logger.info(f"Parameter SEMI_ASO : {parameter_semi_aso}")
         
         PreOrientProcess = slicer.modules.pre_aso_cbct
         ALIProcess = slicer.modules.ali_cbct

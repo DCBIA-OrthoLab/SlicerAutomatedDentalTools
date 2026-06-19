@@ -6,6 +6,20 @@ import json
 import SimpleITK as sitk
 from vtk.util.numpy_support import vtk_to_numpy
 from ASO_IOS_utils.OFFReader import OFFReader
+import logging
+import sys
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("ASO_IOS_utils")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 
 def ReadSurf(path):
@@ -139,9 +153,9 @@ def WriteSurf(surf, output_folder, name, inname):
             writer = vtk.vtkPolyDataWriter()
         
         output_path = os.path.join(output_folder, f"{name}{inname}{extension}")
-        print(f"DEBUG WriteSurf: output_path = {output_path}")
-        print(f"DEBUG WriteSurf: output_folder = {output_folder}")
-        print(f"DEBUG WriteSurf: name = {name}, inname = {inname}, extension = {extension}")
+        logger.debug(f"DEBUG WriteSurf: output_path = {output_path}")
+        logger.debug(f"DEBUG WriteSurf: output_folder = {output_folder}")
+        logger.debug(f"DEBUG WriteSurf: name = {name}, inname = {inname}, extension = {extension}")
         
         writer.SetFileName(output_path)
         writer.SetInputData(surf)
@@ -153,13 +167,13 @@ def WriteSurf(surf, output_folder, name, inname):
         
         # Check file size
         file_size = os.path.getsize(output_path)
-        print(f"DEBUG WriteSurf: File created successfully: {output_path} ({file_size} bytes)")
+        logger.debug(f"DEBUG WriteSurf: File created successfully: {output_path} ({file_size} bytes)")
             
     except Exception as e:
-        print(f"ERROR in WriteSurf: {str(e)}")
-        print(f"  Output folder: {output_folder}")
-        print(f"  Filename: {name}{inname}{extension}")
-        print(f"  Full path attempted: {output_path if 'output_path' in locals() else 'N/A'}")
+        logger.error(f"ERROR in WriteSurf: {str(e)}")
+        logger.debug(f"  Output folder: {output_folder}")
+        logger.debug(f"  Filename: {name}{inname}{extension}")
+        logger.debug(f"  Full path attempted: {output_path if 'output_path' in locals() else 'N/A'}")
         raise
 
 

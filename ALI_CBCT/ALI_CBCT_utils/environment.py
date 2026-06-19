@@ -9,6 +9,20 @@ from monai.transforms import Compose, BorderPad, ScaleIntensity, SpatialCrop
 from ALI_CBCT_utils.constants import LABELS, LABEL_GROUPS, SCALE_KEYS, DEVICE, bcolors
 from ALI_CBCT_utils.io import WriteJson, GenControlPoint
 
+import logging
+import sys
+# --- LOGGING CONFIGURATION ---
+logger = logging.getLogger("ALI_CBCT_environment")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 class Environment :
     def __init__(
         self,
@@ -76,8 +90,6 @@ class Environment :
 
 
     def LoadJsonLandmarks(self,fiducial_path):
-        # print(fiducial_path)
-        # test = []
 
         with open(fiducial_path) as f:
             data = json.load(f)
@@ -85,8 +97,7 @@ class Environment :
         markups = data["markups"][0]["controlPoints"]
         for markup in markups:
             if markup["label"] not in LABELS:
-                print(fiducial_path)
-                print(f"{bcolors.WARNING}WARNING : {markup['label']} is an unusual landmark{bcolors.ENDC}")
+                logger.warning(f"{bcolors.WARNING}WARNING : {markup['label']} is an unusual landmark{bcolors.ENDC}")
             # test.append(markup["label"])
             mark_pos = markup["position"]
             lm_ph_coord = np.array([mark_pos[2],mark_pos[1],mark_pos[0]])
@@ -95,31 +106,23 @@ class Environment :
                 lm_coord = ((lm_ph_coord+ abs(scale_data["origin"]))/scale_data["spacing"]).astype(np.int16)
                 scale_data["landmarks"][markup["label"]] = lm_coord
 
-        # print(test)
-
 
     def SavePredictedLandmarks(self,scale_key,out_path=None):
         img_path = self.data[scale_key]["path"]
-        print(f"Saving predicted landmarks for patient{self.patient_id} at scale {scale_key}")
+        logger.info(f"Saving predicted landmarks for patient{self.patient_id} at scale {scale_key}")
 
         ref_origin = self.data[scale_key]["origin"]
         ref_spacing = self.data[scale_key]["spacing"]
         physical_origin = abs(ref_origin/ref_spacing)
-
-        # print(ref_origin,ref_spacing,physical_origin)
 
         landmark_dic = {}
         for landmark,pos in self.predicted_landmarks.items():
 
             real_label_pos = (pos-physical_origin)*ref_spacing
             real_label_pos = [real_label_pos[2],real_label_pos[1],real_label_pos[0]]
-            # print(real_label_pos)
             if LABEL_GROUPS[landmark] in landmark_dic.keys():
                 landmark_dic[LABEL_GROUPS[landmark]].append({"label": landmark, "coord":real_label_pos})
             else:landmark_dic[LABEL_GROUPS[landmark]] = [{"label": landmark, "coord":real_label_pos}]
-
-
-        # print(landmark_dic)
 
         for group,list in landmark_dic.items():
 
@@ -157,7 +160,6 @@ class Environment :
         cropTransform = SpatialCrop(center.tolist() + self.padding,crop_size)
         rescale = ScaleIntensity(minv = -1.0, maxv = 1.0, factor = None)
         crop = cropTransform(self.data[scale]["image"])
-        # print(tor ch.max(crop))
         crop = rescale(crop).type(torch.float32)
         return crop
 
@@ -174,7 +176,6 @@ class Environment :
             rand_coord_lst = self.GetRandomPosesInAllScan(scale,pos_nbr-centered_pos_nbr)
             rand_coord_lst += self.GetRandomPosesArounfLabel(scale,target,radius,centered_pos_nbr)
         else:
-            # print("RANDOOOOOOM AROUND LABEL")
             rand_coord_lst = self.GetRandomPosesArounfLabel(scale,target,radius,pos_nbr)
 
         return rand_coord_lst
@@ -216,23 +217,22 @@ class Environment :
         return self.data[scale]["size"]
 
     def AddPredictedLandmark(self,lm_id,lm_pos):
-        # print(f"Add landmark {lm_id} at {lm_pos}")
         self.predicted_landmarks[lm_id] = lm_pos
 
     def __str__(self):
-        print(self.patient_id)
+        logger.debug(self.patient_id)
         for scale in self.data.keys():
-            print(f"{scale}")
-            print(self.data[scale]["spacing"])
-            print(self.data[scale]["origin"])
-            print(self.data[scale]["size"])
-            print(self.data[scale]["landmarks"])
+            logger.debug(f"{scale}")
+            logger.debug(self.data[scale]["spacing"])
+            logger.debug(self.data[scale]["origin"])
+            logger.debug(self.data[scale]["size"])
+            logger.debug(self.data[scale]["landmarks"])
         return ""
     
 def GenEnvironmentLst(patient_dic ,env_type, padding = 1, device = DEVICE, scale_keys = None):
     environement_lst = []
     for patient,data in patient_dic.items():
-        print(f"{bcolors.OKCYAN}Generating Environement for the patient: {bcolors.OKBLUE}{patient}{bcolors.ENDC}")
+        logger.info(f"{bcolors.OKCYAN}Generating Environement for the patient: {bcolors.OKBLUE}{patient}{bcolors.ENDC}")
         env = env_type(
             patient_id = patient,
             device = device,

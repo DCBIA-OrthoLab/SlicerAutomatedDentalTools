@@ -6,6 +6,19 @@ import os
 import glob
 import sys
 import csv
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("ASO_CBCT_Resample_Pre")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 Spacing = []
 
@@ -145,14 +158,13 @@ def main(args):
 
     if args["rgb"]:
         if args["pixel_dimension"] == 3:
-            print("Using: RGB type pixel with unsigned char")
+            logger.info("Using: RGB type pixel with unsigned char")
         elif args["pixel_dimension"] == 4:
-            print("Using: RGBA type pixel with unsigned char")
+            logger.info("Using: RGBA type pixel with unsigned char")
         else:
-            print("WARNING: Pixel size not supported!")
+            logger.warning("WARNING: Pixel size not supported!")
 
     if args["ref"] is not None:
-        print(args["ref"])
         ref = sitk.ReadImage(args["ref"])
         args["size"] = ref.GetSize()
         args["spacing"] = ref.GetSpacing()
@@ -181,7 +193,7 @@ def main(args):
                     writer.Execute(img)
 
             except Exception as e:
-                print(e, file=sys.stderr)
+                logger.error("Error during the resampling.")
 
 
 def PreASOResample(data_dir, out_dir, spacing):

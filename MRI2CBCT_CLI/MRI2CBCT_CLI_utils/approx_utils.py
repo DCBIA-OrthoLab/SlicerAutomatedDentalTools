@@ -5,6 +5,21 @@ import SimpleITK as sitk
 import torch.nn.functional as F
 from nibabel.processing import resample_from_to
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_utils_approx")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 def get_corresponding_file(folder, patient_id, modality):
     """
     Gets the corresponding file for a patient in a folder.
@@ -161,7 +176,7 @@ def resample_to_match(moving_img, static_img, order=1):
     target_moving = (target_shape, moving_img.affine)
     target_static = (target_shape, static_img.affine)
     
-    print(f"Resampling images to shape {target_shape}")
+    logger.info(f"Resampling images to shape {target_shape}")
     
     moving_resampled = resample_from_to(moving_img, target_moving, order=order)
     static_resampled = resample_from_to(static_img, target_static, order=order)

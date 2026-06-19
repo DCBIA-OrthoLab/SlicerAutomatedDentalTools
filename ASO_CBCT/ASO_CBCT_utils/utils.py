@@ -29,6 +29,21 @@ from vtkmodules.vtkFiltersGeneral import vtkTransformPolyDataFilter
 
 import dicom2nifti
 
+import logging
+import sys
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("ASO_CBCT_utils")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 cross = lambda x, y: np.cross(
     x, y
@@ -501,7 +516,7 @@ def convertdicom2nifti(input_folder, output_folder=None):
 
     for patient in patients_folders:
         if not os.path.exists(os.path.join(output_folder, patient + ".nii.gz")):
-            print("Converting patient: {}...".format(patient))
+            logger.info("Converting patient: {}...".format(patient))
             current_directory = os.path.join(input_folder, patient)
             try:
                 reader = sitk.ImageSeriesReader()
@@ -622,8 +637,6 @@ def ICP_Transform(source, target):
     icp.Modified()
     icp.Update()
 
-    # print("Number of iterations: {}".format(icp.GetNumberOfIterations()))
-
     # ============ apply ICP transform ==============
     transformFilter = vtkTransformPolyDataFilter()
     transformFilter.SetInputData(source)
@@ -646,17 +659,14 @@ def InitICP(source, target, Print=False, BestLMList=None, search=False):
     if BestLMList is not None:
         firstpick, secondpick, thirdpick = BestLMList[0], BestLMList[1], BestLMList[2]
         if Print:
-            print(
-                "Best Landmarks are: {},{},{}".format(firstpick, secondpick, thirdpick)
-            )
-    # print("Mean Distance:{:.2f}".format(ComputeMeanDistance(source, target)))
+            logger.info("Best Landmarks are: {},{},{}".format(firstpick, secondpick, thirdpick))
 
     # ============ Pick a Random Landmark ==============
     if BestLMList is None:
         firstpick = labels[np.random.randint(0, len(labels))]
 
     if Print:
-        print("First pick: {}".format(firstpick))
+        logger.info("First pick: {}".format(firstpick))
 
     # ============ Compute Translation Transform ==============
     T = target[firstpick] - source[firstpick]
@@ -675,7 +685,7 @@ def InitICP(source, target, Print=False, BestLMList=None, search=False):
             if secondpick != firstpick:
                 break
     if Print:
-        print("Second pick: {}".format(secondpick))
+        logger.info("Second pick: {}".format(secondpick))
 
     # ============ Compute Rotation Angle and Axis ==============
     v1 = abs(source[secondpick] - source[firstpick])
@@ -701,7 +711,7 @@ def InitICP(source, target, Print=False, BestLMList=None, search=False):
             if thirdpick != firstpick and thirdpick != secondpick:
                 break
     if Print:
-        print("Third pick: {}".format(thirdpick))
+        logger.info("Third pick: {}".format(thirdpick))
 
     # ============ Compute Rotation Angle and Axis ==============
     v1 = abs(source[thirdpick] - source[firstpick])
@@ -722,7 +732,7 @@ def InitICP(source, target, Print=False, BestLMList=None, search=False):
     TransformMatrix = RotationTransformMatrix @ TransformMatrix
 
     if Print:
-        print("Mean Distance:{:.2f}".format(ComputeMeanDistance(source, target)))
+        logger.info("Mean Distance:{:.2f}".format(ComputeMeanDistance(source, target)))
 
     if search:
         return firstpick, secondpick, thirdpick, ComputeMeanDistance(source, target)
@@ -734,7 +744,7 @@ def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark, i
     # Check if some landmarks are not well located
     ldmk_to_remove = GetLandmarkToRemove(input_json_file, gold_json_file)
     if len(ldmk_to_remove) > 0:
-        print(
+        logger.info(
             "Patient {} --> Landmark not used: {}".format(
                 os.path.basename(input_file).split(".")[0], ldmk_to_remove
             )
@@ -752,7 +762,7 @@ def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark, i
     nb_lmrk = len(source.keys())
 
     if nb_lmrk < 3:
-        print(
+        logger.warning(
             "Patient {} --> Not enough landmarks".format(
                 os.path.basename(input_file).split(".")[0]
             )
@@ -1015,8 +1025,6 @@ def GetPatients(folder_path):
             .split("_Scan")[0]
             .split("_lm")[0]
             .split(".")[0]
-            .split("_T1")[0]
-            .split("_T2")[0]
         )
 
         if patient not in patients.keys():

@@ -4,6 +4,20 @@ from AREG_IOS_utils.transformation import RotationMatrix, TransformSurf
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 from AREG_IOS_utils.vtkSegTeeth import vtkMeanTeeth
 
+import logging
+import sys
+# ===== Logging Configuration =====
+logger = logging.getLogger("AREG_IOS_orientation")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 cross = lambda a, b: np.cross(a, b)
 
 

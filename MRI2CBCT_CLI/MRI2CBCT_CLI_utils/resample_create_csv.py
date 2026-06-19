@@ -2,6 +2,20 @@ import SimpleITK as sitk
 import os
 import pandas as pd
 import argparse
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_utils_resample_csv")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 def get_nifti_info(file_path,output_resample):
     """
@@ -56,7 +70,7 @@ def create_csv(input:str,output_resample:str,output_csv:str,name_csv:str):
         info = get_nifti_info(file,output_resample)
         nifti_info.append(info)
 
-    # Créez un seul DataFrame avec toutes les informations
+    # Create only one DataFrame with all informations
     df = pd.DataFrame(nifti_info)
     outpath = os.path.join(output_csv,name_csv)
     df.to_csv(outpath, index=False)

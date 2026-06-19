@@ -3,6 +3,20 @@ import vtk
 from vtk.util.numpy_support import vtk_to_numpy
 from ASO_IOS_utils.icp import vtkMeanTeeth
 from ASO_IOS_utils.transformation import RotationMatrix, TransformSurf
+import logging
+import sys
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("ASO_IOS_pre_icp")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 
 cross = lambda a, b: np.cross(a, b)
@@ -96,7 +110,7 @@ def PrePreAso(source, target, landmarks):
     if len(landmarks) == 4:
         meanTeeth = vtkMeanTeeth(
             [int(left), int(middle[0]), int(middle[1]), int(right)],
-            property="PredictedID",
+            property="Universal_ID",
         )
         mean_source = meanTeeth(source)
         mean_target = meanTeeth(target)
@@ -114,7 +128,7 @@ def PrePreAso(source, target, landmarks):
 
     else:
         meanTeeth = vtkMeanTeeth(
-            [int(left), int(middle[0]), int(right)], property="PredictedID"
+            [int(left), int(middle[0]), int(right)], property="Universal_ID"
         )
         mean_source = meanTeeth(source)
         mean_target = meanTeeth(target)

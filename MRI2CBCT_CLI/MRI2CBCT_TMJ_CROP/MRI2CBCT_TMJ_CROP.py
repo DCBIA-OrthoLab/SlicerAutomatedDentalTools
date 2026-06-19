@@ -1,13 +1,29 @@
 #!/usr/bin/env python-real
 
 import os
-import argparse, subprocess, shutil, sys, itertools
+import argparse, subprocess, shutil, itertools
 from nnunetv2.inference.predict_from_raw_data import predict_entry_point
 from typing import Optional
 from pathlib import Path
 import numpy as np
 import nibabel as nib
-from  scipy.ndimage import label         # Keep the biggest CC
+from  scipy.ndimage import label
+
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_TMJ_Crop")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 fpath = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(fpath)
 
@@ -21,9 +37,9 @@ MARGIN       = 3                          # voxels besides B-box
 PROBA_THR    = 0.02
 FIXED_BBOX_VOXELS = [400, 400, 400]       # set to None to disable fixed box; otherwise [sx,sy,sz] in voxels
 
-# ── OUTILS ──────────────────────────────────────────────────────────
+# ── Tools ──────────────────────────────────────────────────────────
 def crop_with_affine(img: nib.Nifti1Image, start: np.ndarray, end: np.ndarray) -> nib.Nifti1Image:
-    """Sous-volume [start,end[ en conservant la géométrie monde."""
+    """Beneath-volume [start,end[ and keep world geometry."""
     data   = img.get_fdata()
     affine = img.affine.copy()
     sub    = data[start[0]:end[0], start[1]:end[1], start[2]:end[2]]
@@ -55,8 +71,8 @@ def nnunet_predict(case_dir: Path, out_dir: Path, model_folder: Path) -> None:
 def process_patient(cbct_path: Path, mri_path: Path, seg_path: Optional[Path], tmp_dir: Path, out_dir: Path, model_folder: Path) -> None:
     def crop_by_world_corners(img: nib.Nifti1Image, corners_world: np.ndarray) -> tuple[Optional[nib.Nifti1Image], Optional[tuple[np.ndarray, np.ndarray]]]:
         """
-        Coupe `img` avec la B-box définie par 8 coins en coordonnées monde.
-        Retourne (volume_coupé, (imin, imax)) ou (None, None) si intersection nulle.
+        Crop `img` with the B-box determined by 8 edges in world coordinates
+        Return (volume_crop, (imin, imax)) ou (None, None) if no intersection.
         """
         inv   = np.linalg.inv(img.affine)
         ijk   = (inv @ np.c_[corners_world, np.ones(8)].T)[:3].T
@@ -70,7 +86,7 @@ def process_patient(cbct_path: Path, mri_path: Path, seg_path: Optional[Path], t
 
     def _save(vol: Optional[nib.Nifti1Image], file_name: str, folder_name: str):
             if vol is None:
-                print(f"  ↳ {file_name}: intersection nulle (non sauvegardé)")
+                logger.info(f"{file_name}: No intersection (not save)")
             else:
                 if not os.path.exists(os.path.join(out_dir,folder_name)):
                     os.makedirs(os.path.join(out_dir,folder_name))
@@ -82,7 +98,7 @@ def process_patient(cbct_path: Path, mri_path: Path, seg_path: Optional[Path], t
     
     name = cbct_path.stem.split(".")[0]
     name = name.split("_")[0]
-    print(f"\n▶ {name}")
+    logger.info(f"\n{name}")
 
     cbct = nib.load(cbct_path)
     mri  = nib.load(mri_path)
@@ -97,7 +113,7 @@ def process_patient(cbct_path: Path, mri_path: Path, seg_path: Optional[Path], t
     cog_cbct = np.linalg.inv(cbct.affine)[:3, :3] @ cog_w + \
                np.linalg.inv(cbct.affine)[:3, 3]
     side = "Left" if cog_cbct[0] < mid else "Right"
-    print("MRI side:", side)
+    logger.info(f"MRI side: {side}")
 
     
     ### ------------------------------------------------------------------ ###
@@ -124,7 +140,7 @@ def process_patient(cbct_path: Path, mri_path: Path, seg_path: Optional[Path], t
     pred_dir = case_dir / "predictions"
     pred_dir.mkdir(exist_ok=True)
     nnunet_predict(case_dir, pred_dir, model_folder)
-    print("✅ prediction done")
+    logger.info("Prediction done")
 
     pred = nib.load(pred_dir / f"{name}.nii.gz").get_fdata()
     if pred.ndim == 4:
@@ -140,7 +156,7 @@ def process_patient(cbct_path: Path, mri_path: Path, seg_path: Optional[Path], t
         # best-effort save, do not fail the pipeline
         pass
     if mask.sum() == 0:
-        print("⚠️  no voxel — ignored")
+        logger.info("No voxel ignored")
         return
 
     nz   = np.array(np.nonzero(mask))
@@ -187,7 +203,7 @@ def process_patient(cbct_path: Path, mri_path: Path, seg_path: Optional[Path], t
     
     if mri_crop is not None:
         from nibabel.processing import resample_from_to
-        # cible = (shape, affine) du MRI croppé
+        # cible = (shape, affine) crop MRI
         cbct_on_mri = resample_from_to(cbct, (mri_crop.shape, mri_crop.affine), order=1)
         _save(cbct_on_mri, f"{name}_CBCT_TMJ_crop{side}.nii.gz","CBCT")
         pred_on_mri = resample_from_to(nib.load(seg_path),
@@ -201,7 +217,6 @@ def process_patient(cbct_path: Path, mri_path: Path, seg_path: Optional[Path], t
             _save(mask_on_mri, f"{name}_Mask_TMJ_crop{side}.nii.gz","CBCT seg")
         except Exception:
             pass
-    print("── finished.")
 
 
 # ── MAIN ────────────────────────────────────────────────────────────
@@ -218,13 +233,13 @@ def main(args):
         seg_path  = Path(files.get("seg", ""))
 
         if not cbct_path.exists() or not mri_path.exists() or not seg_path.exists():
-            print(f"❌ Skipping {pid}: missing CBCT, MRI, or SEG")
+            logger.info(f"Skipping {pid}: missing CBCT, MRI, or SEG")
             continue
 
-        print(f"\n▶ Patient: {pid}")
-        print(f"   CBCT: {cbct_path}")
-        print(f"   MRI:  {mri_path}")
-        print(f"   SEG:  {seg_path}")
+        logger.info(f"\nPatient: {pid}")
+        logger.info(f"   CBCT: {cbct_path}")
+        logger.info(f"   MRI:  {mri_path}")
+        logger.info(f"   SEG:  {seg_path}")
 
         process_patient(cbct_path, mri_path, seg_path, tmp_folder, output_dir, model_folder)
 

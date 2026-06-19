@@ -11,6 +11,19 @@ Usage:
 import sys
 import argparse
 import traceback
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("VFACE_batchworker")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 
 def read_vtk(file_path):
@@ -87,7 +100,7 @@ def interpolate_distance_to_original(original, subsampled):
 
     sub_array = subsampled.GetPointData().GetArray("Distance")
     if sub_array is None:
-        print("Warning: No 'Distance' array found on subsampled mesh.")
+        logger.warning("Warning: No 'Distance' array found on subsampled mesh.")
         return original
 
     sub_distances = vtk_to_numpy(sub_array)
@@ -125,14 +138,14 @@ def compute_distance(pd1, pd2, signed=True):
     total_points = n1 + n2
     complexity = n1 * n2  # Rough indicator of vtkDistancePolyDataFilter memory usage
 
-    print(f"  Points: pd1={n1}, pd2={n2}, total={total_points}, complexity={complexity:.2e}")
+    logger.debug(f"  Points: pd1={n1}, pd2={n2}, total={total_points}, complexity={complexity:.2e}")
 
     # Thresholds for subsampling
     SUBSAMPLE_THRESHOLD = 1_000_000       # 1M points combined
     HEAVY_SUBSAMPLE_THRESHOLD = 2_000_000 # 2M points combined
 
     if total_points > HEAVY_SUBSAMPLE_THRESHOLD:
-        print(f"  -> HEAVY subsampling (target_reduction=0.7)")
+        logger.debug(f"  -> HEAVY subsampling (target_reduction=0.7)")
         pd1_sub = subsample_polydata(pd1, target_reduction=0.7)
         pd2_sub = subsample_polydata(pd2, target_reduction=0.7)
         result_sub = compute_distance_direct(pd1_sub, pd2_sub, signed)
@@ -140,7 +153,7 @@ def compute_distance(pd1, pd2, signed=True):
         return result
 
     elif total_points > SUBSAMPLE_THRESHOLD:
-        print(f"  -> MODERATE subsampling (target_reduction=0.5)")
+        logger.debug(f"  -> MODERATE subsampling (target_reduction=0.5)")
         pd1_sub = subsample_polydata(pd1, target_reduction=0.5)
         pd2_sub = subsample_polydata(pd2, target_reduction=0.5)
         result_sub = compute_distance_direct(pd1_sub, pd2_sub, signed)
@@ -148,7 +161,7 @@ def compute_distance(pd1, pd2, signed=True):
         return result
 
     else:
-        print(f"  -> Direct computation (no subsampling needed)")
+        logger.debug(f"  -> Direct computation (no subsampling needed)")
         return compute_distance_direct(pd1, pd2, signed)
 
 
@@ -194,26 +207,26 @@ def main():
     signed = not args.unsigned
 
     try:
-        print(f"Reading {args.file1}...")
+        logger.info(f"Reading {args.file1}...")
         pd1 = read_vtk(args.file1)
-        print(f"Reading {args.file2}...")
+        logger.info(f"Reading {args.file2}...")
         pd2 = read_vtk(args.file2)
 
-        print(f"Cleaning and triangulating...")
+        logger.info(f"Cleaning and triangulating...")
         pd1 = clean_and_triangulate(pd1)
         pd2 = clean_and_triangulate(pd2)
 
-        print(f"Computing distance (signed={signed})...")
+        logger.info(f"Computing distance (signed={signed})...")
         result = compute_distance(pd1, pd2, signed=signed)
 
-        print(f"Writing {args.output}...")
+        logger.info(f"Writing {args.output}...")
         write_vtk(result, args.output)
 
-        print("SUCCESS")
+        logger.info("SUCCESS")
         sys.exit(0)
 
     except Exception as e:
-        print(f"FAILURE: {e}", file=sys.stderr)
+        logger.error(f"FAILURE: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 

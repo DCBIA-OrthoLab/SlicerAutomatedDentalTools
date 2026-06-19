@@ -8,6 +8,20 @@ from AREG_IOS_utils.transformation import ScaleSurf
 from AREG_IOS_utils.vtkSegTeeth import ToothNoExist, NoSegmentationSurf
 import glob
 
+import logging
+import sys
+# ===== Logging Configuration =====
+logger = logging.getLogger("AREG_IOS_dataset")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 class DatasetPatch(Dataset):
     """
@@ -36,15 +50,15 @@ class DatasetPatch(Dataset):
                 ["3", "8", "9", "14"],
             )
         except NoSegmentationSurf as error:
-            print(f"The surf {name} cant be oriented because {error}")
+            logger.error(f"The surf {name} cant be oriented because {error}")
             bool_error = True
         except ToothNoExist:
-            print(
+            logger.error(
                 f"The surf {name} was not oriented because the one of UR6, UR1, UL1 or UR6 is missing"
             )
             bool_error = True
         if bool_error:
-            print(
+            logger.warning(
                 f"The prediction of the patch can be wrong if the scan has not been oriented beforehand"
             )
 

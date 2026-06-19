@@ -5,6 +5,23 @@ from qt import (
     QWidget,
     QGridLayout,
 )
+
+# --- LOGGING CONFIGURATION ---
+logger = logging.getLogger("ALI")
+logger.setLevel(logging.INFO)
+
+logger.propagate = False
+
+if logger.handlers:
+    logger.handlers.clear()
+
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin, pip_install, pip_uninstall
 import webbrowser
@@ -169,7 +186,6 @@ def registerSampleData():
     uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
     fileNames='ALI1.nrrd',
     # Checksum to ensure file integrity. Can be computed by this command:
-    #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
     checksums = 'SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
     # This node name will be used when the data set is loaded
     nodeNames='ALI1'
@@ -500,8 +516,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.ui.SavePredictCheckBox.setChecked(False)
       self.onNodeChanged()
 
-    # print("Input type : ", index)
-
     self.ui.ScanPathLabel.setVisible(self.folder_as_input)
     self.ui.lineEditScanPath.setVisible(self.folder_as_input)
     self.ui.SearchScanFolder.setVisible(self.folder_as_input)
@@ -516,11 +530,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     selected = False
     self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox.currentNodeID)
     if self.MRMLNode_scan is not None:
-      print(PathFromNode(self.MRMLNode_scan))
+      logger.debug(f"Node path: {PathFromNode(self.MRMLNode_scan)}")
       self.input_path = PathFromNode(self.MRMLNode_scan)
       self.nb_patient = 1
 
-      self.ui.LabelInfoPreProc.setText("Number of scans to process : 1")
+      self.ui.LabelInfoPreProc.setText("Number of scans to process: 1")
       selected = True
 
     return selected
@@ -534,7 +548,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       webbrowser.open(link)
 
   def UpdateSaveType(self,caller=None, event=None):
-    # print(caller,event)
     state = self.ui.SavePredictCheckBox.isChecked()
     self.ui.SearchSaveFolder.setEnabled(not state)
     self.ui.SaveFolderLineEdit.setEnabled(not state)
@@ -548,7 +561,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     count = 0
     normpath = os.path.normpath("/".join([path, '**', '']))
     for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-        #  print(img_fn)
         basename = os.path.basename(img_fn)
 
         if True in [ext in basename for ext in extentions]:
@@ -563,7 +575,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       lineEdit.setText(scan_folder)
       if self.type == "CBCT":
         if self.isDCMInput:
-          print("DICOM")
+          logger.debug("DICOM format detected")
           nbr_scans = len(os.listdir(scan_folder))
         else:
           nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],[])
@@ -576,50 +588,54 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       else:
         self.input_path = scan_folder
         self.ui.lineEditScanPath.setText(self.input_path)
-        # self.ui.PrePredInfo.setText("Number of scans to process : " + str(nbr_scans))
         self.scan_count = nbr_scans
         self.CheckScan()
       
         
   def TestFiles(self):
     """Function to download and select all the test files"""
-    if self.isDCMInput:
-      name, url = self.ActualMeth.getTestFileListDCM()
-    else:
-      name, url = self.ActualMeth.getTestFileList()
+    try:
+      if self.isDCMInput:
+        name, url = self.ActualMeth.getTestFileListDCM()
+      else:
+        name, url = self.ActualMeth.getTestFileList()
 
-    print("name : ",name)
-    print("url : ",url)
+      logger.debug(f"Test file name: {name}")
+      logger.debug(f"Download URL: {url}")
 
-    scan_folder = self.DownloadUnzip(
-      url=url,
-      directory=os.path.join(self.SlicerDownloadPath),
-      folder_name=os.path.join("Test_Files", name)
-      if not self.isDCMInput
-      else os.path.join("Test_Files", "DCM", name),
-    )
-
-    print("scan folder : ",scan_folder)
-
-    if self.isDCMInput:
-      nb_scans = self.ActualMeth.NumberScanDCM(scan_folder)
-      error = self.ActualMeth.TestScanDCM(scan_folder)
-    else:
-      nb_scans = self.ActualMeth.NumberScan(scan_folder)
-      error = self.ActualMeth.TestScan(scan_folder)
-
-    if isinstance(error, str):
-      qt.QMessageBox.warning(self.parent, "Warning", error)
-    else:
-      self.nb_patient = nb_scans
-      self.ui.lineEditScanPath.setText(scan_folder)
-      self.ui.LabelInfoPreProc.setText(
-          "Number of Patients to process : " + str(nb_scans)
+      scan_folder = self.DownloadUnzip(
+        url=url,
+        directory=os.path.join(self.SlicerDownloadPath),
+        folder_name=os.path.join("Test_Files", name)
+        if not self.isDCMInput
+        else os.path.join("Test_Files", "DCM", name),
       )
 
-    if self.ui.SaveFolderLineEdit.text == "":
-      dir, spl = os.path.split(scan_folder)
-      self.ui.SaveFolderLineEdit.setText(os.path.join(dir, spl, "Predicted"))
+      logger.debug(f"Scan folder: {scan_folder}")
+
+      if self.isDCMInput:
+        nb_scans = self.ActualMeth.NumberScanDCM(scan_folder)
+        error = self.ActualMeth.TestScanDCM(scan_folder)
+      else:
+        nb_scans = self.ActualMeth.NumberScan(scan_folder)
+        error = self.ActualMeth.TestScan(scan_folder)
+
+      if isinstance(error, str):
+        qt.QMessageBox.warning(self.parent, "Warning", error)
+      else:
+        self.nb_patient = nb_scans
+        self.ui.lineEditScanPath.setText(scan_folder)
+        self.ui.LabelInfoPreProc.setText(
+            "Number of patients to process: " + str(nb_scans)
+        )
+
+      if self.ui.SaveFolderLineEdit.text == "":
+        dir, spl = os.path.split(scan_folder)
+        self.ui.SaveFolderLineEdit.setText(os.path.join(dir, spl, "Predicted"))
+    
+    except Exception as e:
+      logger.error(f"Error downloading test files: {str(e)}", exc_info=True)
+      qt.QMessageBox.warning(self.parent, "Error", f"Failed to download test files: {str(e)}")
         
   def DownloadUnzip(
         self, url, directory, folder_name=None, num_downl=1, total_downloads=1
@@ -627,7 +643,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         out_path = os.path.join(directory, folder_name)
 
         if not os.path.exists(out_path):
-            # print("Downloading {}...".format(folder_name.split(os.sep)[0]))
             os.makedirs(out_path)
 
             temp_path = os.path.join(directory, "temp.zip")
@@ -812,7 +827,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     networks = []
     normpath = os.path.normpath("/".join([dir_path, '**', '']))
     for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-        #  print(img_fn)
         if os.path.isfile(img_fn) and ".pth" in img_fn:
           for id, group in SURFACE_NETWORK.items():
             if id in os.path.basename(img_fn):
@@ -828,19 +842,19 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onPredictButton(self):
     if self.type == "CBCT":
       list_libs_CBCT = [('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2')]
-      monai_version = '1.5.0' if sys.version_info >= (3, 10) else '0.7.0'
+      monai_version = '1.3.2' if sys.version_info >= (3, 10) else '0.7.0'
       list_libs_CBCT.append(('monai', monai_version))
       
       is_installed = install_function(self,list_libs_CBCT)
-    
+
     else:  
       is_installed = False
       check_env = self.onCheckRequirements()
-      print("seg_env : ",check_env)
+      logger.debug(f"Environment check result: {check_env}")
       
       if check_env:
         list_libs_IOS = [('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2')]
-        monai_version = '1.5.0' if sys.version_info >= (3, 10) else '0.7.0'
+        monai_version = '1.3.2' if sys.version_info >= (3, 10) else '0.7.0'
         list_libs_IOS.append(('monai', monai_version))
 
         is_installed = install_function(self,list_libs_IOS)
@@ -860,23 +874,19 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return
       self.selected_tooth = " ".join(selected_tooth_lst)
 
-      
     selected_lm_lst = self.lm_tab.GetSelected()
     self.landmark_cout = len(selected_lm_lst)
     if len(selected_lm_lst) == 0:
       qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
       return
     self.selected_lm = " ".join(selected_lm_lst)
-      
     error = self.ActualMeth.TestProcess(
       input_folder=self.input_path,
       dir_models=self.model_folder,
       output_dir=self.ui.SaveFolderLineEdit.text,
     )
-    
     if isinstance(error, str):
       qt.QMessageBox.warning(self.parent, "Warning", error.replace(",", "\n"))
-      
     self.list_Processes_Parameters = self.ActualMeth.Process(
       input_folder=self.input_path,
       dir_models=self.model_folder,
@@ -886,7 +896,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       logPath=self.log_path,
       DCMInput=self.isDCMInput,
     )
-    
     self.nb_extension_launch = len(self.list_Processes_Parameters)
     if self.type == "IOS":
       self.nb_lm = self.ActualMeth.NumberLandmark(self.selected_tooth)
@@ -896,19 +905,17 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     self.module_name = self.list_Processes_Parameters[0]["Module"]
     self.displayModule = self.list_Processes_Parameters[0]["Display"]
-    
 
     if "CrownSegmentationcli" in self.module_name:
-      print("module name : ", self.module_name)
+      logger.debug(f"Module name: {self.module_name}")
       self.nb_extension_did += 1
       self.run_conda_tool("seg")
       self.module_name = self.list_Processes_Parameters[0]["Module"]
     if "ALI_IOS" in self.module_name:
       self.nb_extension_did += 1
-      print("module name : ", self.module_name)
+      logger.debug(f"Module name: {self.module_name}")
       self.run_conda_tool("ali")
       self.OnEndProcess()
-        
      
     else: 
       self.process = slicer.cli.run(
@@ -985,9 +992,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.TimerLabel.setText(timer)
         progress = caller.GetProgress()
-        # self.module_name = caller.GetModuleTitle() if self.module_name_bis is None else self.module_name_bis
         self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
-        # self.displayModule = self.displayModule_bis if self.displayModule_bis is not None else self.display[self.module_name.split(' ')[0]]
 
         if self.module_name_before != self.module_name:
             self.ui.LabelProgressPatient.setText(f"Landmarks : 0 / {self.nb_lm*self.nb_patient} | Patient : 0 / {self.nb_patient}")
@@ -996,9 +1001,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
             )
             self.ui.progressBar.setValue(0)
-
-            # if self.nb_change_bystep == 0 and self.module_name_before:
-            #     print(f'Error this module doesn\'t work {self.module_name_before}')
 
             self.module_name_before = self.module_name
             self.nb_change_bystep = 0
@@ -1016,27 +1018,18 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         if caller.GetStatus() & caller.Completed:
             if caller.GetStatus() & caller.ErrorsMask:
-                # error
-                print("\n\n ========= PROCESSED ========= \n")
-
-                print(self.process.GetOutputText())
-                print("\n\n ========= ERROR ========= \n")
+                logger.error("========= PROCESSING ERROR =========")
+                logger.error(f"Process output: {self.process.GetOutputText()}")
                 errorText = self.process.GetErrorText()
-                print("CLI execution failed: \n \n" + errorText)
-                # error
-                # errorText = caller.GetErrorText()
-                # print("\n"+ 70*"=" + "\n\n" + errorText)
-                # print(70*"=")
+                logger.error(f"CLI execution failed: {errorText}")
                 self.onCancel()
 
             else:
-                print("\n\n ========= PROCESSED ========= \n")
-                # print("PROGRESS :",self.displayModule.progress)
-
-                print(self.process.GetOutputText())
+                logger.info("========= PROCESSING COMPLETED =========")
+                logger.info(f"Process output: {self.process.GetOutputText()}")
                 try:
                     if self.list_Processes_Parameters[0]["Module"]=="ALI_IOS":
-                        print("name process : ",self.list_Processes_Parameters[0]["Process"])
+                        logger.debug(f"Process name: {self.list_Processes_Parameters[0]['Process']}")
                         self.run_conda_tool("ali")
                         
                 except IndexError:
@@ -1053,26 +1046,22 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.nb_change_bystep = 0
     total_time = time.time() - self.startTime
     average_time = total_time / self.nb_patient
-    print("PROCESS DONE.")
-    print(
-      "Done in {} min and {} sec".format(
-        int(total_time / 60), int(total_time % 60)
-      )
+    logger.info("Processing completed successfully")
+    logger.info(
+      f"Processing completed in {int(total_time / 60)} min and {int(total_time % 60)} sec"
     )
-    print(
-      "Average time per patient : {} min and {} sec".format(
-        int(average_time / 60), int(average_time % 60)
-      )
+    logger.info(
+      f"Average time per patient: {int(average_time / 60)} min and {int(average_time % 60)} sec"
     )
     self.RunningUI(False)
 
     stopTime = time.time()
 
-    logging.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+    logger.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
 
     s = PopUpWindow(
       title="Process Done",
-      text="Successfully done in {} min and {} sec \nAverage time per Patient: {} min and {} sec".format(
+      text="Successfully done in {} min and {} sec \nAverage time per patient: {} min and {} sec".format(
         int(total_time / 60),
         int(total_time % 60),
         int(average_time / 60),
@@ -1084,18 +1073,21 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     file_path = os.path.abspath(__file__)
     folder_path = os.path.dirname(file_path)
     csv_file = os.path.join(folder_path,"ALI_Method","liste_csv_file.csv")
-    print("csv_file : ",csv_file)
+    logger.debug(f"CSV file path: {csv_file}")
     if os.path.exists(csv_file):
-      os.remove(csv_file)
+      try:
+        os.remove(csv_file)
+      except Exception as e:
+        logger.error(f"Error removing CSV file: {str(e)}")
 
   def onCancel(self):
-    # print(self.logic.cliNode.GetOutputText())
     try:
       self.process.Cancel()
     except Exception as e:
+      logger.error(f"Error canceling process: {str(e)}", exc_info=True)
       self.logic.cancel_process()
 
-    print("\n\n ========= PROCESS CANCELED ========= \n")
+    logger.warning("========= PROCESSING CANCELED =========")
 
     self.RunningUI(False)
 
@@ -1127,11 +1119,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         dentalmodelseg_path = clean_output.group(1).strip()
         dentalmodelseg_path_clean = dentalmodelseg_path.replace("\\n","")
       else:
-        print("Error: Unable to find dentalmodelseg path.")
+        logger.error("Unable to find dentalmodelseg path")
         return
       
       args = self.list_Processes_Parameters[0]["Parameter"]
-      print("args : ",args)
+      logger.debug(f"Processing arguments: {args}")
       conda_exe = self.logic.conda.getCondaExecutable()
       command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
       for key, value in args.items():
@@ -1140,8 +1132,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if key == "dentalmodelseg_path":
           value = dentalmodelseg_path_clean
         command.append(f"\"{value}\"")
-      print("*"*50)
-      print("command : ",command)
+      logger.debug(f"Executing command: {' '.join(command)}")
       
       # running in // to not block Slicer
       self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
@@ -1172,15 +1163,15 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     elif type == "ali":
       args = self.list_Processes_Parameters[0]["Parameter"]
-      print("args : ", args)
+      logger.debug(f"Processing arguments: {args}")
       conda_exe = self.logic.conda.getCondaExecutable()
       command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"ALI_IOS"]
       for key, value in args.items():
-        print("key : ", key)
+        logger.debug(f"Processing key: {key}")
         if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
             value = self.logic.windows_to_linux_path(value)
         command.append(f"\"{value}\"")
-      print("command : ",command)
+      logger.debug(f"Executing command: {' '.join(command)}")
 
       # running in // to not block Slicer
       self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
@@ -1313,7 +1304,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.label_LibsInstallation.setText(text)
     else:
       self.ui.label_LibsInstallation.setText(f"pytorch3d is already installed")
-      print("pytorch3d already installed")
+      logger.info("pytorch3d already installed")
 
     self.all_installed = True   
     return True
@@ -1838,9 +1829,6 @@ class LMTab:
       self.LM_tab_widget.maximumSize = qt.QSize(800,400)
       self.LM_tab_widget.setMovable(True)
 
-
-      # print(self.lm_status_dic)
-      # print(lcbd)
       buttons_wid = qt.QWidget()
       buttons_layout = qt.QHBoxLayout(buttons_wid)
       self.select_all_btn = qt.QPushButton("Select All")
@@ -1894,7 +1882,6 @@ class LMTab:
 
       self.LM_tab_widget.currentIndex = 0
 
-      # print(self.check_box_dic)
       lcbd = {}
       for cb,lm in self.check_box_dic.items():
         if lm not in lcbd.keys():
@@ -1923,11 +1910,8 @@ class LMTab:
 
     def ToggleSelection(self):
       idx = self.LM_tab_widget.currentIndex
-      # print(idx)
       group = self.LM_tab_widget.tabText(idx)
-      # print(group)
       new_state = not self.lm_status_dic[self.lm_group_dic[group][0]]
-      # print(new_state)
       for lm in self.lm_group_dic[group]:
         self.UpdateLmSelect(lm,new_state)
 
@@ -1982,7 +1966,6 @@ class LMTab:
 
 def GetAvailableLm(mfold,lm_group):
   brain_dic = GetBrain(mfold)
-  # print(brain_dic)
   available_lm = {}
   for lm in brain_dic.keys():
     if lm in lm_group.keys():
@@ -2010,7 +1993,6 @@ def GetBrain(dir_path):
     brainDic = {}
     normpath = os.path.normpath("/".join([dir_path, '**', '']))
     for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-        #  print(img_fn)
         if os.path.isfile(img_fn) and ".pth" in img_fn:
             lab = os.path.basename(os.path.dirname(os.path.dirname(img_fn)))
             num = os.path.basename(os.path.dirname(img_fn))
@@ -2070,7 +2052,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
     self.process.start()
     
   def install_shapeaxi(self):
-    self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.pythonVersion,["shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+    self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.pythonVersion,["shapeaxi==1.0.10","ocnn==2.2.1"],)) #run in parallel to not block slicer
     
   def check_if_pytorch3d(self):
     conda_exe = self.conda.getCondaExecutable()
@@ -2159,7 +2141,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
       self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
     else:
       os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
-    print("Cancellation requested. Terminating process...")
+    logger.info("Cancellation requested. Terminating process...")
 
     self.subpro.wait() ## important
     self.cancel = True
@@ -2192,7 +2174,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
 
       user = self.conda.getUser()
       command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
-      print("command_to_execute in condaRunCommand : ",command_to_execute)
+      logger.info(f"command_to_execute in condaRunCommand : {command_to_execute}")
 
       self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
                               text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
@@ -2204,21 +2186,21 @@ class ALILogic(ScriptedLoadableModuleLogic):
         for com in command :
           command_execute = command_execute+ " "+com
 
-        print("command_to_execute in conda run : ",command_execute)
+        logger.info(f"command_to_execute in conda run : {command_execute}")
         self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
     import sys
     
     self.stdout, self.stderr = self.subpro.communicate()
 
-    print("PROCESS OUTPUT")
+    logger.info("PROCESS OUTPUT")
     if self.stdout:
-      print(self.stdout)
+      logger.info(self.stdout)
     else:
-      print("(No output)")
+      logger.info("(No output)")
     
-    print("PROCESS Error")
+    logger.info("PROCESS Error")
     if self.stderr:
-      print(self.stderr)
+      logger.error(self.stderr)
     else:
-      print("(No error)")
+      logger.info("(No error)")
     sys.stdout.flush()

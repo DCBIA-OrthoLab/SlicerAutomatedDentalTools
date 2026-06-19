@@ -1,6 +1,20 @@
 import SimpleITK as sitk
 import os
 import argparse
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_utils_mri_inverse")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 def invert_mri_intensity(path_folder, folder_output, suffix):
     """
@@ -49,7 +63,7 @@ def invert_mri_intensity(path_folder, folder_output, suffix):
             # Save the inverted image
             sitk.WriteImage(inverted_image, output_filename)
 
-            print(f"Inversion completed for {filename}, saved as {output_filename}")
+            logger.info(f"Inversion completed for {filename}, saved as {output_filename}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Invert the intensity of MRI images while keeping the background at 0.")

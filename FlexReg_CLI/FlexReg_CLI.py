@@ -12,11 +12,25 @@ import numpy as np
 import torch
 from vtk.util.numpy_support import vtk_to_numpy,numpy_to_vtk
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("FlexReg_CLI")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 def main(args):
-    print("*"*200)
-    print("args.lower_arch : ",args.lower_arch)
-    print("index_patch : ",args.index_patch)
+    logger.info(f"args.lower_arch : {args.lower_arch}")
+    logger.info(f"index_patch :{args.index_patch}")
     # Read the file (coordinate using : LPS)
     reader = vtk.vtkPolyDataReader()
     reader.SetFileName(args.lineedit)
@@ -141,7 +155,7 @@ def main(args):
         output_icp = icp.run(modelNode, modelNodeT1)
 
         matrix_array=output_icp["matrix"]
-        print("matrix output icp : ",matrix_array)
+        logger.info(f"matrix output icp : {matrix_array}")
 
         vtk_matrix = vtk.vtkMatrix4x4()
         for i in range(4):
@@ -168,7 +182,7 @@ def main(args):
         base_filename = os.path.splitext(os.path.basename(args.lineedit))[0]
         tfm_outpath = os.path.join(args.path_output, f"{base_filename}{args.suffix}.tfm")
         sitk.WriteTransform(sitk_tfm, tfm_outpath)
-        print(f"Saved inverted matrix to: {tfm_outpath}")
+        logger.info(f"Saved inverted matrix to: {tfm_outpath}")
 
         modelNode = transformFilter.GetOutput()
         modelNode.Modified()
@@ -274,7 +288,6 @@ def main(args):
         writer.SetInputData(modelNodeLowerArch)
         writer.Write()
 
-    print("dans cli apres traitement")
 
     
 

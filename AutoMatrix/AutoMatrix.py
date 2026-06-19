@@ -1,5 +1,3 @@
-
-import logging
 import os,sys,time,zipfile,urllib.request,shutil
 
 import vtk
@@ -28,6 +26,20 @@ import time
 import threading
 import io
 
+import logging
+import sys
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("AutoMatrix")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 
 #
@@ -773,7 +785,7 @@ QSlider::handle:horizontal:hover {
         
         module = self.list_Processes_Parameters[0]["Module"]
         # /!\ Launch of the first process /!\
-        print("module name : ", module)
+        logger.info(f"Module name :  {module}")
         
         self.ui.applyButton.setEnabled(False)
         self.ui.ButtonCancel.setVisible(True)
@@ -818,20 +830,20 @@ QSlider::handle:horizontal:hover {
         if caller.GetStatus() & caller.Completed:
             if caller.GetStatus() & caller.ErrorsMask:
                 # error
-                print("\n\n ========= PROCESSED ========= \n")
+                logger.error("\n\n ========= PROCESSED ========= \n")
 
-                print(self.process.GetOutputText())
-                print("\n\n ========= ERROR ========= \n")
+                logger.error(self.process.GetOutputText())
+                logger.error("\n\n ========= ERROR ========= \n")
                 errorText = self.process.GetErrorText()
-                print("CLI execution failed: \n \n" + errorText)
+                logger.error("CLI execution failed: \n \n" + errorText)
                 self.onCancel()
 
             else:
-                print("\n\n ========= PROCESSED ========= \n")
+                logger.info("\n\n ========= PROCESSED ========= \n")
 
-                print(self.process.GetOutputText())
+                logger.info(self.process.GetOutputText())
                 try:
-                    print("name process : ",self.list_Processes_Parameters[0]["Process"])
+                    logger.info(f"Name process : {self.list_Processes_Parameters[0]["Process"]}")
                     self.process = slicer.cli.run(
                             self.list_Processes_Parameters[0]["Process"],
                             None,
@@ -890,7 +902,7 @@ QSlider::handle:horizontal:hover {
 
         else :
             # success
-            print('PROCESS DONE.')
+            logger.info('PROCESS DONE.')
             self.ui.progressBar.setValue(100)
             self.ui.progressBar.setFormat("100%")
             self.ui.label_info.setText("Number of processed files : "+str(self.nbFiles)+"/"+str(self.nbFiles))
@@ -939,13 +951,13 @@ QSlider::handle:horizontal:hover {
     def OnEndProcess(self):
         total_time = time.time() - self.startTime
         average_time = total_time / self.nb_scans
-        print("PROCESS DONE.")
-        print(
+        logger.info("PROCESS DONE.")
+        logger.info(
             "Done in {} min and {} sec".format(
                 int(total_time / 60), int(total_time % 60)
             )
         )
-        print(
+        logger.info(
             "Average time per patient : {} min and {} sec".format(
                 int(average_time / 60), int(average_time % 60)
             )
@@ -954,7 +966,7 @@ QSlider::handle:horizontal:hover {
 
         stopTime = time.time()
 
-        logging.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+        logger.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
 
         s = PopUpWindow(
             title="Process Done",
@@ -977,7 +989,7 @@ QSlider::handle:horizontal:hover {
         
     def onCancel(self):
         self.process.Cancel()
-        print("\n\n ========= PROCESS CANCELED ========= \n")
+        logger.info("\n\n ========= PROCESS CANCELED ========= \n")
         
         self.RunningUI(False)
 
@@ -1007,7 +1019,7 @@ QSlider::handle:horizontal:hover {
                     fname, extension2 = os.path.splitext(os.path.basename(fname))
                     extension = extension2+extension
                 except :
-                    print("not a .nii.gz")
+                    logger.warning("The file is not a .nii.gz")
                 if extension != ".vtk" and extension != ".vtp" and extension != ".stl" and extension != ".off" and extension != ".obj" and extension != ".nii.gz" and extension != ".nrrd" and extension != ".mrk.json":
                         warning_text = warning_text + "Wrong type of file patient detected" + "\n"
                         warning_text = warning_text + "File authorized : .vtk / .vtp / .stl / .off / .obj / .nii.gz / .nrrd / .mrk.json" + "\n"

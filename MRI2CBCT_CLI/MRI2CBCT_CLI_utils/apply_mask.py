@@ -3,6 +3,21 @@ import os
 import argparse
 import numpy as np
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_utils_applymask")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 def MaskedImage(fixed_image_path, fixed_seg_path, folder_output, suffix, SegLabel=None):
     """
@@ -20,7 +35,7 @@ def MaskedImage(fixed_image_path, fixed_seg_path, folder_output, suffix, SegLabe
 
     fixed_image_masked = applyMask(fixed_image_sitk, fixed_seg_sitk, label=SegLabel)
     if fixed_image_masked=="failed":
-        print("failed process on : ",fixed_image_sitk)
+        logger.warning("failed process on : ",fixed_image_sitk)
         return 
     
     base_name, ext = os.path.splitext(fixed_image_path)
@@ -53,7 +68,7 @@ def applyMask(image, mask, label):
             mask = sitk.GetImageFromArray(array)
             mask.CopyInformation(image)
     except KeyError as e :
-        print(e)
+        logger.error(e)
         return "failed"
 
     return sitk.Mask(image, mask)
@@ -98,13 +113,13 @@ def apply_mask_f(folder_path, seg_folder, folder_output, suffix, seg_label):
                 if fixed_seg_path:
                     try :
                         MaskedImage(fixed_image_path, fixed_seg_path, folder_output, suffix, seg_label)
-                        print(f"Mask apply for the file {fixed_image_path} succedeed.")
+                        logger.info(f"Mask apply for the file {fixed_image_path} succedeed.")
                     except KeyError as e:
-                        print(f"Mask apply for the file {fixed_image_path}failed.")
-                        print(e)
+                        logger.error(f"Mask apply for the file {fixed_image_path}failed.")
+                        logger.error(e)
                         continue
                 else:
-                    print(f"Segmentation file for {fixed_image_path} not found.")
+                    logger.warning(f"Segmentation file for {fixed_image_path} not found.")
 
 
 

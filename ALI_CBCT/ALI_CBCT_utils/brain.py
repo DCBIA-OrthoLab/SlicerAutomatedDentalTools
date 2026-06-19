@@ -4,6 +4,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 from monai.networks.nets.densenet import DenseNet
 
+import logging
+import sys
+# --- LOGGING CONFIGURATION ---
+logger = logging.getLogger("ALI_CBCT_brain")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 class DN(nn.Module):
     def __init__(
         self,
@@ -104,10 +118,6 @@ class Brain:
             net.to(self.device)
             networks.append(net)
 
-            # num_param = sum(p.numel() for p in net.parameters())
-            # print("Number of parameters :",num_param)
-            # summary(net,(1,64,64,64))
-
             epoch_losses.append([0])
             validation_metrics.append([])
             best_metrics.append(0)
@@ -163,5 +173,5 @@ class Brain:
 
     def LoadModels(self,model_lst):
         for n,net in enumerate(self.networks):
-            print("Loading model", model_lst[self.network_scales[n]])
+            logger.info(f"Loading model {model_lst[self.network_scales[n]]}")
             net.load_state_dict(torch.load(model_lst[self.network_scales[n]],map_location=self.device))

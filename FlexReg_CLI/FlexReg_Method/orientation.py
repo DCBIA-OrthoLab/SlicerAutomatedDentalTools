@@ -3,6 +3,21 @@ import vtk
 from FlexReg_Method.util import vtkMeanTeeth
 from FlexReg_Method.transformation import RotationMatrix, TransformSurf
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("FlexReg_CLI_orientation")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 cross = lambda a,b: np.cross(a,b)
 
 def make_vector(points2,point1):

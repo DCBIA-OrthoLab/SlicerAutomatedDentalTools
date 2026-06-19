@@ -28,6 +28,22 @@ import textwrap
 import platform
 import signal
 
+# --- LOGGING CONFIGURATION ---
+logger = logging.getLogger("ASO")
+logger.setLevel(logging.INFO)
+
+logger.propagate = False
+
+if logger.handlers:
+    logger.handlers.clear()
+
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 def _get_installed_version(lib_name):
     try:
         return importlib_metadata.version(lib_name)
@@ -51,28 +67,85 @@ def check_lib_installed(lib_name, required_version=None):
 # import csv
     
 def install_function(self):
-    libs = [('itk', None), ('torch','2.6.0'),('pytorch_lightning',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2')]
-    monai_version = '1.5.0' if sys.version_info >= (3, 10) else '0.7.0'
-    libs.append(('monai', monai_version))
-    libs_to_install = []
-    for lib, version in libs:
-        if not check_lib_installed(lib, version):
-            libs_to_install.append((lib, version))
+    """Check and install required libraries with comprehensive error handling."""
+    try:
+        logger.info("Checking required libraries")
+        
+        # ===== BUILD LIBRARY LIST =====
+        try:
+            libs = [('itk', None), ('torch','2.2.2'),('pytorch_lightning',None),('dicom2nifti', '2.3.0'),('pydicom', '2.2.2')]
+            monai_version = '1.3.2' if sys.version_info >= (3, 10) else '0.7.0'
+            libs.append(('monai', monai_version))
+            logger.debug(f"Library list created with {len(libs)} libraries")
+        except Exception as e:
+            logger.error(f"Error building library list: {e}")
+            raise
 
-    if libs_to_install:
-        message = "The following libraries are not installed or need updating:\n"
-        message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
-        message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
-        user_choice = slicer.util.confirmYesNoDisplay(message)
+        # ===== CHECK INSTALLED LIBRARIES =====
+        try:
+            libs_to_install = []
+            for lib, version in libs:
+                try:
+                    if not check_lib_installed(lib, version):
+                        libs_to_install.append((lib, version))
+                        logger.warning(f"Missing or outdated library: {lib} (version: {version})")
+                    else:
+                        logger.debug(f"Library {lib} installed correctly")
+                except Exception as e:
+                    logger.warning(f"Error checking library {lib}: {e}")
+                    libs_to_install.append((lib, version))
+            
+            logger.info(f"Need to install/update {len(libs_to_install)} library/libraries")
+        except Exception as e:
+            logger.error(f"Error checking installed libraries: {e}")
+            raise
 
-        if user_choice:
-            self.ui.label_LibsInstallation.setVisible(True)
-            for lib, version in libs_to_install:
-                lib_version = f'{lib}=={version}' if version else lib
-                pip_install(lib_version)
-        else :
-          return False
-    return True
+        # ===== USER CONFIRMATION =====
+        if libs_to_install:
+            try:
+                message = "The following libraries are not installed or need updating:\n"
+                message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
+                message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
+                
+                logger.debug("Showing user confirmation dialog")
+                user_choice = slicer.util.confirmYesNoDisplay(message)
+                logger.info(f"User choice: {'install' if user_choice else 'skip'}")
+            except Exception as e:
+                logger.error(f"Error showing confirmation dialog: {e}")
+                raise
+
+            # ===== INSTALL LIBRARIES =====
+            if user_choice:
+                try:
+                    self.ui.label_LibsInstallation.setVisible(True)
+                    logger.info(f"Starting installation of {len(libs_to_install)} library/libraries")
+                    
+                    for lib, version in libs_to_install:
+                        try:
+                            lib_version = f'{lib}=={version}' if version else lib
+                            logger.debug(f"Installing library: {lib_version}")
+                            pip_install(lib_version)
+                            logger.info(f"Successfully installed: {lib_version}")
+                        except Exception as e:
+                            logger.error(f"Error installing {lib}: {e}")
+                            # Continue with next library instead of failing completely
+                            continue
+                    
+                    logger.info("Library installation completed")
+                except Exception as e:
+                    logger.error(f"Error during library installation: {e}")
+                    raise
+            else:
+                logger.warning("User declined library installation")
+                return False
+        else:
+            logger.info("All required libraries are already installed")
+        
+        return True
+    
+    except Exception as e:
+        logger.error(f"Fatal error in install_function: {e}")
+        return False
 
 class ASO(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -224,7 +297,6 @@ class PopUpWindow(qt.QDialog):
           QCheckBox::indicator:checked {
             border: 1px solid #5dade2;
             background-color: #5dade2;
-            image: url(:/Icons/SmallCheckMark.png);
           }
           QCheckBox::indicator:checked:hover {
             border: 1px solid #7bbcef;
@@ -338,7 +410,6 @@ QCheckBox::indicator:hover {
 QCheckBox::indicator:checked {
   border: 1px solid #5dade2;
   background-color: #5dade2;
-  image: url(:/Icons/SmallCheckMark.png);
 }
 QCheckBox::indicator:checked:hover {
   border: 1px solid #7bbcef;
@@ -394,7 +465,6 @@ QRadioButton::indicator:checked {
           QCheckBox::indicator:checked {
             border: 1px solid #5dade2;
             background-color: #5dade2;
-            image: url(:/Icons/SmallCheckMark.png);
           }
           QCheckBox::indicator:checked:hover {
             border: 1px solid #7bbcef;
@@ -453,7 +523,6 @@ QRadioButton::indicator:checked {
           QCheckBox::indicator:checked {
             border: 1px solid #5dade2;
             background-color: #5dade2;
-            image: url(:/Icons/SmallCheckMark.png);
           }
           QCheckBox::indicator:checked:hover {
             border: 1px solid #7bbcef;
@@ -946,8 +1015,6 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 folder_name=os.path.join("Reference", ret),
             )
 
-        # print(ref_folder)
-
         if not ref_folder == "":
             error = self.ActualMeth.TestReference(ref_folder)
 
@@ -1150,7 +1217,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.onProcessStarted()
             
             module = self.list_Processes_Parameters[0]["Module"]
-            print("module name : ", module)
+            logger.info(f"Module name: {module}")
             if module == "CrownSegmentationcli":
                 self.nb_extension_did += 1
                 self.run_conda_tool()
@@ -1250,18 +1317,16 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if caller.GetStatus() & caller.Completed:
             if caller.GetStatus() & caller.ErrorsMask:
                 # error
-                print("\n\n ========= PROCESSED ========= \n")
-
-                print(self.process.GetOutputText())
-                print("\n\n ========= ERROR ========= \n")
+                logger.info("========= PROCESS COMPLETED WITH ERRORS =========")
+                logger.info(self.process.GetOutputText())
+                logger.error("========= ERROR DETAILS =========")
                 errorText = self.process.GetErrorText()
-                print("CLI execution failed: \n \n" + errorText)
+                logger.error(f"CLI execution failed: \n{errorText}")
                 self.onCancel()
 
             else:
-                print("\n\n ========= PROCESSED ========= \n")
-
-                print(self.process.GetOutputText())
+                logger.info("========= PROCESS COMPLETED SUCCESSFULLY =========")
+                logger.info(self.process.GetOutputText())
                 try:
                     self.process = slicer.cli.run(
                         self.list_Processes_Parameters[0]["Process"],
@@ -1289,13 +1354,13 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.nb_change_bystep = 0
         total_time = time.time() - self.startTime
         average_time = total_time / self.nb_patient
-        print("PROCESS DONE.")
-        print(
+        logger.info("PROCESS DONE.")
+        logger.info(
             "Done in {} min and {} sec".format(
                 int(total_time / 60), int(total_time % 60)
             )
         )
-        print(
+        logger.info(
             "Average time per patient : {} min and {} sec".format(
                 int(average_time / 60), int(average_time % 60)
             )
@@ -1305,7 +1370,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         stopTime = time.time()
 
-        logging.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+        logger.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
 
         s = PopUpWindow(
             title="Process Done",
@@ -1324,7 +1389,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         except Exception as e:
             self.logic.cancel_process()
             
-        print("\n\n ========= PROCESS CANCELED ========= \n")
+        logger.warning("========= PROCESS CANCELED =========")
 
         self.RunningUI(False)
 
@@ -1343,11 +1408,11 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             dentalmodelseg_path = clean_output.group(1).strip()
             dentalmodelseg_path_clean = dentalmodelseg_path.replace("\\n","")
         else:
-            print("Error: Unable to find dentalmodelseg path.")
+            logger.error("Error: Unable to find dentalmodelseg path.")
             return
         
         args = self.list_Processes_Parameters[0]["Parameter"]
-        print("args : ",args)
+        logger.debug(f"Arguments: {args}")
         conda_exe = self.logic.conda.getCondaExecutable()
         command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
         for key, value in args.items():
@@ -1356,8 +1421,8 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if key == "dentalmodelseg_path":
                 value = dentalmodelseg_path_clean
             command.append(f"\"{value}\"")
-        print("*"*50)
-        print("command : ",command)
+        logger.debug("="*50)
+        logger.debug(f"Command: {command}")
 
         # running in // to not block Slicer
         process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
@@ -1431,7 +1496,6 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           QCheckBox::indicator:checked {
             border: 1px solid #5dade2;
             background-color: #5dade2;
-            image: url(:/Icons/SmallCheckMark.png);
           }
           QCheckBox::indicator:checked:hover {
             border: 1px solid #7bbcef;
@@ -1527,32 +1591,59 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         bg_color = palette.color(qt.QPalette.Window)
         is_dark_mode = bg_color.lightness() < 128
         
-        checkbox_stylesheet = """
-          QCheckBox {
-            color: #ffffff;
-            background-color: transparent;
-            font-weight: 500;
-          }
-          QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-            border: 1px solid #555555;
-            border-radius: 3px;
-            background-color: #3c3c3c;
-          }
-          QCheckBox::indicator:hover {
-            border: 1px solid #5dade2;
-          }
-          QCheckBox::indicator:checked {
-            border: 1px solid #5dade2;
-            background-color: #5dade2;
-            image: url(:/Icons/SmallCheckMark.png);
-          }
-          QCheckBox::indicator:checked:hover {
-            border: 1px solid #7bbcef;
-            background-color: #7bbcef;
-          }
-        """
+        # Create stylesheet based on mode
+        if is_dark_mode:
+            checkbox_stylesheet = """
+              QCheckBox {
+                color: #ffffff;
+                background-color: transparent;
+                font-weight: 500;
+              }
+              QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                background-color: #3c3c3c;
+              }
+              QCheckBox::indicator:hover {
+                border: 1px solid #5dade2;
+              }
+              QCheckBox::indicator:checked {
+                border: 1px solid #5dade2;
+                background-color: #5dade2;
+              }
+              QCheckBox::indicator:checked:hover {
+                border: 1px solid #7bbcef;
+                background-color: #7bbcef;
+              }
+            """
+        else:
+            checkbox_stylesheet = """
+              QCheckBox {
+                color: #000000;
+                background-color: transparent;
+                font-weight: 500;
+              }
+              QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 1px solid #cccccc;
+                border-radius: 3px;
+                background-color: #ffffff;
+              }
+              QCheckBox::indicator:hover {
+                border: 1px solid #0099cc;
+              }
+              QCheckBox::indicator:checked {
+                border: 1px solid #0099cc;
+                background-color: #0099cc;
+              }
+              QCheckBox::indicator:checked:hover {
+                border: 1px solid #0077aa;
+                background-color: #0077aa;
+              }
+            """
         
         dic_teeth = {
             1: "A",
@@ -1584,18 +1675,13 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             label = QLabel()
             pixmap = QPixmap(self.resourcePath(f"Image/{i}_resize_child.png"))
             label.setPixmap(pixmap)
-            widget = QWidget()
-            widget.setStyleSheet("background-color: transparent;")  # Make parent transparent
             check = QCheckBox()
             check.setText(dic_teeth[i])
             check.setEnabled(False)
-            if is_dark_mode:
-                check.setStyleSheet(checkbox_stylesheet)
-            layout_check = QHBoxLayout(widget)
-            layout_check.addWidget(check)
+            check.setStyleSheet(checkbox_stylesheet)
 
-            layout.addWidget(widget, 1, i + 3)
             layout.addWidget(label, 0, i + 3)
+            layout.addWidget(check, 1, i + 3)
             list.append(check)
         diccheckbox["Child"]["Upper"] = list
         upper += list
@@ -1640,18 +1726,13 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             label = QLabel()
             pixmap = QPixmap(self.resourcePath(f"Image/{i}_resize.png"))
             label.setPixmap(pixmap)
-            widget = QWidget()
-            widget.setStyleSheet("background-color: transparent;")  # Make parent transparent
             check = QCheckBox()
             check.setText(dic[i])
             check.setEnabled(False)
-            if is_dark_mode:
-                check.setStyleSheet(checkbox_stylesheet)
-            layout_check = QHBoxLayout(widget)
-            layout_check.addWidget(check)
+            check.setStyleSheet(checkbox_stylesheet)
 
-            layout.addWidget(widget, 3, i)
             layout.addWidget(label, 2, i)
+            layout.addWidget(check, 3, i)
 
             list.append(check)
 
@@ -1663,17 +1744,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             label = QLabel()
             pixmap = QPixmap(self.resourcePath(f"Image/{i+16}_resize.png"))
             label.setPixmap(pixmap)
-            widget = QWidget()
-            widget.setStyleSheet("background-color: transparent;")  # Make parent transparent
             check = QCheckBox()
             check.setText(dic[i + 16])
             check.setEnabled(False)
-            if is_dark_mode:
-                check.setStyleSheet(checkbox_stylesheet)
-            layout_check = QHBoxLayout(widget)
-            layout_check.addWidget(check)
+            check.setStyleSheet(checkbox_stylesheet)
 
-            layout.addWidget(widget, 4, 17 - i)
+            layout.addWidget(check, 4, 17 - i)
             layout.addWidget(label, 5, 17 - i)
 
             list.append(check)
@@ -1686,17 +1762,12 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             label = QLabel()
             pixmap = QPixmap(self.resourcePath(f"Image/{i+10}_resize_child.png"))
             label.setPixmap(pixmap)
-            widget = QWidget()
-            widget.setStyleSheet("background-color: transparent;")  # Make parent transparent
             check = QCheckBox()
             check.setText(dic_teeth[i + 10])
             check.setEnabled(False)
-            if is_dark_mode:
-                check.setStyleSheet(checkbox_stylesheet)
-            layout_check = QHBoxLayout(widget)
-            layout_check.addWidget(check)
+            check.setStyleSheet(checkbox_stylesheet)
 
-            layout.addWidget(widget, 6, i + 3)
+            layout.addWidget(check, 6, i + 3)
             layout.addWidget(label, 7, i + 3)
 
             list.append(check)
@@ -1895,7 +1966,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.label_LibsInstallation.setText(text)
         else:
             self.ui.label_LibsInstallation.setText(f"pytorch3d is already installed")
-            print("pytorch3d already installed")
+            logger.info("pytorch3d already installed")
 
         self.all_installed = True   
         return True
@@ -2137,7 +2208,6 @@ QCheckBox::indicator:checked {
   border: 1px solid #5dade2;
   border-radius: 3px;
   background-color: #5dade2;
-  image: url(:/Icons/SmallCheckMark.png);
 }
 QCheckBox::indicator:checked:hover {
   border: 1px solid #7bbcef;
@@ -2288,7 +2358,6 @@ qMRMLNodeComboBox:focus {
           border: 1px solid #5dade2;
           border-radius: 3px;
           background-color: #5dade2;
-          image: url(:/Icons/SmallCheckMark.png);
         }
         QCheckBox::indicator:checked:hover {
           border: 1px solid #7bbcef;
@@ -2368,7 +2437,7 @@ class ASOLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.12",["shapeaxi==1.1.1"],)) #run in parallel to not block slicer
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["shapeaxi==1.0.10","ocnn==2.2.1"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
@@ -2412,7 +2481,7 @@ class ASOLogic(ScriptedLoadableModuleLogic):
         conda_exe = self.conda.getCondaExecutable()
         command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
         result = self.conda.condaRunCommand(command)
-        print("output CHECK python path: ", result)
+        logger.debug(f"Output CHECK python path: {result}")
         if "True" in result :
             return True
         return False
@@ -2429,7 +2498,7 @@ class ASOLogic(ScriptedLoadableModuleLogic):
         conda_exe = self.conda.getCondaExecutable()
         argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
         results = self.conda.condaRunCommand(argument)
-        print("output GIVE python path: ", results)
+        logger.debug(f"Output GIVE python path: {results}")
         
     def windows_to_linux_path(self,windows_path):
         '''
@@ -2450,7 +2519,7 @@ class ASOLogic(ScriptedLoadableModuleLogic):
             self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
         else:
             os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
-        print("Cancellation requested. Terminating process...")
+        logger.warning("Cancellation requested. Terminating process...")
 
         self.subpro.wait() ## important
         self.cancel = True
@@ -2487,7 +2556,7 @@ class ASOLogic(ScriptedLoadableModuleLogic):
 
             user = self.conda.getUser()
             command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
-            print("command_to_execute in condaRunCommand : ",command_to_execute)
+            logger.debug(f"Command to execute in condaRunCommand: {command_to_execute}")
 
             self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
                               text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
@@ -2499,7 +2568,7 @@ class ASOLogic(ScriptedLoadableModuleLogic):
             for com in command :
                 command_execute = command_execute+ " "+com
 
-            print("command_to_execute in conda run : ",command_execute)
+            logger.debug(f"Command to execute in conda run: {command_execute}")
             self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
     
         self.stdout, self.stderr = self.subpro.communicate()

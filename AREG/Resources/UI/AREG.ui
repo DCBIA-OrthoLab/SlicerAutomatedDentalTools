@@ -283,6 +283,11 @@ qMRMLNodeComboBox:focus {
               <string>IOS to IOS</string>
              </property>
             </item>
+            <item>
+             <property name="text">
+              <string>IOS to CBCT</string>
+             </property>
+            </item>
            </widget>
           </item>
           <item row="8" column="1">
@@ -372,6 +377,23 @@ qMRMLNodeComboBox:focus {
           </item>
           <item row="4" column="1">
            <widget class="QLineEdit" name="lineEditMaskT1Path" />
+          </item>
+          <item row="9" column="1">
+           <widget class="QLineEdit" name="lineEditT2LMPath" />
+          </item>
+          <item row="9" column="0">
+           <widget class="QLabel" name="label_12">
+           <property name="text">
+             <string>CBCT Landmarks</string>
+            </property>
+           </widget>
+          </item>
+          <item row="9" column="2">
+           <widget class="QPushButton" name="ButtonSearchT2LM">
+            <property name="text">
+             <string>Select</string>
+            </property>
+           </widget>
           </item>
          </layout>
         </item>
@@ -500,6 +522,17 @@ qMRMLNodeComboBox:focus {
          <layout class="QHBoxLayout" name="horizontalLayout_5">
           <property name="spacing"><number>6</number></property><item>
            <layout class="QVBoxLayout" name="verticalLayout_5">
+            <property name="spacing">
+             <number>0</number>
+            </property>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="PageAutoIOSCBCT">
+         <layout class="QHBoxLayout" name="horizontalLayout_18">
+          <property name="spacing"><number>6</number></property><item>
+           <layout class="QVBoxLayout" name="verticalLayout_18">
             <property name="spacing">
              <number>0</number>
             </property>

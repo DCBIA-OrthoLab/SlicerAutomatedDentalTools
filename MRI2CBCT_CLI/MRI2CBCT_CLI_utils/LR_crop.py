@@ -2,6 +2,21 @@ import SimpleITK as sitk
 import os
 import numpy as np
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_utils_LR_Crop")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 def crop_mri(img_path, output_folder):
     image = sitk.ReadImage(img_path)
     size = image.GetSize()
@@ -22,8 +37,8 @@ def crop_mri(img_path, output_folder):
     sitk.WriteImage(left, out_left)
     sitk.WriteImage(right, out_right)
 
-    print(f"[MRI] Saved: {out_left}")
-    print(f"[MRI] Saved: {out_right}")
+    logger.info(f"[MRI] Saved: {out_left}")
+    logger.info(f"[MRI] Saved: {out_right}")
 
 
 def crop_cbct(img_path, output_folder):
@@ -36,8 +51,8 @@ def crop_cbct(img_path, output_folder):
     
     direction = image.GetDirection()
     direction_matrix = np.array(direction).reshape(3, 3)
-    if direction_matrix[0, 0] < 0:  # X axis is flipped → need to swap
-        print("[INFO] Flipped X-axis detected. Swapping left and right labels.")
+    if direction_matrix[0, 0] < 0:  # X axis is flipped then need to swap
+        logger.info("[INFO] Flipped X-axis detected. Swapping left and right labels.")
         left, right = right, left
 
     filename = os.path.basename(img_path)
@@ -53,5 +68,5 @@ def crop_cbct(img_path, output_folder):
     sitk.WriteImage(left, out_left)
     sitk.WriteImage(right, out_right)
 
-    print(f"[CBCT] Saved: {out_left}")
-    print(f"[CBCT] Saved: {out_right}")
+    logger.info(f"[CBCT] Saved: {out_left}")
+    logger.info(f"[CBCT] Saved: {out_right}")

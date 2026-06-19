@@ -1,12 +1,27 @@
 #!/usr/bin/env python-real
 
 import argparse
+import logging
 import SimpleITK as sitk
+
+
+
 from Crop_Volumes_utils.FilesType import Search, ChangeKeyDict
 from Crop_Volumes_utils.GenerateVTKfromSeg import convertNiftiToVTK
 import numpy as np
-import os,json
+import os,json,sys
 
+# ===== Logging Configuration =====
+logger = logging.getLogger("AutoCrop3D_CLI")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 def main(args)-> None:
     """
@@ -49,7 +64,7 @@ def main(args)-> None:
                 try:
                     ROI_Path = ROI_dict[patient]
                 except:
-                    print('No ROI for patient:',patient)
+                    logger.warning('No ROI for patient:'+str(patient))
                     continue
 
             ROI = json.load(open(ROI_Path))['markups'][0]
@@ -123,12 +138,12 @@ def main(args)-> None:
 
             except:
                 import sys
-                print("Error for patient: ",patient)
-                print('The error says: ',sys.exc_info()[0])
-                print('Lower: ',Lower)
-                print('Upper: ',Upper)
-                print('Lower[2]:',Lower[2])
-                print('Upper[2]:',Upper[2])
+                logger.error("Error for patient: "+str(patient))
+                logger.error('The error says: '+str(sys.exc_info()[0]))
+                logger.error('Lower: '+str(Lower))
+                logger.error('Upper: '+str(Upper))
+                logger.error('Lower[2]:'+str(Lower[2]))
+                logger.error('Upper[2]:'+str(Upper[2]))
 
             with open(args.logPath,'r+') as log_f :
                     log_f.write(str(index))

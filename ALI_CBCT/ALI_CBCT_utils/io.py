@@ -76,7 +76,6 @@ def GetBrain(dir_path):
     brainDic = {}
     normpath = os.path.normpath("/".join([dir_path, '**', '']))
     for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-        #  print(img_fn)
         if os.path.isfile(img_fn) and ".pth" in img_fn:
             lab = os.path.basename(os.path.dirname(os.path.dirname(img_fn)))
             num = os.path.basename(os.path.dirname(img_fn))

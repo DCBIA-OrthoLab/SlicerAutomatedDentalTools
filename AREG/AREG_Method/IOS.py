@@ -9,6 +9,20 @@ import shutil
 import platform
 import csv
 
+import logging
+import sys
+# ===== Logging Configuration =====
+logger = logging.getLogger("AREG_Method_CBCT")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 class Auto_IOS(Method):
     def __init__(self, widget):
@@ -219,7 +233,6 @@ class Auto_IOS(Method):
             if self.__isSegmented__(file):
                 name, ext = os.path.splitext(base_name)
                 new_name = f"{name}_Seg{ext}"
-                print("new_name : ", new_name)
                 shutil.copy(file, os.path.join(folder_bypass, new_name))
             else:
                 shutil.copy(file, os.path.join(folder_toseg, base_name))
@@ -373,15 +386,10 @@ class Auto_IOS(Method):
             "areg_mode": "Auto_IOS",
         }
 
-        print('-' * 70)
-        print("parameter seg", parameter_segteeth_T1)
-        print('-' * 70)
-        print("parameter pre_aso1 : ", parameter_pre_aso_T1)
-        print('-' * 70)
-        print("parameter pre_aso2 : ", parameter_pre_aso_T2)
-        print('-' * 70)
-        print("parameter reg", parameter_reg)
-        print('-' * 70)
+        logger.info(f"Parameter seg: {parameter_segteeth_T1}")
+        logger.info(f"Parameter pre_aso1 : {parameter_pre_aso_T1}")
+        logger.info(f"Parameter pre_aso2 : {parameter_pre_aso_T2}")
+        logger.info(f"Parameter reg: {parameter_reg}")
 
         PreOrientProcess = slicer.modules.pre_aso_ios
         SegProcess = slicer.modules.crownsegmentationcli
@@ -475,7 +483,7 @@ class Semi_IOS(Auto_IOS):
             "areg_mode": "Semi_IOS",
         }
 
-        print("parameter", parameter_reg)
+        logger.info(f"Parameter AREG_IOS: {parameter_reg}")
         RegProcess = slicer.modules.areg_ios
         numberscan = self.NumberScan(
             kwargs["input_t1_folder"], kwargs["input_t2_folder"]

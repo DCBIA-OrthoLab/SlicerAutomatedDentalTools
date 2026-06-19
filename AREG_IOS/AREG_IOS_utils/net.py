@@ -15,6 +15,20 @@ from pytorch3d.renderer import (
 )
 from pytorch3d.structures import Meshes
 
+import logging
+import sys
+# ===== Logging Configuration =====
+logger = logging.getLogger("AREG_IOS_net")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 class TimeDistributed(torch.nn.Module):
     def __init__(self, module, prediction=False):

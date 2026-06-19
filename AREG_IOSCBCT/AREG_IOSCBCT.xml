@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <index>2</index>
+  <title>AREG_IOSCBCT</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/username/project</documentation-url>
+  <license>Slicer</license>
+  <contributor>FirstName LastName (Institution), FirstName LastName (Institution)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+
+  <parameters>
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>IOS_folder</name>
+      <label>IOS_folder</label>
+      <index>0</index>
+      <description>Path for the IOS folder.</description>
+    </string>
+
+    <string>
+      <name>CBCT_folder</name>
+      <label>CBCT_folder</label>
+      <index>1</index>
+      <description>Folder with CBCT scans</description>
+    </string>
+
+    <string>
+      <name>IOS_lm_folder</name>
+      <label>IOS_lm_folder</label>
+      <index>2</index>
+      <description>IOS Landmarks Path</description>
+    </string>
+
+    <string>
+      <name>CBCT_lm_folder</name>
+      <label>CBCT_lm_folder</label>
+      <index>3</index>
+      <description>CBCT Landmarks Path</description>
+    </string>
+
+    <string>
+      <name>output</name>
+      <label>output</label>
+      <index>4</index>
+      <description>Output Path</description>
+    </string>
+
+  </parameters>
+</executable>

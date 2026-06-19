@@ -5,7 +5,7 @@ from AREG_Method.Progress import (
     DisplayALICBCT,
     DisplayASOCBCT,
 )
-import os, sys
+import os
 
 import SimpleITK as sitk
 import numpy as np
@@ -15,6 +15,19 @@ import slicer
 import time
 import qt
 import platform
+import logging
+import sys
+# ===== Logging Configuration =====
+logger = logging.getLogger("AREG_Method_CBCT")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 
 class Semi_CBCT(Method):
@@ -221,9 +234,9 @@ class Semi_CBCT(Method):
         for i, model in enumerate(listeModels):
             if i < len(listeModels) - 1:
                 if mask:
-                    translate += dicTranslate["Masks"][model] + " "
+                    translate += dicTranslate["Masks"][model] + ","
                 else:
-                    translate += dicTranslate["Models"][model] + " "
+                    translate += dicTranslate["Models"][model] + ","
             else:
                 if mask:
                     translate += dicTranslate["Masks"][model]
@@ -265,7 +278,7 @@ class Semi_CBCT(Method):
             "DCMInput": kwargs["isDCMInput"],
         }
         
-        print(f"PRE_ASO param: {parameter_pre_aso}\n")
+        logger.info(f"PRE_ASO param: {parameter_pre_aso}\n")
 
         PreOrientProcess = slicer.modules.pre_aso_cbct
         list_process = [
@@ -280,7 +293,7 @@ class Semi_CBCT(Method):
         # AREG CBCT PROCESS
         AREGProcess = slicer.modules.areg_cbct
         AReg_temp_folder = slicer.util.tempDirectory()
-        for i, reg in enumerate(reg_struct.split(" ")):
+        for i, reg in enumerate(reg_struct.split(",")):
             parameter_areg_cbct = {
                 "t1_folder": kwargs["input_t1_folder"],
                 "t2_folder": centered_T2,
@@ -301,7 +314,7 @@ class Semi_CBCT(Method):
                     "Display": DisplayAREGCBCT(nb_scan),
                 }
             )
-            print(f"AREG_CBCT param {full_reg_struct[i]}: {parameter_areg_cbct}\n")
+            logger.info(f"AREG_CBCT param {full_reg_struct[i]}: {parameter_areg_cbct}\n")
 
         # AMASSS PROCESS - SEGMENTATION
         AMASSSProcess = slicer.modules.amasss_cli
@@ -333,8 +346,8 @@ class Semi_CBCT(Method):
             "SegmentInput": False,
             "DCMInput": False,
         }
-        print(f"AMASSS T1 Parameters: {parameter_amasss_seg_t1}\n")
-        print(f"AMASSS T2 Parameters: {parameter_amasss_seg_t2}\n")
+        logger.info(f"AMASSS T1 Parameters: {parameter_amasss_seg_t1}\n")
+        logger.info(f"AMASSS T2 Parameters: {parameter_amasss_seg_t2}\n")
         if len(full_seg_struct) > 0:
             list_process.append(
                 {
@@ -434,7 +447,7 @@ class Auto_CBCT(Semi_CBCT):
             },
         ]
 
-        print(f'AMASSS Mask Parameters: {parameter_amasss_mask_t1}\n')
+        logger.info(f'AMASSS Mask Parameters: {parameter_amasss_mask_t1}\n')
         centered_T2 = kwargs["input_t2_folder"] + "_Center"
         parameter_pre_aso = {
             "input": kwargs["input_t2_folder"],
@@ -465,7 +478,7 @@ class Auto_CBCT(Semi_CBCT):
 
         AREGProcess = slicer.modules.areg_cbct
         AReg_temp_folder = slicer.util.tempDirectory()
-        for i, reg in enumerate(reg_struct.split(" ")):
+        for i, reg in enumerate(reg_struct.split(",")):
             parameter_areg_cbct = {
                 "t1_folder": kwargs["input_t1_folder"],
                 "t2_folder": centered_T2,
@@ -522,8 +535,8 @@ class Auto_CBCT(Semi_CBCT):
             "SegmentInput": False,
             "DCMInput": False,
         }
-        print(f"AMASSS T1 Parameters: {parameter_amasss_seg_t1}\n")
-        print(f"AMASSS T2 Parameters: {parameter_amasss_seg_t2}\n")
+        logger.info(f"AMASSS T1 Parameters: {parameter_amasss_seg_t1}\n")
+        logger.info(f"AMASSS T2 Parameters: {parameter_amasss_seg_t2}\n")
 
         if len(full_seg_struct) > 0:
             list_process.append(
@@ -678,7 +691,7 @@ class Or_Auto_CBCT(Semi_CBCT):
 
         list_lmrk_str, nb_landmark = self.ReferenceLandmarks(OrientationReference)
 
-        print(f"PRE_ASO param: {parameter_pre_aso}\n")
+        logger.info(f"PRE_ASO param: {parameter_pre_aso}\n")
 
         # ALI CBCT
         parameter_ali = {
@@ -695,7 +708,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         }
         ALIProcess = slicer.modules.ali_cbct
 
-        print(f"ALI param: {parameter_ali}\n")
+        logger.info(f"ALI param: {parameter_ali}\n")
         
         # SEMI ASO CBCT
         ASO_T1_Oriented = kwargs["input_t1_folder"] + "Or"
@@ -708,7 +721,7 @@ class Or_Auto_CBCT(Semi_CBCT):
         }
         OrientProcess = slicer.modules.semi_aso_cbct
 
-        print(f"SEMI_ASO param: {parameter_semi_aso}\n")
+        logger.info(f"SEMI_ASO param: {parameter_semi_aso}\n")
 
         nb_scan = (
             self.NumberScan(kwargs["input_t1_folder"], kwargs["input_t2_folder"])
@@ -759,7 +772,7 @@ class Or_Auto_CBCT(Semi_CBCT):
             "SegmentInput": False,
             "DCMInput": False,
         }
-        print(f"AMASSS Mask Parameters: {parameter_amasss_mask_t1}\n")
+        logger.info(f"AMASSS Mask Parameters: {parameter_amasss_mask_t1}\n")
         AMASSSProcess = slicer.modules.amasss_cli
         list_process += [
             {
@@ -779,7 +792,7 @@ class Or_Auto_CBCT(Semi_CBCT):
             "temp_folder": "../",
             "DCMInput": kwargs["isDCMInput"],
         }
-        print(f"Centering T2 Parameters: {parameter_pre_aso}\n")
+        logger.info(f"Centering T2 Parameters: {parameter_pre_aso}\n")
 
         PreOrientProcess = slicer.modules.pre_aso_cbct
         list_process.append(
@@ -797,7 +810,7 @@ class Or_Auto_CBCT(Semi_CBCT):
 
         AREGProcess = slicer.modules.areg_cbct
         AReg_temp_folder = slicer.util.tempDirectory()
-        for i, reg in enumerate(reg_struct.split(" ")):
+        for i, reg in enumerate(reg_struct.split(",")):
             parameter_areg_cbct = {
                 "t1_folder": ASO_T1_Oriented,
                 "t2_folder": centered_T2,
@@ -818,7 +831,7 @@ class Or_Auto_CBCT(Semi_CBCT):
                     "Display": DisplayAREGCBCT(nb_scan),
                 }
             )
-            print(f"AREG CBCT Parameters {full_reg_struct[i]}: {parameter_areg_cbct}\n")
+            logger.info(f"AREG CBCT Parameters {full_reg_struct[i]}: {parameter_areg_cbct}\n")
 
         full_seg_struct = list_struct["AMASSS Segmentation"]
         seg_struct = self.TranslateModels(full_seg_struct, False)
@@ -853,8 +866,8 @@ class Or_Auto_CBCT(Semi_CBCT):
             "SegmentInput": False,
             "DCMInput": False,
         }
-        print(f"AMASSS T1 Parameters: {parameter_amasss_seg_t1}\n")
-        print(f"AMASSS T2 Parameters: {parameter_amasss_seg_t2}\n")
+        logger.info(f"AMASSS T1 Parameters: {parameter_amasss_seg_t1}\n")
+        logger.info(f"AMASSS T2 Parameters: {parameter_amasss_seg_t2}\n")
         if len(full_seg_struct) > 0:
             list_process.append(
                 {

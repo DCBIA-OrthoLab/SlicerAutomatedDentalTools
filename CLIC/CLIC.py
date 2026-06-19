@@ -17,6 +17,21 @@ import json
 # Slicer-Conda helper
 from CondaSetUp import CondaSetUpCall
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("CLIC")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 # ───────────────────────────────────────────────────────────────────────────
 def _ui_log(q: queue.Queue, msg: str):
     q.put(("log", msg))
@@ -44,7 +59,58 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def __init__(self, parent=None):
         super().__init__(parent)
         VTKObservationMixin.__init__(self)
-        self.conda         = CondaSetUpCall()
+        self.conda = CondaSetUpCall()
+        
+        # Patch: Fix conda executable path (remove duplicate /bin/bin) or use system conda
+        original_getCondaExecutable = self.conda.getCondaExecutable
+        original_getCondaPath = self.conda.getCondaPath
+        
+        def fixed_getCondaExecutable():
+            path = original_getCondaExecutable()
+            logger.debug(f"[DEBUG] original getCondaExecutable returned: {path!r}")
+            
+            # Fix duplicate /bin/bin
+            if path and "/bin/bin/" in path:
+                path = path.replace("/bin/bin/", "/bin/")
+                logger.debug(f"[DEBUG] Fixed duplicate /bin/bin → {path!r}")
+            
+            # Check if path exists
+            if path and os.path.exists(path):
+                logger.debug(f"[DEBUG] Conda executable exists: {path}")
+                return path
+            
+            # Try to find conda in PATH
+            import shutil
+            conda_in_path = shutil.which("conda")
+            if conda_in_path and os.path.exists(conda_in_path):
+                logger.debug(f"[DEBUG] Using system conda from PATH: {conda_in_path}")
+                return conda_in_path
+            
+            # Last resort: try common anaconda location
+            common_conda = "/home/luciacev/anaconda3/bin/conda"
+            if os.path.exists(common_conda):
+                logger.debug(f"[DEBUG] Using anaconda conda: {common_conda}")
+                return common_conda
+            
+            logger.warning(f"[WARNING] Could not find working conda, falling back to: {path}")
+            return path
+        
+        def fixed_getCondaPath():
+            """Return conda base directory - patch Slicer bug and use system conda"""
+            path = original_getCondaPath()
+            logger.debug(f"[DEBUG] original getCondaPath returned: {path!r}")
+            
+            # If we found anaconda, use its path
+            common_conda_path = "/home/luciacev/anaconda3"
+            if os.path.exists(common_conda_path):
+                logger.debug(f"[DEBUG] Using anaconda conda path: {common_conda_path}")
+                return common_conda_path
+            
+            return path
+        
+        self.conda.getCondaExecutable = fixed_getCondaExecutable
+        self.conda.getCondaPath = fixed_getCondaPath
+        
         self.ui_q          = queue.Queue()
         self.input_path    = None
         self.model_dir     = None
@@ -90,70 +156,69 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.applyDarkModeStyles()
 
     def _ensure_env(self) -> bool:
-        # DEBUG: entrée dans la fonction
-        print(f"[DEBUG] _ensure_env called, name_env='{self.name_env}'")
+        logger.debug(f"[DEBUGG] _ensure_env called, name_env='{self.name_env}'")
 
         # 1) create/test env
         exists_before = self.conda.condaTestEnv(self.name_env)
-        print(f"[DEBUG] condaTestEnv('{self.name_env}') before creation → {exists_before!r}")
+        logger.debug(f"[DEBUG] condaTestEnv('{self.name_env}') before creation → {exists_before!r}")
         if not exists_before:
             self.sig.log.emit(f"[Conda] Creating env '{self.name_env}'…")
-            print(f"[DEBUG] calling condaCreateEnv({self.name_env}, '3.9', ['numpy<2.0.0','scipy','nibabel','requests'])")
+            logger.debug(f"[DEBUG] calling condaCreateEnv({self.name_env}, '3.9', ['numpy<2.0.0','scipy','nibabel','requests'])")
             self.conda.condaCreateEnv(self.name_env, "3.9", ["numpy<2.0.0","scipy","nibabel","requests"])
             exists_after = self.conda.condaTestEnv(self.name_env)
-            print(f"[DEBUG] condaTestEnv('{self.name_env}') after creation → {exists_after!r}")
+            logger.debug(f"[DEBUG] condaTestEnv('{self.name_env}') after creation → {exists_after!r}")
             if not exists_after:
-                self.sig.log.emit("❌ env creation failed")
-                print("[DEBUG] env creation failed, aborting")
+                self.sig.log.emit("env creation failed")
+                logger.debug("[DEBUG] env creation failed, aborting")
                 return False
-            self.sig.log.emit("✔ env created")
-            print("[DEBUG] env created successfully")
+            self.sig.log.emit("env created")
+            logger.debug("[DEBUG] env created successfully")
         else:
-            self.sig.log.emit(f"✔ env '{self.name_env}' exists")
-            print(f"[DEBUG] env '{self.name_env}' already exists, skipping creation")
+            self.sig.log.emit(f"env '{self.name_env}' exists")
+            logger.debug(f"[DEBUG] env '{self.name_env}' already exists, skipping creation")
 
         # 2) install torch/cu118 first
-        print("[DEBUG] about to install torch/cu118 via condaRunCommand")
+        logger.debug("[DEBUG] about to install torch/cu118 via condaRunCommand")
         rc = self.conda.condaRunCommand([
             "python", "-m", "pip", "install", "--no-cache-dir",
             "--index-url=https://download.pytorch.org/whl/cu118",
-            "torch==2.6.0", "torchvision==0.21.0", "torchaudio==2.6.0"
+            "torch==2.2.2", "torchvision==0.17.0", "torchaudio==2.2.2"
         ], self.name_env)
         self.sig.log.emit(f"[DEBUG] torch pip rc={rc!r}")
-        print(f"[DEBUG] torch install returned → {rc!r}")
+        logger.debug(f"[DEBUG] torch install returned → {rc!r}")
         if isinstance(rc, int) and rc != 0:
-            self.sig.log.emit("❌ torch install failed")
-            print("[DEBUG] torch install failed (int rc)")
+            self.sig.log.emit("torch install failed")
+            logger.debug("[DEBUG] torch install failed (int rc)")
             return False
         if isinstance(rc, str) and any(err in rc.lower() for err in ("error","failed")):
-            self.sig.log.emit("❌ torch install failed")
-            print("[DEBUG] torch install failed (string rc)")
+            self.sig.log.emit("torch install failed")
+            logger.debug("[DEBUG] torch install failed (string rc)")
             return False
-        self.sig.log.emit("✔ torch installed")
-        print("[DEBUG] torch installed successfully")
+        self.sig.log.emit("torch installed")
+        logger.debug("[DEBUG] torch installed successfully")
 
         # 3) downgrade numpy <2.0 for compatibility
         self.sig.log.emit("→ pip install numpy<2.0 for NumPy 1.x compatibility")
-        print("[DEBUG] about to downgrade numpy with condaRunCommand")
+        logger.debug("[DEBUG] about to downgrade numpy with condaRunCommand")
         rc2 = self.conda.condaRunCommand([
             "python", "-m", "pip", "install", "--no-cache-dir", "'numpy<2.0'"
         ], self.name_env)
         self.sig.log.emit(f"[DEBUG] numpy downgrade rc={rc2!r}")
-        print(f"[DEBUG] numpy downgrade returned → {rc2!r}")
+        logger.debug(f"[DEBUG] numpy downgrade returned → {rc2!r}")
         if isinstance(rc2, int) and rc2 != 0:
-            self.sig.log.emit("❌ numpy downgrade failed")
-            print("[DEBUG] numpy downgrade failed (int rc2)")
+            self.sig.log.emit("numpy downgrade failed")
+            logger.debug("[DEBUG] numpy downgrade failed (int rc2)")
             return False
         if isinstance(rc2, str) and any(err in rc2.lower() for err in ("error","failed")):
-            self.sig.log.emit("❌ numpy downgrade failed")
-            print("[DEBUG] numpy downgrade failed (string rc2)")
+            self.sig.log.emit("numpy downgrade failed")
+            logger.debug("[DEBUG] numpy downgrade failed (string rc2)")
             return False
 
         # env ready
         self._env_ready = True
         self.sig.progress.emit(100)
-        self.sig.log.emit("✔ env ready")
-        print("[DEBUG] _ensure_env succeeded, env ready")
+        self.sig.log.emit("env ready")
+        logger.debug("[DEBUG] _ensure_env succeeded, env ready")
         return True
 
 
@@ -189,7 +254,6 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     "output_dir": self.output_dir,
                     "suffix": self.ui.suffixLineEdit.text or "seg"
                 }))
-                            # debug avant d’invoquer CondaSetUp
                 self.sig.log.emit(f"[DEBUG] getCondaPath(): {self.conda.getCondaPath()!r}")
                 self.sig.log.emit(f"[DEBUG] conda executable: {self.conda.getCondaExecutable()!r}")
                 self.sig.log.emit(f"[DEBUG] condaTestEnv('{self.name_env}') → {self.conda.condaTestEnv(self.name_env)}")
@@ -217,7 +281,7 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._flush_q()
             self.ui.TimerLabel.setText(f"{time.time()-t0:.1f}s")
         self._flush_q()
-        self.sig.log.emit("✔ ALL DONE")
+        self.sig.log.emit("ALL DONE")
         self.ui.PredScanLabel.setText("Done")
         self._toggle_ui(False)
 
@@ -252,9 +316,16 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def _collect_scans(self, root) -> List[Path]:
         p = Path(root)
         exts = (".nii", ".nii.gz", ".nrrd", ".mha", ".mhd")
+        
+        def is_valid_scan(f):
+            """Check if file has valid scan extension (including multi-part like .nii.gz)"""
+            name_lower = f.name.lower()
+            return any(name_lower.endswith(ext) for ext in exts)
+        
         if p.is_dir():
-            dcm = [d for d in p.iterdir() if d.is_dir() and any(f.suffix.lower() in exts for f in d.iterdir())]
-            return sorted(dcm) if dcm else sorted(f for f in p.iterdir() if f.suffix.lower() in exts)
+            # Look for subdirs containing valid scans
+            dcm = [d for d in p.iterdir() if d.is_dir() and any(is_valid_scan(f) for f in d.iterdir())]
+            return sorted(dcm) if dcm else sorted(f for f in p.iterdir() if is_valid_scan(f))
         return [p]
 
     def _download_model(self):
@@ -279,7 +350,7 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     slicer.app.processEvents()
             self.model_dir = str(dst)
             self.ui.lineEditModelPath.setText(self.model_dir)
-            _ui_log(self.ui_q, "Model downloaded ✓")
+            _ui_log(self.ui_q, "Model downloaded")
         except Exception as e:
             qt.QMessageBox.warning(self.parent, "Download", str(e))
             _ui_log(self.ui_q, f"[ERROR] {e}")

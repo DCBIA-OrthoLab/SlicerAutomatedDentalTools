@@ -5,6 +5,20 @@ import os
 import glob
 import sys
 import csv
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_utils_resample")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 def mirror_image_flip(img):
     # Flip along Z axis only
@@ -37,11 +51,11 @@ def resample_fn(img, args):
     center = args['center']
     rightSide = args['rightSide']
     isMRI = args['mri']
-    print("Right side:", rightSide)
-    print("Is MRI:", isMRI)
+    logger.info(f"Right side:{rightSide}")
+    logger.info(f"Is MRI:{isMRI}")
     
     if isMRI and rightSide and not center:
-        print("[INFO] Mirroring input image before resampling (index-space flip).")
+        logger.info("[INFO] Mirroring input image before resampling (index-space flip).")
         img = mirror_image_flip(img)
 
     if args['linear']:
@@ -103,7 +117,7 @@ def resample_fn(img, args):
     resampled = resampleImageFilter.Execute(img)
     
     if isMRI and rightSide and not center:
-        print("[INFO] Mirroring resampled image back (index-space flip).")
+        logger.info("[INFO] Mirroring resampled image back (index-space flip).")
         resampled = mirror_image_flip(resampled)
 
     return resampled
@@ -191,11 +205,11 @@ def resample_images(args):
 
     if args['rgb']:
         if args['pixel_dimension'] == 3:
-            print("Using: RGB type pixel with unsigned char")
+            logger.info("Using: RGB type pixel with unsigned char")
         elif args['pixel_dimension'] == 4:
-            print("Using: RGBA type pixel with unsigned char")
+            logger.info("Using: RGBA type pixel with unsigned char")
         else:
-            print("WARNING: Pixel size not supported!")
+            logger.warning("WARNING: Pixel size not supported!")
 
     if args['ref'] is not None:
         ref = sitk.ReadImage(args['ref'])
@@ -216,14 +230,14 @@ def resample_images(args):
             else:
                 img = sitk.ReadImage(fobj["img"])
 
-            print("Writing:", fobj["out"])
+            logger.info(f"Writing: {fobj["out"]}")
             writer = sitk.ImageFileWriter()
             writer.SetFileName(fobj["out"])
             writer.UseCompressionOn()
             writer.Execute(img)
             
         except Exception as e:
-            print(e, file=sys.stderr)
+            logger.warning(e, file=sys.stderr)
 
     
 def run_resample(img=None, dir=None, csv=None, csv_column='image', csv_root_path=None, csv_use_spc=0,

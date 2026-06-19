@@ -1,5 +1,19 @@
 import os
 from glob import iglob
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_utils")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 def GetListFiles(folder_path, file_extension):
     """Return a list of files in folder_path finishing by file_extension"""
@@ -8,6 +22,13 @@ def GetListFiles(folder_path, file_extension):
         file_list += search(folder_path, file_extension)[extension_type]
     return file_list
 
+def GetListNamesSegType(segmentationType):
+    dic = {
+        "CB": ["cb"],
+        "MAND": ["mand", "md"],
+        "MAX": ["max", "mx"],
+    }
+    return dic[segmentationType]
 
 def GetPatients(folder_path, time_point="T1", segmentationType=None):
     """Return a dictionary with patient id as key"""

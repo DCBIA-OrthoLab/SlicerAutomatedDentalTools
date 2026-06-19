@@ -1,6 +1,8 @@
 import logging
 import os,json
 
+
+
 import vtk
 import SimpleITK as sitk
 
@@ -27,6 +29,17 @@ import io
 # AutoCrop3D
 #
 
+# ===== Logging Configuration =====
+logger = logging.getLogger("AutoCrop3D_UI")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 
 class AutoCrop3D(ScriptedLoadableModule):
@@ -579,12 +592,12 @@ QSlider::handle:horizontal:hover {
             # process complete
             self.ui.applyButton.setEnabled(True)
             self.ui.label_4.setText("Number of processed files : "+str(self.progress)+"/"+str(self.nbFiles))
-            print(f"self.progress : {self.progress}")
+            logger.info(f"self.progress : {self.progress}")
 
             if self.logic.cliNode.GetStatus() & self.logic.cliNode.ErrorsMask:
                 # error
                 errorText = self.logic.cliNode.GetErrorText()
-                print("CLI execution failed: \n \n" + errorText)
+                logger.error("CLI execution failed: \n \n" + errorText)
                 msg = qt.QMessageBox()
                 msg.setText(f'There was an error during the process:\n \n {errorText} ')
                 msg.setWindowTitle("Error")
@@ -592,8 +605,8 @@ QSlider::handle:horizontal:hover {
 
             else:
                 # success
-                print('PROCESS DONE.')
-                print(self.logic.cliNode.GetOutputText())
+                logger.info('PROCESS DONE.')
+                logger.info(self.logic.cliNode.GetOutputText())
                 self.ui.progressBar.setValue(100)
                 self.ui.progressBar.setFormat("100%")
 
@@ -668,7 +681,7 @@ QSlider::handle:horizontal:hover {
 
             return
         except Exception as e:
-            print(f"Error reading log file: {e}")
+            logger.error(f"Error reading log file: {e}")
             return
 
 
@@ -919,10 +932,10 @@ QSlider::handle:horizontal:hover {
                     try:
                         ROI_Path = ROI_dict[patient]
                     except:
-                        print('No ROI for patient:',patient)
+                        logger.warning('No ROI for patient:'+str(patient))
                         idx+=1
                         if idx==self.nbFiles:
-                            print('No ROI for any patient, exiting')
+                            logger.warning('No ROI for any patient, exiting')
                             #qmessage box to inform the user that no ROI was found for any patient
                             msg = qt.QMessageBox()
                             msg.setIcon(qt.QMessageBox.Warning)
@@ -972,7 +985,7 @@ QSlider::handle:horizontal:hover {
                     try:
                         success = outputQueue.get_nowait()
                         if not success:
-                            print(f"Failed to save volume {patient_path}")
+                            logger.error(f"Failed to save volume {patient_path}")
                             continue
                     except:
                         pass

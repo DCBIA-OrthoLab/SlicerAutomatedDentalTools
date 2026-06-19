@@ -24,6 +24,21 @@ from qt import (
     QGridLayout,
 )
 
+import logging
+import sys
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("VFACE_AQ3DC")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 from typing import Union
 
@@ -56,7 +71,7 @@ local_classes_path = os.path.join(current_dir, "Classes")
 sys.path.insert(0, local_classes_path)
 
 try:
-    from Classes import (
+    from VFACE_utils import (
         Angle,
         Distance,
         Diff2Measure,
@@ -366,11 +381,10 @@ class AQ3DCWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             # compute all measure
             patient_compute = self.logic.computeMeasurement(self.list_measure, dict_patient)
-            print("*"*150)
-            print("self.list_measure : ",self.list_measure)
+            logger.debug(f"self.list_measure : {self.list_measure}")
             # patient_compute = self.allowSign(patient_compute,self.list_measure)
 
-            print("self.ui.ComboBoxExcelFormat.currentText : ",self.ui.ComboBoxExcelFormat.currentText)
+            logger.debug(f"self.ui.ComboBoxExcelFormat.currentText : {self.ui.ComboBoxExcelFormat.currentText}")
             if self.ui.ComboBoxExcelFormat.currentText == "Statistics":
                 patient_compute = self.reorganizeStat(patient_compute)
             else :
@@ -1262,7 +1276,6 @@ class AQ3DCWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if self.ui.CheckBoxT1T2.isChecked():
                 dict_page_to_namemeasure = dict_page2namemeasure_checkbox
         out = self.logic.createMeasurement(dict_page_to_namemeasure[page], list_point)
-        # print('out',out)
 
         for measure in out:
             self.addMeasurementToTabMeasurement(measure)
@@ -1467,7 +1480,6 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
                     patients_lst.append(patient)
                 if patient not in patients_dict:
                     patients_dict[patient] = {}
-                # print(f'json file {jsonfile}')
                 json_file = pd.read_json(jsonfile)
                 markups = json_file.loc[0, "markups"]
                 controlPoints = markups["controlPoints"]
@@ -1477,7 +1489,7 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
 
                     # check the patient have many times the same landmark
                     if landmark_name in patients_dict[patient]:
-                        print(
+                        logger.warning(
                             f"This patient {patient} have many times this landmark {landmark_name}"
                         )
 
@@ -1493,7 +1505,7 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
                             ] and not True in np.isnan(position):
                                 good = True
                     if not good:
-                        print(
+                        logger.warning(
                             f"For this file {jsonfile} this landmark {landmark_name} are not good "
                         )
 
@@ -1501,9 +1513,6 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
                     dict_patient_extraction[patient]=0
                 else :
                     dict_patient_extraction[patient]=1
-                # print("*"*150)
-                # print("json file : ",jsonfile)
-                # print("*"*150)
 
         return patients_dict,dict_patient_extraction
 
@@ -1531,7 +1540,7 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
                     dif = set(landmarks) - set(dict_patientT2[patientT1])
                     dif.union(set(dict_patientT2[patientT1]) - set(landmarks))
                     dif_landmark[patientT1] = dif
-                    print(
+                    logger.warning(
                         f"T1 and T2 of this patient {patientT1} doesnt have the same landmark, landmark dif {dif}"
                     )
 
@@ -1541,7 +1550,7 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
             dif = set(dict_patinetT1.keys()) - set(dict_patientT2.keys())
             dif.union(set(dict_patientT2.keys()) - set(dict_patinetT1.keys()))
             dif_patient = dif_landmark
-            print(f"T1 and T2 doesnt have the same patient, dif patient {dif}")
+            logger.warning(f"T1 and T2 doesnt have the same patient, dif patient {dif}")
         return dif_landmark , dif_patient
 
 
@@ -1573,7 +1582,7 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
         for patient, landamrks in dict_patient.items():
             dif = list_landmark.difference(set(landamrks.keys()))
             if len(dif) != 0:
-                print(f"This patient {patient} doesn't have this landmark(s) {dif}")
+                logger.warning(f"This patient {patient} doesn't have this landmark(s) {dif}")
 
         list_landmark = list(list_landmark)
 
@@ -1631,7 +1640,7 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
                             np.array(P1_pos), np.array(P2_pos)
                         )
                     except:
-                        print(
+                        logger.warning(
                             f"Save Midpoint, Warning this patient : {patient}, landmark : {mid_point}, it s not save. Please verify your folder"
                         )
                         continue
@@ -2139,21 +2148,20 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
         ]
 
         for patient, point in dict_patient.items():
-            print("patient : ",patient)
             for __measure in list_measure:
                 measure : Union[Diff2Measure,Angle,Distance] = __measure
                 try:
                     measure.setPosition(point)
 
                 except KeyError as key:
-                    print(f"this landmark {key} doesnt exist for this patient", patient)
+                    logger.warning(f"this landmark {key} doesnt exist for this patient {patient}")
                     continue
 
                 try:
-                    print("measure : ",measure)
+                    logger.warning(f"measure : {measure}")
                     measure.computation()
                 except ZeroDivisionError as Zero:
-                    print(
+                    logger.warning(
                         f"impossible to compute this measure {measure} for this patient {patient} a reason divide by 0 {Zero}"
                     )
                     continue
@@ -2167,70 +2175,6 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
                 )
                 for title in list_title:
                     dict_patient__computation[title].append(measure[title])
-
-                # else:
-                #     print(
-                #         f"Dont write this measure {measure} for this patient {patient} because is useless measure"
-                #     )
-                #     continue
-
-        # if all(value=="x" for value in dict_patient__computation["Lateral or medial-Left"]):
-        #     del dict_patient__computation["Lateral or medial-Left"]
-
-        # if all(value=="x" for value in dict_patient__computation["Lateral or medial-Right"]):
-        #     del dict_patient__computation["Lateral or medial-Right"]
-
-        # for measure in list_measure :
-        #     dict_measurement_sheet = {
-        #     "Patient": [],
-        #     "Landmarks" : [],
-        #     "R-L Component": [],
-        #     "R-L Meaning": [],
-        #     "A-P Component": [],
-        #     "A-P Meaning": [],
-        #     "S-I Component": [],
-        #     "S-I Meaning": [],
-        #     "3D Distance": [],
-        #     "Yaw Component": [],
-        #     "Yaw Meaning": [],
-        #     "Pitch Component": [],
-        #     "Pitch Meaning": [],
-        #     "Roll Component": [],
-        #     "Roll Meaning": [],
-        # }
-        #     add_in_name_sheet = ''
-        #     if measure["Landmarks"].replace('/','-')[:3] == "Mid" :
-        #         add_in_name_sheet = 'Mid'
-        #     else :
-        #         add_in_name_sheet = measure["Landmarks"].replace('/','-')
-        #     type_measure = dict_short_cut[measure["Type of measurement + time"]] + add_in_name_sheet
-        #     dict_with_all_measurement[type_measure] = dict_measurement_sheet
-        #     for patient, point in dict_patient.items():
-        #         try:
-        #             measure["position"] = point
-        #         except KeyError as key:
-        #             print(f"this landmark {key} doesnt exist for this patient", patient)
-        #             continue
-        #         try:
-        #             measure.computation()
-        #         except ZeroDivisionError as Zero:
-        #             print(
-        #                 f"impossible to compute this measure {measure} for this patient {patient} a reason divide by 0 {Zero}"
-        #             )
-        #             continue
-
-        #         measure.manageMeaningComponent()
-
-        #         if measure.isUtilMeasure():
-        #             dict_with_all_measurement[type_measure]["Patient"].append(patient)
-        #             for title in list_title:
-        #                 dict_with_all_measurement[type_measure][title].append(measure[title])
-
-        #         else:
-        #             print(
-        #                 f"Dont write this measure {measure} for this patient {patient} because is useless measure"
-        #             )
-        #             continue
 
 
         return dict_patient__computation#, dic_with_all_measurement
@@ -2254,28 +2198,6 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
                 df = pd.DataFrame(dict_patient__computation)
 
                 df.to_excel(os.path.join(path, name_file))
-
-
-
-
-    # def WriteMeasurementExcel2(self, dict_patient__computation : dict, path : str, name_file : str):
-    #     """Create excel file with result of computation
-
-    # Args:
-    #     dict_patient__computation (dict):
-    #     path (str): file's path
-    #     name_file (str): file name
-    # """
-    #     dict_sheet = {}
-
-    #     # if len(dict_patient__computation["Patient"]) > 0:
-    #     print(dict_patient__computation)
-    #     for key , value in dict_patient__computation.items():
-    #         df = pd.DataFrame(value)
-    #         dict_sheet[key] = df
-    #     with pd.ExcelWriter(os.path.join(path, name_file)) as writer :
-    #         for key , df in dict_sheet.items():
-    #             df.to_excel(writer,sheet_name = key, index = False)
 
     def addMidpointToPatient(self, dict_patient: dict, landmark1: str, landmark2: str):
         """
@@ -2302,7 +2224,7 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
                 p1 = landmark[landmark1]
                 p2 = landmark[landmark2]
             except KeyError as key:
-                print(
+                logger.warning(
                     f"Warning midpoint, dont found landmark {key} for this patient {patient}"
                 )
                 continue
@@ -2310,7 +2232,7 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
             try:
                 p = list((np.array(p1) + np.array(p2)) / 2)
             except:
-                print(
+                logger.warning(
                     f"Warning compute midpoint error, patient : {patient}, landmarks : {landmark1} {landmark2}"
                 )
                 continue
@@ -2369,7 +2291,7 @@ class AQ3DCTest(ScriptedLoadableModuleTest):
         if not os.path.exists(path):
             os.makedirs(path)
 
-        print(f'path temp {path}')
+        logger.debug(f'path temp {path}')
 
         temp_path = os.path.join(path ,'temp.zip')
         import urllib, shutil, zipfile
@@ -2399,7 +2321,7 @@ class AQ3DCTest(ScriptedLoadableModuleTest):
 
 
         tmp_folder = os.path.join(slicer.util.tempDirectory())
-        print(f'tmp folder {tmp_folder}')
+        logger.debug(f'tmp folder {tmp_folder}')
 
 
         self.setUp(tmp_folder)
@@ -2502,7 +2424,7 @@ class AQ3DCTest(ScriptedLoadableModuleTest):
 
         reader_computation_test = pd.read_excel(os.path.join(folder,'computatation_test.xlsx'), sheet_name=None)
         reader_grounthruth = pd.read_excel(os.path.join(folder,'computatation_groundtruth.xlsx'), sheet_name=None)
-        print(f' file ground thruth : {os.path.join(folder,"computatation_groundtruth.xlsx")}, file test {os.path.join(folder,"computatation_test.xlsx")}')
+        logger.info(f' file ground thruth : {os.path.join(folder,"computatation_groundtruth.xlsx")}, file test {os.path.join(folder,"computatation_test.xlsx")}')
         for key in reader_computation_test['Sheet1'].keys():
             assert reader_computation_test['Sheet1'][key].to_dict() == reader_grounthruth['Sheet1'][key].to_dict(), f'test : {reader_computation_test["Sheet1"][key].to_dict()} \n ground truth {reader_grounthruth["Sheet1"][key].to_dict()}'
 

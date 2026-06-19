@@ -13,6 +13,7 @@ import glob
 import time
 import shutil
 import subprocess
+import sys
 
 import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
@@ -24,6 +25,22 @@ try:
 except ImportError:
     import importlib_metadata
 import importlib
+
+# --- LOGGING CONFIGURATION ---
+logger = logging.getLogger("AMASSS")
+logger.setLevel(logging.INFO)
+
+logger.propagate = False
+
+if logger.handlers:
+    logger.handlers.clear()
+
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 def _get_installed_version(lib_name):
     try:
@@ -125,7 +142,6 @@ def install_function(self,list_libs:list,system:str):
                           cuda_version = "cu118"
                         else:
                           cuda_version = "cu118"
-                        print('required cuda version:',cuda_version)
                       else:
                         raise RuntimeError("CUDA is not available")
                     except ImportError:
@@ -135,7 +151,7 @@ def install_function(self,list_libs:list,system:str):
 
                     if not already_installed:
                       already_installed = True
-                      pip_install(f'torch>=2.6.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{cuda_version}')
+                      pip_install(f'torch>=2.2.2 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{cuda_version}')
                       nb_installed += 3
 
                   else:
@@ -147,9 +163,8 @@ def install_function(self,list_libs:list,system:str):
                 return True
 
               else:
-                pip_install(f'torch>=2.6.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
+                pip_install(f'torch>=2.2.2 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
                 for lib, version in libs_to_install:
-                  print('lib:',lib)
                   lib_version = f'{lib}=={version}' if version else lib
                   pip_install(lib_version)
                   nb_installed += 1
@@ -629,7 +644,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     selected = False
     self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox_file.currentNodeID)
     if self.MRMLNode_scan is not None:
-      print(PathFromNode(self.MRMLNode_scan))
       self.input_path = PathFromNode(self.MRMLNode_scan)
       self.scan_count = 1
 
@@ -643,7 +657,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     count = 0
     normpath = os.path.normpath("/".join([path, '**', '']))
     for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-        #  print(img_fn)
         basename = os.path.basename(img_fn)
 
         if True in [ext in basename for ext in extentions]:
@@ -688,7 +701,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # on choisit firefox si dispo
     browser = 'firefox' if shutil.which('firefox') else 'xdg-open'
     env = os.environ.copy()
-    # empêche le chargement d’atk-bridge
     env['NO_AT_BRIDGE'] = '1'
     subprocess.Popen(
         [browser, url],
@@ -717,7 +729,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def UpdateSaveFolder(self,checked):
 
-    # print(caller,event)
     hide = checked
 
     self.ui.SearchSaveFolder.setHidden(hide)
@@ -784,7 +795,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def SwitchOutputType(self,index):
 
-    print("Selected output type:",index)
     if index == 0:
       self.output_selection = "MERGE"
       self.ui.saveInFolder.checked = False
@@ -812,121 +822,150 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     #region == RUN ==
   def onPredictButton(self):
-    print('onPredictButton called: starting prediction process...', flush=True)
-    import platform
-    # first, install the required libraries and their version
-    list_libs = [('torch','2.6.0'),('torchvision', "0.21.0"),('blosc2', None), ('torchaudio',"2.6.0"),('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2'),('einops',None),('nibabel',None),('nnunetv2',None)]
+    """Start prediction with comprehensive error handling."""
+    try:
+      logger.info('Prediction button clicked: starting prediction process...')
+      
+      import platform
+      
+      # First, install the required libraries and their version
+      try:
+        list_libs = [
+          ('torch','2.2.2'),('torchvision', "0.17.0"),('torchaudio',"2.2.2"),
+          ('itk', None),('blosc2', None),('dicom2nifti', '2.3.0'), 
+          ('pydicom', '2.2.2'),('einops',None),('nibabel',None),('nnunetv2',None)
+        ]
+        logger.info('Checking/installing required libraries...')
+        libs_installation = install_function(self, list_libs, platform.system())
+        
+        if not libs_installation:
+          logger.error('User cancelled library installation or installation failed')
+          qt.QMessageBox.warning(self.parent, 'Warning', 
+            'The module will not work properly without the required libraries.\nPlease install them and try again.')
+          return
+      except Exception as e:
+        logger.error(f'Error during library installation: {e}')
+        qt.QMessageBox.critical(self.parent, 'Error', f'Failed to check/install libraries:\n{e}')
+        return
 
-    print('Installing/checking required libraries...', flush=True)
-    libs_installation = install_function(self,list_libs,platform.system())
-    if not libs_installation:
-      qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
-      return  # stop the function
+      self.ui.nb_package.setVisible(False)
+      self.ui.label_installation.setVisible(False)
 
-    self.ui.nb_package.setVisible(False)
-    self.ui.label_installation.setVisible(False)
+      logger.info('Libraries checked. Validating inputs...')
+      ready = True
 
-    print('Libraries installed successfully. Checking inputs...', flush=True)
-    ready = True
+      # Validate input
+      try:
+        if self.folder_as_input:
+          if self.ui.lineEditScanPath.text == "":
+            logger.warning('No scan folder selected')
+            qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a scan folder')
+            ready = False
+        else:
+          if not self.onNodeChanged():
+            logger.warning('No input file selected')
+            qt.QMessageBox.warning(self.parent, 'Warning', 'Please select an input file')
+            ready = False
 
-    if self.folder_as_input:
-      if self.ui.lineEditScanPath.text == "":
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a scan folder')
-        ready = False
-    else:
-      if not self.onNodeChanged():
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select an input file')
-        ready = False
+        if self.ui.lineEditModelPath.text == "" and not self.isSegmentInput:
+          logger.warning('No model folder selected')
+          qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a model folder')
+          ready = False
 
-    if self.ui.lineEditModelPath.text == "" and not self.isSegmentInput:
-      qt.QMessageBox.warning(self.parent, 'Warning', 'Please select a model folder')
-      ready = False
+        if not ready:
+          return
+      except Exception as e:
+        logger.error(f'Error validating inputs: {e}')
+        qt.QMessageBox.critical(self.parent, 'Error', f'Error validating inputs:\n{e}')
+        return
 
-    if not ready:
-      return
+      # Validate segmentation selection
+      try:
+        selected_seg = []
+        for struct in self.seg_tab.GetSelected():
+          selected_seg.append(TRANSLATE[struct])
 
-    selected_seg = []
-    for struct in self.seg_tab.GetSelected():
-      selected_seg.append(TRANSLATE[struct])
+        if len(selected_seg) == 0:
+          logger.warning('No segmentation selected')
+          qt.QMessageBox.warning(self.parent, 'Warning', 'No segmentation selected')
+          return
 
+        self.seg_cout = len(selected_seg)
+        logger.info(f'Selected {self.seg_cout} structures for segmentation: {selected_seg}')
+      except Exception as e:
+        logger.error(f'Error in segmentation selection: {e}')
+        qt.QMessageBox.critical(self.parent, 'Error', f'Error in segmentation selection:\n{e}')
+        return
 
-    if len(selected_seg) == 0:
-      qt.QMessageBox.warning(self.parent, 'Warning', 'No segmentation selected')
-      return
+      # Build parameters
+      try:
+        param = {}
+        param["inputVolume"] = self.ui.lineEditScanPath.text if self.folder_as_input else self.input_path
+        param["modelDirectory"] = '/' if self.isSegmentInput else self.ui.lineEditModelPath.text
+        param["highDefinition"] = self.use_small_FOV
+        param["skullStructure"] = ",".join(selected_seg)
+        param["merge"] = self.output_selection
+        param["genVtk"] = self.save_surface
+        param["save_in_folder"] = self.ui.saveInFolder.isChecked() or self.ui.checkBoxSurfaceSelect.isChecked()
 
-    self.seg_cout = len(selected_seg)
+        # Determine output folder
+        if self.save_in_input_folder:
+          if os.path.isfile(self.input_path):
+            self.output_folder = os.path.dirname(self.input_path)
+            self.vtk_output_folder = self.output_folder
+          else:
+            self.output_folder = self.input_path
+            self.vtk_output_folder = None
+        else:
+          self.output_folder = self.ui.SaveFolderLineEdit.text
+          self.vtk_output_folder = None
 
-    param = {}
+        if not self.ui.checkBoxSurfaceSelect.isChecked():
+          self.vtk_output_folder = None
 
-    param["inputVolume"] = self.ui.lineEditScanPath.text if self.folder_as_input else self.input_path
+        param["output_folder"] = self.output_folder
+        param["vtk_smooth"] = self.smoothing
+        param["prediction_ID"] = self.ui.SaveId.text
 
-    param["modelDirectory"] = '/' if self.isSegmentInput else self.ui.lineEditModelPath.text
-    param["highDefinition"] = self.use_small_FOV
+        # Create temp directory
+        documentsLocation = qt.QStandardPaths.DocumentsLocation
+        documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        temp_dir = os.path.join(documents, slicer.app.applicationName + "_temp_AMASSS")
+        
+        try:
+          os.makedirs(temp_dir, exist_ok=True)
+        except Exception as e:
+          logger.error(f'Failed to create temp directory: {e}')
+          raise
 
-    param["skullStructure"] = ",".join(selected_seg)
-    param["merge"] = self.output_selection
-    param["genVtk"] = self.save_surface
-    param["save_in_folder"] = self.ui.saveInFolder.isChecked() or self.ui.checkBoxSurfaceSelect.isChecked()
+        param["temp_fold"] = temp_dir
+        param["SegmentInput"] = self.isSegmentInput
+        param["DCMInput"] = self.isDCMInput
 
+        logger.info(f'All parameters set: {param}')
+      except Exception as e:
+        logger.error(f'Error building parameters: {e}')
+        qt.QMessageBox.critical(self.parent, 'Error', f'Error building parameters:\n{e}')
+        return
 
-    if self.save_in_input_folder:
-      if os.path.isfile(self.input_path):
-        self.output_folder = os.path.dirname(self.input_path)
-
-        baseName = os.path.basename(self.input_path)
-        scan_name= baseName.split(".")
-
-        outputdir = self.output_folder
-        # if param["save_in_folder"]:
-        #     outputdir +
-
-        self.vtk_output_folder = outputdir 
-
-
-      else:
-        self.output_folder = self.input_path
-        self.vtk_output_folder = None
-
-    else:
-      self.output_folder = self.ui.SaveFolderLineEdit.text
-      self.vtk_output_folder = None
-
-
-    if not self.ui.checkBoxSurfaceSelect.isChecked():
-      self.vtk_output_folder = None
-
-
-    param["output_folder"] = self.output_folder
-
-
- 
-    param["vtk_smooth"] = self.smoothing
-
-    param["prediction_ID"] = self.ui.SaveId.text
-
-
-    documentsLocation = qt.QStandardPaths.DocumentsLocation
-    documents = qt.QStandardPaths.writableLocation(documentsLocation)
-    temp_dir = os.path.join(documents, slicer.app.applicationName+"_temp_AMASSS")
-
-    print(temp_dir)
-
-    param["temp_fold"] = temp_dir
-
-    param["SegmentInput"] = self.isSegmentInput
-
-    param["DCMInput"] = self.isDCMInput
-
-    print('All parameters set, starting logic process...', flush=True)
-    self.logic.process(param)
-    print('Logic process initiated.', flush=True)
-    self.processObserver = self.logic.cliNode.AddObserver("ModifiedEvent", self.onProcessUpdate)
-    self.onProcessStarted()
+      # Start processing
+      try:
+        self.logic.process(param)
+        logger.info('Logic process initiated')
+        self.processObserver = self.logic.cliNode.AddObserver("ModifiedEvent", self.onProcessUpdate)
+        self.onProcessStarted()
+      except Exception as e:
+        logger.error(f'Error starting process: {e}')
+        qt.QMessageBox.critical(self.parent, 'Error', f'Error starting process:\n{e}')
+        return
+        
+    except Exception as e:
+      logger.error(f'Fatal error in onPredictButton: {e}')
+      qt.QMessageBox.critical(self.parent, 'Fatal Error', f'Unexpected error:\n{e}')
 
   def onProcessStarted(self):
 
     self.startTime = time.time()
-    print('Process started at:', time.strftime('%H:%M:%S', time.localtime(self.startTime)), flush=True)
     if not self.isSegmentInput:
       self.ui.PredScanLabel.setText(f"Scan ready for segmentation : 0 / {self.scan_count}")
     else:
@@ -944,20 +983,18 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def UpdateRunBtn(self):
     self.ui.PredictionButton.setEnabled(self.scan_ready and self.model_ready)
-    # self.ui.PredictionButton.setEnabled(True)
 
   def onProcessUpdate(self, caller, event):
-      # Met à jour le timer
+      # Update timer
       elapsed = time.time() - self.startTime
       self.ui.TimerLabel.setText(f"Time : {elapsed:.2f}s")
 
       status = caller.GetStatus()
 
-      # 1) Si le CLI est terminé :
+      # 1) When CLI over:
       if status & caller.Completed:
-          print('Process completed.', flush=True)
           if status & caller.ErrorsMask:
-              # Gestion de l’erreur
+
               errorText = caller.GetErrorText()
               qt.QMessageBox.critical(
                   slicer.util.mainWindow(),
@@ -965,22 +1002,22 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                   f"Une erreur est survenue :\n\n{errorText}"
               )
           else:
-              # Fin normale du process
+              # End process
               self.OnEndProcess()
           return
 
-      # 2) Sinon, on est toujours en cours – calcul de la progression
+      #Display progression
       progress = caller.GetProgress()
       if progress > 1:
           progress /= 100.0
 
-      # Nombre de scans prêts
+      # Number of ready scan 
       done_scans = int(round(progress * self.scan_count))
       self.ui.PredScanLabel.setText(
           f"Scan ready for segmentation : {done_scans} / {self.scan_count}"
       )
 
-      # Nombre de structures segmentées
+      # Number of segmented structures
       done_segs = int(round(progress * self.total_seg_progress))
 
       self.ui.PredSegLabel.setText(
@@ -989,17 +1026,21 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
   def onCancel(self):
-    print('Cancelling process...', flush=True)
-    # print(self.logic.cliNode.GetOutputText())
-    self.logic.cliNode.Cancel()
-
-    # self.ui.CLIProgressBar.setValue(0)
-    # self.progressBar.close()
-
-    self.RunningUI(False)
-
-
-    print("Cancelled", flush=True)
+    """Cancel the process with error handling."""
+    try:
+      logger.info('User requested process cancellation')
+      
+      if self.logic.cliNode is not None:
+        try:
+          logger.info(self.logic.cliNode.GetOutputText())
+          self.logic.cliNode.Cancel()
+          logger.info('Process cancelled successfully')
+        except Exception as e:
+          logger.error(f'Error cancelling process: {e}')
+      
+      self.RunningUI(False)
+    except Exception as e:
+      logger.error(f'Error in onCancel: {e}')
 
   def RunningUI(self, run = False):
 
@@ -1016,57 +1057,68 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     #region == SLICER BASICS ==
 
   def OnEndProcess(self):
+    """Handle process completion with error handling."""
+    try:
+      logger.info('Process ended. Retrieving output text...')
+      
+      try:
+        output_text = self.logic.cliNode.GetOutputText()
+        logger.info(f'Process output: {output_text}')
+      except Exception as e:
+        logger.warning(f'Could not retrieve process output: {e}')
 
+      stopTime = time.time()
+      elapsed_time = stopTime - self.startTime
+      logger.info(f'Processing completed in {elapsed_time:.2f} seconds')
 
-    print('PROCESS DONE.')
-    print('Retrieving output text...', flush=True)
-    # self.progressBar.setValue(100)
-    # self.progressBar.close()
-    print(self.logic.cliNode.GetOutputText())
+      self.RunningUI(False)
 
-    stopTime = time.time()
-    # print(self.startTime)
-    logging.info(f'Processing completed in {stopTime-self.startTime:.2f} seconds')
-    print(f'Processing completed in {stopTime-self.startTime:.2f} seconds', flush=True)
+      # Load and display VTK files
+      try:
+        if self.vtk_output_folder is not None:
+          logger.info(f'Loading VTK files from {self.vtk_output_folder}')
 
-    self.RunningUI(False)
+          files = []
+          
+          for file in os.listdir(self.vtk_output_folder):
+            if file.endswith(".vtk"):
+              files.append(os.path.join(self.vtk_output_folder, file))
 
+          logger.info(f'Found {len(files)} VTK files to load')
+          
+          for models in files:
+            try:
+              if models not in LOADED_VTK_FILES.keys():
+                logger.debug(f'Loading VTK file: {models}')
+                modelNode = slicer.util.loadModel(models)
+                LOADED_VTK_FILES[models] = modelNode
 
-    if self.vtk_output_folder is not None:
-      print(self.vtk_output_folder)
-      files = []
-      # get all .vtk files in self.vtk_output_folder
-      for file in os.listdir(self.vtk_output_folder):
-        if file.endswith(".vtk"):
-          files.append(self.vtk_output_folder + '/' +file)
+                # Edit display properties
+                displayNode = modelNode.GetDisplayNode()
+                displayNode.SetSliceIntersectionVisibility(True)
+                displayNode.SetSliceIntersectionThickness(2)
+                
+                if "Skin" in models or "SKIN" in models:
+                  displayNode.SetOpacity(0.1)
+                  logger.debug(f'Set skin opacity to 0.1 for {models}')
+            except Exception as e:
+              logger.error(f'Error loading VTK file {models}: {e}')
+              continue
 
+          # Adjust opacity for mandible/maxilla when root canal is present
+          if True in ["Root-canal" in name for name in LOADED_VTK_FILES.keys()]:
+            logger.debug('Root canal model detected, adjusting mandible/maxilla opacity')
+            for model, node in LOADED_VTK_FILES.items():
+              if True in [x in model for x in ["Mandible", "Maxilla"]]:
+                displayNode = node.GetDisplayNode()
+                displayNode.SetOpacity(0.2)
+      except Exception as e:
+        logger.error(f'Error loading VTK files: {e}')
 
-      # print(files)
-      # files = [files[0]]
-      print("Loading surface files...")
-      for models in files:
-        if models not in LOADED_VTK_FILES.keys():
-          #open model vtk file
-          modelNode = slicer.util.loadModel(models)
-          LOADED_VTK_FILES[models] = modelNode
-
-          # Edit display properties
-          displayNode = modelNode.GetDisplayNode()
-          displayNode.SetSliceIntersectionVisibility(True)
-          displayNode.SetSliceIntersectionThickness(2)
-          if "Skin" in models or "SKIN" in models:
-            displayNode.SetOpacity(0.1)
-
-
-
-      if True in ["Root-canal" in name for name in LOADED_VTK_FILES.keys()]:
-        for model,node in LOADED_VTK_FILES.items():
-          if True in [x in model for x in ["Mandible","Maxilla"]]:
-            displayNode = node.GetDisplayNode()
-            displayNode.SetOpacity(0.2)
-
-
-    self.RunningUI(False)
+      self.RunningUI(False)
+      logger.info('Process end completed successfully')
+    except Exception as e:
+      logger.error(f'Error in OnEndProcess: {e}')
 
   def _applyDarkModeStylesheet(self, uiWidget) -> None:
     """Apply dark mode stylesheet to labels and collapsible buttons if Slicer is in dark mode."""
@@ -1267,12 +1319,11 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
     Called when the application closes and the module widget is destroyed.
     """
-
     temp_fold = os.path.join("..", "temp")
     try:
         shutil.rmtree(temp_fold)
     except OSError as e:
-        print("Error: %s : %s" % (temp_fold, e.strerror))
+        pass
 
 
     if self.logic.cliNode is not None:
@@ -1389,15 +1440,11 @@ class LMTab:
 
 
       self.seg_tab_widget = qt.QTabWidget()
-      # self.seg_tab_widget.connect('currentChanged(int)',self.Test)
 
       self.seg_tab_widget.minimumSize = qt.QSize(100,200)
       self.seg_tab_widget.maximumSize = qt.QSize(800,400)
       self.seg_tab_widget.setMovable(True)
 
-
-      # print(self.seg_status_dic)
-      # print(lcbd)
       buttons_wid = qt.QWidget()
       buttons_layout = qt.QHBoxLayout(buttons_wid)
       self.select_all_btn = qt.QPushButton("Select All")
@@ -1413,10 +1460,6 @@ class LMTab:
       layout.addWidget(self.seg_tab_widget)
       layout.addWidget(buttons_wid)
       self.seg_status_dic = {}
-
-
-    # def Test(self, index):
-    #   print(index)
 
     def Clear(self):
       self.seg_tab_widget.clear()
@@ -1436,9 +1479,6 @@ class LMTab:
           self.seg_group_dic["All"].append(seg)
           if seg not in self.seg_status_dic.keys():
             self.seg_status_dic[seg] = seg in DEFAULT_SELECT
-
-      # print(self.seg_group_dic)
-
 
       self.check_box_dic = {}
 
@@ -1460,17 +1500,12 @@ class LMTab:
 
       self.seg_tab_widget.currentIndex = 0
 
-      # print(self.check_box_dic)
       self.seg_cb_dic = {}
       for cb,seg in self.check_box_dic.items():
         if seg not in self.seg_cb_dic.keys():
           self.seg_cb_dic[seg] = [cb]
         else:
           self.seg_cb_dic[seg].append(cb)
-
-
-      # for seg in seg_dic["U"]:
-      #   self.UpdateSegSelect(seg,True)
 
       for cb in self.check_box_dic.keys():
         cb.connect("toggled(bool)", self.CheckBox)
@@ -1487,11 +1522,8 @@ class LMTab:
 
     def ToggleSelection(self):
       idx = self.seg_tab_widget.currentIndex
-      # print(idx)
       group = self.seg_tab_widget.tabText(idx)
-      # print(group)
       new_state = not self.seg_status_dic[self.seg_group_dic[group][0]]
-      # print(new_state)
       for seg in self.seg_group_dic[group]:
         self.UpdateSegSelect(seg,new_state)
 
@@ -1566,26 +1598,28 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
 
   def process(self, parameters, showResult=True):
     """
-    Run the processing algorithm.
+    Run the processing algorithm with error handling.
     Can be used without GUI widget.
     """
+    try:
+      logger.info(f'Processing started with parameters:{parameters}')
 
+      try:
+        AMASSSProcess = slicer.modules.amasss_cli
+        logger.debug('AMASSS CLI module loaded successfully')
+      except Exception as e:
+        logger.error(f'Failed to load AMASSS CLI module: {e}')
+        raise
 
+      try:
+        logger.info('Running AMASSS CLI module...')
+        self.cliNode = slicer.cli.run(AMASSSProcess, None, parameters)
+        logger.info('CLI node created and running')
+      except Exception as e:
+        logger.error(f'Error running CLI module: {e}')
+        raise
 
-    logging.info('Processing started')
-
-    print('AMASSS processing started with parameters:', parameters, flush=True)
-
-    print ('parameters : ', parameters)
-
-
-    AMASSSProcess = slicer.modules.amasss_cli
-
-    print('Running AMASSS CLI module...', flush=True)
-    self.cliNode = slicer.cli.run(AMASSSProcess, None, parameters)
-
-    print('CLI node created and running.', flush=True)
-    # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-    # slicer.mrmlScene.RemoveNode(cliNode)
-
-    return AMASSSProcess
+      return AMASSSProcess
+    except Exception as e:
+      logger.error(f'Error in process: {e}')
+      raise

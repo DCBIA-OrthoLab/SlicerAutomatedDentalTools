@@ -10,6 +10,8 @@
 """
 import numpy as np
 import time
+import sys
+import logging
 from glob import iglob
 import os, json
 import SimpleITK as sitk
@@ -17,6 +19,22 @@ import SimpleITK as sitk
 
 import dicom2nifti
 import itk
+
+# --- LOGGING CONFIGURATION ---
+logger = logging.getLogger("AREG_CBCT_utils")
+logger.setLevel(logging.INFO)
+
+logger.propagate = False
+
+if logger.handlers:
+    logger.handlers.clear()
+
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 """
 8888888888 8888888 888      8888888888  .d8888b.
@@ -147,18 +165,72 @@ def GetDictPatients(
     matrix_folder=None,
     mask_folder_t1=None,
 ):
-    """Return a dictionary with patients for both time points"""
-    patients_t1 = GetPatients(
-        folder_t1_path, time_point="T1", segmentationType=segmentationType, mask_folder=mask_folder_t1
-    )
-    patients_t2 = GetPatients(folder_t2_path, time_point="T2", segmentationType=None)
-    patients = MergeDicts(patients_t1, patients_t2)
+    """Return a dictionary with patients for both time points with error handling."""
+    try:
+        # ===== T1 PATIENT DISCOVERY =====
+        try:
+            logger.debug(f"Discovering T1 patients from: {folder_t1_path}")
+            if not os.path.exists(folder_t1_path):
+                logger.error(f"T1 folder not found: {folder_t1_path}")
+                raise FileNotFoundError(f"T1 folder does not exist: {folder_t1_path}")
+            
+            patients_t1 = GetPatients(
+                folder_t1_path, time_point="T1", segmentationType=segmentationType, mask_folder=mask_folder_t1
+            )
+            logger.info(f"Found {len(patients_t1)} T1 patient(s)")
+        except Exception as e:
+            logger.error(f"Error discovering T1 patients: {e}")
+            raise
 
-    if matrix_folder is not None:
-        patient_matrix = GetMatrixPatients(matrix_folder)
-        patients = MergeDicts(patients, patient_matrix)
-    patients = ModifiedDictPatients(patients, todo_str)
-    return patients
+        # ===== T2 PATIENT DISCOVERY =====
+        try:
+            logger.debug(f"Discovering T2 patients from: {folder_t2_path}")
+            if not os.path.exists(folder_t2_path):
+                logger.error(f"T2 folder not found: {folder_t2_path}")
+                raise FileNotFoundError(f"T2 folder does not exist: {folder_t2_path}")
+            
+            patients_t2 = GetPatients(folder_t2_path, time_point="T2", segmentationType=None)
+            logger.info(f"Found {len(patients_t2)} T2 patient(s)")
+        except Exception as e:
+            logger.error(f"Error discovering T2 patients: {e}")
+            raise
+
+        # ===== MERGE T1 AND T2 =====
+        try:
+            logger.debug("Merging T1 and T2 patient dictionaries")
+            patients = MergeDicts(patients_t1, patients_t2)
+            logger.info(f"Merged dictionaries contain {len(patients)} patient(s)")
+        except Exception as e:
+            logger.error(f"Error merging T1/T2 dictionaries: {e}")
+            raise
+
+        # ===== MATRIX FOLDER (OPTIONAL) =====
+        if matrix_folder is not None:
+            try:
+                logger.debug(f"Loading matrix data from: {matrix_folder}")
+                if not os.path.exists(matrix_folder):
+                    logger.warning(f"Matrix folder not found: {matrix_folder}, skipping")
+                else:
+                    patient_matrix = GetMatrixPatients(matrix_folder)
+                    patients = MergeDicts(patients, patient_matrix)
+                    logger.info(f"Matrix data merged, total {len(patients)} patient(s)")
+            except Exception as e:
+                logger.warning(f"Error loading matrix data: {e}, continuing without matrix")
+
+        # ===== APPLY FILTER (OPTIONAL) =====
+        try:
+            if todo_str != "":
+                logger.debug(f"Applying filter: {todo_str}")
+                patients = ModifiedDictPatients(patients, todo_str)
+                logger.info(f"After filtering: {len(patients)} patient(s)")
+        except Exception as e:
+            logger.warning(f"Error applying patient filter: {e}, continuing with all patients")
+
+        logger.info(f"Patient dictionary ready with {len(patients)} patient(s)")
+        return patients
+    except Exception as e:
+        logger.error(f"Fatal error in GetDictPatients: {e}")
+        raise
 
 
 def MergeDicts(dict1, dict2):
@@ -505,36 +577,101 @@ def VoxelBasedRegistration(
     approx=False,
     SegLabel=None,
 ):
-    """Perform voxel-based registration using Elastix"""
+    """Perform voxel-based registration using Elastix with comprehensive error handling."""
+    try:
+        # ===== INPUT VALIDATION =====
+        try:
+            logger.debug("Validating registration input files")
+            if not os.path.exists(fixed_image_path):
+                logger.error(f"Fixed image not found: {fixed_image_path}")
+                raise FileNotFoundError(f"Fixed image does not exist: {fixed_image_path}")
+            if not os.path.exists(moving_image_path):
+                logger.error(f"Moving image not found: {moving_image_path}")
+                raise FileNotFoundError(f"Moving image does not exist: {moving_image_path}")
+            if not os.path.exists(fixed_seg_path):
+                logger.error(f"Fixed segmentation not found: {fixed_seg_path}")
+                raise FileNotFoundError(f"Fixed segmentation does not exist: {fixed_seg_path}")
+            logger.debug("All input files validated")
+        except Exception as e:
+            logger.error(f"Error validating input files: {e}")
+            raise
 
-    # Load the moving image
-    moving_image = itk.imread(moving_image_path, itk.F)
+        # ===== LOAD MOVING IMAGE =====
+        try:
+            logger.debug(f"Loading moving image: {moving_image_path}")
+            moving_image = itk.imread(moving_image_path, itk.F)
+            logger.debug("Moving image loaded successfully")
+        except Exception as e:
+            logger.error(f"Error loading moving image: {e}")
+            raise
 
-    # Apply segmentation mask to the fixed image
-    masked_image_path = MaskedImage(
-        fixed_image_path, fixed_seg_path, temp_folder, SegLabel=SegLabel
-    )
-    fixed_image_masked = itk.imread(masked_image_path, itk.F)
+        # ===== CREATE MASKED FIXED IMAGE =====
+        try:
+            logger.debug("Creating masked fixed image")
+            masked_image_path = MaskedImage(
+                fixed_image_path, fixed_seg_path, temp_folder, SegLabel=SegLabel
+            )
+            logger.debug(f"Masked image created: {masked_image_path}")
+        except Exception as e:
+            logger.error(f"Error creating masked image: {e}")
+            raise
 
-    # Perform registration
-    Transforms = []
-    TransformObj_Fine = ElastixReg(
-        fixed_image_masked, moving_image, initial_transform=None
-    )
+        # ===== LOAD MASKED FIXED IMAGE =====
+        try:
+            logger.debug("Loading masked fixed image")
+            fixed_image_masked = itk.imread(masked_image_path, itk.F)
+            logger.debug("Masked fixed image loaded successfully")
+        except Exception as e:
+            logger.error(f"Error loading masked fixed image: {e}")
+            raise
 
-    # Extract transformation matrix and store it
-    transforms_Fine = MatrixRetrieval(TransformObj_Fine)
-    Transforms.append(transforms_Fine)
+        # ===== PERFORM REGISTRATION =====
+        try:
+            logger.debug("Starting Elastix registration")
+            TransformObj_Fine = ElastixReg(
+                fixed_image_masked, moving_image, initial_transform=None
+            )
+            logger.info("Elastix registration completed")
+        except Exception as e:
+            logger.error(f"Error during Elastix registration: {e}")
+            raise
 
-    # Combine all transformations into a final matrix
-    transform = ComputeFinalMatrix(Transforms)
+        # ===== EXTRACT TRANSFORMATION =====
+        try:
+            logger.debug("Extracting transformation matrix")
+            transforms_Fine = MatrixRetrieval(TransformObj_Fine)
+            Transforms = [transforms_Fine]
+            logger.debug("Transformation matrix extracted")
+        except Exception as e:
+            logger.error(f"Error extracting transformation matrix: {e}")
+            raise
 
-    # Resample the moving image using the final transform
-    resample_t2 = sitk.Cast(
-        ResampleImage(sitk.ReadImage(moving_image_path), transform), sitk.sitkInt16
-    )
+        # ===== COMPUTE FINAL MATRIX =====
+        try:
+            logger.debug("Computing final transformation matrix")
+            transform = ComputeFinalMatrix(Transforms)
+            logger.info("Final transformation matrix computed")
+        except Exception as e:
+            logger.error(f"Error computing final transformation matrix: {e}")
+            raise
 
-    return transform, resample_t2
+        # ===== RESAMPLE MOVING IMAGE =====
+        try:
+            logger.debug("Resampling moving image with final transform")
+            resample_t2 = sitk.Cast(
+                ResampleImage(sitk.ReadImage(moving_image_path), transform), sitk.sitkInt16
+            )
+            logger.info("Moving image resampled successfully")
+        except Exception as e:
+            logger.error(f"Error resampling moving image: {e}")
+            raise
+
+        logger.info("Voxel-based registration completed successfully")
+        return transform, resample_t2
+    
+    except Exception as e:
+        logger.error(f"Fatal error in VoxelBasedRegistration: {e}")
+        raise
 
 """
 888     888 88888888888 8888888 888       .d8888b.
@@ -555,41 +692,113 @@ def translate(shortname):
 
 
 def convertdicom2nifti(input_folder, output_folder=None):
-    """Convert a folder of dicom files to nifti files using SimpleITK"""
+    """Convert a folder of dicom files to nifti files using SimpleITK with error handling."""
+    try:
+        # ===== INPUT VALIDATION =====
+        try:
+            if not os.path.exists(input_folder):
+                logger.error(f"Input folder not found: {input_folder}")
+                raise FileNotFoundError(f"Input folder does not exist: {input_folder}")
+            logger.debug(f"Input folder validated: {input_folder}")
+        except Exception as e:
+            logger.error(f"Error validating input folder: {e}")
+            raise
 
-    patients_folders = [
-        folder
-        for folder in os.listdir(input_folder)
-        if os.path.isdir(os.path.join(input_folder, folder)) and folder != "NIFTI"
-    ]
+        # ===== OUTPUT FOLDER SETUP =====
+        try:
+            if output_folder is None:
+                output_folder = os.path.join(input_folder, "NIFTI")
+            
+            if not os.path.exists(output_folder):
+                os.makedirs(output_folder)
+                logger.debug(f"Output folder created: {output_folder}")
+        except Exception as e:
+            logger.error(f"Error creating output folder: {e}")
+            raise
 
-    if output_folder is None:
-        output_folder = os.path.join(input_folder, "NIFTI")
+        # ===== PATIENT FOLDER DISCOVERY =====
+        try:
+            patients_folders = [
+                folder
+                for folder in os.listdir(input_folder)
+                if os.path.isdir(os.path.join(input_folder, folder)) and folder != "NIFTI"
+            ]
+            logger.info(f"Found {len(patients_folders)} patient folder(s)")
+        except Exception as e:
+            logger.error(f"Error discovering patient folders: {e}")
+            raise
 
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+        # ===== CONVERSION LOOP =====
+        processed_patients = 0
+        failed_patients = []
 
-    for patient in patients_folders:
-        if not os.path.exists(os.path.join(output_folder, patient + ".nii.gz")):
-            print("Converting patient: {}...".format(patient))
-            current_directory = os.path.join(input_folder, patient)
+        for patient in patients_folders:
+            output_path = os.path.join(output_folder, patient + ".nii.gz")
+            
+            # Skip if already converted
+            if os.path.exists(output_path):
+                logger.debug(f"Patient {patient} already converted, skipping")
+                continue
+            
+            patient_context = f"patient: {patient}"
+            logger.info(f"Converting DICOM for {patient_context}")
             try:
-                reader = sitk.ImageSeriesReader()
-                sitk.ProcessObject_SetGlobalWarningDisplay(False)
-                dicom_names = reader.GetGDCMSeriesFileNames(current_directory)
-                reader.SetFileNames(dicom_names)
-                image = reader.Execute()
-                sitk.ProcessObject_SetGlobalWarningDisplay(True)
-                sitk.WriteImage(
-                    image,
-                    os.path.join(
-                        output_folder, os.path.basename(current_directory) + ".nii.gz"
-                    ),
-                )
-            except RuntimeError:
-                dicom2nifti.convert_directory(current_directory, output_folder)
-                nifti_file = search(output_folder, "nii.gz")["nii.gz"][0]
-                os.rename(nifti_file, os.path.join(output_folder, patient + ".nii.gz"))
+                current_directory = os.path.join(input_folder, patient)
+                
+                # ===== PRIMARY METHOD: SimpleITK Reader =====
+                try:
+                    logger.debug(f"Attempting SimpleITK DICOM reading")
+                    reader = sitk.ImageSeriesReader()
+                    sitk.ProcessObject_SetGlobalWarningDisplay(False)
+                    dicom_names = reader.GetGDCMSeriesFileNames(current_directory)
+                    
+                    if not dicom_names:
+                        logger.warning(f"No DICOM files found in {current_directory}, trying alternative method")
+                        raise RuntimeError("No DICOM files found")
+                    
+                    reader.SetFileNames(dicom_names)
+                    image = reader.Execute()
+                    sitk.ProcessObject_SetGlobalWarningDisplay(True)
+                    logger.debug(f"SimpleITK reading successful")
+                    
+                    sitk.WriteImage(image, output_path)
+                    logger.info(f"Successfully converted {patient_context} using SimpleITK")
+                except Exception as e:
+                    logger.warning(f"SimpleITK conversion failed: {e}, trying dicom2nifti")
+                    sitk.ProcessObject_SetGlobalWarningDisplay(True)
+                    
+                    # ===== FALLBACK METHOD: dicom2nifti =====
+                    try:
+                        logger.debug(f"Attempting dicom2nifti conversion")
+                        dicom2nifti.convert_directory(current_directory, output_folder)
+                        nifti_file = search(output_folder, ["nii.gz"])["nii.gz"][0]
+                        os.rename(nifti_file, output_path)
+                        logger.info(f"Successfully converted {patient_context} using dicom2nifti")
+                    except Exception as e2:
+                        logger.error(f"Both conversion methods failed for {patient_context}: SimpleITK={str(e)}, dicom2nifti={str(e2)}")
+                        raise
+                
+                processed_patients += 1
+                logger.debug(f"Conversion completed for {patient_context}")
+            
+            except Exception as e:
+                logger.error(f"Failed to convert {patient_context}: {e}")
+                failed_patients.append((patient, str(e)))
+                continue
+
+        # ===== FINAL REPORT =====
+        try:
+            logger.info(f"DICOM conversion completed: {processed_patients}/{len(patients_folders)} patients converted successfully")
+            if failed_patients:
+                logger.warning(f"Failed to convert {len(failed_patients)} patient(s):")
+                for patient, error in failed_patients:
+                    logger.warning(f"  {patient}: {error}")
+        except Exception as e:
+            logger.error(f"Error generating final report: {e}")
+
+    except Exception as e:
+        logger.error(f"Fatal error in convertdicom2nifti: {e}")
+        raise
 
 
 def MatrixRetrieval(TransformParameterMapObject):

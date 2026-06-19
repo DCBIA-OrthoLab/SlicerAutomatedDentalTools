@@ -45,6 +45,7 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [DOCShapeAXI](#doc-shapeaxi) | Automatic classification of 3D Shape. DOC-ShapeAXI is an acronym for Dental Oral and Craniofacial Shape Analysis eXplainability and Interpretability. |
 | [BatchDentalSegmentator](#BatchDentalSeg) | DentalSegmentator in batch for mixed or permanent dentition |
 | [CLI-C](#CLI-C-module) |Classification and Localization of Impacted Canines |
+| [VFACE](#vface-module) | Visual Facial Asymmetry Classification Engine. Automated classification of facial asymmetry. |
 
 These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
 
@@ -83,6 +84,7 @@ Additionally, the following modules are implemented as python scripted command-l
 | [DOCShapeAXI](DOCShapeAXI_CLI) | Perform automatic classification of 3D Shape. |
 | [BatchDentalSegmentator](BATCHDENTALSEG) | DentalSegmentator in batch for mixed or permanent dentition |
 | [CLI-C](CLIC) |Classification and Localization of Impacted Canines |
+| [VFACE_CLI](VFACE_CLI) | Classify automatically facial asymmetry based on linear and angluar measurements |
 
 
 ## Requirements
@@ -833,6 +835,42 @@ The module checks and automatically installs these dependencies upon first usage
 
 ![image](https://github.com/user-attachments/assets/eb032449-9653-43d6-a83b-b9019e3fe39a)
 
+## VFACE Module
+
+**VFACE** (Visual Facial Asymmetry Classification Engine) is a 3D Slicer extension designed for automated classification of facial asymmetry. It provides advanced measurement extraction and machine learning-based classification of facial structures including the mandible and maxilla.
+
+---
+
+## Key Features
+
+- **Automated Asymmetry Classification**: Automatically classifies facial asymmetry patterns based on facial structure analysis.
+- **Facial Measurement Extraction**: Extracts key measurements from facial structures for quantitative analysis.
+- **Machine Learning Based**: Uses trained deep learning models for accurate asymmetry classification.
+- **User-Friendly Interface**: Simple GUI integrated seamlessly within 3D Slicer for easy access and use.
+- **Batch Processing**: Supports analysis of single files or batch processing of multiple datasets.
+
+---
+
+## Installation
+
+### Prerequisites
+
+- Required Python packages will be automatically installed upon first usage.
+
+### Setup
+
+**Load the Module in 3D Slicer**
+
+- Open 3D Slicer.
+- Navigate to `Module → Slicer Automated Dental Tools → VFACE`.
+
+---
+
+## Usage
+
+The module provides an intuitive interface for facial asymmetry classification. Simply load your facial data, select the appropriate models and parameters, and run the analysis to obtain automated classification results and measurements.
+
+For detailed usage instructions and tutorials, please refer to the module's built-in help documentation.
 
 
 

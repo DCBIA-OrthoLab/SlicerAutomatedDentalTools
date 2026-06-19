@@ -1,5 +1,18 @@
 import numpy as np
+import logging
+import sys
 
+# ===== Logging Configuration =====
+logger = logging.getLogger("VFACE_Point")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 class Point:
     def __init__(self, name: str, time: str):
@@ -22,7 +35,6 @@ class Point:
             """value = {"T1":{"A":[0,3,1],"B":[0,3,5],...},
                   "T2":{"A":[8,3,5],"B":[9,2,5],...}}
       """
-            # print("Point change : Position : ",value[self.time][self.name],self.name)
             position = value[self.time][self.name.upper()]
 
             good = False

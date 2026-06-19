@@ -3,6 +3,23 @@ from ALI_Method.Progress import (
     DisplayALICBCT,
 )
 import os, sys
+import logging
+
+# --- LOGGING CONFIGURATION ---
+logger = logging.getLogger("ALI_CBCT_Process")
+logger.setLevel(logging.INFO)
+
+logger.propagate = False
+
+if logger.handlers:
+    logger.handlers.clear()
+
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 import SimpleITK as sitk
 import numpy as np
@@ -197,9 +214,9 @@ class Auto_CBCT(Method):
             
         }
         
-        print('-' * 70)
-        print("parameter ali : ", parameter_ali)
-        print('-' * 70)
+        logger.debug("=" * 70)
+        logger.debug(f"Processing parameters: {parameter_ali}")
+        logger.debug("=" * 70)
         
         ALIProcess = slicer.modules.ali_cbct
         

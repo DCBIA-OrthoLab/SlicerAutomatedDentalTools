@@ -3,8 +3,23 @@
 import argparse
 import os
 import time
-import sys
 import glob
+
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_LR_Crop")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 fpath = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(fpath)
 
@@ -19,7 +34,7 @@ def main(input_folder,output_folder, is_cbct=False):
     total_patients = len(files)
     patient_count = 0
 
-    print(f"[INFO] Found {total_patients} file(s) in {input_folder}.")
+    logger.info(f"[INFO] Found {total_patients} file(s) in {input_folder}.")
 
     for img_path in files:
         try:
@@ -35,7 +50,7 @@ def main(input_folder,output_folder, is_cbct=False):
             time.sleep(0.2)
 
         except Exception as e:
-            print(f"[ERROR] Failed to process {img_path}: {e}")
+            logger.error(f"[ERROR] Failed to process {img_path}: {e}")
 
 
 if __name__=="__main__":

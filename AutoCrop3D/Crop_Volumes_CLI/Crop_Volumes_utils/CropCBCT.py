@@ -1,7 +1,20 @@
 import SimpleITK as sitk
+import logging
 from Crop_Volumes_utils.FilesType import Search
 import numpy as np
-import os,json
+import os,json,sys
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("Autocrop3D_CropCBCT")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 #import multiprocessing as mp
 
 def Crop(ScanList, InputPath, ROI_Path, OutputPath, suffix_namefile ):
@@ -23,7 +36,8 @@ def Crop(ScanList, InputPath, ROI_Path, OutputPath, suffix_namefile ):
 
             img = sitk.ReadImage(patient_path)
 
-            print("working on patient: ",patient)
+            str_patient = str(patient)
+            logger.info(f"working on patient: {str_patient}")
             ROI = json.load(open(ROI_Path))['markups'][0]
             ROI_Center = np.array(ROI['center'])
             ROI_Size = np.array(ROI['size'])
@@ -42,7 +56,7 @@ def Crop(ScanList, InputPath, ROI_Path, OutputPath, suffix_namefile ):
             try:
                 sitk.WriteImage(crop_image,ScanOutPath)
             except:
-                print("Error for patient: ",patient)
+                logger.error("Error for patient: "+str(patient))
 
 
 

@@ -10,6 +10,20 @@ import shutil
 import platform
 import csv
 
+import logging
+import sys
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("AutoMatrix_applymatrix")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 class Automatrix_Method(Method):
     def __init__(self, widget):
@@ -65,9 +79,7 @@ class Automatrix_Method(Method):
             "is_seg": kwargs["is_seg"],
         }
         
-        print('-' * 70)
-        print("parameter automatrix : ", parameter_automatrix)
-        print('-' * 70)
+        logger.info(f"Parameter automatrix :{parameter_automatrix}")
         
         AutomatrixProcess = slicer.modules.automatrix_cli
 

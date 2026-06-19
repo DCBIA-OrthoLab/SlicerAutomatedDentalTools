@@ -41,6 +41,20 @@ import subprocess
 from functools import partial
 from pathlib import Path
 
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("FlexReg")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 def _get_installed_version(lib_name):
     try:
         return importlib_metadata.version(lib_name)
@@ -798,7 +812,7 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         
         parameters["lower_arch"] = self.lower_arch
 
-        print("Running FlexReg_CLI with parameters:", parameters)
+        logger.info(f"Running FlexReg_CLI with parameters: {parameters}")
 
         flybyProcess = slicer.modules.flexreg_cli
         self.cliNode = slicer.cli.run(flybyProcess,None, parameters)  
@@ -825,7 +839,7 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.12",["shapeaxi==1.1.1"],)) #run in parallel to not block slicer
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.12",["shapeaxi==1.0.10","ocnn==2.2.1"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
@@ -939,7 +953,7 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
 
             user = self.conda.getUser()
             command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
-            print("command_to_execute in condaRunCommand : ",command_to_execute)
+            logger.info(f"command_to_execute in condaRunCommand : {command_to_execute}")
 
             self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
                                     text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
@@ -951,7 +965,7 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
             for com in command :
                 command_execute = command_execute+ " "+com
 
-            print("command_to_execute in conda run : ",command_execute)
+            logger.info(f"command_to_execute in conda run : {command_execute}")
             self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
     
         self.stdout, self.stderr = self.subpro.communicate()
@@ -1438,8 +1452,8 @@ class WidgetParameter:
         
 
     def handleStackedWidgetChange(self, index):
-        # Lorsque le stackedWidget change de page, cette méthode est appelée.
-        # Vérifiez si la nouvelle page est la page 0 (index 0) et appelez hideLandmark si c'est le cas.
+        # When stackedWidget change of page, this is called.
+        # Check if the new page is page 0 (index 0) and called hideLandmark if its the case.
         if index == 0:
             self.hideLandmark()
         else :
@@ -1666,14 +1680,13 @@ class WidgetParameter:
         if not FlexRegBootManager.booted:
             check_env = self.onCheckRequirements()
             is_installed = False
-            print(check_env)
             if check_env:
                 if platform.system() == "Windows":
-                    list_libs_windows = [('numpy',"<2.0.0",None),('itk',None,None),('torch','2.6.0',None),('monai','==0.7.0',None)] #(lib_name, version, url)
+                    list_libs_windows = [('numpy',"<2.0.0",None),('itk',None,None),('torch','==2.2.2',None),('monai','==1.3.2',None)] #(lib_name, version, url)
                     is_installed = install_function(self,list_libs_windows)
                     
                 else:
-                    list_libs_linux = [('numpy',"<2.0.0",None),('itk',None,None),('torch','2.6.0',None),('monai','==0.7.0',None)] #(lib_name, version, url)
+                    list_libs_linux = [('numpy',"<2.0.0",None),('itk',None,None),('torch','==2.2.2',None),('monai','==1.3.2',None)] #(lib_name, version, url)
                     is_installed = install_function(self,list_libs_linux)
                     
             if not is_installed:
@@ -1692,9 +1705,9 @@ class WidgetParameter:
                 # Get data model
                 displayNode = self.surf.GetDisplayNode()
                 
-                # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
+                # Retrieve all availables vtkMRMLViewNodes in the scene
                 viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-                viewNodes.UnRegister(None) # Désenregistrer pour éviter les fuites de mémoire
+                viewNodes.UnRegister(None) # Unregister to avoid memory leakage
                 
                 customLayoutId=501
                 layoutManager = slicer.app.layoutManager()
@@ -1841,7 +1854,7 @@ class WidgetParameter:
             slicer.util.downloadFile(url, modelFilePath)
 
         # Now you can use the downloaded model file path as needed
-        print("Model file downloaded to:", modelFilePath)
+        logger.info(f"Model file downloaded to: {modelFilePath}")
         return modelFilePath
     
     def checkSegmentation(self)->bool:
@@ -2215,7 +2228,7 @@ class WidgetParameter:
                 self.combobox_patch.addItem(number_to_add)
                 self.add_patch.setChecked(False)
                 index = self.combobox_patch.findText(number_to_add)  
-                if index >= 0:  # -1 signifie que la valeur n'a pas été trouvée
+                if index >= 0:  # -1 signify that the value hasn't been found
                     self.combobox_patch.setCurrentIndex(index)
             if not self.combobox_patch.isVisible():
                 self.displayComboBox(self.surf)
@@ -2247,7 +2260,7 @@ class WidgetParameter:
         Display the landmarks
         '''
         viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-        viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
+        viewNodes.UnRegister(None)  # Unregister to avoid memory leakage
 
         if self.curve!=None:
             displayNode = self.curve.GetDisplayNode()
@@ -2271,13 +2284,13 @@ class WidgetParameter:
         Hide the landmarks
         '''
         viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-        viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
+        viewNodes.UnRegister(None)  # Unregister to avoid memory leakage
 
         if self.curve!=None :
             displayNode = self.curve.GetDisplayNode()
             if displayNode is not None:
-                displayNode.SetVisibility2D(True)  # Rétablir la visibilité 2D
-                displayNode.SetVisibility3D(False)  # Masquer la visibilité 3D
+                displayNode.SetVisibility2D(True)  #Restore 2D view
+                displayNode.SetVisibility3D(False)  # Hide 3D view
 
                 view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
                 displayNode.SetViewNodeIDs(view_ids_to_display)
@@ -2285,8 +2298,8 @@ class WidgetParameter:
         if self.middle_point!=None :
             displayNode = self.middle_point.GetDisplayNode()
             if displayNode is not None:
-                displayNode.SetVisibility2D(True)  # Rétablir la visibilité 2D
-                displayNode.SetVisibility3D(False)  # Masquer la visibilité 3D
+                displayNode.SetVisibility2D(True)  #Restore 2D view
+                displayNode.SetVisibility3D(False)  # Hide 3D view
 
                 view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
                 displayNode.SetViewNodeIDs(view_ids_to_display)
@@ -2361,7 +2374,7 @@ class WidgetParameter:
         self.middle_point.AddControlPoint(center,'F1')
 
         viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-        viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
+        viewNodes.UnRegister(None)  # Unregister to avoid memory leakage
 
         displayNode = self.middle_point.GetDisplayNode()
         if displayNode is not None:
@@ -2482,8 +2495,8 @@ class WidgetParameter:
                 number_to_add = self.addItemsCombobox()
                 self.combobox_patch.addItem(number_to_add)
                 self.add_patch.setChecked(False)
-                index = self.combobox_patch.findText(number_to_add)  # Remplacez "VotreValeur" par la valeur que vous souhaitez sélectionner
-                if index >= 0:  # -1 signifie que la valeur n'a pas été trouvée
+                index = self.combobox_patch.findText(number_to_add)
+                if index >= 0:
                     self.combobox_patch.setCurrentIndex(index)
             if not self.combobox_patch.isVisible():
                 self.displayComboBox(self.surf)
@@ -2563,7 +2576,7 @@ class WidgetParameter:
                 if final_array is None:
                     final_array = current_tensor
                 else:
-                    # Utiliser une opération OR pour combiner les patches
+                    # Use ane operation OR to merge the patches
                     final_array = torch.logical_or(final_array, current_tensor).to(torch.float32)
                 
                 index += 1

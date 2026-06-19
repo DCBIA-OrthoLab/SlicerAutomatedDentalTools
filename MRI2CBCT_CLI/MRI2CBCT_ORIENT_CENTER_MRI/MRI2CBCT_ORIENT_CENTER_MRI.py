@@ -6,6 +6,20 @@ import time
 import SimpleITK as sitk
 import argparse
 
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_Orient")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 def extract_id(filename):
     """
     Extracts and returns the ID from a filename, removing common NIfTI extensions.
@@ -58,7 +72,7 @@ def modify_image_properties(nifti_file_path, new_direction, output_file_path=Non
 
     if output_file_path:
         sitk.WriteImage(image, output_file_path)
-        print(f"Modified image saved to {output_file_path}")
+        logger.info(f"Modified image saved to {output_file_path}")
 
     return image
 

@@ -5,6 +5,21 @@ import glob
 import sys, os, time
 import SimpleITK as sitk
 
+import logging
+import sys
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("AutoMatrix_CLI")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 from pathlib import Path
 
 fpath = os.path.join(os.path.dirname(__file__), "..")
@@ -103,7 +118,7 @@ def GetPatients(file_path:str,matrix_path:str):
                 fname, extension2 = os.path.splitext(os.path.basename(fname))
                 extension = extension2+extension
             except :
-                print("not a .nii.gz")
+                logger.warning("The file is not a .nii.gz")
 
             if extension ==".vtk" or extension ==".vtp" or extension ==".stl" or extension ==".off" or extension ==".obj" or extension==".nii" or extension==".nii.gz" or extension==".nrrd" or extension==".mrk.json":
                 files = [file_path]
@@ -160,7 +175,7 @@ def apply_transform_to_landmarks(scan_path, transform, output_path):
     try:
         tfm_inverted = transform.GetInverse()
     except RuntimeError:
-        print(f"WARNING: Could not invert transform for {scan_path}. Skipping.")
+        logger.warning(f"WARNING: Could not invert transform for {scan_path}. Skipping.")
         return
 
     for point in lm_data['markups'][0]['controlPoints']:
@@ -180,7 +195,7 @@ def apply_transform_to_image(image, transform, reference, output_path, scan_path
         elif os.path.exists(ref_guess_nii):
             reference = sitk.ReadImage(ref_guess_nii)
         else:
-            print(f"WARNING: CompositeTransform but no reference found at {ref_guess_gz} or {ref_guess_nii}. Using image as fallback.")
+            logger.warning(f"WARNING: CompositeTransform but no reference found at {ref_guess_gz} or {ref_guess_nii}. Using image as fallback.")
             reference = image
 
     resampled_image = ResampleImage(image, transform, reference, is_seg)
@@ -219,10 +234,10 @@ def main(args):
         try:
             reference_image = sitk.ReadImage(args.reference_file)
         except Exception as e:
-            print(f"WARNING: Could not read reference image: {e}")
+            logger.warning(f"WARNING: Could not read reference image: {e}")
             reference_image = None
     else:
-        print(f"INFO: No valid reference image provided. Will use each scan's geometry.")
+        logger.info(f"INFO: No valid reference image provided. Will use each scan's geometry.")
 
     for key, values in patients.items():
         for scan in values['scan']:
@@ -253,11 +268,11 @@ def main(args):
                             matrix_candidates = [matrix_path]
                             matched = True
                         else:
-                            print(f"WARNING: Matrix not found for {scan} at {matrix_path}")
+                            logger.warning(f"WARNING: Matrix not found for {scan} at {matrix_path}")
                         break
                     
                 if not matched:
-                    print(f"WARNING: No suffix match for {scan}")
+                    logger.warning(f"WARNING: No suffix match for {scan}")
                     continue
             else:
                 matrix_candidates = values['matrix']
@@ -266,7 +281,7 @@ def main(args):
                 try:
                     tfm = sitk.ReadTransform(matrix)
                 except Exception as e:
-                    print(f"ERROR reading transform {matrix}: {e}")
+                    logger.error(f"ERROR reading transform {matrix}: {e}")
                     continue
 
                 matrix_suffix = f"_{Path(matrix).stem}" if args.matrix_name == "True" else ""
@@ -289,7 +304,7 @@ def main(args):
                     out_file = outpath.split(extension_scan)[0] + out_suffix + extension_scan
                     apply_transform_to_image(image, tfm, local_reference, out_file, matrix, is_seg=is_seg)
                 except Exception as e:
-                    print(f"ERROR processing {scan} with matrix {matrix}: {e}")
+                    logger.error(f"ERROR processing {scan} with matrix {matrix}: {e}")
                     continue
                             
             print(f"""<filter-progress>{0}</filter-progress>""")

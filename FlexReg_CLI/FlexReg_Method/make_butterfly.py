@@ -7,7 +7,20 @@ from FlexReg_Method.util import vtkMeanTeeth, ToothNoExist
 from FlexReg_Method.propagation import Dilation
 
 
+import sys
+import logging
 
+# ===== Logging Configuration =====
+logger = logging.getLogger("FlexReg_make_butterfly")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 
 class Segment2D :
@@ -69,7 +82,7 @@ def butterflyPatch(surf,
         centroid = centroidf(surf_tmp)
 
     except ToothNoExist as error:
-        print(f' Error {error}')
+        logger.error(f' Error {error}')
         return
     V = torch.tensor(vtk_to_numpy(surf_tmp.GetPoints().GetData())).to(torch.float32)
     F = torch.tensor(vtk_to_numpy(surf_tmp.GetPolys().GetData()).reshape(-1, 4)[:,1:]).to(torch.int64)
@@ -159,7 +172,7 @@ def butterflyPatch(surf,
 
     bezier2 = torch.tensor(sym,dtype=torch.float32)
     dist = torch.cdist(bezier2,V[:,:2])
-    print(f'bezier2.shape {bezier2.shape}, V[:,;2].shape {V[:,:2].shape}')
+    logger.debug(f'bezier2.shape {bezier2.shape}, V[:,;2].shape {V[:,:2].shape}')
     arg_bezier2 = torch.argwhere(dist < radius)[:,1]
 
 

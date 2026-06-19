@@ -16,11 +16,26 @@ from pathlib import Path
 import pandas as pd
 import vtk
 import traceback
+
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("VFACE_createlistprocess")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 try:
     import psutil
 except ImportError:
     psutil = None
-    print("Warning: psutil not available - memory monitoring disabled")
+    logger.warning("Warning: psutil not available - memory monitoring disabled")
 import gc
 
 def check_memory_usage(threshold_percent=80):
@@ -32,33 +47,33 @@ def check_memory_usage(threshold_percent=80):
         usage_percent = memory.percent
         
         if usage_percent > threshold_percent:
-            print(f"Warning: High memory usage detected: {usage_percent:.1f}%")
+            logger.warning(f"Warning: High memory usage detected: {usage_percent:.1f}%")
             return True
         
         return False
     except Exception as e:
-        print(f"Error checking memory: {e}")
+        logger.error(f"Error checking memory: {e}")
         return False
 
 def force_memory_cleanup():
-    print("Forcing memory cleanup...")
+    logger.info("Forcing memory cleanup...")
     
     collected_total = 0
     for i in range(3):
         collected = gc.collect()
         collected_total += collected
         if collected > 0:
-            print(f"Garbage collection round {i+1}: freed {collected} objects")
+            logger.debug(f"Garbage collection round {i+1}: freed {collected} objects")
     
     if collected_total > 0:
-        print(f"Total objects freed: {collected_total}")
+        logger.debug(f"Total objects freed: {collected_total}")
     
     if 'slicer' in globals():
         slicer.app.processEvents()
     
     if psutil:
         memory = psutil.virtual_memory()
-        print(f"Memory usage after cleanup: {memory.percent:.1f}% ({memory.used / 1024**3:.1f}GB used / {memory.total / 1024**3:.1f}GB total)")
+        logger.debug(f"Memory usage after cleanup: {memory.percent:.1f}% ({memory.used / 1024**3:.1f}GB used / {memory.total / 1024**3:.1f}GB total)")
 
 def get_memory_info():
     if not psutil:
@@ -95,7 +110,7 @@ class LocalAQ3DCLogic(AQ3DCLogic):
                 import qt
                 measure.keep_sign = qt.QCheckBox()
                 measure.keep_sign.setChecked(True)
-                print(f"Initialized keep_sign for {measure.__class__.__name__} from {measure.__class__.__module__}")
+                logger.debug(f"Initialized keep_sign for {measure.__class__.__name__} from {measure.__class__.__module__}")
         
         return super().computeMeasurement(list_measure, dict_patient)
 
@@ -120,9 +135,9 @@ def CreateListProcess(**kwargs):
         cb_measurements_path, mand_measurements_path, max_measurements_path,feature_path = SplitMeasurements(kwargs["measurements_folder"],kwargs["mode2"])
         
         if not cb_measurements_path or not max_measurements_path or not mand_measurements_path:
-            print("There is an issue, it miss measurements lists in the list of measurements folder")
+            logger.warning("There is an issue, it miss measurements lists in the list of measurements folder")
         elif not feature_path and kwargs["mode2"] != "Longitudinal studies":
-                print("There is an issue, it miss feature list in the ML folder")
+                logger.warning("There is an issue, it miss feature list in the ML folder")
         
         list_landmark = []
         list_landmark += create_list_landmark(mand_measurements_path)
@@ -169,9 +184,9 @@ def CreateListProcess(**kwargs):
                 destination_path = os.path.join(orientation_folder_path, file_info['destination_folder'])
                 os.makedirs(destination_path, exist_ok=True)
                 shutil.copy2(file_info['path'], os.path.join(destination_path, file_info['path'].split("/")[-1]))
-                print(f"Copied {file_info['type']} file: {file_info['path'].split('/')[-1]} to {file_info['destination_folder']}")
+                logger.info(f"Copied {file_info['type']} file: {file_info['path'].split('/')[-1]} to {file_info['destination_folder']}")
         else:
-            print("Issue, it seems to miss some oriented cbct T1 folder")
+            logger.error("Issue, it seems to miss some oriented cbct T1 folder")
             return
 
     else:
@@ -615,9 +630,9 @@ def CreateListProcess(**kwargs):
                 destination_path = os.path.join(registeredscan_folder_path, file_info['destination_folder'])
                 os.makedirs(destination_path, exist_ok=True)
                 shutil.copy2(file_info['path'], os.path.join(destination_path, file_info['path'].split("/")[-1]))
-                print(f"Copied {file_info['type']} {file_info['file_type']} file: {file_info['path'].split('/')[-1]} to {file_info['destination_folder']}")
+                logger.info(f"Copied {file_info['type']} {file_info['file_type']} file: {file_info['path'].split('/')[-1]} to {file_info['destination_folder']}")
         else:
-            print("Issue, it seems to miss some cbct or transform files in the T2 folder")
+            logger.error("Issue, it seems to miss some cbct or transform files in the T2 folder")
             return
         
     if kwargs["bool_visualization"]:
@@ -1231,13 +1246,13 @@ def run_bds(input_path, output_path, model_name="DentalSegmentator", device="cud
         sys.path.insert(0, parent_dir)
     
     try:
-        from segmentation_logic import run_dental_segmentation, ExportFormat
+        from VFACE_utils.segmentation_logic import run_dental_segmentation, ExportFormat
         
-        print(f"[BDS] Starting dental segmentation...")
-        print(f"[BDS] Input folder: {input_path}")
-        print(f"[BDS] Output folder: {output_path}")
-        print(f"[BDS] Model: {model_name}")
-        print(f"[BDS] Device: {device}")
+        logger.info(f"[BDS] Starting dental segmentation...")
+        logger.info(f"[BDS] Input folder: {input_path}")
+        logger.info(f"[BDS] Output folder: {output_path}")
+        logger.info(f"[BDS] Model: {model_name}")
+        logger.info(f"[BDS] Device: {device}")
         
         export_formats = ExportFormat.VTK | ExportFormat.VTK_MERGED
         
@@ -1250,19 +1265,19 @@ def run_bds(input_path, output_path, model_name="DentalSegmentator", device="cud
         )
         
         if success:
-            print(f"[BDS] Dental segmentation completed successfully")
-            print(f"[BDS] Results saved to: {output_path}")
+            logger.info(f"[BDS] Dental segmentation completed successfully")
+            logger.info(f"[BDS] Results saved to: {output_path}")
         else:
-            print(f"[BDS] Dental segmentation failed")
+            logger.error(f"[BDS] Dental segmentation failed")
             
         return success
         
     except ImportError as e:
-        print(f"[BDS] Failed to import segmentation logic: {str(e)}")
-        print(f"[BDS] Make sure segmentation_logic.py is in the parent directory")
+        logger.error(f"[BDS] Failed to import segmentation logic: {str(e)}")
+        logger.error(f"[BDS] Make sure segmentation_logic.py is in the parent directory")
         return False
     except Exception as e:
-        print(f"[BDS] Error in dental segmentation: {str(e)}")
+        logger.error(f"[BDS] Error in dental segmentation: {str(e)}")
         return False
 
 def reorganizeStat(patient_compute):
@@ -1516,20 +1531,16 @@ def SplitMeasurements(measurements_folder,mode2):
         
         if "CB" in filename or "CRANIAL" in filename or "CRANIOFACIAL" in filename:
             cb_path = str(file_path)
-            print(f"✓ File CB: {file_path.name}")
         
         elif "MAND" in filename or "MANDIBLE" in filename or "MANDIBULAR" in filename:
             mand_path = str(file_path)
-            print(f"✓ File MAND: {file_path.name}")
         
         elif "MAX" in filename or "MAXILLA" in filename or "MAXILLARY" in filename:
             max_path = str(file_path)
-            print(f"✓ File MAX: {file_path.name}")
 
         if mode2 == "Asymmetry Assesment":
             if "FEAT" in filename or "FEATURE" in filename:
                 features_path = str(file_path)
-                print(f"✓ File Feature: {file_path.name}")
     
     missing_files = []
     if cb_path is None:
@@ -1543,9 +1554,9 @@ def SplitMeasurements(measurements_folder,mode2):
             missing_files.append("Features")
     
     if missing_files:
-        print(f"⚠️ Missing Excel Files: {', '.join(missing_files)}")
+        logger.warning(f"Missing Excel Files: {', '.join(missing_files)}")
     
-    print(f"✅ All measurements files have been successfully identify")
+    logger.info(f"All measurements files have been successfully identify")
     return cb_path, mand_path, max_path,features_path
 
 def SplitOriented(t1_folder):
@@ -1568,7 +1579,6 @@ def SplitOriented(t1_folder):
                 'path': str(file_path),
                 'destination_folder': 'CB'
             })
-            print(f"✓ File CB: {file_path.name}")
         
         elif "MAX" in filename or "MAXILLA" in filename or "MAXILLARY" in filename:
             oriented_files.append({
@@ -1576,12 +1586,11 @@ def SplitOriented(t1_folder):
                 'path': str(file_path),
                 'destination_folder': 'MAX'
             })
-            print(f"✓ File MAX: {file_path.name}")
     
     if not oriented_files:
-        print(f"⚠️ No oriented files found in {t1_folder}")
+        logger.warning(f"No oriented files found in {t1_folder}")
     else:
-        print(f"✅ Found {len(oriented_files)} oriented file(s)")
+        logger.info(f"Found {len(oriented_files)} oriented file(s)")
     
     return oriented_files
 
@@ -1608,7 +1617,6 @@ def SplitT2(t2_folder, transform):
                 'destination_folder': 'Cranial Base',
                 'file_type': 'cbct'
             })
-            print(f"✓ File CB: {file_path.name}")
 
         elif "MAND" in filename or "MANDIBLE" in filename or "MANDIBULAR" in filename or "MD" in filename:
             t2_files.append({
@@ -1617,7 +1625,6 @@ def SplitT2(t2_folder, transform):
                 'destination_folder': 'Mandible',
                 'file_type': 'cbct'
             })
-            print(f"✓ File MAND: {file_path.name}")
         
         elif "MAX" in filename or "MAXILLA" in filename or "MAXILLARY" in filename or "MX" in filename:
             t2_files.append({
@@ -1626,7 +1633,6 @@ def SplitT2(t2_folder, transform):
                 'destination_folder': 'Maxilla',
                 'file_type': 'cbct'
             })
-            print(f"✓ File MAX: {file_path.name}")
 
     # Process transform files if requested
     if transform:
@@ -1640,7 +1646,6 @@ def SplitT2(t2_folder, transform):
                     'destination_folder': 'Cranial Base',
                     'file_type': 'transform'
                 })
-                print(f"✓ Transform CB: {file_path.name}")
 
             elif "MAND" in filename or "MANDIBLE" in filename or "MANDIBULAR" in filename:
                 t2_files.append({
@@ -1649,7 +1654,6 @@ def SplitT2(t2_folder, transform):
                     'destination_folder': 'Mandible',
                     'file_type': 'transform'
                 })
-                print(f"✓ Transform MAND: {file_path.name}")
             
             elif "MAX" in filename or "MAXILLA" in filename or "MAXILLARY" in filename:
                 t2_files.append({
@@ -1658,14 +1662,13 @@ def SplitT2(t2_folder, transform):
                     'destination_folder': 'Maxilla',
                     'file_type': 'transform'
                 })
-                print(f"✓ Transform MAX: {file_path.name}")
 
     if not t2_files:
-        print(f"⚠️ No T2 files found in {t2_folder}")
+        logger.warning(f"No T2 files found in {t2_folder}")
     else:
         cbct_count = len([f for f in t2_files if f['file_type'] == 'cbct'])
         transform_count = len([f for f in t2_files if f['file_type'] == 'transform'])
-        print(f"✅ Found {cbct_count} CBCT file(s)" + (f" and {transform_count} transform file(s)" if transform else ""))
+        logger.info(f"Found {cbct_count} CBCT file(s)" + (f" and {transform_count} transform file(s)" if transform else ""))
     
     return t2_files
 
@@ -1730,7 +1733,7 @@ def create_list_measure(df_path):
                 list_measure = list_measure + AQ3DCLogic.createMeasurement(AQ3DCLogic(),[row[0]],list(row[1].split("-") + row[2].split("-")))
 
         else:
-            print("There is an issue in the xlsx file")
+            logger.error("There is an issue in the xlsx file")
     return list_measure
 
 def create_list_landmark(df_path):
@@ -1745,7 +1748,7 @@ def create_list_landmark(df_path):
             if row[1] not in list_landmark:
                 list_landmark.append(row[1])
     else:
-        print("There is an issue in the xlsx file")
+        logger.error("There is an issue in the xlsx file")
     return list_landmark
 
 def GetListFiles(folder_path, file_extension):
@@ -1933,19 +1936,18 @@ def write_vtk(polydata, file_path):
 
 def clean_and_triangulate(polydata):
     """
-    Nettoie et triangule un polydata.
-    Utilise DeepCopy pour couper les liens avec les pipelines VTK internes
-    et éviter les fuites mémoire lors du batch processing.
+    Clean and triangulate a polydata.
+    Use DeepCopy to cut the links with inter VTK pipelines.
     """
     if not polydata or polydata.GetNumberOfPoints() == 0:
         raise ValueError("Cannot clean empty or invalid polydata")
     
     num_points = polydata.GetNumberOfPoints()
     num_cells = polydata.GetNumberOfCells()
-    print(f"Input polydata: {num_points} points, {num_cells} cells")
+    logger.debug(f"Input polydata: {num_points} points, {num_cells} cells")
     
     try:
-        print("Cleaning polydata...")
+        logger.info("Cleaning polydata...")
         cleaner = vtk.vtkCleanPolyData()
         cleaner.SetInputData(polydata)
         cleaner.PointMergingOn()
@@ -1960,7 +1962,7 @@ def clean_and_triangulate(polydata):
         if not cleaned or cleaned.GetNumberOfPoints() == 0:
             raise ValueError("Cleaning resulted in empty polydata")
         
-        print("Triangulating polydata...")
+        logger.debug("Triangulating polydata...")
         triangle_filter = vtk.vtkTriangleFilter()
         triangle_filter.SetInputData(cleaned)
         triangle_filter.Update()
@@ -1975,14 +1977,14 @@ def clean_and_triangulate(polydata):
         if not triangulated or triangulated.GetNumberOfPoints() == 0:
             raise ValueError("Triangulation resulted in empty polydata")
         
-        print(f"Clean and triangulate completed: {triangulated.GetNumberOfPoints()} points, {triangulated.GetNumberOfCells()} cells")
+        logger.info(f"Clean and triangulate completed: {triangulated.GetNumberOfPoints()} points, {triangulated.GetNumberOfCells()} cells")
         return triangulated
         
     except Exception as e:
         raise ValueError(f"Error during clean and triangulate: {str(e)}")
 
 def compute_distance(polydata1, polydata2, signed=True):
-    print("Starting distance computation...")
+    logger.info("Starting distance computation...")
     
     if not polydata1 or polydata1.GetNumberOfPoints() == 0:
         raise ValueError("Invalid or empty polydata1")
@@ -1994,19 +1996,19 @@ def compute_distance(polydata1, polydata2, signed=True):
     num_cells1 = polydata1.GetNumberOfCells()
     num_cells2 = polydata2.GetNumberOfCells()
     
-    print(f"Polydata1: {num_points1} points, {num_cells1} cells")
-    print(f"Polydata2: {num_points2} points, {num_cells2} cells")
+    logger.debug(f"Polydata1: {num_points1} points, {num_cells1} cells")
+    logger.debug(f"Polydata2: {num_points2} points, {num_cells2} cells")
     
     total_complexity = num_points1 + num_points2 + num_cells1 + num_cells2
     
     if total_complexity > 5000000:
-        print(f"Very large dataset detected (complexity: {total_complexity}). Using aggressive subsampling.")
+        logger.debug(f"Very large dataset detected (complexity: {total_complexity}). Using aggressive subsampling.")
         return compute_distance_subsampled(polydata1, polydata2, signed, target_points=300000)
     elif total_complexity > 2000000:
-        print(f"Large dataset detected (complexity: {total_complexity}). Using subsampling approach.")
+        logger.debug(f"Large dataset detected (complexity: {total_complexity}). Using subsampling approach.")
         return compute_distance_subsampled(polydata1, polydata2, signed, target_points=500000)
     elif total_complexity > 1000000:
-        print(f"Medium dataset detected (complexity: {total_complexity}). Using optimized approach.")
+        logger.debug(f"Medium dataset detected (complexity: {total_complexity}). Using optimized approach.")
         return compute_distance_subsampled(polydata1, polydata2, signed, target_points=750000)
     
     return compute_distance_standard(polydata1, polydata2, signed)
@@ -2014,27 +2016,27 @@ def compute_distance(polydata1, polydata2, signed=True):
 
 def compute_distance_subsampled(polydata1, polydata2, signed=True, target_points=500000):
     """
-    Version avec sous-échantillonnage optimisée pour les gros datasets
+    Optimized subsample
     """
     import gc
-    print("Using subsampled distance computation...")
+    logger.info("Using subsampled distance computation...")
     
     try:
         if polydata1.GetNumberOfPoints() > target_points:
-            print(f"Subsampling polydata1 from {polydata1.GetNumberOfPoints()} to ~{target_points} points")
+            logger.debug(f"Subsampling polydata1 from {polydata1.GetNumberOfPoints()} to ~{target_points} points")
             ratio1 = target_points / polydata1.GetNumberOfPoints()
             pd1_subsampled = subsample_polydata(polydata1, ratio1)
         else:
             pd1_subsampled = polydata1
         
         if polydata2.GetNumberOfPoints() > target_points:
-            print(f"Subsampling polydata2 from {polydata2.GetNumberOfPoints()} to ~{target_points} points")
+            logger.debug(f"Subsampling polydata2 from {polydata2.GetNumberOfPoints()} to ~{target_points} points")
             ratio2 = target_points / polydata2.GetNumberOfPoints()
             pd2_subsampled = subsample_polydata(polydata2, ratio2)
         else:
             pd2_subsampled = polydata2
         
-        print(f"Computing distance on subsampled data: {pd1_subsampled.GetNumberOfPoints()} vs {pd2_subsampled.GetNumberOfPoints()} points")
+        logger.debug(f"Computing distance on subsampled data: {pd1_subsampled.GetNumberOfPoints()} vs {pd2_subsampled.GetNumberOfPoints()} points")
         
         result_subsampled = compute_distance_standard(pd1_subsampled, pd2_subsampled, signed)
         
@@ -2045,10 +2047,10 @@ def compute_distance_subsampled(polydata1, polydata2, signed=True, target_points
         gc.collect()
         
         if polydata1.GetNumberOfPoints() > 1000000:
-            print("Very large dataset - returning subsampled result directly")
+            logger.debug("Very large dataset - returning subsampled result directly")
             return result_subsampled
         
-        print("Interpolating results back to original resolution...")
+        logger.debug("Interpolating results back to original resolution...")
         result_full = interpolate_distance_to_original(result_subsampled, polydata1)
 
         result_subsampled = None
@@ -2057,8 +2059,8 @@ def compute_distance_subsampled(polydata1, polydata2, signed=True, target_points
         return result_full
         
     except Exception as e:
-        print(f"Error in subsampled computation: {e}")
-        print("Falling back to simplified approach...")
+        logger.error(f"Error in subsampled computation: {e}")
+        logger.error("Falling back to simplified approach...")
         
         gc.collect()
         
@@ -2067,9 +2069,9 @@ def compute_distance_subsampled(polydata1, polydata2, signed=True, target_points
 
 def create_fallback_result(polydata, signed=True):
     """
-    Crée un résultat fallback avec des distances nulles
+    Create a fallback for null distance
     """
-    print("Creating fallback result with zero distances...")
+    logger.info("Creating fallback result with zero distances...")
     
     try:
         output = vtk.vtkPolyData()
@@ -2088,19 +2090,19 @@ def create_fallback_result(polydata, signed=True):
         const_array.FillComponent(0, 1.0)
         output.GetPointData().AddArray(const_array)
         
-        print(f"Fallback result created: {output.GetNumberOfPoints()} points with zero distances")
+        logger.info(f"Fallback result created: {output.GetNumberOfPoints()} points with zero distances")
         return output
         
     except Exception as e:
-        print(f"Error creating fallback result: {e}")
+        logger.error(f"Error creating fallback result: {e}")
         raise RuntimeError("Cannot create fallback result")
 
 
 def subsample_polydata(polydata, ratio):
     """
-    Sous-échantillonnage avec décimation. DeepCopy pour couper le pipeline.
+    Subsample using DeepCopy
     """
-    print(f"Decimating mesh with target ratio {ratio:.3f}")
+    logger.info(f"Decimating mesh with target ratio {ratio:.3f}")
     
     try:
         decimate = vtk.vtkQuadricDecimation()
@@ -2113,7 +2115,7 @@ def subsample_polydata(polydata, ratio):
         raw_result = decimate.GetOutput()
         
         if raw_result.GetNumberOfPoints() > ratio * polydata.GetNumberOfPoints() * 1.5:
-            print("Decimation not sufficient, using point masking...")
+            logger.debug("Decimation not sufficient, using point masking...")
             
             decimate.RemoveAllInputs()
             del decimate
@@ -2141,20 +2143,20 @@ def subsample_polydata(polydata, ratio):
             decimate.RemoveAllInputs()
             del decimate
         
-        print(f"Subsampling result: {result.GetNumberOfPoints()} points, {result.GetNumberOfCells()} cells")
+        logger.info(f"Subsampling result: {result.GetNumberOfPoints()} points, {result.GetNumberOfCells()} cells")
         return result
         
     except Exception as e:
-        print(f"Error in subsampling: {e}")
-        print("Warning: Using original data without subsampling")
+        logger.error(f"Error in subsampling: {e}")
+        logger.error("Warning: Using original data without subsampling")
         return polydata
 
 
 def interpolate_distance_to_original(distance_result, original_polydata):
     """
-    Version simplifiée d'interpolation
+    Simplified Interpolation
     """
-    print("Creating result with original geometry...")
+    logger.info("Creating result with original geometry...")
     
     try:
         output = vtk.vtkPolyData()
@@ -2167,7 +2169,7 @@ def interpolate_distance_to_original(distance_result, original_polydata):
         
         source_distance_array = distance_result.GetPointData().GetArray("SignedDistance") or distance_result.GetPointData().GetArray("Distance")
         if source_distance_array:
-            print("Attempting simple interpolation...")
+            logger.info("Attempting simple interpolation...")
             
             source_points = distance_result.GetPoints()
             target_points = output.GetPoints()
@@ -2202,27 +2204,22 @@ def interpolate_distance_to_original(distance_result, original_polydata):
         const_array.FillComponent(0, 1.0)
         output.GetPointData().AddArray(const_array)
         
-        print(f"Interpolation completed: {output.GetNumberOfPoints()} points")
+        logger.info(f"Interpolation completed: {output.GetNumberOfPoints()} points")
         return output
         
     except Exception as e:
-        print(f"Error in interpolation: {e}")
-        print("Returning subsampled result...")
+        logger.error(f"Error in interpolation: {e}")
+        logger.error("Returning subsampled result...")
         return distance_result
 
 
 def compute_distance_standard(polydata1, polydata2, signed=True):
-    """
-    Version standard avec DeepCopy pour éviter les fuites mémoire.
-    vtkDistancePolyDataFilter construit un vtkCellLocator interne qui garde
-    des références aux inputs. Sans DeepCopy, ces structures restent en mémoire
-    côté C++ et le garbage collector Python ne peut pas les libérer.
-    """
+
     try:
-        print("Creating distance filter...")
+        logger.info("Creating distance filter...")
         distance_filter = vtk.vtkDistancePolyDataFilter()
         
-        print("Setting input data...")
+        logger.info("Setting input data...")
         distance_filter.SetInputData(0, polydata1)
         distance_filter.SetInputData(1, polydata2)
         distance_filter.SetSignedDistance(signed)
@@ -2230,10 +2227,10 @@ def compute_distance_standard(polydata1, polydata2, signed=True):
         if 'slicer' in globals():
             slicer.app.processEvents()
         
-        print("Computing distances...")
+        logger.info("Computing distances...")
         distance_filter.Update()
         
-        print("Getting output...")
+        logger.info("Getting output...")
         raw_output = distance_filter.GetOutput()
         
         if not raw_output or raw_output.GetNumberOfPoints() == 0:
@@ -2246,7 +2243,7 @@ def compute_distance_standard(polydata1, polydata2, signed=True):
         del distance_filter
         del raw_output
         
-        print("Processing results...")
+        logger.info("Processing results...")
         if output.GetCellData().GetArray("Distance"):
             output.GetCellData().RemoveArray("Distance")
         
@@ -2264,22 +2261,22 @@ def compute_distance_standard(polydata1, polydata2, signed=True):
         const_array.FillComponent(0, 1.0)
         output.GetPointData().AddArray(const_array)
         
-        print(f"Distance computation completed successfully: {output.GetNumberOfPoints()} points")
+        logger.info(f"Distance computation completed successfully: {output.GetNumberOfPoints()} points")
         return output
         
     except Exception as e:
-        print(f"Error during distance computation: {str(e)}")
+        logger.error(f"Error during distance computation: {str(e)}")
         traceback.print_exc()
         raise RuntimeError(f"Distance computation failed: {str(e)}")
 
 def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_text=".vtk", zone_type="merged"):
     """
-    Batch process qui exécute chaque paire de fichiers dans un sous-processus
-    séparé pour garantir la libération complète de la mémoire entre chaque cas.
+    A batch process that executes each pair of files in a separate subprocess
+    to ensure that memory is completely freed between each case.
     
-    Le problème fondamental est que vtkDistancePolyDataFilter alloue de la mémoire
-    côté C++ (cell locators, BSP trees) que ni gc.collect() ni DeepCopy ne peuvent
-    libérer complètement. Seul un processus séparé garantit la libération via l'OS.
+    The fundamental problem is that vtkDistancePolyDataFilter allocates memory
+    on the C++ side (cell locators, BSP trees) that neither gc.collect() nor DeepCopy can
+    fully free. Only a separate process guarantees memory release via the OS.
     """
     import subprocess
     import json
@@ -2392,7 +2389,7 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
         })
 
     total_files = len(pairs_to_process)
-    print(f"\nFound {total_files} pairs to process for zone '{zone_type}'")
+    logger.info(f"\nFound {total_files} pairs to process for zone '{zone_type}'")
 
     worker_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_batch_worker.py")
     
@@ -2429,8 +2426,8 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
     if slicer_python is None:
         slicer_python = sys.executable
     
-    print(f"Using Python executable: {slicer_python}")
-    print(f"Worker script: {worker_script}")
+    logger.info(f"Using Python executable: {slicer_python}")
+    logger.info(f"Worker script: {worker_script}")
 
     processed_pairs = []
     
@@ -2439,15 +2436,13 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
         output_filename = f"{pair['patient']}_{pair['zone']}_ModelDistance{output_text}"
         output_path = str(output_dir / output_filename)
 
-        print(f"\n{'='*60}")
-        print(f"Processing [{processed_count}/{total_files}]: {Path(pair['file1']).name}")
-        print(f"  with: {Path(pair['file2']).name}")
-        print(f"  Patient: {pair['patient_id']}, Zone: {pair['zone']}")
-        print(f"{'='*60}")
+        logger.info(f"Processing [{processed_count}/{total_files}]: {Path(pair['file1']).name}")
+        logger.info(f"  with: {Path(pair['file2']).name}")
+        logger.info(f"  Patient: {pair['patient_id']}, Zone: {pair['zone']}")
         
         if psutil:
             mem = psutil.virtual_memory()
-            print(f"Memory before: {mem.percent:.1f}% ({mem.used / 1024**3:.1f}GB / {mem.total / 1024**3:.1f}GB)")
+            logger.debug(f"Memory before: {mem.percent:.1f}% ({mem.used / 1024**3:.1f}GB / {mem.total / 1024**3:.1f}GB)")
 
         try:
             cmd = [
@@ -2458,7 +2453,7 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
                 "--signed" if signed else "--unsigned",
             ]
             
-            print(f"Launching subprocess...")
+            logger.info(f"Launching subprocess...")
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -2468,13 +2463,13 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
             
             if proc.stdout:
                 for line in proc.stdout.strip().split('\n'):
-                    print(f"  [worker] {line}")
+                    logger.info(f"  [worker] {line}")
             
             if proc.returncode != 0:
-                print(f"  [worker] ERROR (exit code {proc.returncode}):")
+                logger.error(f"  [worker] ERROR (exit code {proc.returncode}):")
                 if proc.stderr:
                     for line in proc.stderr.strip().split('\n')[-5:]:
-                        print(f"  [worker] {line}")
+                        logger.error(f"  [worker] {line}")
                 continue
             
             processed_pairs.append({
@@ -2485,26 +2480,24 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
                 'output_file': output_filename,
             })
             
-            print(f"  ✓ Successfully processed {output_filename}")
+            logger.info(f"Successfully processed {output_filename}")
             
         except subprocess.TimeoutExpired:
-            print(f"  ✗ TIMEOUT processing {Path(pair['file1']).name} (>10 min)")
+            logger.error(f"  TIMEOUT processing {Path(pair['file1']).name} (>10 min)")
         except Exception as e:
-            print(f"  ✗ Error: {e}")
+            logger.error(f"  Error: {e}")
             traceback.print_exc()
         
         if psutil:
             mem = psutil.virtual_memory()
-            print(f"Memory after:  {mem.percent:.1f}% ({mem.used / 1024**3:.1f}GB / {mem.total / 1024**3:.1f}GB)")
+            logger.debug(f"Memory after:  {mem.percent:.1f}% ({mem.used / 1024**3:.1f}GB / {mem.total / 1024**3:.1f}GB)")
         
         if 'slicer' in globals():
             slicer.app.processEvents()
     
-    print(f"\n{'='*60}")
-    print(f"Processing complete. {len(processed_pairs)}/{total_files} pairs processed.")
-    print(f"{'='*60}")
+    logger.info(f"Processing complete. {len(processed_pairs)}/{total_files} pairs processed.")
     for pair in processed_pairs:
-        print(f"  ✓ {pair['patient_id']} ({pair['zone']}): {pair['output_file']}")
+        logger.info(f"  {pair['patient_id']} ({pair['zone']}): {pair['output_file']}")
 
 def search(path, *args):
     """
@@ -2590,7 +2583,7 @@ def postprocess (cb_path,mand_path,max_path,exemple_path,outputfolder):
                             dic_columns[col]["Landmarks"+str((3*(i-1))+2)] = scndsplit[0]+"_"+scndsplit[1]
                             dic_columns[col]["Landmarks"+str(3*i)] = scndsplit[2]+"_"+scndsplit[3]
                         else:
-                            print("Issue")
+                            logger.error("Issue")
 
     output_df = pd.DataFrame(columns=file_alls.columns)
     unique_cb = file_cb["ID"].unique()
@@ -2598,7 +2591,7 @@ def postprocess (cb_path,mand_path,max_path,exemple_path,outputfolder):
     unique_mand = file_mand["ID"].unique()
 
     if unique_cb.all() != unique_max.all() or unique_cb.all() !=unique_mand.all():
-        print("Issue on the ID patient")
+        logger.error("Issue on the ID patient")
 
     for val in unique_cb:
         output_df.loc[val, "ID"] = val

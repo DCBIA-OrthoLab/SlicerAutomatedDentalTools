@@ -15,6 +15,20 @@ from pathlib import Path
 # DOCShapeAXI
 #
 
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("DOCShapeAXI")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 
 class DOCShapeAXI(ScriptedLoadableModule):
@@ -457,9 +471,9 @@ QSlider::handle:horizontal:hover {
     if not(os.path.isdir(self.logic.output_dir)):
       if not(os.path.isdir(self.logic.output_dir)):
         msg.setText("Output directory : \nIncorrect path.")
-        print('Error: Incorrect path for output directory.')
+        logger.error('Error: Incorrect path for output directory.')
         self.ui.outputLineEdit.setText('')
-        print(f'output folder : {self.logic.output_dir}')
+        logger.info(f'output folder : {self.logic.output_dir}')
       else:
         msg.setText('Unknown error.')
 
@@ -469,7 +483,7 @@ QSlider::handle:horizontal:hover {
 
     elif not(os.path.isdir(self.logic.input_dir)):
       msg.setText("input file : \nIncorrect path.")
-      print('Error: Incorrect path for input directory.')
+      logger.error('Error: Incorrect path for input directory.')
       self.ui.mountPointLineEdit.setText('')
 
       msg.setWindowTitle("Error")
@@ -582,7 +596,7 @@ QSlider::handle:horizontal:hover {
         self.ui.timeLabel.setText(text)
     else:
       self.ui.timeLabel.setText(f"pytorch3d is already installed")
-      print("pytorch3d already installed")
+      logger.info("pytorch3d already installed")
 
     self.all_installed = True
 
@@ -822,7 +836,7 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
     self.process.start()
 
   def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.12",["shapeaxi==1.1.1"],)) #run in parallel to not block slicer
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.12",["shapeaxi==1.0.10","ocnn==2.2.1"],)) #run in parallel to not block slicer
 
   def check_if_pytorch3d(self):
     conda_exe = self.conda.getCondaExecutable()
@@ -876,7 +890,7 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
       conda_exe = self.conda.getCondaExecutable()
       command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
       result = self.conda.condaRunCommand(command)
-      print("output CHECK python path: ", result)
+      logger.info(f"output CHECK python path: {result}")
       if "True" in result :
           return True
       return False
@@ -893,7 +907,7 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
       conda_exe = self.conda.getCondaExecutable()
       argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
       results = self.conda.condaRunCommand(argument)
-      print("output GIVE python path: ", results)
+      logger.info(f"output GIVE python path: {results}")
 
   def windows_to_linux_path(self,windows_path):
     '''
@@ -935,7 +949,7 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
 
       user = self.conda.getUser()
       command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
-      print("command_to_execute in condaRunCommand : ",command_to_execute)
+      logger.info(f"command_to_execute in condaRunCommand : {command_to_execute}")
 
       self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
                               text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
@@ -948,7 +962,7 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
       for com in command :
           command_execute = command_execute+ " "+com
 
-      print("command_execute dans conda run : ",command_execute)
+      logger.info(f"command_execute dans conda run : {command_execute}")
       self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
   
     self.stdout, self.stderr = self.subpro.communicate()
@@ -958,7 +972,7 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
       self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
     else:
       os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
-    print("Cancellation requested. Terminating process...")
+    logger.info("Cancellation requested. Terminating process...")
 
     self.subpro.wait() ## important
     self.cancel = True
@@ -1016,13 +1030,13 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
         model_name='airways_4_regress'
         self.num_classes = 1
       else:
-        print("no model found for undefined task")
+        logger.warning("no model found for undefined task")
 
     elif 'Cleft' in self.data_type.split(' '):
       model_name='clefts_4_class'
       self.num_classes = 4
 
     else:
-      print("No model found")
+      logger.warning("No model found")
       return None, None
     return model_name, self.num_classes

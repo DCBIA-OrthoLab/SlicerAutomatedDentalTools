@@ -5,6 +5,8 @@ import SegmentEditorEffects
 import ctk
 import numpy as np
 import qt
+import subprocess
+import sys
 import sys
 import slicer
 import logging
@@ -18,29 +20,43 @@ from .Utils import (
     setConventionalWideScreenView,
     setBoxAndTextVisibilityOnThreeDViews,
 )
+import sys
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("BatchDentalSeg_SegmentationWidget")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+
 vtk.vtkObject.GlobalWarningDisplayOff()
-# ─── Model descriptions ──────────────────────────────────────────────────────
 
 MODEL_DESCRIPTIONS = {
     "DentalSegmentator": (
         "<b>DentalSegmentator</b><br>"
-        "→ Segments: Upper Skull (includes Maxilla), Mandible, Mandibular Canal, Upper Teeth, Lower Teeth<br>"
-        "→ Designed for <b>permanent dentition</b>."
+        "Segments: Upper Skull (includes Maxilla), Mandible, Mandibular Canal, Upper Teeth, Lower Teeth<br>"
+        "Designed for <b>permanent dentition</b>."
     ),
     "PediatricDentalsegmentator": (
         "<b>PediatricDentalsegmentator</b><br>"
-        "→ Segments: Upper Skull (includes Maxilla), Mandible, Mandibular Canal, Upper Teeth, Lower Teeth<br>"
-        "→ Designed for <b>mixed dentition</b> (baby and permanent teeth)."
+        "Segments: Upper Skull (includes Maxilla), Mandible, Mandibular Canal, Upper Teeth, Lower Teeth<br>"
+        "Designed for <b>mixed dentition</b> (baby and permanent teeth)."
     ),
     "NasoMaxillaDentSeg": (
         "<b>NasoMaxillaDentSeg</b><br>"
-        "→ Segments: Upper Skull, <u>separate</u> Maxilla, Mandible, Mandibular Canal, Upper Teeth, Lower Teeth<br>"
-        "→ Designed for <b>permanent dentition</b> ."
+        "Segments: Upper Skull, <u>separate</u> Maxilla, Mandible, Mandibular Canal, Upper Teeth, Lower Teeth<br>"
+        "Designed for <b>permanent dentition</b> ."
     ),
     "UniversalLabDentalsegmentator": (
         "<b>UniversalLabDentalsegmentator</b><br>"
-        "→ Segments: Upper Skull, Mandibular Canal,All teeth<br>"
-        "→ Designed for <b>mixed and Permanent dentition</b> ."
+        "Segments: Upper Skull, Mandibular Canal,All teeth<br>"
+        "Designed for <b>mixed and Permanent dentition</b> ."
     ),
 }
 
@@ -59,9 +75,7 @@ class ExportFormat(Flag):
 
 class PipRunner(qt.QObject):
     """
-    Lance « pip install … » de façon non bloquante grâce à qt.QProcess.
-    • onLine(str)     : sortie temps réel (stdout + stderr fusionnés)
-    • onFinished(ok)  : bool → True si retour 0
+    Run « pip install … »
     """
     def __init__(self, packages, onLine, onFinished, parent=None):
         super().__init__(parent)
@@ -74,9 +88,9 @@ class PipRunner(qt.QObject):
         self._proc.setArguments(["-m", "pip", "install"] + packages)
         self._proc.setProcessChannelMode(qt.QProcess.MergedChannels)
 
-        # — connexion signaux —
+        # — connect signals —
         self._proc.readyReadStandardOutput.connect(self._readLines)
-        self._proc.readyReadStandardError.connect(self._readLines)  # fusionné, par sécurité
+        self._proc.readyReadStandardError.connect(self._readLines)
         self._proc.finished.connect(self._procFinished)
 
         self._proc.start()
@@ -92,18 +106,15 @@ class PipRunner(qt.QObject):
 
     def _procFinished(self, exitCode, *args):
         """
-        Slot appelé à la fin du QProcess.
+        Slot called at the end of QProcess.
         Qt5 : finished(int)
         Qt6 : finished(int, QProcess.ExitStatus)
-        -> *args absorbe éventuellement le 2ᵉ paramètre.
         """
         self._onFinished(exitCode == 0)
-        self.deleteLater()          # auto-nettoyage de l’objet
-            # auto-nettoyage
+        self.deleteLater()
 
 class SegmentationWidget(qt.QWidget):
 
-    # ─── Initialization ─────────────────────────────────────────────────────────
     # ─── Initialization ─────────────────────────────────────────────────────────
     def __init__(self, logic=None, parent=None):
         super().__init__(parent)
@@ -135,7 +146,7 @@ class SegmentationWidget(qt.QWidget):
         inputLayout.addRow("",               outBtn)
 
         # ========================================================================
-        # 2)  EXPORT FORMATS  (placé juste sous le dossier de sortie)
+        # 2)  EXPORT FORMATS
         # ========================================================================
         exportWidget = qt.QWidget()
         exportLayout = qt.QFormLayout(exportWidget)
@@ -161,7 +172,7 @@ class SegmentationWidget(qt.QWidget):
         exportLayout.addRow("Export VTK (merged)",  self.vtkmergedCheckBox)
         exportLayout.addRow("glTF reduction factor:", self.reductionFactorSlider)
 
-        # ↳ on insère le widget d’export sous les dossiers
+        # Add to the layout the export formats widget
         inputLayout.addRow("Export formats :", exportWidget)
 
         # ========================================================================
@@ -171,7 +182,7 @@ class SegmentationWidget(qt.QWidget):
         self.modelComboBox  = qt.QComboBox(); self.modelComboBox.addItems([
             "DentalSegmentator","PediatricDentalsegmentator","NasoMaxillaDentSeg","UniversalLabDentalsegmentator"])
 
-        # Resolve-mirroring (spécifique UniversalLab…)
+        # Resolve-mirroring
         self.resolveMirroringButton = createButton(
             "Resolve Mirroring", callback=self.onResolveMirroring,
             toolTip="Automatically mirrors labeled segments", parent=self)
@@ -201,7 +212,7 @@ class SegmentationWidget(qt.QWidget):
         self.segmentEditorWidget.layout().setContentsMargins(0,0,0,0)
         self.segmentEditorNode = None
 
-        # surface smoothing slider synchronisé avec Show-3D
+        # surface smoothing slider with Show-3D
         self.show3DButton = slicer.util.findChild(self.segmentEditorWidget, "Show3DButton")
         smoothingSlider = self.show3DButton.findChild("ctkSliderWidget")
 
@@ -281,58 +292,51 @@ class SegmentationWidget(qt.QWidget):
         self._dependencyChecker = PythonDependencyChecker()
         self.processedVolumes   = {}
 
-        # initialise affichage
+        # Initialize display
         self.onInputChangedForLoadedVolume(None)
         self.updateSegmentEditorWidget()
 
-        # observe fermeture de scène
+        # Add observer to the scene
         self.sceneCloseObserver = slicer.mrmlScene.AddObserver(
             slicer.mrmlScene.EndCloseEvent, self.onSceneChanged)
         self.onSceneChanged(doStopInference=False)
 
-        # connecter logique NNUNet
+        # connect logic NNUNet
         self._connectSegmentationLogic()
-        self._setup_logging()  # Initialisation des logs
-        self._last_save_state = {}  # Sauvegarde de l'état
-        self._timeout_timer = qt.QTimer()  # Timeout forcé
+        self._last_save_state = {}
+        self._timeout_timer = qt.QTimer()  # Timeout
         self._timeout_timer.timeout.connect(self._emergency_stop)
         self._timeout_timer.setInterval(300_000)  # 5 min timeout
-
-    def _setup_logging(self):
-        """Journalisation dans un fichier pour débogage post-crash."""
-        log_path = Path.home() / "slicer_segmentation.log"
-        logging.basicConfig(
-            filename=str(log_path),
-            level=logging.DEBUG,
-            format="%(asctime)s - %(levelname)s - %(message)s"
-        )
-        logging.info("===== New Session Started =====")
+        self._inferenceFinalized = False
+        self._doneVolumeSeen = False
+        self._fallbackCheckAttempts = 0
+        self._fallbackLastOutputSize = None
 
     def _checkpoint(self, name):
-        """Marqueur de progression pour le débogage."""
-        logging.debug(f"CHECKPOINT: {name}")
-        print(f"[DEBUG] Checkpoint: {name}")
-        slicer.app.processEvents()  # Force le traitement des événements
+        """Print progress for debug"""
+        logger.debug(f"CHECKPOINT: {name}")
+        logger.debug(f"[DEBUG] Checkpoint: {name}")
+        slicer.app.processEvents()
 
     def _emergency_stop(self):
-        """Arrêt d'urgence en cas de blocage."""
-        logging.error("EMERGENCY STOP TRIGGERED (Timeout)")
+        """Emergency stop"""
+        logger.error("EMERGENCY STOP TRIGGERED (Timeout)")
         self._save_state_before_crash()
         self.onStopClicked()
         raise RuntimeError("Processing timeout after 5 minutes")
 
     def _save_state_before_crash(self):
-        """Sauvegarde l'état actuel pour analyse post-crash."""
+        """Save status before crash"""
         self._last_save_state = {
             "current_file": self.folderFiles[self.currentFileIndex] if self.folderFiles else None,
             "processed_files": self.folderFiles[:self.currentFileIndex],
             "memory_usage": self._get_memory_usage(),
             "scene_nodes": list(slicer.util.getNodes().keys())
         }
-        logging.critical(f"CRASH STATE DUMP: {self._last_save_state}")
+        logger.critical(f"CRASH STATE DUMP: {self._last_save_state}")
 
     def _get_memory_usage(self):
-        """Retourne l'utilisation mémoire actuelle."""
+        """Return current memory usage"""
         import psutil
         return f"{psutil.Process().memory_info().rss / 1024 ** 2:.2f} MB"
     # ─── Resolve Mirroring Button Visibility ────────────────────────────────────
@@ -500,7 +504,7 @@ class SegmentationWidget(qt.QWidget):
         correctedLM.SetOrigin(origin)
         correctedLM.SetIJKToRASMatrix(ijkToRAS)
 
-        # ► New name: original segmentation name + suffix
+        # New name: original segmentation name + suffix
         baseName = segmentationNode.GetName() if segmentationNode else "Segmentation"
         suffix   = "_Mirrored"                           # choose your suffix here
         correctedSeg = slicer.mrmlScene.AddNewNodeByClass(
@@ -535,7 +539,7 @@ class SegmentationWidget(qt.QWidget):
         slicer.mrmlScene.RemoveNode(correctedLM)
         self.mirroringProgressBar.setVisible(False)
 
-        msg = ("✅ Corrected voxels:\n" + "\n".join(changed)) if changed else "✅ No mirrored voxels detected."
+        msg = ("Corrected voxels:\n" + "\n".join(changed)) if changed else "No mirrored voxels detected."
         slicer.util.infoDisplay(msg)
 
     # ─── Model scope description ──────────────────────────────────────────────
@@ -560,7 +564,7 @@ class SegmentationWidget(qt.QWidget):
             self.outputFolderLineEdit.setText(folderPath)
 
     # ──────────────────────────────────────────────────────────────────────────────
-    # 3)  _saveSegmentationAsNifti  –  suppression propre du label-map temporaire
+    # 3)  _saveSegmentationAsNifti
     # ──────────────────────────────────────────────────────────────────────────────
     def _saveSegmentationAsNifti(self, segmentationNode, volumeNode):
         self.onProgressInfo("=== Start of saving the segmentation in NIfTI ===")
@@ -582,11 +586,11 @@ class SegmentationWidget(qt.QWidget):
         output_path = os.path.join(self.outputFolderPath, segmentationNode.GetName() + ".nii.gz")
         saved = slicer.util.saveNode(labelmapVolumeNode, output_path)
         if saved:
-            self.onProgressInfo(f"✅ Segmentation saved in {output_path}")
+            self.onProgressInfo(f"Segmentation saved in {output_path}")
         else:
-            self.onProgressInfo(f"❌ Failed to save segmentation in {output_path}")
+            self.onProgressInfo(f"Failed to save segmentation in {output_path}")
 
-        # ► Nettoyage du label-map
+        # Clean
         slicer.mrmlScene.RemoveNode(labelmapVolumeNode)
 
 
@@ -606,16 +610,14 @@ class SegmentationWidget(qt.QWidget):
             self.currentFileIndex = 0
             self.onProgressInfo(f"Found {len(self.folderFiles)} file(s) in the folder.")
 
-    # ─── Scene change handling ────────────────────────────────────────────────
-
     # ──────────────────────────────────────────────────────────────────────────────
-    # 2)  onSceneChanged  –  un seul SegmentEditorNode ré-utilisé
+    # 2)  onSceneChanged
     # ──────────────────────────────────────────────────────────────────────────────
     def onSceneChanged(self, *_, doStopInference=True):
         if doStopInference:
             self.onStopClicked()
 
-        # ⇢ Conserver UN unique SegmentEditorNode
+        # Keep just one SegmentEditorNode
         if not hasattr(self, "segmentEditorNode") or self.segmentEditorNode is None \
         or not slicer.mrmlScene.IsNodePresent(self.segmentEditorNode):
             self.segmentEditorNode = slicer.mrmlScene.AddNewNodeByClass(
@@ -649,13 +651,8 @@ class SegmentationWidget(qt.QWidget):
 
     # ─── Apply segmentation ─────────────────────────────────────────────────────
     
-
-# ──────────────────────────────────────────────────────────────
-# 1.  Fonction utilitaire pour exécuter pip de façon asynchrone
-# ──────────────────────────────────────────────────────────────
-
     def onApplyClicked(self, *_):
-        # --- validations rapides ---
+        # --- quick validation ---
         if not self.folderPath:
             slicer.util.errorDisplay("Please select a folder containing volumes.")
             return
@@ -666,26 +663,25 @@ class SegmentationWidget(qt.QWidget):
         self.currentInfoTextEdit.clear()
         self._setApplyVisible(False)
 
-        # ---------- Étape 1 : installation deps async ----------
-        packages = ["numpy<2.0", "numexpr<2.10","psutil"]   # complétez votre liste
-
-        _log = logging.getLogger("BATCHDENTALSEG")   # nom de votre extension
+        slicer.util.pip_install("light-the-torch")
+        subprocess.check_call([sys.executable, "-m", "light_the_torch", "install", "torch", "torchvision"])
+        slicer.util.pip_install("numexpr>=2.10.2")
+        packages = ["numpy<2.0", "numexpr>=2.10.2","psutil"]
 
         def _onLine(line: str):
             self.currentInfoTextEdit.append(line)    # QTextEdit
-            _log.info(line)   
 
         def _onFinished(ok: bool):
             if not ok:
                 qt.QMessageBox.critical(
                     self, "Installation error",
-                    "Certaines bibliothèques Python n'ont pas pu être installées.\n"
-                    "Veuillez vérifier votre connexion Internet ou relancer Slicer."
+                    "Some Python library couldn't have been install.\n"
+                    "Please check your connexion or restart slicer."
                 )
                 self._setApplyVisible(True)
                 return
 
-            # ---------- Étape 2 : dépendances internes ----------
+            # ---------- Step 2 : Internal dependencies ----------
             if not self.isNNUNetModuleInstalled() or self.logic is None:
                 slicer.util.errorDisplay(
                     "This module depends on the NNUNet module. "
@@ -702,23 +698,21 @@ class SegmentationWidget(qt.QWidget):
                 self._setApplyVisible(True)
                 return
 
-            # ---------- Étape 3 : traiter les scans ----------
+            # ---------- Step 3 : Process scans ----------
             self.processNextFile()
 
-        # Lancement *non bloque* (aucun thread Python ⇒ plus de warnings Qt)
         self._pipRunner = PipRunner(packages, _onLine, _onFinished, parent=self)
 
     def _updateBatchCounter(self, show_file_name: bool = False):
             """
-            Met à jour l'étiquette 'Scan i/N'.
-            show_file_name : True pour ajouter le nom du fichier courant.
+            Update label 'Scan i/N'.
+            show_file_name : True to show name of current path.
             """
             total = len(self.folderFiles)
             if total == 0:
                 self.batchCounterLabel.clear()
                 return
 
-            # clamp (au cas où currentFileIndex == total quand tout est fini)
             idx = min(self.currentFileIndex + 1, total)
 
             if show_file_name and 0 <= self.currentFileIndex < total:
@@ -732,7 +726,7 @@ class SegmentationWidget(qt.QWidget):
     def processNextFile(self):
         try:
             self.onProgressInfo("Starting processNextFile")
-            self._timeout_timer.start()  # Lance le timeout
+            self._timeout_timer.start()  # Start timeout
 
             if self.currentFileIndex >= len(self.folderFiles):
                 self.onProgressInfo("All files processed")
@@ -740,7 +734,7 @@ class SegmentationWidget(qt.QWidget):
                 return
             self._updateBatchCounter(show_file_name=True)
             filePath = self.folderFiles[self.currentFileIndex]
-            logging.info(f"Processing file {self.currentFileIndex + 1}/{len(self.folderFiles)}: {filePath}")
+            logger.info(f"Processing file {self.currentFileIndex + 1}/{len(self.folderFiles)}: {filePath}")
 
             loadedVolume = slicer.util.loadVolume(str(filePath))
             self.onProgressInfo(f"Loaded volume: {loadedVolume.GetName()}")
@@ -750,7 +744,7 @@ class SegmentationWidget(qt.QWidget):
             self.onApplyClickedForVolume(loadedVolume)
 
         except Exception as e:
-            logging.error(f"CRASH during processNextFile: {str(e)}", exc_info=True)
+            logger.error(f"CRASH during processNextFile: {str(e)}", exc_info=True)
             self._save_state_before_crash()
             slicer.util.errorDisplay(f"Crash detected: {str(e)}\nSee logs in {Path.home()}/slicer_segmentation.log")
             raise
@@ -774,6 +768,10 @@ class SegmentationWidget(qt.QWidget):
 
     def onApplyClickedForVolume(self, volumeNode):
         from SlicerNNUNetLib import Parameter
+        self._inferenceFinalized = False
+        self._doneVolumeSeen = False
+        self._fallbackCheckAttempts = 0
+        self._fallbackLastOutputSize = None
         selectedModel = self.modelComboBox.currentText
         if selectedModel == "PediatricDentalsegmentator":
             self.onProgressInfo(f"Selected Model: {selectedModel}")
@@ -876,15 +874,8 @@ class SegmentationWidget(qt.QWidget):
         self.logic.startSegmentation(volumeNode)
 
     # ─── Inference finished callback ──────────────────────────────────────────
-    # ──────────────────────────────────────────────────────────────────────────────
-    # 1)  onInferenceFinished  –  appel explicite à _cleanupAfterCase
-    # ──────────────────────────────────────────────────────────────────────────────
     def _get_active_label_map(self):
-        """
-        Retourne un dict {NomSegment -> LabelValue} selon le modèle choisi.
-        Si un segment possède déjà un tag 'LabelValue', on l'utilisera en priorité
-        dans onInferenceFinished (ce helper sert d'appoint).
-        """
+
         model = self.modelComboBox.currentText
 
         # === Universal: 55 labels (adulte + dents temporaires + mandibule/maxilla/canal)
@@ -913,21 +904,20 @@ class SegmentationWidget(qt.QWidget):
                 "Lower-right second molar (baby)": 52, "Mandible": 53, "Maxilla": 54, "Mandibular canal": 55
             }
 
-        # === NasoMaxillaDentSeg: 6 labels (Maxilla séparée)
+        # === NasoMaxillaDentSeg: 6 labels
         if model == "NasoMaxillaDentSeg":
-            # Attention: l’ordre/valeurs doivent correspondre à ton training.
-            # Ci-dessous un mapping simple et cohérent avec _updateSegmentationDisplay :
+            # Warning: The order have to be the same as the training.
             return {
                 "Upper Skull": 1,
                 "Mandible": 2,
-                "Maxilla": 3,               # séparée dans ce modèle
+                "Maxilla": 3,              
                 "Upper Teeth": 4,
                 "Lower Teeth": 5,
                 "Mandibular canal": 6,
             }
 
         # === DentalSegmentator & PediatricDentalsegmentator: 5 labels
-        # (Maxilla inclus dans Upper Skull)
+        # (Maxilla include in Upper Skull)
         return {
             "Upper Skull": 1,
             "Mandible": 2,
@@ -938,7 +928,13 @@ class SegmentationWidget(qt.QWidget):
 
 
     def onInferenceFinished(self, *_):
-        """Gestion complète de la fin d'inférence avec sécurité renforcée (+ mapping labels par modèle)."""
+        """End inference handling"""
+        if self._inferenceFinalized:
+            self.onProgressInfo("[DEBUG][SegWidget] onInferenceFinished ignored (already finalized)")
+            return
+        self._inferenceFinalized = True
+        logger.debug(f"[DEBUG][SegWidget] onInferenceFinished called. isStopping={self.isStopping}")
+        self.onProgressInfo(f"[DEBUG][SegWidget] onInferenceFinished received (isStopping={self.isStopping})")
         if self.isStopping:
             self.onProgressInfo("stop requested")
             self._setApplyVisible(True)
@@ -946,12 +942,12 @@ class SegmentationWidget(qt.QWidget):
 
         segNode = volNode = None
         try:
-            # === PHASE 1: Initialisation ===
+            # === Step 1: Initialization ===
             self._timeout_timer.start()
             self.onProgressInfo("Start of processing of results")
             self.onProgressInfo("Processing results in progress...")
 
-            # === PHASE 2: Chargement des résultats & récupération des nodes ===
+            # === Step 2: Load results ===
             try:
                 self._loadSegmentationResults()
                 segNode = self.getCurrentSegmentationNode()
@@ -961,17 +957,15 @@ class SegmentationWidget(qt.QWidget):
 
                 segmentation = segNode.GetSegmentation()
 
-                # Dictionnaire nom->valeur dépendant du modèle sélectionné
                 full_label_map = self._get_active_label_map()
 
-                # 1) Parcours initial des segments: on note les valeurs "raw" (tag ou dict)
                 raw_values = []
                 import vtk
                 for segId in segmentation.GetSegmentIDs():
                     segment = segmentation.GetSegment(segId)
                     name = segment.GetName()
 
-                    # Priorité au tag 'LabelValue' s'il existe
+                    # Check first the tag 'LabelValue'
                     tag_val = vtk.mutable("")
                     has_tag = segment.GetTag("LabelValue", tag_val) and tag_val.get()
                     value = None
@@ -981,7 +975,7 @@ class SegmentationWidget(qt.QWidget):
                         except ValueError:
                             value = None
 
-                    # Sinon, on se replie sur le mapping actif
+                    # if not we go back to the current mapping
                     if value is None:
                         value = full_label_map.get(name)
 
@@ -989,20 +983,20 @@ class SegmentationWidget(qt.QWidget):
                         self.onProgressInfo(f"[WARN] unexpected segment «{name}» — ignored")
                         continue
 
-                    # On (ré)écrit le tag pour garder une trace fiable
+                    # Rewrite the tag to have a relevant tag
                     segment.SetTag("LabelValue", str(value))
                     raw_values.append(value)
 
                 raw_values = sorted(set(raw_values))
                 self.onProgressInfo(f"Predicted label values (raw): {raw_values}")
 
-                # 2) Vérification des tags
+                # 2) Check tags
                 for segId in segmentation.GetSegmentIDs():
                     segment = segmentation.GetSegment(segId)
                     tag_val = vtk.mutable("")
                     segment.GetTag("LabelValue", tag_val)
                     self.onProgressInfo(
-                        f"[DEBUG] Après SetTag, segment «{segment.GetName()}» a LabelValue = {tag_val.get()!r}"
+                        f"[DEBUG] After SetTag, segment «{segment.GetName()}» a LabelValue = {tag_val.get()!r}"
                     )
 
             except Exception as e:
@@ -1051,11 +1045,11 @@ class SegmentationWidget(qt.QWidget):
                     slicer.mrmlScene.RemoveNode(tmpLM)
                     continue
 
-                single_arr = slicer.util.arrayFromVolume(tmpLM)  # 0/1 mask du segment courant
+                single_arr = slicer.util.arrayFromVolume(tmpLM)  # 0/1 mask of current segment
                 label_arr[single_arr > 0] = value
                 slicer.mrmlScene.RemoveNode(tmpLM)
 
-            # 3.3) Reconstruction d’un volume labelmap complet + sauvegarde NIfTI
+            # 3.3) Rebuild the labelmap volume
             tmpOut = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
             slicer.util.updateVolumeFromArray(tmpOut, label_arr)
             tmpOut.SetSpacing(volNode.GetSpacing())
@@ -1069,19 +1063,19 @@ class SegmentationWidget(qt.QWidget):
             self.onExportClicked()
 
             if saved:
-                self.onProgressInfo(f"✅ Segmentation saved manually in {output_path}")
+                self.onProgressInfo(f"Segmentation saved manually in {output_path}")
             else:
-                self.onProgressInfo(f"❌ Échec du saveNode sur {output_path}")
+                self.onProgressInfo(f"Fail of saveNode in {output_path}")
             slicer.mrmlScene.RemoveNode(tmpOut)
 
-            # === PHASE 4: Succès ===
+            # === Step 4: Success ===
             self.onProgressInfo("Processing completed successfully")
-            logging.info(f"Volume processed: {volNode.GetName() if volNode else 'unknown'}")
+            logger.info(f"Volume processed: {volNode.GetName() if volNode else 'unknown'}")
 
         except Exception as e:
-            # === GESTION DES ERREURS ===
+            # === Error handling ===
             error_msg = f"ERROR: {str(e)}"
-            logging.critical(error_msg, exc_info=True)
+            logger.critical(error_msg, exc_info=True)
             slicer.util.errorDisplay(f"Critical error:\n{error_msg}")
             self.onProgressInfo(f"PROCESSING FAILURE:\n{error_msg}")
             self._save_state_before_crash()
@@ -1093,7 +1087,7 @@ class SegmentationWidget(qt.QWidget):
                 if hasattr(self, '_cleanupAfterCase'):
                     self._cleanupAfterCase(volNode, segNode)
                 else:
-                    logging.error("Missing _cleanupAfterCase method!")
+                    logger.error("Missing _cleanupAfterCase method!")
 
                 # Vidage cache GPU
                 try:
@@ -1125,7 +1119,7 @@ class SegmentationWidget(qt.QWidget):
                     self._setApplyVisible(True)
 
             except Exception as cleanup_error:
-                logging.critical(f"Final cleaning failure: {cleanup_error}", exc_info=True)
+                logger.critical(f"Final cleaning failure: {cleanup_error}", exc_info=True)
                 self.onProgressInfo(f"CLEANING ERROR: {cleanup_error}")
             finally:
                 self._timeout_timer.stop()
@@ -1145,7 +1139,6 @@ class SegmentationWidget(qt.QWidget):
                 except Exception:
                     return False
 
-            # 1) Bloquer les signaux et déconnecter l'éditeur
             try:
                 self.segmentEditorWidget.blockSignals(True)
                 # aussi neutraliser le MRML node interne
@@ -1170,17 +1163,13 @@ class SegmentationWidget(qt.QWidget):
             except Exception:
                 pass
 
-
-                # 4) Supprimer la segmentation
                 slicer.mrmlScene.RemoveNode(segmentationNode)
 
-            # 5) Restaurer et débloquer l'éditeur
             try:
                 self.segmentEditorWidget.blockSignals(False)
             except Exception:
                 pass
 
-            # 6) Supprimer le volume + son display-node
             if volumeNode and is_node_in_scene(volumeNode):
                 volDisp = volumeNode.GetDisplayNode()
                 if volDisp and is_node_in_scene(volDisp):
@@ -1196,13 +1185,13 @@ class SegmentationWidget(qt.QWidget):
             except ImportError:
                 pass
 
-            # 8) GC et mémo
+            # 8) GC et memory
             import gc
             gc.collect()
             self.onProgressInfo(f"Cleanup complete. Memory: {self._get_memory_usage()}")
 
         except Exception as e:
-            logging.error(f"Cleanup crashed: {str(e)}", exc_info=True)
+            logger.error(f"Cleanup crashed: {str(e)}", exc_info=True)
             raise
 
     # ─── Load segmentation results ────────────────────────────────────────────
@@ -1515,6 +1504,8 @@ class SegmentationWidget(qt.QWidget):
         return segmentationNode.GetSegmentation().GetSegment(segmentId)
 
     def onInferenceError(self, errorMsg):
+        logger.debug(f"[DEBUG][SegWidget] onInferenceError called: {errorMsg}")
+        self.onProgressInfo(f"[DEBUG][SegWidget] onInferenceError received: {errorMsg}")
         if self.isStopping:
             return
         self._setApplyVisible(True)
@@ -1526,7 +1517,53 @@ class SegmentationWidget(qt.QWidget):
         self.currentInfoTextEdit.insertPlainText(infoMsg + "\n")
         self.moveTextEditToEnd(self.currentInfoTextEdit)
         self.insertDatedInfoLogs(infoMsg)
+        if "done with volume" in infoMsg.lower():
+            self._doneVolumeSeen = True
+            self._fallbackCheckAttempts = 0
+            self._fallbackLastOutputSize = None
+            debugMsg = "[DEBUG][SegWidget] 'done with volume' detected, starting fallback completion check"
+            self.currentInfoTextEdit.insertPlainText(debugMsg + "\n")
+            self.moveTextEditToEnd(self.currentInfoTextEdit)
+            self.insertDatedInfoLogs(debugMsg)
+            qt.QTimer.singleShot(1500, self._checkInferenceCompletionFallback)
         slicer.app.processEvents()
+
+    def _checkInferenceCompletionFallback(self):
+        if self._inferenceFinalized or not self._doneVolumeSeen:
+            return
+
+        self._fallbackCheckAttempts += 1
+
+        outFilePath = None
+        outFileSize = None
+        try:
+            outFilePath = self.logic._outFile
+            outFileSize = Path(outFilePath).stat().st_size
+        except Exception:
+            outFilePath = None
+
+        processState = None
+        try:
+            processState = self.logic.inferenceProcess.process.state()
+        except Exception:
+            processState = None
+
+        self.onProgressInfo(
+            f"[DEBUG][SegWidget] Fallback check #{self._fallbackCheckAttempts}: "
+            f"state={processState}, outFile={outFilePath}, size={outFileSize}"
+        )
+
+        if outFilePath and outFileSize is not None and outFileSize > 0:
+            if self._fallbackLastOutputSize == outFileSize:
+                self.onProgressInfo("[DEBUG][SegWidget] Output file stable, forcing finalization")
+                qt.QTimer.singleShot(0, self.onInferenceFinished)
+                return
+            self._fallbackLastOutputSize = outFileSize
+
+        if self._fallbackCheckAttempts < 40:
+            qt.QTimer.singleShot(1500, self._checkInferenceCompletionFallback)
+        else:
+            self.onProgressInfo("[DEBUG][SegWidget] Fallback completion check timeout (no stable output file)")
 
     @staticmethod
     def removeImageIOError(infoMsg):
@@ -1559,10 +1596,8 @@ class SegmentationWidget(qt.QWidget):
         self.stopWidgetContainer.setVisible(not isVisible)
         self.inputWidget.setEnabled(isVisible)
 
-        # compteur : visible seulement quand on est en mode batch (Apply masqué)
         self.batchCounterLabel.setVisible(not isVisible)
         if not isVisible:
-            # rafraîchir tout de suite au moment où on lance le batch
             self._updateBatchCounter(show_file_name=True)
 
 
@@ -1579,7 +1614,7 @@ class SegmentationWidget(qt.QWidget):
             self.processedVolumes[volumeNode] = segmentationNode
     def updateSegmentEditorWidget(self, *_):
 
-        # Masquer l’ancien nœud
+        # Hide previous node
         if self._prevSegmentationNode:
             try:
                 self._prevSegmentationNode.SetDisplayVisibility(False)
@@ -1588,22 +1623,20 @@ class SegmentationWidget(qt.QWidget):
 
         segmentationNode = self.getCurrentSegmentationNode()
 
-        # Si pas de segmentation ou nœud supprimé → on arrête là
+        # If no segmentation or deleted node, we stop here
         if not segmentationNode or not slicer.mrmlScene.IsNodePresent(segmentationNode):
             return
 
-        # Initialisation et visibilité
+        # Initialization and display
         self._initializeSegmentationNodeDisplay(segmentationNode)
         self.segmentEditorWidget.setSegmentationNode(segmentationNode)
         slicer.app.processEvents()
 
-        # Volume source (optionnel, uniquement si toujours présent)
         volumeNode = self.getCurrentVolumeNode()
         if volumeNode and slicer.mrmlScene.IsNodePresent(volumeNode):
             self.segmentEditorWidget.setSourceVolumeNode(volumeNode)
             slicer.app.processEvents()
 
-        # Mémorisation pour le prochain appel
         self._prevSegmentationNode = segmentationNode
 
 
@@ -1634,20 +1667,12 @@ class SegmentationWidget(qt.QWidget):
             slicer.util.warningDisplay("Please select at least one export format before exporting.")
             return
 
-        folderPath = qt.QFileDialog.getExistingDirectory(self, "Please select the export folder")
-        if not folderPath:
-            return
-
-        with slicer.util.tryWithErrorDisplay(f"Export to {folderPath} failed.", waitCursor=True):
-            self.exportSegmentation(segmentationNode, folderPath, selectedFormats)
-            slicer.util.infoDisplay(f"Export successful to {folderPath}.")
+        with slicer.util.tryWithErrorDisplay(f"Export to {self.outputFolderPath} failed.", waitCursor=True):
+            self.exportSegmentation(segmentationNode, self.outputFolderPath, selectedFormats)
+            slicer.util.infoDisplay(f"Export successful to {self.outputFolderPath}.")
 
     def exportSegmentation(self, segNode, folderPath, selectedFormats):
-        """
-        - STL / OBJ : inchangés
-        - VTK_MERGED : pipeline historique (un seul fichier)
-        - VTK        : un fichier .vtk par segment
-        """
+
         # ------------------------------------------------------------------ STL/OBJ
         for fmt in (ExportFormat.STL, ExportFormat.OBJ):
             if selectedFormats & fmt:
@@ -1675,7 +1700,6 @@ class SegmentationWidget(qt.QWidget):
     # ─── 4. Pipelines helpers ──────────────────────────────────────────────────
     def _exportMergedVTK(self, segNode, folderPath):
 
-        """ancien pipeline ‘merged’ + log de progression via onProgressInfo."""
         import vtk, os, numpy as np
         from vtk.util.numpy_support import vtk_to_numpy
         vtk.vtkObject.GlobalWarningDisplayOff()
@@ -1808,7 +1832,7 @@ class SegmentationWidget(qt.QWidget):
             flatN.SplittingOff(); flatN.AutoOrientNormalsOn()
             flatN.ConsistencyOn(); flatN.SetFeatureAngle(180); flatN.Update()
 
-            # Décimation
+            # Decimation
             self.onProgressInfo(f"PerLabelVTK: Decimating {s.GetName()}")
             dec = vtk.vtkQuadricDecimation()
             dec.SetInputConnection(flatN.GetOutputPort()); dec.SetTargetReduction(0.4); dec.Update()
@@ -1887,6 +1911,7 @@ class SegmentationWidget(qt.QWidget):
 
     def _connectSegmentationLogic(self):
         if self.logic is None:
+            logger.debug("[DEBUG][SegWidget] _connectSegmentationLogic skipped: logic is None")
             return
         self.logic.progressInfo.connect(self.onProgressInfo)
         self.logic.errorOccurred.connect(self.onInferenceError)

@@ -4,6 +4,21 @@ import fitz
 from docx import Document
 from transformers import BartTokenizer, BartForConditionalGeneration
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MedX_CLI_utils")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 def load_model_and_tokenizer(model_path):
     """
     Load the BART model and tokenizer from the Hugging Face Transformers library.
@@ -250,4 +265,4 @@ def save_dict_to_csv(data_dict, output_file_path):
         # Write key-value pairs
         for key, value in data_dict.items():
             writer.writerow([key, value])
-    print(f"CSV file saved to {output_file_path}")
+    logger.info(f"CSV file saved to {output_file_path}")

@@ -2,6 +2,19 @@ import SimpleITK as sitk
 import numpy as np
 import vtk
 import os
+import logging
+import sys
+# ===== Logging Configuration =====
+logger = logging.getLogger("AREG_IOS_transformation")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 
 def RotationMatrix(axis, theta):
@@ -69,7 +82,7 @@ def saveMatrixAsTfm(areg_matrix, aso_tfm_path, output_folder, patient_id, suffix
         try:
             matrix_aso = read_matrix(aso_tfm_path)
         except Exception as e:
-            print(f"Error reading ASO matrix for {patient_id}: {e}")
+            logger.error(f"Error reading ASO matrix for {patient_id}: {e}")
             return
         
         final_matrix = np.linalg.inv(areg_matrix @ np.linalg.inv(matrix_aso))
@@ -86,7 +99,7 @@ def saveMatrixAsTfm(areg_matrix, aso_tfm_path, output_folder, patient_id, suffix
     transform.SetTranslation(translation.tolist())
 
     sitk.WriteTransform(transform, composed_path)
-    print(f"Saved composed matrix: {composed_path}")
+    logger.info(f"Saved composed matrix: {composed_path}")
 
 def RotateTransform(surf, transform):
 

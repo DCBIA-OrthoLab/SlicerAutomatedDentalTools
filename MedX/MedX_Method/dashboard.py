@@ -3,6 +3,20 @@ from MedX_Method.Progress import DisplayMedX
 import slicer
 import os
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MedX_dashboard")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 class MedX_Dashboard_Method(Method):
     def __init__(self, widget):
@@ -39,7 +53,6 @@ class MedX_Dashboard_Method(Method):
         if kwargs["summary_folder"] == "":
             out += "Please select an input folder for Clinical Notes\n"
 
-        print(kwargs["output_folder"])
         if kwargs["output_folder"] == "":
             out += "Please select an output folder\n"
 
@@ -60,9 +73,7 @@ class MedX_Dashboard_Method(Method):
             "log_path": kwargs["log_path"],
         }
         
-        print('-' * 70)
-        print("parameter Dashboard : ", parameter_Dashboard)
-        print('-' * 70)
+        logger.info(f"Parameter Dashboard :{parameter_Dashboard}")
 
         MedXProcess = slicer.modules.medx_dashboard
 

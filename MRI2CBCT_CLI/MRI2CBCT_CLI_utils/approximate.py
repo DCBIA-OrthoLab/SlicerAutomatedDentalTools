@@ -14,6 +14,21 @@ from sklearn.model_selection import ParameterGrid
 from MRI2CBCT_CLI_utils.nmi import NMI
 from MRI2CBCT_CLI_utils.approx_utils import get_corresponding_file, downsample, prealign_mri_to_cbct, resample_image, sitk_to_nib, convert_transform_for_slicer
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_utils_approximate")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 def approximation(cbct_folder, mri_folder, output_folder):
     """
@@ -49,10 +64,10 @@ def approximation(cbct_folder, mri_folder, output_folder):
                 mri_path = get_corresponding_file(mri_folder, patient_id, "MRI")
 
                 if not mri_path:
-                    print(f"No corresponding MRIs file found for: {cbct_file}")
+                    logger.warning(f"No corresponding MRIs file found for: {cbct_file}")
                     continue
                 
-                print(f"Treating patient: {patient_id}")
+                logger.info(f"Treating patient: {patient_id}")
                 output_path = os.path.join(output_folder, f'{patient_id}_MRI_approximate.tfm')
 
                 moving_nii, static_nii, prealign_transform, mri_spacing = prealign_mri_to_cbct(mri_path, cbct_path)
@@ -117,7 +132,7 @@ def approximation(cbct_folder, mri_folder, output_folder):
                     sitk_transform.SetTranslation(translation)
 
                     sitk.WriteTransform(sitk_transform, output_path)
-                    print(f"Saved transformation to {output_path}\n\n")
+                    logger.info(f"Saved transformation to {output_path}\n\n")
                     
                     # === Apply transform to MRI and save transformed volume ===
                     # Reload original MRI to preserve spacing/origin
@@ -134,21 +149,12 @@ def approximation(cbct_folder, mri_folder, output_folder):
                         0.0,
                         original_mri_sitk.GetPixelID()
                     )
-                    
-                    original = sitk.GetArrayFromImage(original_mri_sitk)
-                    transform = sitk.GetArrayFromImage(transformed_mri)
-
-                    print(np.amax(original))
-                    print(np.amin(original))
-                    print("val IRM")
-                    print(np.amax(transform))
-                    print(np.amin(transform))
 
                     # Define volume output path in same folder as transform
                     mri_out_filename = os.path.basename(mri_path).replace(".nii", "_approximate.nii")
                     mri_out_path = os.path.join(output_folder, mri_out_filename)
                     sitk.WriteImage(transformed_mri, mri_out_path)
-                    print(f"Saved transformed MRI to {mri_out_path}\n\n")
+                    logger.info(f"Saved transformed MRI to {mri_out_path}\n\n")
                     
                     patient_count += 1
                     if total_patients > 0:
@@ -158,7 +164,7 @@ def approximation(cbct_folder, mri_folder, output_folder):
                         time.sleep(0.5)
 
             else: 
-                print(f"CBCT file {cbct_file} does not match the expected format: {patient_id}_CBCT_xx.nii.gz")
+                logger.warning(f"CBCT file {cbct_file} does not match the expected format: {patient_id}_CBCT_xx.nii.gz")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Register CBCT images with corresponding MRI images.')

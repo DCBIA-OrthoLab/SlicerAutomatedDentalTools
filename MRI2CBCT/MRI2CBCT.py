@@ -1,6 +1,4 @@
-import logging
 import os
-import sys
 import sys
 from typing import Annotated, Optional
 from qt import QApplication, QWidget, QTableWidget, QDoubleSpinBox, QTableWidgetItem, QHeaderView,QSpinBox, QVBoxLayout, QLabel, QSizePolicy, QCheckBox, QFileDialog,QMessageBox, QApplication, QProgressDialog
@@ -39,6 +37,19 @@ from packaging.version import Version
 from packaging.specifiers import SpecifierSet
 
 from slicer import vtkMRMLScalarVolumeNode
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 def check_lib_installed(lib_name, required_version=None):
     try:
@@ -46,14 +57,14 @@ def check_lib_installed(lib_name, required_version=None):
         if required_version:
             spec = SpecifierSet(required_version)
             if installed_version not in spec:
-                print(f"{lib_name} version {installed_version} does not satisfy {required_version}")
+                logger.warning(f"{lib_name} version {installed_version} does not satisfy {required_version}")
                 return False
         return True
     except importlib.metadata.PackageNotFoundError:
-        print(f"{lib_name} not installed")
+        logger.warning(f"{lib_name} not installed")
         return False
     except Exception as e:
-        print(f"Error checking {lib_name}: {e}")
+        logger.warning(f"Error checking {lib_name}: {e}")
         return False
 
 def install_function():
@@ -91,7 +102,7 @@ def install_function():
             for lib, version_spec in libs_to_install:
                 try:
                     if lib == "torch":
-                        print("Installing torch from official PyTorch wheel (cu118)")
+                        logger.info("Installing torch from official PyTorch wheel (cu118)")
                         pip_install("torch==2.6.0 --index-url https://download.pytorch.org/whl/cu118")
                     else:
                         pip_target = f"{lib}{version_spec}" if version_spec else lib
@@ -184,7 +195,6 @@ def registerSampleData():
         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
         fileNames="MRI2CBCT1.nrrd",
         # Checksum to ensure file integrity. Can be computed by this command:
-        #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
         checksums="SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
         # This node name will be used when the data set is loaded
         nodeNames="MRI2CBCT1",
@@ -801,7 +811,6 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     
                     # Find the unchecked column
                     unchecked_cols = list(all_cols - {c for r, c in self.checked_cells})
-                    # print("unchecked_cols : ",unchecked_cols)
                     for c in range(3):
                         checkBox = self.tableWidgetOrient.cellWidget(unchecked_row, c)
                         if c in unchecked_cols:
@@ -1405,8 +1414,6 @@ QSlider::handle:horizontal:hover {
             )
         
         scan_folder = os.path.join(scan_folder,"TestFile")
-        print("scan folder : ",scan_folder)
-        print("name : ",name)
         if lineEdit.objectName=="LineEditMRI":
             lineEdit.setText(os.path.join(scan_folder,"MRI_ori"))
         elif lineEdit.objectName=="lineEditRegMRI":
@@ -1436,7 +1443,6 @@ QSlider::handle:horizontal:hover {
         out_path = os.path.join(directory, folder_name)
 
         if not os.path.exists(out_path):
-            # print("Downloading {}...".format(folder_name.split(os.sep)[0]))
             os.makedirs(out_path)
 
             temp_path = os.path.join(directory, "temp.zip")
@@ -1529,8 +1535,8 @@ QSlider::handle:horizontal:hover {
         self.onProcessStarted()
         
         # /!\ Launch of the first process /!\
-        print("module name : ",self.list_Processes_Parameters[0]["Module"])
-        print("Parameters TMJ Crop: ",self.list_Processes_Parameters[0]["Parameter"])
+        logger.info(f"module name : {self.list_Processes_Parameters[0]["Module"]}")
+        logger.info(f"Parameters TMJ Crop: {self.list_Processes_Parameters[0]["Parameter"]}")
         
         self.process = slicer.cli.run(
                 self.list_Processes_Parameters[0]["Process"],
@@ -1597,8 +1603,8 @@ QSlider::handle:horizontal:hover {
         self.onProcessStarted()
         
         # /!\ Launch of the first process /!\
-        print("module name : ",self.list_Processes_Parameters[0]["Module"])
-        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        logger.info(f"module name : {self.list_Processes_Parameters[0]["Module"]}")
+        logger.info(f"Parameters : {self.list_Processes_Parameters[0]["Parameter"]}")
         
         self.process = slicer.cli.run(
                 self.list_Processes_Parameters[0]["Process"],
@@ -1648,8 +1654,8 @@ QSlider::handle:horizontal:hover {
         self.onProcessStarted()
         
         # /!\ Launch of the first process /!\
-        print("module name : ",self.list_Processes_Parameters[0]["Module"])
-        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        logger.info(f"module name : {self.list_Processes_Parameters[0]["Module"]}")
+        logger.info(f"Parameters : {self.list_Processes_Parameters[0]["Parameter"]}")
         
         self.process = slicer.cli.run(
                 self.list_Processes_Parameters[0]["Process"],
@@ -1761,8 +1767,8 @@ QSlider::handle:horizontal:hover {
         self.onProcessStarted()
         
         # /!\ Launch of the first process /!\
-        print("module name : ",self.list_Processes_Parameters[0]["Module"])
-        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        logger.info(f"module name : {self.list_Processes_Parameters[0]["Module"]}")
+        logger.info(f"Parameters : {self.list_Processes_Parameters[0]["Parameter"]}")
         
         self.process = slicer.cli.run(
                 self.list_Processes_Parameters[0]["Process"],
@@ -1923,8 +1929,8 @@ QSlider::handle:horizontal:hover {
         self.onProcessStarted()
         
         # /!\ Launch of the first process /!\
-        print("module name : ",self.list_Processes_Parameters[0]["Module"])
-        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        logger.info(f"module name : {self.list_Processes_Parameters[0]["Module"]}")
+        logger.info(f"Parameters : {self.list_Processes_Parameters[0]["Parameter"]}")
         
         self.process = slicer.cli.run(
                 self.list_Processes_Parameters[0]["Process"],
@@ -1979,8 +1985,8 @@ QSlider::handle:horizontal:hover {
         self.onProcessStarted()
         
         # /!\ Launch of the first process /!\
-        print("module name : ",self.list_Processes_Parameters[0]["Module"])
-        print("Parameters : ",self.list_Processes_Parameters[0]["Parameter"])
+        logger.info(f"module name : {self.list_Processes_Parameters[0]["Module"]}")
+        logger.info(f"Parameters : {self.list_Processes_Parameters[0]["Parameter"]}")
         
         self.process = slicer.cli.run(
                 self.list_Processes_Parameters[0]["Process"],
@@ -2062,21 +2068,21 @@ QSlider::handle:horizontal:hover {
             self.ui.pushButtonCancelProcess.setVisible(False)
             if caller.GetStatus() & caller.ErrorsMask:
                 # error
-                print("\n\n ========= PROCESSED ========= \n")
+                logger.info("\n\n ========= PROCESSED ========= \n")
 
-                print(self.process.GetOutputText())
-                print("\n\n ========= ERROR ========= \n")
+                logger.info(self.process.GetOutputText())
+                logger.error("\n\n ========= ERROR ========= \n")
                 errorText = self.process.GetErrorText()
-                print("CLI execution failed: \n \n" + errorText)
+                logger.error("CLI execution failed: \n \n" + errorText)
 
                 self.onCancel()
 
             else:
-                print("\n\n ========= PROCESSED ========= \n")
+                logger.info("\n\n ========= PROCESSED ========= \n")
 
-                print(self.process.GetOutputText())
+                logger.info(self.process.GetOutputText())
                 try:
-                    print("name process : ",self.list_Processes_Parameters[0]["Process"])
+                    logger.info(f"name process : {self.list_Processes_Parameters[0]["Process"]}")
                     self.process = slicer.cli.run(
                         self.list_Processes_Parameters[0]["Process"],
                         None,
@@ -2110,8 +2116,8 @@ QSlider::handle:horizontal:hover {
         total_time = time.time() - self.startTime
         
 
-        print("PROCESS DONE.")
-        print(
+        logger.info("PROCESS DONE.")
+        logger.info(
             "Done in {} min and {} sec".format(
                 int(total_time / 60), int(total_time % 60)
             )
@@ -2138,7 +2144,7 @@ QSlider::handle:horizontal:hover {
     def onCancel(self):
         self.processWasCanceled = True
         self.process.Cancel()
-        print("\n\n ========= PROCESS CANCELED ========= \n")
+        logger.info("\n\n ========= PROCESS CANCELED ========= \n")
         self.ui.label_info.setText("Process was canceled.")
         self.RunningUI(False)
         
@@ -2213,7 +2219,7 @@ class MRI2CBCTLogic(ScriptedLoadableModuleLogic):
         import time
 
         startTime = time.time()
-        logging.info("Processing started")
+        logger.info("Processing started")
 
         # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
         cliParams = {
@@ -2227,7 +2233,7 @@ class MRI2CBCTLogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(cliNode)
 
         stopTime = time.time()
-        logging.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
+        logger.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
 
 
 #

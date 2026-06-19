@@ -25,6 +25,21 @@ from captum.attr import LayerGradCam
 import cv2
 import numpy as np
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("DOCShapeAXI_CLI")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 def scale_cam_image(cam, target_size=None):
     ## adapted from https://github.com/jacobgil/pytorch-grad-cam/blob/master/pytorch_grad_cam/utils/image.py#L162
     result = []
@@ -94,7 +109,7 @@ def csv_edit(args):
       surf_path = os.path.join(surf_dir, surf)
       if os.path.splitext(surf)[1] == '.vtk':
         if not os.path.exists(surf_path):
-          print(f"Missing files: {surf}")
+          logger.warning(f"Missing files: {surf}")
         else:
           with open(args.input_csv, 'a') as f:
               f.write(f"{surf}\n")
@@ -109,7 +124,7 @@ def download_model(model_name, output_path):
 
 
 def saxi_gradcam(args, out_model_path):
-  print("Running Explainability....")
+  logger.info("Running Explainability....")
   with open(args.log_path,'w+') as log_f :
     log_f.write(f"{args.task},explainability,NaN,{args.num_classes}")
 
@@ -172,7 +187,7 @@ def saxi_gradcam(args, out_model_path):
 
 
 def saxi_predict(args,out_model_path):
-    print("Running Prediction....")
+    logger.info("Running Prediction....")
 
     df = pd.read_csv(args.input_csv)
     with open(args.log_path,'w+') as log_f :
@@ -261,7 +276,7 @@ def main(args):
   
   if os.path.exists(args.output_dir):
     if not os.path.exists(out_model_path):
-      print("Downloading model...")
+      logger.info("Downloading model...")
       download_model(args.model, out_model_path)
 
   if not os.path.exists(args.input_csv):
@@ -269,11 +284,11 @@ def main(args):
     csv_edit(args)
 
   saxi_predict(args, out_model_path)
-  print("End prediction, starting explainability")
+  logger.info("End prediction, starting explainability")
 
   saxi_gradcam(args, out_model_path)
 
-  print("End explainability \nProcess Completed")
+  logger.info("End explainability \nProcess Completed")
 
 
 if __name__ == '__main__':

@@ -3,6 +3,21 @@ import os
 import SimpleITK as sitk
 import numpy as np
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_utils_normalize")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 def compute_thresholds(image, lower_percentile=10, upper_percentile=90):
     """
     Computes intensity thresholds for an image based on specified percentiles.
@@ -69,7 +84,7 @@ def normalize(input_folder, output_folder,upper_percentile,lower_percentile,min_
             output_filename = filename.replace('.nii.gz', f'_percentile=[{lower_percentile},{upper_percentile}]_norm=[{min_norm},{max_norm}].nii.gz')
             output_path = os.path.join(output_folder, output_filename)
             sitk.WriteImage(enhanced_img, output_path)
-            print(f'Saved enhanced image to {output_path}')
+            logger.info(f'Saved enhanced image to {output_path}')
 
 def main():
     parser = argparse.ArgumentParser(description='Enhance contrast of NIfTI images and save with a new suffix.')

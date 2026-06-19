@@ -1,8 +1,22 @@
-from Classes.Point import Point
-from Classes.Line import Line
+from .Point import Point
+from .Line import Line
 import numpy as np
 from typing import Union
 import math
+import logging
+import sys
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("VFACE_measure")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 #Constant List
 #Describe where each tooth
@@ -291,13 +305,13 @@ class Distance(Measure):
     def __SignMeaningDist(self):
         lst_measurement = [self.point1["name"], self.point2line["name"]]
         lst_measurement = [self.point1["name"], self.point2line]
-        print("lst_measurement : ",lst_measurement)
+        logger.info(f"lst_measurement : {lst_measurement}")
         try :
             direction1 = lst_measurement[0][0:3]
             direction2 = lst_measurement[1][0:3]
         except :
-            print('AN ERROR OCCURED')
-            print("lst_measurement : ",lst_measurement)
+            logger.error('AN ERROR OCCURED')
+            logger.info(f"lst_measurement : {lst_measurement}")
             direction1 = "No_direction"
             direction2 = "No_direction"
 
@@ -318,8 +332,8 @@ class Distance(Measure):
 
         if direction2 == "Mid":
             parts = lst_measurement[1].split("_")
-            print("lst_measurement : ",lst_measurement)
-            print("parts : ",parts)
+            logger.info(f"lst_measurement : {lst_measurement}")
+            logger.info(f"parts : {parts}")
             landmark1 = parts[1] if len(parts) > 1 else None
             landmark2 = parts[2] if len(parts) > 2 else None
 
@@ -338,8 +352,8 @@ class Distance(Measure):
                 direction1 = lst_measurement[0][0]
                 direction2 = lst_measurement[1][0]
             except :
-                print('AN ERROR OCCURED AGAIN')
-                print("lst_measurement : ",lst_measurement)
+                logger.error('AN ERROR OCCURED AGAIN')
+                logger.error(f"lst_measurement : {lst_measurement}")
                 direction1 = "No_direction"
                 direction2 = "No_direction"
 
@@ -699,7 +713,6 @@ class Angle(Measure):
             self.line2[1]["name"],
             self.line2[2]["name"],
         ]
-        # print("function angle")
         if check(lst_measurement, UPPER_RIGHT_BACK):
             self.ap_sign_meaning = "D"
             self.si_sign_meaning = "L"

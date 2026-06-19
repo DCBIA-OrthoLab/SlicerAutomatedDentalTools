@@ -1,4 +1,4 @@
-import os, sys, time, logging, zipfile, urllib.request, shutil, glob
+import os, sys,logging, time, zipfile, urllib.request, shutil, glob
 import vtk, qt, slicer
 from qt import (
     QWidget,
@@ -11,8 +11,21 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin, pip_install
 from functools import partialmethod
 
+# ===== Logging Configuration =====
+logger = logging.getLogger("AREG")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 from AREG_Method.IOS import Auto_IOS, Semi_IOS
 from AREG_Method.CBCT import Semi_CBCT, Auto_CBCT, Or_Auto_CBCT
+from AREG_Method.IOSCBCT import Auto_IOSCBCT,Semi_IOSCBCT,Reg_IOSCBCT
 from AREG_Method.Method import Method
 from AREG_Method.Progress import Display
 
@@ -99,11 +112,11 @@ def install_function(self,list_libs:list):
                         pip_install(lib)
 
                     elif "https:/" in version_constraint:
-                        print("version_constraint", version_constraint)
+                        logger.debug(f"Version constraint: {version_constraint}")
                         # download the library from the url
                         pip_install(version_constraint)
                     else:
-                        print("version_constraint else", version_constraint)
+                        logger.debug(f"Version constraint else: {version_constraint}")
                         lib_version = f'{lib}{version_constraint}' if version_constraint else lib
                         pip_install(lib_version)
 
@@ -185,7 +198,6 @@ class AREG(ScriptedLoadableModule):
             uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
             fileNames="AREG1.nrrd",
             # Checksum to ensure file integrity. Can be computed by this command:
-            #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
             checksums="SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
             # This node name will be used when the data set is loaded
             nodeNames="AREG1",
@@ -376,6 +388,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "Semi_CBCT": Semi_CBCT(self),
             "Auto_CBCT": Auto_CBCT(self),
             "Or_Auto_CBCT": Or_Auto_CBCT(self),
+            "Auto_IOSCBCT": Auto_IOSCBCT(self),
+            "Semi_IOSCBCT": Semi_IOSCBCT(self),
+            "Reg_IOSCBCT" :Reg_IOSCBCT(self)
         }
         self.reference_lm = []
         self.ActualMeth = Method
@@ -472,6 +487,11 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ButtonSearchScan2.pressed.connect(
             lambda: self.SearchScan(self.ui.lineEditScanT2LmPath)
         )
+
+        self.ui.ButtonSearchT2LM.pressed.connect(
+            lambda: self.SearchScan(self.ui.lineEditT2LMPath)
+        )
+
         self.ui.ButtonSearchModel1.pressed.connect(
             lambda: self.downloadModel(
                 self.ui.lineEditModel1, self.ui.label_7.text.split(" ")[0]
@@ -490,8 +510,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ButtonOriented.connect("clicked(bool)", self.onPredictButton)
         self.ui.ButtonOutput.connect("clicked(bool)", self.ChosePathOutput)
         self.ui.ButtonCancel.connect("clicked(bool)", self.onCancel)
-        self.ui.CbInputType.activated.connect(self.SwitchType)
-        self.ui.CbModeType.activated.connect(self.SwitchType)
+        self.ui.CbInputType.activated.connect(lambda: self.SwitchType("InputType"))
+        self.ui.CbModeType.activated.connect(lambda: self.SwitchType("ModeType"))
         self.ui.CbCBCTInputType.currentIndexChanged.connect(self.SwitchCBCTInputType)
         self.ui.ButtonTestFiles.clicked.connect(self.TestFiles)
         
@@ -532,49 +552,85 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.label_11.setVisible(False)
         self.ui.lineEditMaskT1Path.setVisible(False)
         self.ui.ButtonSearchT1Mask.setVisible(False)
+        self.ui.label_3.setText("T1 Scans")
+        self.ui.label_2.setText("T2 Scans")
+        self.ui.label_LibsInstallation.setVisible(False)
+
+        self.ui.label_12.setVisible(False)
+        self.ui.ButtonSearchT2LM.setVisible(False)
+        self.ui.lineEditT2LMPath.setVisible(False)
 
         if index == 2:  # Semi-Automated
+
             self.ui.label_6.setVisible(False)
             self.ui.lineEditModel2.setVisible(False)
-            self.ui.lineEditModel2.setText(" ")
             self.ui.ButtonSearchModel2.setVisible(False)
+
             self.ui.label_4.setVisible(False)
             self.ui.lineEditModel3.setVisible(False)
             self.ui.ButtonSearchModel3.setVisible(False)
-            self.ui.label_LibsInstallation.setVisible(False)
             
             self.ui.label_11.setVisible(True)
+            self.ui.label_11.setText("T1 Masks")
             self.ui.lineEditMaskT1Path.setVisible(True)
             self.ui.ButtonSearchT1Mask.setVisible(True)
 
+            self.ui.label_7.setVisible(True)
+            self.ui.label_7.setText("Segmentation Model Folder")
+            self.ui.ButtonSearchModel1.setVisible(True)
+            self.ui.lineEditModel1.setVisible(True)
+
         if index == 1:  # Fully Automated
+
+            self.ui.label_7.setVisible(True)
+            self.ui.label_7.setText("Segmentation Model Folder")
+            self.ui.ButtonSearchModel1.setVisible(True)
+            self.ui.lineEditModel1.setVisible(True)
+
             self.ui.lineEditModel2.setVisible(False)
             self.ui.ButtonSearchModel2.setVisible(False)
             self.ui.label_6.setVisible(False)
+
             self.ui.label_4.setVisible(False)
             self.ui.lineEditModel3.setVisible(False)
             self.ui.ButtonSearchModel3.setVisible(False)
-            self.ui.label_LibsInstallation.setVisible(False)
 
         if index == 0:  #  Orientation & Fully Auto Reg
-            if self.type == "CBCT":
-                self.ui.label_6.setVisible(True)
-                self.ui.lineEditModel2.setVisible(True)
-                self.ui.ButtonSearchModel2.setVisible(True)
-                self.ui.label_4.setVisible(False)
-                self.ui.label_6.setText("Orientation Model Folder")
-                self.ui.lineEditModel3.setVisible(False)
-                self.ui.ButtonSearchModel3.setVisible(False)
-                self.ui.CbCBCTInputType.setVisible(False)
-                self.ui.label_CBCTInputType.setVisible(False)
-                self.isDCMInput = False
-                self.ui.label_LibsInstallation.setVisible(False)
+
+            self.ui.label_7.setVisible(True)
+            self.ui.label_7.setText("Segmentation Model Folder")
+            self.ui.ButtonSearchModel1.setVisible(True)
+            self.ui.lineEditModel1.setVisible(True)
+
+            self.ui.label_6.setVisible(True)
+            self.ui.lineEditModel2.setVisible(True)
+            self.ui.ButtonSearchModel2.setVisible(True)
+            self.ui.label_6.setText("Orientation Model Folder")
+
+            self.ui.label_4.setVisible(False)
+            self.ui.lineEditModel3.setVisible(False)
+            self.ui.ButtonSearchModel3.setVisible(False)
+
+            self.ui.CbCBCTInputType.setVisible(False)
+            self.ui.label_CBCTInputType.setVisible(False)
+            self.isDCMInput = False
 
     def SwitchModeIOS(self, index):
         self.ui.CbCBCTInputType.setVisible(False)
         self.ui.label_CBCTInputType.setVisible(False)
         self.ui.advancedCollapsibleButton.collapsed = True
+        self.ui.label_11.setVisible(False)
+        self.ui.lineEditMaskT1Path.setVisible(False)
+        self.ui.ButtonSearchT1Mask.setVisible(False)
+        self.ui.label_3.setText("T1 Scans")
+        self.ui.label_2.setText("T2 Scans")
         self.isDCMInput = False
+        self.ui.label_LibsInstallation.setVisible(False)
+
+        self.ui.label_12.setVisible(False)
+        self.ui.ButtonSearchT2LM.setVisible(False)
+        self.ui.lineEditT2LMPath.setVisible(False)
+
         # registration and orientation
         if index == 0:
             self.ui.label_7.setVisible(True)
@@ -592,7 +648,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditModel3.setVisible(True)
             self.ui.ButtonSearchModel3.setVisible(True)
 
-            self.ui.label_LibsInstallation.setVisible(False)
         # Registration
         if index == 1:
             self.ui.label_7.setVisible(False)
@@ -610,10 +665,99 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditModel3.setVisible(True)
             self.ui.ButtonSearchModel3.setVisible(True)
 
-            self.ui.label_LibsInstallation.setVisible(False)
-    def SwitchType(self):
+
+    def SwitchModeIOSCBCT(self, index):
+        self.ui.CbCBCTInputType.setVisible(False)
+        self.ui.label_CBCTInputType.setVisible(False)
+        self.ui.advancedCollapsibleButton.collapsed = True
+        self.ui.label_11.setVisible(False)
+        self.ui.lineEditMaskT1Path.setVisible(False)
+        self.ui.ButtonSearchT1Mask.setVisible(False)
+        self.isDCMInput = False
+        self.ui.label_LibsInstallation.setVisible(False)
+
+        self.ui.label_12.setVisible(False)
+        self.ui.ButtonSearchT2LM.setVisible(False)
+        self.ui.lineEditT2LMPath.setVisible(False)
+
+        # Fully Registration
+        if index == 0:
+            self.ui.label_3.setText("IOS Scans")
+            self.ui.label_2.setText("CBCT Scans")
+
+            self.ui.label_7.setVisible(True)
+            self.ui.label_7.setText("Orientation Model Folder")
+            self.ui.ButtonSearchModel1.setVisible(True)
+            self.ui.lineEditModel1.setVisible(True)
+
+            self.ui.label_6.setVisible(True)
+            self.ui.label_6.setText("CBCT Landmarks identification Folder")
+            self.ui.lineEditModel2.setVisible(True)
+            self.ui.ButtonSearchModel2.setVisible(True)
+
+            self.ui.label_4.setVisible(True)
+            self.ui.label_4.setText("IOS Landmarks identification Folder")
+            self.ui.lineEditModel3.setVisible(True)
+            self.ui.ButtonSearchModel3.setVisible(True)
+
+        # Semi Registration
+        if index == 1:
+            self.ui.label_3.setText("Oriented IOS Scans")
+            self.ui.label_2.setText("Oriented CBCT Scans")
+
+            self.ui.label_7.setVisible(False)
+            self.ui.ButtonSearchModel1.setVisible(False)
+            self.ui.lineEditModel1.setVisible(False)
+
+            self.ui.label_6.setVisible(True)
+            self.ui.label_6.setText("CBCT Landmarks identification Folder")
+            self.ui.lineEditModel2.setVisible(True)
+            self.ui.ButtonSearchModel2.setVisible(True)
+
+            self.ui.label_4.setVisible(True)
+            self.ui.label_4.setText("IOS Landmarks identification Folder")
+            self.ui.lineEditModel3.setVisible(True)
+            self.ui.ButtonSearchModel3.setVisible(True)
+        
+        #Registration
+        if index == 2:
+            self.ui.label_3.setText("Oriented IOS Scans")
+            self.ui.label_2.setText("Oriented CBCT Scans")
+
+            self.ui.label_11.setVisible(True)
+            self.ui.label_11.setText("IOS Landmarks")
+            self.ui.lineEditMaskT1Path.setVisible(True)
+            self.ui.ButtonSearchT1Mask.setVisible(True)
+
+            self.ui.label_7.setVisible(False)
+            self.ui.ButtonSearchModel1.setVisible(False)
+            self.ui.lineEditModel1.setVisible(False)
+
+            self.ui.label_12.setVisible(True)
+            self.ui.ButtonSearchT2LM.setVisible(True)
+            self.ui.lineEditT2LMPath.setVisible(True)
+
+            self.ui.label_6.setVisible(False)
+            self.ui.lineEditModel2.setVisible(False)
+            self.ui.ButtonSearchModel2.setVisible(False)
+
+            self.ui.label_4.setVisible(False)
+            self.ui.lineEditModel3.setVisible(False)
+            self.ui.ButtonSearchModel3.setVisible(False)
+
+
+    def SwitchType(self,source=None):
         """Function to change the UI and the Method in AREG depending on the selected type (Semi CBCT, Fully CBCT...)"""
         if self.ui.CbInputType.currentIndex == 0:
+            if source == "InputType":
+                number_item = self.ui.CbModeType.count
+                for _ in range(number_item):
+                    self.ui.CbModeType.removeItem(0)
+
+                self.ui.CbModeType.addItem("Orientation and Registration")
+                self.ui.CbModeType.addItem("Fully-Automated Registration")
+                self.ui.CbModeType.addItem("Semi-Automated Registration")
+
             if self.ui.CbModeType.currentIndex == 2:
                 self.ActualMethName = "Semi_CBCT"
                 self.ActualMeth = self.MethodDic[self.ActualMethName]
@@ -634,16 +778,15 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.type = "CBCT"
             self.SwitchModeCBCT(self.ui.CbModeType.currentIndex)
 
-            number_item = self.ui.CbModeType.count
-            if number_item == 2:
+        elif self.ui.CbInputType.currentIndex == 1:
+            if source == "InputType":
+                number_item = self.ui.CbModeType.count
                 for _ in range(number_item):
                     self.ui.CbModeType.removeItem(0)
 
                 self.ui.CbModeType.addItem("Orientation and Registration")
-                self.ui.CbModeType.addItem("Fully-Automated Registration")
-                self.ui.CbModeType.addItem("Semi-Automated Registration")
+                self.ui.CbModeType.addItem("Registration")
 
-        elif self.ui.CbInputType.currentIndex == 1:
             if self.ui.CbModeType.currentIndex == 1:
                 self.ActualMeth = self.MethodDic["Semi_IOS"]
                 self.ui.stackedWidget.setCurrentIndex(3)
@@ -655,15 +798,36 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.type = "IOS"
                 self.ui.label_7.setText("Segmentation Model Folder")
 
-            number_item = self.ui.CbModeType.count
-            if number_item == 3:
+            self.SwitchModeIOS(self.ui.CbModeType.currentIndex)
+        elif self.ui.CbInputType.currentIndex == 2:
+            if source == "InputType":
+                number_item = self.ui.CbModeType.count
                 for _ in range(number_item):
                     self.ui.CbModeType.removeItem(0)
 
-                self.ui.CbModeType.addItem("Orientation and Registration")
+                self.ui.CbModeType.addItem("Fully Automated Registration")
+                self.ui.CbModeType.addItem("Semi Automated Registration")
                 self.ui.CbModeType.addItem("Registration")
 
-            self.SwitchModeIOS(self.ui.CbModeType.currentIndex)
+            if self.ui.CbModeType.currentIndex == 0:
+                self.ActualMethName = "Auto_IOSCBCT"
+                self.ActualMeth = self.MethodDic[self.ActualMethName]
+                self.ui.stackedWidget.setCurrentIndex(4)
+                self.type = "IOSCBCT"
+
+            elif self.ui.CbModeType.currentIndex == 1:
+                self.ActualMethName = "Semi_IOSCBCT"
+                self.ActualMeth = self.MethodDic[self.ActualMethName]
+                self.ui.stackedWidget.setCurrentIndex(4)
+                self.type = "IOSCBCT"
+            
+            elif self.ui.CbModeType.currentIndex == 2:
+                self.ActualMethName = "Reg_IOSCBCT"
+                self.ActualMeth = self.MethodDic[self.ActualMethName]
+                self.ui.stackedWidget.setCurrentIndex(4)
+                self.type = "IOSCBCT"
+          
+            self.SwitchModeIOSCBCT(self.ui.CbModeType.currentIndex)
 
         self.dicchckbox = self.ActualMeth.getcheckbox()
         self.dicchckbox2 = self.ActualMeth.getcheckbox2()
@@ -704,10 +868,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self, url, directory, folder_name=None, num_downl=1, total_downloads=1
     ):
         out_path = os.path.join(directory, folder_name)
-
         if not os.path.exists(out_path):
             os.makedirs(out_path)
-
             temp_path = os.path.join(directory, "temp.zip")
 
             # Download the zip file from the url
@@ -761,8 +923,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             name, url = self.ActualMeth.getTestFileList()
 
-        print("name : ",name)
-        print("url : ",url)
+        logger.info(f"Test file name: {name}")
+        logger.info(f"Test file url: {url}")
 
         scan_folder = self.DownloadUnzip(
             url=url,
@@ -772,9 +934,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             else os.path.join("Test_Files", "DCM", name),
         )
 
-        print("scan folder : ",scan_folder)
+        logger.info(f"Scan folder: {scan_folder}")
         scan_folder_t1 = os.path.join(scan_folder, "T1")
         scan_folder_t2 = os.path.join(scan_folder, "T2")
+        if self.ActualMethName == "Reg_IOSCBCT":
+            lm_folder_t1 = os.path.join(scan_folder, "IOS Landmarks")
+            lm_folder_t2 = os.path.join(scan_folder, "CBCT Landmarks")
 
         if self.isDCMInput:
             nb_scans = self.ActualMeth.NumberScanDCM(scan_folder_t1, scan_folder_t2)
@@ -789,6 +954,11 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.nb_patient = nb_scans
             self.ui.lineEditScanT1LmPath.setText(scan_folder_t1)
             self.ui.lineEditScanT2LmPath.setText(scan_folder_t2)
+
+            if self.ActualMethName == "Reg_IOSCBCT":
+                self.ui.lineEditMaskT1Path.setText(lm_folder_t1)
+                self.ui.lineEditT2LMPath.setText(lm_folder_t2)
+
             self.ui.LabelInfoPreProc.setText(
                 "Number of Patients to process : " + str(nb_scans)
             )
@@ -805,6 +975,19 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.SearchModelALI(self.CBCTOrientRef)
                 self.downloadModel(
                     lineEdit=self.ui.lineEditModel2, name="Orientation", test=True
+                )
+        if self.type == "IOSCBCT":
+            if self.ActualMethName == "Auto_IOSCBCT":
+                self.SearchModelALI(self.CBCTOrientRef)
+                self.downloadModel(
+                    lineEdit=self.ui.lineEditModel1, name="Orientation", test=True
+                )
+            if self.ActualMethName != "Reg_IOSCBCT":
+                self.downloadModel(
+                    lineEdit=self.ui.lineEditModel2, name="CBCT", test=True
+                )
+                self.downloadModel(
+                    lineEdit=self.ui.lineEditModel3, name="IOS", test=True
                 )
 
         if self.ui.lineEditOutputPath.text == "":
@@ -855,7 +1038,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             mask_path = self.ui.lineEditMaskT1Path.text
 
             if t1_path != "" and t2_path != "":
-                if self.ActualMethName == "Semi_CBCT":
+                if self.ActualMethName == "Semi_CBCT" or self.ActualMethName == "Reg_IOSCBCT":
                     if mask_path != "":
                         self.CheckScan()
                 else:
@@ -871,7 +1054,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             and self.ui.CbModeType.currentIndex == 0
             and not test
             and name == "Orientation"
-        ):
+        ) or (self.type == "IOSCBCT" and name == "Orientation"):
             referenceList = self.ActualMeth.getReferenceList()
             refList = list(referenceList.keys())
 
@@ -963,8 +1146,13 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 qt.QMessageBox.warning(self.parent, "Warning", error)
 
             else:
-                self.ui.lineEditModel3.setText(model_folder)
-                self.enableCheckbox()
+                if self.type == "CBCT":
+                    self.ui.lineEditModel3.setText(model_folder)
+                    self.enableCheckbox()
+                elif self.type == "IOSCBCT":
+                    self.ui.lineEditModel1.setText(model_folder)
+                    self.enableCheckbox()
+
 
     def ChosePathOutput(self):
         out_folder = qt.QFileDialog.getExistingDirectory(
@@ -1009,35 +1197,72 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
 
     def onPredictButton(self):
-        if self.type == "CBCT":
-            monai_version = '==1.5.0' if sys.version_info >= (3, 10) else '==0.7.0'            
+        if "CBCT" in self.type:
+            # 1. Coordinate MONAI and PyTorch versions based on Python version
+            if sys.version_info >= (3, 10):
+                monai_version = '==1.3.2'
+                torch_version = '==2.2.2'
+                
             if platform.system() == "Windows":
-                list_libs_CBCT_windows = [('itk','==5.4.0',None),('itk-elastix','==0.19.2',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','>=3.13.0',None),
-                            ('pandas',None,None),('torch','<2.6.0',"https://download.pytorch.org/whl/cu118")] #(lib_name, version, url)
+                list_libs_CBCT_windows = [
+                    ('itk', '==5.4.0', None),
+                    ('itk-elastix', '==0.19.2', None),
+                    ('dicom2nifti', '==2.3.0', None),
+                    ('pydicom', '==2.2.2', None),
+                    ('einops', None, None),
+                    ('nibabel', None, None),
+                    ('connected-components-3d', '>=3.13.0', None),
+                    ('pandas', None, None),
+                    ('torch', torch_version, "https://download.pytorch.org/whl/cu118")
+                ]
                 list_libs_CBCT_windows.append(('monai', monai_version, None))
-
-                is_installed = install_function(self,list_libs_CBCT_windows)
+                is_installed = install_function(self, list_libs_CBCT_windows)
+                
             else:
-                # libraries and versions compatibility to use AREG_CBCT
-                list_libs_CBCT = [('itk','==5.4.0',None),('itk-elastix','==0.19.2',None),('dicom2nifti', '==2.3.0',None),('pydicom', '==2.2.2',None),('einops',None,None),('nibabel',None,None),('connected-components-3d','>=3.13.0',None),
-                            ('pandas',None,None),('torch','<2.6.0',None)] #(lib_name, version, url)
+                # macOS / Linux
+                list_libs_CBCT = [
+                    ('itk', '==5.4.0', None),
+                    ('itk-elastix', '==0.19.2', None),
+                    ('dicom2nifti', '==2.3.0', None),
+                    ('pydicom', '==2.2.2', None),
+                    ('einops', None, None),
+                    ('nibabel', None, None),
+                    ('connected-components-3d', '>=3.13.0', None),
+                    ('pandas', None, None),
+                    ('numpy', '<2.0.0', None),
+                    ('torch', torch_version, None),
+                    ('torchvision', "==0.17.0",None),('blosc2', None,None), 
+                    ('torchaudio',torch_version,None),('nnunetv2',None,None),
+                    ('monai', monai_version, None)
+                ]
+                is_installed = install_function(self, list_libs_CBCT)
 
-                list_libs_CBCT.append(('monai', monai_version, None))
+                import numpy as np
+                from packaging.version import Version
 
-                is_installed = install_function(self,list_libs_CBCT)
+                numpy_version = Version(np.__version__)
+                if numpy_version > Version("2.0"):
+                    pip_install("numpy<2.0.0")
                 
         if self.type == "IOS":
             is_installed = False
             check_env = self.onCheckRequirements()
-            print("seg_env : ",check_env)
+            logger.debug(f"Segmentation environment: {check_env}")
             
             if check_env:
                 list_libs_IOS = [("tqdm",None,None),('vtk',None,None),('pandas',None,None)]
                 
-                monai_version = '==1.5.0' if sys.version_info >= (3, 10) else '==0.7.0'
+                monai_version = '==1.3.2' if sys.version_info >= (3, 10) else '==0.7.0'
                 list_libs_IOS.append(('monai', monai_version, None))
 
                 is_installed = install_function(self,list_libs_IOS)
+
+        if "IOSCBCT" in self.type:
+            is_installed = False
+            # libraries and versions compatibility to use AREG_IOSCBCT
+            list_libs_IOSCBCT = [('pyvista','==0.47.3',None),('scipy',None,None),('numpy',None,None),('SimpleITK',None,None)]
+            
+            is_installed = install_function(self,list_libs_IOSCBCT)
 
         # If the user didn't accept the installation, the module doesn't run
         if not is_installed:
@@ -1051,6 +1276,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             input_t1_folder=self.ui.lineEditScanT1LmPath.text,
             input_t2_folder=self.ui.lineEditScanT2LmPath.text,
             input_t1_mask=self.ui.lineEditMaskT1Path.text,
+            input_t2_landmarks = self.ui.lineEditT2LMPath.text,
             folder_output=self.ui.lineEditOutputPath.text,
             model_folder_1=self.ui.lineEditModel1.text,
             model_folder_2=self.ui.lineEditModel2.text,
@@ -1073,11 +1299,11 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 )
             else:
                 merge_seg = None
-
             self.list_Processes_Parameters = self.ActualMeth.Process(
                 input_t1_folder=self.ui.lineEditScanT1LmPath.text,
                 input_t2_folder=self.ui.lineEditScanT2LmPath.text,
                 input_t1_mask=self.ui.lineEditMaskT1Path.text,
+                input_t2_landmarks = self.ui.lineEditT2LMPath.text,
                 folder_output=self.ui.lineEditOutputPath.text,
                 model_folder_1=self.ui.lineEditModel1.text,
                 model_folder_2=self.ui.lineEditModel2.text,
@@ -1097,7 +1323,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             # Guard: if Process() returned an empty list, log and return to avoid IndexError
             if not self.list_Processes_Parameters:
-                logging.error("list_Processes_Parameters is empty after calling ActualMeth.Process()")
+                logger.error("list_Processes_Parameters is empty after calling ActualMeth.Process()")
                 return
 
             self.nb_extension_launch = len(self.list_Processes_Parameters)
@@ -1106,12 +1332,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             try:
                 self.module_name = self.list_Processes_Parameters[0]["Module"]
             except Exception:
-                logging.exception("Exception while accessing first process entry")
+                logger.exception("Exception while accessing first process entry")
                 return
             # /!\ Launch of the first process /!\
-            print("module name : ", self.module_name)
-            print("type: ",self.type)
-            print("method:",self.ActualMethName)
+            logger.info(f"Module name: {self.module_name}")
+            logger.info(f"Type: {self.type}")
+            logger.info(f"Method: {self.ActualMethName}")
 
             if self.type == "CBCT":
                 self.process = slicer.cli.run(
@@ -1149,8 +1375,31 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             try:
                                 self.OnEndProcess()
                             except Exception:
-                                logging.exception("OnEndProcess failed after conda run")
+                                logger.exception("OnEndProcess failed after conda run")
                             return
+            elif self.type == "IOSCBCT":
+                if self.list_Processes_Parameters[0]["Module"]=="CrownSegmentationcli":
+                    self.run_conda_tool("seg")
+                    self.process = slicer.cli.run(
+                    self.list_Processes_Parameters[0]["Process"],None,self.list_Processes_Parameters[0]["Parameter"],)
+                    self.module_name = self.list_Processes_Parameters[0]["Module"]
+                    self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                    self.processObserver = self.process.AddObserver(
+                        "ModifiedEvent", self.onProcessUpdate
+                    )
+                    del self.list_Processes_Parameters[0]
+                else:
+                    self.process = slicer.cli.run(
+                        self.list_Processes_Parameters[0]["Process"],
+                        None,
+                        self.list_Processes_Parameters[0]["Parameter"],
+                    )
+                    self.module_name = self.list_Processes_Parameters[0]["Module"]
+                    self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                    self.processObserver = self.process.AddObserver(
+                        "ModifiedEvent", self.onProcessUpdate
+                    )
+                    del self.list_Processes_Parameters[0]
               
 
     def onProcessStarted(self):
@@ -1193,20 +1442,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.progressBar.setValue(progress_bar_value)
                 self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
 
-            time_progress = os.path.getmtime(self.log_path)
-            line = self.read_log_path()
-            if (time_progress != self.time_log) and line:
-                progress = line.strip()
-            
-                self.progress = int(progress)
-                self.ui.LabelProgressPatient.setText(f"Patient : {self.progress}/{self.nb_patient}")
-                
-                progress_bar_value = round((self.progress) / self.nb_patient * 100,2)
-                self.time_log = time_progress
-                
-                self.ui.progressBar.setValue(progress_bar_value)
-                self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
-
     def onProcessUpdate(self, caller, event):
         currentTime = time.time() - self.startTime
         if currentTime < 60:
@@ -1245,23 +1480,26 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if caller.GetStatus() & caller.Completed:
             if caller.GetStatus() & caller.ErrorsMask:
                 # error
-                print("\n\n ========= PROCESSED ========= \n")
-
-                print(self.process.GetOutputText())
-                print("\n\n ========= ERROR ========= \n")
+                logger.info("========= PROCESS COMPLETED WITH ERRORS =========")
+                logger.info(self.process.GetOutputText())
+                logger.error("========= ERROR DETAILS =========")
                 errorText = self.process.GetErrorText()
-                print("CLI execution failed: \n \n" + errorText)
+                logger.error(f"CLI execution failed: \n{errorText}")
                 self.onCancel()
 
             else:
-                print("\n\n ========= PROCESSED ========= \n")
-
-                print(self.process.GetOutputText())
+                logger.info("========= PROCESS COMPLETED SUCCESSFULLY =========")
+                logger.info(self.process.GetOutputText())
                 try:
-                    print("name process : ",self.list_Processes_Parameters[0]["Process"])
+                    logger.info(f"Process name: {self.list_Processes_Parameters[0]['Process']}")
                     if self.list_Processes_Parameters[0]["Module"]=="AREG_IOS":
                         self.nb_extension_did += 1
                         self.run_conda_tool("areg")
+                    if self.list_Processes_Parameters[0]["Module"]=="CrownSegmentationcli":
+                        self.run_conda_tool("seg")
+                    if self.list_Processes_Parameters[0]["Module"]=="ALI_IOS":
+                        self.nb_extension_did += 1
+                        self.run_conda_tool("ali")
                         
                     self.ui.ButtonCancel.setEnabled(True)
                     self.process = slicer.cli.run(
@@ -1289,13 +1527,13 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.nb_change_bystep = 0
         total_time = time.time() - self.startTime
         average_time = total_time / self.nb_patient
-        print("PROCESS DONE.")
-        print(
+        logger.info("PROCESS DONE.")
+        logger.info(
             "Done in {} min and {} sec".format(
                 int(total_time / 60), int(total_time % 60)
             )
         )
-        print(
+        logger.info(
             "Average time per patient : {} min and {} sec".format(
                 int(average_time / 60), int(average_time % 60)
             )
@@ -1304,7 +1542,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         stopTime = time.time()
 
-        logging.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+        logger.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
 
         s = PopUpWindow(
             title="Process Done",
@@ -1320,12 +1558,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         file_path = os.path.abspath(__file__)
         folder_path = os.path.dirname(file_path)
         csv_file = os.path.join(folder_path,"AREG_Method","liste_csv_file_T1.csv")
-        print("csv_file : ",csv_file)
+        logger.debug(f"CSV file path T1: {csv_file}")
         if os.path.exists(csv_file):
           os.remove(csv_file)
 
         csv_file = os.path.join(folder_path,"AREG_Method","liste_csv_file_T2.csv")
-        print("csv_file : ",csv_file)
+        logger.debug(f"CSV file path T2: {csv_file}")
         if os.path.exists(csv_file):
           os.remove(csv_file)
 
@@ -1609,7 +1847,7 @@ qMRMLNodeComboBox:focus {
         except Exception as e:
             self.logic.cancel_process()
             
-        print("\n\n ========= PROCESS CANCELED ========= \n")
+        logger.warning("========= PROCESS CANCELED =========")
 
         self.RunningUI(False)
 
@@ -1646,14 +1884,16 @@ qMRMLNodeComboBox:focus {
                 dentalmodelseg_path = clean_output.group(1).strip()
                 dentalmodelseg_path_clean = dentalmodelseg_path.replace("\\n","")
             else:
-                print("Error: Unable to find dentalmodelseg path.")
+                logger.error("Error: Unable to find dentalmodelseg path.")
                 return
             
-            for i in range(2):
+            nbr_run = 2 if self.type == "IOS" else 1
+            
+            for i in range(nbr_run):
                 self.nb_extension_did += 1
                 args = self.list_Processes_Parameters[0]["Parameter"]
                 self.module_name = self.list_Processes_Parameters[0]["Module"]
-                print("args : ",args)
+                logger.debug(f"Arguments: {args}")
                 conda_exe = self.logic.conda.getCondaExecutable()
                 command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
                 for key, value in args.items():
@@ -1662,8 +1902,8 @@ qMRMLNodeComboBox:focus {
                     if key == "dentalmodelseg_path":
                         value = dentalmodelseg_path_clean
                     command.append(f"\"{value}\"")
-                print("*"*50)
-                print("command : ",command)
+                logger.debug("="*50)
+                logger.debug(f"Command: {command}")
                 
                 self.ui.LabelNameExtension.setText(f"{self.module_name}")
 
@@ -1695,18 +1935,18 @@ qMRMLNodeComboBox:focus {
                 
         elif type=="areg":
             args = self.list_Processes_Parameters[0]["Parameter"]
-            print("name:",self.list_Processes_Parameters[0]["Module"])
-            print("args : ", args)
+            logger.info(f"Module: {self.list_Processes_Parameters[0]['Module']}")
+            logger.debug(f"Arguments: {args}")
             self.module_name = self.list_Processes_Parameters[0]["Module"]
             
             conda_exe = self.logic.conda.getCondaExecutable()
             command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AREG_IOS"]
             for key, value in args.items():
-                print("key : ",key)
+                logger.debug(f"Key: {key}")
                 if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
                     value = self.logic.windows_to_linux_path(value)
                 command.append(f"\"{value}\"")
-            print("command : ",command)
+            logger.debug(f"Command: {command}")
 
             # running in // to not block Slicer
             self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
@@ -1731,6 +1971,45 @@ qMRMLNodeComboBox:focus {
                         timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
                     
                     self.ui.LabelTimer.setText(timer)
+
+            del self.list_Processes_Parameters[0]
+        elif type == "ali":
+            self.module_name = self.list_Processes_Parameters[0]["Module"]
+            args = self.list_Processes_Parameters[0]["Parameter"]
+            logger.debug(f"Processing arguments: {args}")
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"ALI_IOS"]
+            for key, value in args.items():
+                logger.debug(f"Processing key: {key}")
+                if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+                    value = self.logic.windows_to_linux_path(value)
+                command.append(f"\"{value}\"")
+            logger.debug(f"Executing command: {' '.join(command)}")
+
+            # running in // to not block Slicer
+            self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
+            self.process.start()
+            self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
+            self.ui.LabelTimer.setHidden(False)
+            self.ui.LabelTimer.setText(f"time : 0.00s")
+            previous_time = self.startTime
+
+            while self.process.is_alive():
+                self.onCondaProcessUpdate()
+                slicer.app.processEvents()
+                current_time = time.time()
+                gap=current_time-previous_time
+                if gap>0.3:
+                    currentTime = time.time() - self.startTime
+                    previous_time = currentTime
+                    if currentTime < 60:
+                        timer = f"Time : {int(currentTime)}s"
+                    elif currentTime < 3600:
+                        timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
+                    else:
+                        timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                    
+                self.ui.LabelTimer.setText(timer)
 
             del self.list_Processes_Parameters[0]
             
@@ -1929,7 +2208,7 @@ qMRMLNodeComboBox:focus {
                 self.ui.label_LibsInstallation.setText(text)
         else:
             self.ui.label_LibsInstallation.setText(f"pytorch3d is already installed")
-            print("pytorch3d already installed")
+            logger.info("pytorch3d already installed")
 
         self.all_installed = True   
         return True
@@ -2114,7 +2393,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["shapeaxi==1.1.1"],)) #run in parallel to not block slicer
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["shapeaxi==1.0.10","ocnn==2.2.1"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
@@ -2203,7 +2482,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
             self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
         else:
             os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
-        print("Cancellation requested. Terminating process...")
+        logger.warning("Cancellation requested. Terminating process...")
 
         self.subpro.wait() ## important
         self.cancel = True
@@ -2236,7 +2515,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
 
             user = self.conda.getUser()
             command_to_execute = ["wsl", "--user", user, "--", "bash", "-c", command_execute]
-            print("command_to_execute in condaRunCommand : ", command_to_execute)
+            logger.debug(f"Command to execute in condaRunCommand: {command_to_execute}")
 
             # start subprocess without blocking; capture pipes
             self.subpro = subprocess.Popen(
@@ -2256,7 +2535,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
             for com in command:
                 command_execute = command_execute + " " + com
 
-            print("command_to_execute in conda run : ", command_execute)
+            logger.debug(f"Command to execute in conda run: {command_execute}")
             # start subprocess and capture pipes
             self.subpro = subprocess.Popen(
                 command_execute,
@@ -2283,9 +2562,9 @@ class AREGLogic(ScriptedLoadableModuleLogic):
                 err_line = stderr.readline() if stderr is not None else ''
 
                 if out_line:
-                    print(out_line.rstrip())
+                    logger.info(out_line.rstrip())
                 if err_line:
-                    print(err_line.rstrip())
+                    logger.error(err_line.rstrip())
 
                 # If process finished and no more output, break
                 if self.subpro.poll() is not None and (not out_line) and (not err_line):
@@ -2296,8 +2575,8 @@ class AREGLogic(ScriptedLoadableModuleLogic):
             try:
                 self.stdout, self.stderr = self.subpro.communicate()
                 if self.stdout:
-                    print(self.stdout)
+                    logger.info(self.stdout)
                 if self.stderr:
-                    print(self.stderr)
+                    logger.error(self.stderr)
             except Exception:
                 pass

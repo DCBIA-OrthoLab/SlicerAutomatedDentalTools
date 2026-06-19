@@ -5,6 +5,21 @@ import sys, os, time
 
 from transformers import GenerationConfig
 
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MedX_Summarize")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 fpath = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(fpath)
 
@@ -36,7 +51,7 @@ def generate_combined_summary(model, tokenizer, text, max_chunk_size=3500, model
         inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=model_max_tokens).to(device)
         
         if inputs["input_ids"].shape[1] > model_max_tokens:
-            print(f"WARNING: Chunk exceeded {model_max_tokens} tokens, truncating.")
+            logger.warning(f"WARNING: Chunk exceeded {model_max_tokens} tokens, truncating.")
             
         summary_ids = model.generate(
             inputs["input_ids"], 
@@ -61,7 +76,7 @@ def process_notes(notes_folder, output_folder, model, tokenizer, log_path):
         patient_files[patient_id].append(file_name)
 
     for idx, (patient_id, files) in enumerate(patient_files.items()):
-        print(f"Processing patient {patient_id}...")
+        logger.info(f"Processing patient {patient_id}...")
         combined_text = ""
         for file_name in files:
             file_path = os.path.join(notes_folder, file_name)
@@ -77,7 +92,7 @@ def process_notes(notes_folder, output_folder, model, tokenizer, log_path):
         output_file_path = os.path.join(output_folder, f"{patient_id}_summary.txt")
         
         with open(output_file_path, 'w', encoding='utf-8') as output_file:
-            print(f"Saved summary to {output_file_path}")
+            logger.info(f"Saved summary to {output_file_path}")
             output_file.write(f"{summary}\n")
             
         with open(log_path, "w+") as log_f:

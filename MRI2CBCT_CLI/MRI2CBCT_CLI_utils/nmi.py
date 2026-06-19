@@ -4,6 +4,20 @@ from typing import Optional, Tuple
 import torch
 from torch import Tensor
 from torch.nn.modules.loss import _Loss
+import sys
+import logging
+
+# ===== Logging Configuration =====
+logger = logging.getLogger("MRI2CBCT_CLI_utils_nmi")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if logger.handlers:
+    logger.handlers.clear()
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 def nmi_gauss(x1, x2, x1_bins, x2_bins, sigma=1e-3, e=1e-10):
     assert x1.shape == x2.shape, "Inputs are not of similar shape"
