@@ -24,6 +24,7 @@ import torch
 from torchvision.models.detection import maskrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
+from scipy.ndimage import label as cc_label, binary_closing
 
 
 # ───────────────────────── helpers ──────────────────────────────────────────
@@ -54,7 +55,7 @@ def main():
 
     inp         = Path(P["input_path"]).expanduser()
     model_dir   = Path(P["model_folder"]).expanduser()
-    out_root    = Path(P.get("output_dir", inp.parent)).expanduser()
+    out_root    = Path(P.get("output_dir") or inp.parent).expanduser()
     suffix      = P.get("suffix", "seg")
     device      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -81,6 +82,16 @@ def main():
                           pr["labels"][keep].cpu().numpy()):
             seg[..., z][mk] = int(lb)
         progress(int((z + 1) * 100 / Z))
+
+    # Post-traitement : assigner le label majoritaire par composante connexe
+    binary_seg = seg > 0
+    labeled_array, num_features = cc_label(binary_seg)
+    for i in range(1, num_features + 1):
+        mask = labeled_array == i
+        labels_in_cc = seg[mask]
+        if len(labels_in_cc) > 0:
+            majority_label = np.bincount(labels_in_cc).argmax()
+            seg[mask] = majority_label
 
     # 3. Sauvegarde ───────────────────────────────────────────────────────────
     out_dir  = out_root / inp.stem
