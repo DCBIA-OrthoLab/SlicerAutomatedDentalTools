@@ -2132,6 +2132,9 @@ qMRMLNodeComboBox:focus {
                     self.ui.ButtonCancel.setVisible(True)
                     self.onCondaProcessUpdate()
                     slicer.app.processEvents()
+                    # A bare spin pegs a core and leaves the console no room to
+                    # drain what the tool is writing.
+                    time.sleep(0.05)
                     current_time = time.time()
                     gap=current_time-previous_time
                     if gap>0.3:
@@ -2173,6 +2176,7 @@ qMRMLNodeComboBox:focus {
                 self.ui.ButtonCancel.setVisible(True)
                 self.onCondaProcessUpdate()
                 slicer.app.processEvents()
+                time.sleep(0.05)
                 current_time = time.time()
                 gap=current_time-previous_time
                 if gap>0.3:
@@ -2212,6 +2216,7 @@ qMRMLNodeComboBox:focus {
             while self.process.is_alive():
                 self.onCondaProcessUpdate()
                 slicer.app.processEvents()
+                time.sleep(0.05)
                 current_time = time.time()
                 gap=current_time-previous_time
                 if gap>0.3:
@@ -2772,10 +2777,36 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         # reading two pipes with sequential blocking readline() calls can deadlock: if the child
         # fills one pipe's OS buffer while the parent is blocked reading the other pipe, both sides
         # wait on each other forever.
+        #
+        # The lines are grouped rather than logged one by one. This runs in a
+        # worker thread while the caller spins on processEvents, and Slicer
+        # reads its console through a pipe of its own: one log call per line
+        # fills that pipe faster than the main thread drains it, and the two
+        # deadlock with the panel frozen and nothing written. That is what a
+        # crown segmentation, which prints thousands of lines in one burst,
+        # used to do to a whole AREG run.
         try:
             stdout = self.subpro.stdout
+            pending = []
+            last_flush = time.time()
+
+            def flush_output():
+                if pending:
+                    logger.info("\n".join(pending))
+                    pending.clear()
+
             for line in iter(stdout.readline, '') if stdout is not None else []:
-                logger.info(line.rstrip())
+                # Progress bars rewrite one line with \r: keep the last state
+                # only, which is all that means anything once it is logged.
+                line = line.rsplit("\r", 1)[-1].rstrip()
+                if not line:
+                    continue
+                pending.append(line)
+                if len(pending) >= 100 or time.time() - last_flush > 0.5:
+                    flush_output()
+                    last_flush = time.time()
+
+            flush_output()
             self.subpro.wait()
 
         except Exception:
