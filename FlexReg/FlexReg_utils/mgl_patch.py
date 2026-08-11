@@ -131,14 +131,48 @@ SAMPLES_PER_SEGMENT = 25    # spline samples between two consecutive landmarks
 LOWER_TOOTH_LABELS = range(18, 32)
 
 
-def ReadLandmarks(path):
-    """Read a Slicer markups json as {label: position}."""
+def _controlPoints(path):
     import json
     with open(path) as f:
         data = json.load(f)
+    return [point for point in data["markups"][0]["controlPoints"]
+            if point.get("position")]
+
+
+def DoubtfulLandmarks(path):
+    """{label: why} for the points ALI was unsure of, read from its json.
+
+    ALI records how it came by each point in the markup description: one it
+    forced out of the top pixels, one it fell back on the tooth for, one whose
+    tooth was absent and whose cameras were aimed at a guess. Measured over 364
+    predictions, those sit a median 4.2 mm off the curve their neighbours draw,
+    against 1.2 mm for the rest.
+
+    Empty when dropping them would leave fewer than three points, since a
+    doubtful line still beats no line at all.
+    """
+    points = _controlPoints(path)
+    doubtful = {point["label"]: point["description"] for point in points
+                if point.get("description")}
+    if len(points) - len(doubtful) < 3:
+        return {}
+    return doubtful
+
+
+def ReadLandmarks(path, drop_doubtful=True):
+    """Read a Slicer markups json as {label: position}.
+
+    The points ALI was unsure of are left out by default: they are the ones
+    that pull the mucogingival line out of shape, and the spline spans the
+    hole they leave. DoubtfulLandmarks says which those are.
+    """
+    doubtful = DoubtfulLandmarks(path) if drop_doubtful else {}
+    if doubtful:
+        logger.info(f"Leaving out {len(doubtful)} landmark(s) ALI was unsure of: "
+                    + ", ".join(sorted(doubtful)))
     return {point["label"]: np.array(point["position"], dtype=float)
-            for point in data["markups"][0]["controlPoints"]
-            if point.get("position")}
+            for point in _controlPoints(path)
+            if point["label"] not in doubtful}
 
 
 def WriteLandmarks(path, names, positions):

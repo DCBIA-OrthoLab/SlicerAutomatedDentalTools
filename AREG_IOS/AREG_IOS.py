@@ -62,7 +62,8 @@ if check_platform()=="WSL":
     from AREG_IOS_utils.utils import WriteSurf, ReadSurf, LoadJsonLandmarks
     from AREG_IOS_utils.transformation import TransformSurf
     from AREG_IOS.AREG_IOS_utils.transformation import saveMatrixAsTfm
-    from AREG_IOS_utils.mgl_patch import MGLPatch, DEFAULT_RADIUS, MGL_ARRAY_NAME
+    from AREG_IOS_utils.mgl_patch import (
+        MGLPatch, DropDoubtfulLandmarks, DEFAULT_RADIUS, MGL_ARRAY_NAME)
 
 else :
     from AREG_IOS_utils import (
@@ -78,6 +79,7 @@ else :
         TransformSurf,
         saveMatrixAsTfm,
         MGLPatch,
+        DropDoubtfulLandmarks,
         DEFAULT_RADIUS,
         MGL_ARRAY_NAME,
     )
@@ -127,7 +129,9 @@ def RunMGL(args, icp):
             for time in ("T1", "T2"):
                 surf = ReadSurf(pair[time])
                 folder = args.lm_T1 if time == "T1" else args.lm_T2
-                landmarks = LoadJsonLandmarks(FindLandmarkFile(folder, pair[time]))
+                landmark_path = FindLandmarkFile(folder, pair[time])
+                landmarks = DropDoubtfulLandmarks(
+                    LoadJsonLandmarks(landmark_path), landmark_path)
                 surfaces[time] = MGLPatch(surf, landmarks, radius=args.patch_radius)
 
             output_icp = icp.run(surfaces["T2"], surfaces["T1"])

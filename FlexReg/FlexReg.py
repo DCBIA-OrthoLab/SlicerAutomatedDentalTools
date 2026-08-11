@@ -69,6 +69,7 @@ from FlexReg_utils.butterfly_preview import ButterflyPreview, ADJUST_SIGN
 from FlexReg_utils.mgl_patch import (
     MGLPatchBuilder, MGL_ARRAY_NAME, MGL_PREVIEW_ARRAY_NAME, MGL_ORDER,
     DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT, ReadLandmarks, WriteLandmarks,
+    DoubtfulLandmarks,
 )
 
 # Travel of the joystick pads along the antero-posterior axis, in mm. Typing a
@@ -2449,6 +2450,15 @@ class WidgetParameter:
                 checkbox.setChecked(False)
         self.showMGLLandmarks()
         self.markPreviewDirty()
+
+        # Say which points ALI doubted rather than dropping them silently: the
+        # curve is then drawn on fewer landmarks than the file holds, and the
+        # user is the one who knows whether that stretch matters.
+        doubtful = DoubtfulLandmarks(path)
+        if doubtful:
+            self.label_mgl_state.setText(
+                f'{len(doubtful)} landmark(s) left out : {", ".join(sorted(doubtful))}')
+            logger.info(f"MG landmarks left out of the curve: {doubtful}")
         return True
 
     def showMGLLandmarks(self):

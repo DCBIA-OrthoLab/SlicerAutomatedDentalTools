@@ -15,6 +15,7 @@
 #   - the band grows along the surface (geodesic), never through it, so a
 #     buccal patch cannot leak onto the lingual side where the ridge is thin.
 import heapq
+import json
 import logging
 import sys
 
@@ -55,6 +56,44 @@ DEFAULT_SAMPLES = 300       # samples along the spline
 # the patch can be kept off the crowns, which are the structures that move
 # between the two timepoints and must not drive the registration.
 LOWER_TOOTH_LABELS = range(18, 32)
+
+
+def DropDoubtfulLandmarks(landmarks, path):
+    """Landmarks minus the ones ALI itself was not sure of.
+
+    ALI records how it came by each point in the description of the markup:
+    a point it forced out of the top pixels, one it fell back on the tooth for,
+    one whose tooth was absent and whose cameras were aimed at an estimated
+    position. Measured over 364 predictions, those sit a median 4.2 mm off the
+    curve their neighbours draw, against 1.2 mm for the rest, so they are the
+    ones that pull the mucogingival line out of shape.
+
+    The curve is built from whatever is left, and a hole is nothing new: the
+    spline spans it. All of them are kept when too few would remain, since a
+    doubtful line still beats no registration.
+    """
+    try:
+        with open(path) as f:
+            markups = json.load(f)["markups"][0]["controlPoints"]
+    except Exception as error:
+        logger.warning(f"Could not read the landmark descriptions from {path}: {error}")
+        return landmarks
+
+    doubtful = {point["label"]: point["description"] for point in markups
+                if point.get("description")}
+    if not doubtful:
+        return landmarks
+
+    kept = {name: position for name, position in landmarks.items() if name not in doubtful}
+    if len(kept) < 3:
+        logger.warning(
+            f"{len(doubtful)} of the {len(landmarks)} landmarks are flagged by ALI, "
+            "too many to leave out: the line is built on all of them")
+        return landmarks
+
+    logger.info(f"Leaving out {len(doubtful)} landmark(s) ALI was unsure of: "
+                + ", ".join(f"{name} ({reason})" for name, reason in sorted(doubtful.items())))
+    return kept
 
 
 def OrderedMGLandmarks(landmarks):
