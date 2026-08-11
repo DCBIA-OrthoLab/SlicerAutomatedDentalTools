@@ -29,9 +29,15 @@ formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
-# Universal ids of the four lower teeth the occlusal plane is read from: LL6,
-# LL4, LR4, LR6, the mirror of the upper four ASO orients on.
-ORIENT_TEETH = (19, 21, 28, 30)
+# Universal ids of the lower teeth. The occlusal plane is fitted through the
+# centroids of every one the segmentation knows, rather than four named ones:
+# a single missing tooth is common in these arches and would otherwise leave
+# the scan uncorrected, which is what happened to one of twenty-eight.
+LOWER_TEETH = tuple(range(18, 32))
+
+# Fewest teeth, and shortest stretch of arch, the plane may be fitted through.
+MIN_TEETH = 4
+MIN_SPAN = 4
 
 # Only the vertical axis is corrected, by the shortest rotation that brings the
 # occlusal plane level. Sending the arch to a fixed frame would also turn it
@@ -82,19 +88,11 @@ def _rotation_between(source, target):
     return np.identity(3) + np.sin(angle) * cross + (1.0 - np.cos(angle)) * (cross @ cross)
 
 
-def _frame(left, middle, right):
-    """Plane normal and in-plane direction of three points of an arch."""
-    across = right - left
-    across = across / np.linalg.norm(across)
-
-    to_left = (left - middle) / np.linalg.norm(left - middle)
-    to_right = (right - middle) / np.linalg.norm(right - middle)
-
-    normal = np.cross(to_left, to_right)
-    normal = normal / np.linalg.norm(normal)
-
-    direction = np.cross(normal, across)
-    return normal, direction / np.linalg.norm(direction)
+def _plane_normal(centroids):
+    """Normal of the plane the tooth centroids lie closest to."""
+    centred = centroids - centroids.mean(axis=0)
+    normal = np.linalg.svd(centred)[2][2]
+    return normal / np.linalg.norm(normal)
 
 
 def LowerArchMatrix(surf, max_tilt=MAX_TILT_DEGREES):
@@ -110,21 +108,24 @@ def LowerArchMatrix(surf, max_tilt=MAX_TILT_DEGREES):
         return None
 
     points = vtk_to_numpy(surf.GetPoints().GetData()).astype(float)
-    centres = {}
-    for tooth in ORIENT_TEETH:
+    present, centroids = [], []
+    for tooth in LOWER_TEETH:
         selection = labels == tooth
-        if not selection.any():
-            logger.warning(f"Tooth {tooth} is not segmented, the scan cannot be oriented "
-                           "and the landmarks will be predicted on it as it is")
-            return None
-        centres[tooth] = points[selection].mean(axis=0)
+        if selection.any():
+            present.append(tooth)
+            centroids.append(points[selection].mean(axis=0))
 
-    left, middle1, middle2, right = (centres[t] for t in ORIENT_TEETH)
-    normal, _direction = _frame(left, (middle1 + middle2) / 2.0, right)
+    if len(present) < MIN_TEETH or (max(present) - min(present)) < MIN_SPAN:
+        logger.warning(f"Only {len(present)} lower teeth are segmented: not enough to "
+                       "read the occlusal plane, the landmarks will be predicted on "
+                       "the scan as it is")
+        return None
+
+    normal = _plane_normal(np.array(centroids))
 
     # The crowns must end up on top: the aim point of every camera is lowered
     # from the tooth toward the gum along the vertical axis.
-    crowns = np.isin(labels, list(range(18, 32)))
+    crowns = np.isin(labels, list(LOWER_TEETH))
     if crowns.any() and not crowns.all():
         upward = points[crowns].mean(axis=0) - points[~crowns].mean(axis=0)
         if np.dot(normal, upward) < 0:
