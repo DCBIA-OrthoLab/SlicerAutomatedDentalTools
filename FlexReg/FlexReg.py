@@ -492,7 +492,7 @@ class FlexRegWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditOutput.setText(surface_folder)
 
         if nom=="LowerArch":
-            path_file = QFileDialog.getOpenFileName(self.parent,'Open a file','', 'VTK Files (*.vtk)')
+            path_file = QFileDialog.getOpenFileName(self.parent,'Open a file','', 'Surfaces (*.vtk *.stl)')
             self.ui.lineEditLowerArch.setText(path_file)
 
     def applyDarkModeStyles(self):
@@ -3351,7 +3351,7 @@ class WidgetParameter:
 
 
     def selectFile(self):
-        path_file = QFileDialog.getOpenFileName(self.parent,'Open a file','', 'VTK Files (*.vtk)')
+        path_file = QFileDialog.getOpenFileName(self.parent,'Open a file','', 'Surfaces (*.vtk *.stl)')
 
         self.lineedit.setText(path_file)
 
@@ -3441,10 +3441,44 @@ class WidgetParameter:
 
     def checkLineEdit(self)->bool:
         '''
-        check if input path is a vtk file
+        check if input path is a surface this module can work on
         '''
         fname, extension = os.path.splitext(os.path.basename(self.lineedit.text))
-        return extension=='.vtk'
+        return extension.lower() in ('.vtk', '.stl')
+
+    def ensureVtkInput(self):
+        '''Turn a selected .stl into the .vtk everything downstream needs.
+
+        The patch is a point array stored inside the scan file, and the STL
+        format holds no arrays at all: the CLIs read and write .vtk. The scan
+        is therefore converted once, beside the file the user picked so the
+        patch stays with their data, and the panel then works on that copy.
+        '''
+        path = str(self.lineedit.text)
+        if not path.lower().endswith('.stl'):
+            return
+
+        converted = os.path.splitext(path)[0] + '.vtk'
+        if not os.path.isfile(converted):
+            reader = vtk.vtkSTLReader()
+            reader.SetFileName(path)
+            reader.Update()
+            writer = vtk.vtkPolyDataWriter()
+            writer.SetFileName(converted)
+            writer.SetInputData(reader.GetOutput())
+            writer.SetFileTypeToBinary()
+            if not writer.Write():
+                # Read-only folder: keep going from a copy of our own rather
+                # than refusing the scan.
+                folder = os.path.join(slicer.app.temporaryPath, 'FlexReg_converted')
+                os.makedirs(folder, exist_ok=True)
+                converted = os.path.join(folder, os.path.basename(converted))
+                writer.SetFileName(converted)
+                writer.Write()
+            logger.info(f"{os.path.basename(path)} converted to {converted}: "
+                        "the patch is stored in the scan file, which .stl cannot do")
+
+        self.lineedit.setText(converted)
 
 
     def viewScan(self):
@@ -3459,6 +3493,7 @@ class WidgetParameter:
 
         if self.surf == None :
             if self.checkLineEdit():
+                self.ensureVtkInput()
                 # Load model
                 self.surf = slicer.util.loadModel(self.lineedit.text)
 
@@ -3525,7 +3560,7 @@ class WidgetParameter:
                 self.schedulePreview()
 
             else:
-                slicer.util.infoDisplay("Enter a path to a vtk file")
+                slicer.util.infoDisplay("Enter a path to a .vtk or .stl surface")
 
 
         else :

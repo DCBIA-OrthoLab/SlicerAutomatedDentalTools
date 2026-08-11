@@ -265,7 +265,21 @@ def main(args):
                         dic_patients[basename] = vtkfile
         
         if not dic_patients:
-            logger.error("No valid medical imaging files found. Use .vtk format")
+            # A .stl is a common thing to point this at, and the reason it is
+            # not read is worth saying: the landmarks are placed tooth by
+            # tooth, and only a .vtk can carry the segmentation that names
+            # them. Segment the scans first, which also converts them.
+            others = [name for name in os.listdir(args.input)
+                      if os.path.splitext(name)[1].lower() in (".stl", ".obj", ".vtp", ".off")] \
+                if os.path.isdir(args.input) else []
+            if others:
+                logger.error(
+                    f"No .vtk found in {args.input}, but {len(others)} other surface(s) "
+                    f"are there ({', '.join(sorted(others)[:3])}...). Those formats hold "
+                    "no teeth segmentation, which the landmarks are placed from: run the "
+                    "crown segmentation on them first, it writes the .vtk this needs")
+            else:
+                logger.error("No valid medical imaging files found. Use .vtk format")
             raise FileNotFoundError("No .vtk files found in input path")
         
         logger.info(f'Loaded {len(dic_patients)} patient(s)')
