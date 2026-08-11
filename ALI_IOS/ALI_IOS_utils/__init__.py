@@ -8,5 +8,6 @@ from .model import (
     UPPER_DENTAL, TYPE_LM, MODELS_DICT, LABEL_L, LABEL_U
 )
 from .io import GenControlPoint, WriteJson, TradLabel, TradLabelMG
+from .orientation import LowerArchMatrix, TransformSurf, TransformPoint
 from .agent import Agent
 from .mask_renderer import MaskRenderer

@@ -14,6 +14,8 @@ import time
 import os
 import glob
 import sys
+import tempfile
+import shutil
 import vtk
 import platform
 import argparse
@@ -62,6 +64,7 @@ if check_platform()=="WSL":
     from ALI_IOS_utils.surface import ReadSurf, ScaleSurf, GetSurfProp, RemoveExtraFaces, Upscale
     from ALI_IOS_utils.model import dic_cam, dic_label, MODELS_DICT
     from ALI_IOS_utils.io import GenControlPoint, WriteJson, TradLabel, TradLabelMG
+    from ALI_IOS_utils.orientation import LowerArchMatrix, TransformSurf, TransformPoint
     from ALI_IOS_utils.agent import Agent
 
 else :
@@ -69,7 +72,8 @@ else :
         GenPhongRenderer, ReadSurf, ScaleSurf,
         GetSurfProp, RemoveExtraFaces, Upscale,
         dic_cam, dic_label, MODELS_DICT,
-        GenControlPoint, WriteJson, TradLabel, TradLabelMG, Agent
+        GenControlPoint, WriteJson, TradLabel, TradLabelMG, Agent,
+        LowerArchMatrix, TransformSurf, TransformPoint
     )
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -300,6 +304,30 @@ def main(args):
                         model = models_to_use[models_type]['Lower'] if jaw == 'Lower' else models_to_use[models_type]['Upper']
                         camera_position = dic_cam[models_type]['L'] if jaw == 'Lower' else dic_cam[models_type]['U']
 
+                        # The MG cameras are built on a vertical axis taken to
+                        # be Z, so the scan is brought into that frame before
+                        # anything is predicted on it and the landmarks are
+                        # sent back to the coordinates of the file afterwards.
+                        # A scan left as it came off the scanner puts its arch
+                        # on another axis, and the cameras then frame the
+                        # crowns instead of the gingival margin.
+                        back_to_file = None
+                        if models_type == "MG":
+                            matrix = LowerArchMatrix(ReadSurf(path_vtk))
+                            if matrix is not None:
+                                oriented = os.path.join(
+                                    tempfile.mkdtemp(prefix="ALI_IOS_oriented_"),
+                                    os.path.basename(path_vtk))
+                                writer = vtk.vtkPolyDataWriter()
+                                writer.SetFileName(oriented)
+                                writer.SetInputData(TransformSurf(ReadSurf(path_vtk), matrix))
+                                writer.SetFileTypeToBinary()
+                                writer.Write()
+                                path_vtk = oriented
+                                back_to_file = np.linalg.inv(matrix)
+                                logger.info(f"{patient_id}: oriented on its four lower teeth "
+                                            "for the mucogingival prediction")
+
                         # The MG cameras need a position per tooth. For the
                         # teeth the segmentation does not know, estimate one
                         # from the arch of the teeth it does know, instead of
@@ -523,6 +551,15 @@ def main(args):
                                     "(Universal_ID / PredictedID) and too few teeth were segmented "
                                     "to estimate their position along the arch")
 
+                        if back_to_file is not None:
+                            # The prediction ran on the oriented copy; what is
+                            # written has to be in the coordinates of the file
+                            # the user gave, or nothing lines up with it.
+                            for entry in group_data.values():
+                                x, y, z = TransformPoint(
+                                    (entry["x"], entry["y"], entry["z"]), back_to_file)
+                                entry["x"], entry["y"], entry["z"] = x, y, z
+
                         if len(group_data.keys()) > 0:
                             try:
                                 lm_lst = GenControlPoint(group_data, landmarks_selected)
@@ -531,6 +568,10 @@ def main(args):
                                 logger.info(f"Saved predictions to {output_file}")
                             except Exception as e:
                                 logger.error(f"Error saving predictions for {patient_id}_{jaw}_{models_type}: {e}")
+
+                        if back_to_file is not None:
+                            # The oriented copy has served its purpose.
+                            shutil.rmtree(os.path.dirname(path_vtk), ignore_errors=True)
                                 
                     except Exception as e:
                         logger.error(f"Error processing jaw {jaw} for patient {patient_id}, model {models_type}: {e}")
