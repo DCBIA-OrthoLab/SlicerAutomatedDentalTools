@@ -48,6 +48,7 @@ MGL_ORDER_LEGACY = [name[:-2] for name in MGL_ORDER]
 MGL_ARRAY_NAME = "Bottom_MGL"
 
 DEFAULT_RADIUS = 5.0        # mm, half-height of the band around the curve
+                            # 0 leaves no band at all: the landmarks alone
 DEFAULT_SAMPLES = 300       # samples along the spline
 
 # Universal_ID labels of the lower teeth. The gingiva carries its own label, so
@@ -190,23 +191,36 @@ def MGLPatch(surf, landmarks, radius=DEFAULT_RADIUS, n_samples=DEFAULT_SAMPLES,
 
     Writes a 0/1 point array shaped like the palatal one, so the registration
     reads it the same way, under a name that says what it is. Returns the surface.
+
+    A radius of 0 leaves no band and no curve either: the array then holds the
+    landmarks alone and the registration runs on those points only.
     """
     points = OrderedMGLandmarks(landmarks)
     logger.info(f"Building the MGL patch from {len(points)} landmark(s), radius {radius} mm")
+
     if radius == 0:
-        logger.info("Radius 0: the patch is the snapped curve itself, the "
-                    "registration will run on the mucogingival line only")
+        # Neither a band nor the curve joining the landmarks: the patch is the
+        # landmarks themselves, so the ICP runs on those few points alone. Kept
+        # as the control case, to measure on real scans what the surface around
+        # the mucogingival line brings over the points that carry it.
+        seeds = SnapToSurface(surf, points)
+        logger.info(f"Height 0: registering on the {len(seeds)} landmark(s) "
+                    "alone, without any surface around them")
+        inside = np.zeros(surf.GetNumberOfPoints(), dtype=bool)
+        inside[seeds] = True
+    else:
+        samples = SplineThroughLandmarks(points, n_samples)
+        seeds = SnapToSurface(surf, samples)
+        logger.debug(f"{len(samples)} spline sample(s) snapped onto {len(seeds)} vertex(es)")
 
-    samples = SplineThroughLandmarks(points, n_samples)
-    seeds = SnapToSurface(surf, samples)
-    logger.debug(f"{len(samples)} spline sample(s) snapped onto {len(seeds)} vertex(es)")
-
-    inside = GrowBand(surf, seeds, radius)
+        inside = GrowBand(surf, seeds, radius)
 
     if exclude_teeth:
         on_teeth = _tooth_mask(surf) & inside
         if on_teeth.any():
-            logger.info(f"Dropping {int(on_teeth.sum())} vertex(es) of the band that reached the crowns")
+            what = ("landmark(s) that snapped onto a crown" if radius == 0
+                    else "vertex(es) of the band that reached the crowns")
+            logger.info(f"Dropping {int(on_teeth.sum())} {what}")
             inside = inside & ~on_teeth
 
     n_inside = int(inside.sum())

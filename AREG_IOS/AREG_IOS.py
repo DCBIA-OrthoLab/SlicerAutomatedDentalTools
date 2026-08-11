@@ -405,7 +405,8 @@ if __name__ == "__main__":
                                 help="'Butterfly' (palatal patch, upper arch) or "
                                      "'MGL' (band along the mucogingival line, lower arch)")
             parser.add_argument("patch_radius", type=float, nargs="?", default=DEFAULT_RADIUS,
-                                help="MGL only: half-height of the band around the curve, in mm")
+                                help="MGL only: half-height of the band around the curve, in mm. "
+                                     "0 leaves no band: the registration runs on the landmarks alone")
             parser.add_argument("lm_T1", type=str, nargs="?", default="None",
                                 help="MGL only: folder holding the T1 MG landmark json files")
             parser.add_argument("lm_T2", type=str, nargs="?", default="None",

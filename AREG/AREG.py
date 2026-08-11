@@ -28,8 +28,8 @@ console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 # Height of the MGL patch on each side of the mucogingival line, in mm. At 0
-# the band degenerates into the snapped curve itself and the registration runs
-# on the line only; above 20 mm it runs past the scanned mucosa.
+# nothing is left of the patch but the landmarks, and the registration runs on
+# those points alone; above 20 mm it runs past the scanned mucosa.
 # Row of the models folder field inside gridLayout_2 of AREG.ui, where the
 # Browse button is added beside its Download button.
 MODEL3_GRID_ROW = 8
@@ -662,9 +662,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.lineEditMGLRadius.setToolTip(
             f"How far the patch spreads on each side of the mucogingival line, "
             f"along the surface, in mm (between {MGL_MIN_RADIUS} and {MGL_MAX_RADIUS}). "
-            "At 0 the patch is the line itself : the registration runs on the "
-            "curve through the landmarks only. Vertices belonging to the crowns "
-            "are always left out, whatever the value."
+            "At 0 there is no patch left, only the MGL landmarks : the "
+            "registration then runs on those points alone, which is the control "
+            "case rather than a setting to work with. Vertices belonging to the "
+            "crowns are always left out, whatever the value."
         )
         grid.addWidget(self.label_mgl_radius, row + 1, 0)
         grid.addWidget(self.lineEditMGLRadius, row + 1, 1)

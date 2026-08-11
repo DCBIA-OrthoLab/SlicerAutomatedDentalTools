@@ -236,16 +236,32 @@ class PatchReachTest(unittest.TestCase):
         self.assertLess(short, 4.0)
         self.assertGreater(tall, short + 2.0)
 
-    def test_zero_height_keeps_only_the_curve(self):
-        # Height 0 must not be empty : the band degenerates into the snapped
-        # curve itself, so the registration can run on the line alone.
+    def test_zero_height_keeps_only_the_landmarks(self):
+        # Height 0 is the control case : no band, and no curve joining the
+        # landmarks either, so the registration runs on the points alone.
         labels = self.patch(np.zeros(self.n))
         selected = self.vertices[labels > 0.5]
-        self.assertGreater(len(selected), 0)
-        spline, _ = mgl_patch.SplineThroughPoints(self.builder._landmarks)
-        to_curve = np.linalg.norm(
-            selected[:, None, :] - spline[None, :, :], axis=2).min(axis=1)
-        self.assertLessEqual(to_curve.max(), GRID_STEP)
+        self.assertEqual(len(selected), self.n)  # one vertex per landmark
+        to_landmark = np.linalg.norm(
+            selected[:, None, :] - self.builder._landmarks[None, :, :],
+            axis=2).min(axis=1)
+        self.assertLessEqual(to_landmark.max(), GRID_STEP)
+
+    def test_a_stretch_left_at_zero_drops_the_curve_it_carried(self):
+        # A height of 0 is local : the flattened stretch keeps its landmarks
+        # and nothing else, while the rest of the arch keeps its band.
+        heights = np.full(self.n, 4.0)
+        heights[:3] = 0.0  # the LL6..LL4 stretch, at negative x
+        labels = self.patch(heights)
+        between_two_flattened = np.abs(self.vertices[:, 0] + 11.0) < 0.6
+        self.assertEqual(labels[between_two_flattened].sum(), 0.0)
+        self.assertGreater(BandHalfWidth(self.vertices, labels, x_centre=11.0), 3.0)
+
+    def test_the_landmarks_belong_to_the_patch_whatever_the_height(self):
+        ids = self.builder.snappedLandmarkIds(self.zero, self.zero)
+        for heights in (np.zeros(self.n), np.full(self.n, 3.0)):
+            labels = self.patch(heights)
+            self.assertTrue(np.all(labels[ids] > 0.5))
 
     def test_a_tall_landmark_is_not_swallowed_by_a_short_neighbour(self):
         # Dozens of spline samples land on the same vertex, and the tall
@@ -280,6 +296,14 @@ class ToothExclusionTest(unittest.TestCase):
         labels, _ = self.builder.compute(self.zero, self.zero, self.heights)
         self.assertEqual(labels[self.crown].sum(), 0.0)
         self.assertGreater(labels.sum(), 0.0)
+
+    def test_a_landmark_snapped_onto_a_crown_is_dropped_like_the_rest(self):
+        # The landmarks survive every height, but not the crown exclusion :
+        # a point that moves between the timepoints must never register.
+        labels, _ = self.builder.compute(self.zero, self.zero,
+                                         np.zeros(len(self.zero)))
+        self.assertEqual(labels[self.crown].sum(), 0.0)
+        self.assertGreater(labels.sum(), 0.0)  # the landmarks off the crowns stay
 
     def test_the_crowns_are_within_reach_when_not_excluded(self):
         labels, _ = self.builder.compute(self.zero, self.zero, self.heights,

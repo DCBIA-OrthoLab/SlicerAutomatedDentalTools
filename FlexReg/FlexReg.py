@@ -2121,11 +2121,15 @@ class WidgetParameter:
         self.slider_mgl_height_up, self.lineedit_mgl_height_up = self.mglHeightControls(
             column_values, 'up', 'Upper extension (mm)',
             'How far the band climbs from the line towards the teeth, '
-            'for the checked landmarks')
+            'for the checked landmarks. Both extensions at 0 leave the '
+            'landmarks alone, with no surface around them : the registration '
+            'then runs on those points only, which is the control case.')
         self.slider_mgl_height_down, self.lineedit_mgl_height_down = self.mglHeightControls(
             column_values, 'down', 'Lower extension (mm)',
             'How far the band descends from the line towards the vestibule, '
-            'for the checked landmarks')
+            'for the checked landmarks. Both extensions at 0 leave the '
+            'landmarks alone, with no surface around them : the registration '
+            'then runs on those points only, which is the control case.')
         self.label_mgl_state = QLabel('')
         column_values.addWidget(self.label_mgl_state)
         column_values.addStretch()
@@ -2575,7 +2579,8 @@ class WidgetParameter:
             tangent_offsets=self.mgl_tangent[rows],
         )
         if labels.sum() == 0:
-            self.warning('The patch is empty, raise the height.')
+            self.warning('The patch is empty, raise the height or move the '
+                         'landmarks off the crowns.')
             return
 
         path = str(self.lineedit.text)
