@@ -2095,8 +2095,15 @@ qMRMLNodeComboBox:focus {
                 logger.error("Error: Unable to find dentalmodelseg path.")
                 return
             
-            nbr_run = 2 if self.type == "IOS" else 1
-            
+            # As many segmentation steps as the pipeline actually holds, at its
+            # head: a timepoint whose scans are already segmented produces no
+            # step, and consuming a fixed two would swallow whatever follows.
+            nbr_run = 0
+            for process in self.list_Processes_Parameters:
+                if not process["Module"].startswith("CrownSegmentationcli"):
+                    break
+                nbr_run += 1
+
             for i in range(nbr_run):
                 self.nb_extension_did += 1
                 args = self.list_Processes_Parameters[0]["Parameter"]
