@@ -150,6 +150,16 @@ def RunMGL(args, icp):
     for idx, error in failed:
         logger.warning(f"  Pair {idx}: {error}")
 
+    if processed == 0:
+        # Every pair failed for the same reason more often than not, and a run
+        # that reports success while leaving the output folder empty sends the
+        # user looking for the answer in the wrong place. Fail with the first
+        # reason instead.
+        raise RuntimeError(
+            f"No pair could be registered out of {len(pairs)}. First error: "
+            f"{failed[0][1] if failed else 'unknown'}"
+        )
+
 
 def main(args):
     """Main function for IOS alignment registration with comprehensive error handling."""
