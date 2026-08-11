@@ -176,6 +176,52 @@ def install_function(self, list_libs: list):
             return False
     return True
 
+
+def ensureBooted(widget):
+    '''
+    Check the environment, once, when something is about to need it.
+
+    The probes below shell out to conda and take seconds -- measured at 7.6 s
+    on a warm machine: 2.2 s for `conda --version`, 0.6 s for the environment
+    test and 4.8 s to import the install module inside it. None of that is
+    needed to read a .vtk and put it on screen, so the check belongs to the
+    actions that run a CLI or a conda command, not to viewScan.
+
+    widget is a WidgetParameter: the check reports through its label_time and
+    its logic. Returns True when the CLIs can be run.
+    '''
+    if FlexRegBootManager.booted:
+        return True
+
+    # The probes give no sign of life while they run, and the label set inside
+    # onCheckRequirements is only painted once they are over. Say what is
+    # happening first, and pump the event loop so it actually reaches the
+    # screen, rather than leaving a panel that looks hung.
+    widget.label_time.setVisible(True)
+    widget.label_time.setText('Checking the environment, this takes a few seconds '
+                              'the first time...')
+    slicer.app.processEvents()
+
+    if not widget.onCheckRequirements():
+        return False
+
+    # Only torch is missing from a stock Slicer: vtk, numpy, scipy and
+    # SimpleITK all ship with it. numpy in particular must be left exactly as
+    # Slicer installed it: its scipy is built for that numpy, and swapping
+    # numpy on disk under a running session leaves the next scipy import
+    # reading a mix of the two ("No module named 'numpy.strings'"), which is
+    # what used to kill the MGL patch preview.
+    if not install_function(widget, [('torch', None, None)]):  # (lib, version, url)
+        qt.QMessageBox.warning(
+            widget.parent, 'Warning',
+            'The module will not work properly without the required libraries.\n'
+            'Please install them and try again.')
+        return False
+
+    FlexRegBootManager.booted = True
+    widget.label_time.setHidden(True)
+    return True
+
 #
 # FlexReg
 #
@@ -1233,6 +1279,10 @@ class Reg:
             array_name = self.patchArrayName()
             if (self.isButterflyPatchAvailable(self.T1.getSurf(), array_name)
                     and self.isButterflyPatchAvailable(self.T2.getSurf(), array_name)):
+                # The registration itself is a CLI, so the environment is
+                # checked here rather than when the scans were displayed.
+                if not ensureBooted(self.T1):
+                    return
                 self.preview = preview
                 self.temp_folder = None
                 if preview:
@@ -2456,6 +2506,11 @@ class WidgetParameter:
             self.warning('Select the scan first.')
             return
 
+        # ALI runs in the conda environment, so this is one of the places the
+        # environment check has to happen.
+        if not ensureBooted(self):
+            return
+
         models = self.mglModelsFolder()
         if models is None:
             return
@@ -2761,6 +2816,8 @@ class WidgetParameter:
         '''
         Call the cli to delete a patch. Launch onProcessUpdateDelete
         '''
+        if not ensureBooted(self):
+            return
 
         index = int(self.combobox_patch.currentText)
         self._processed3 = False
@@ -3366,6 +3423,9 @@ class WidgetParameter:
         writer = vtk.vtkPolyDataWriter()
         writer.SetFileName(path)
         writer.SetInputData(polydata)
+        # Binary rather than the ASCII default: three to five times faster to
+        # write, and the reader takes both.
+        writer.SetFileTypeToBinary()
         writer.Write()
         return path
 
@@ -3381,30 +3441,12 @@ class WidgetParameter:
         '''
         Display the scan in the correct window. If scan already loaded, delete it and display the new one
         '''
-        
-        # Install the libraries only if it's the first time
-        if not FlexRegBootManager.booted:
-            check_env = self.onCheckRequirements()
-            is_installed = False
-            if check_env:
-                # Only torch is missing from a stock Slicer: vtk, numpy, scipy
-                # and SimpleITK all ship with it. numpy in particular must be
-                # left exactly as Slicer installed it: its scipy is built for
-                # that numpy, and swapping numpy on disk under a running
-                # session leaves the next scipy import reading a mix of the
-                # two ("No module named 'numpy.strings'"), which is what used
-                # to kill the MGL patch preview.
-                list_libs = [('torch', None, None)]  # (lib_name, version, url)
-                is_installed = install_function(self, list_libs)
+        # No environment check here: showing a scan is vtk and Slicer, nothing
+        # else. The conda probes it used to run cost about 7 s and froze the
+        # panel before the scan appeared -- ensureBooted() now runs them from
+        # the actions that really need the environment, the first time one of
+        # them is used.
 
-            if not is_installed:
-                qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
-                return
-
-            FlexRegBootManager.booted = True
-            self.label_time.setHidden(True)
-        
-        
         if self.surf == None :
             if self.checkLineEdit():
                 # Load model
@@ -3430,20 +3472,11 @@ class WidgetParameter:
                 else:
                     slicer.util.errorDisplay(f"There is 3D windows available with the index : {self.title - 1}.")
 
-                # Get data of model
+                # Get center of model. One GetPoint() per vertex costs 40 ms on
+                # a 100k scan and 70 ms on a 170k one, for a mean numpy reads
+                # off the same buffer in under 2 ms.
                 points = self.surf.GetPolyData().GetPoints()
-
-                # Get center of model
-                center = [0.0, 0.0, 0.0]
-                for i in range(points.GetNumberOfPoints()):
-                    x, y, z = points.GetPoint(i)
-                    center[0] += x
-                    center[1] += y
-                    center[2] += z
-
-                center[0] /= points.GetNumberOfPoints()
-                center[1] /= points.GetNumberOfPoints()
-                center[2] /= points.GetNumberOfPoints()
+                center = list(vtk_to_numpy(points.GetData()).mean(axis=0).astype(float))
 
 
                 # Get the focal point of the camera
@@ -3899,6 +3932,8 @@ class WidgetParameter:
         Call the cli for the butterfly patch. Launch onProcessUpdateButterfly
         '''
         if self.checkSurfExist() :
+            if not ensureBooted(self):
+                return
             seg = self.checkSegmentation()
             if seg:
                 self._processed2 = False
@@ -4145,6 +4180,8 @@ class WidgetParameter:
         launch the cli for the curve patch and lauch onProcessUpdateCurve
         '''
         if self.checkSurfExist():
+            if not ensureBooted(self):
+                return
             self._processed = False
             
             # Move the curve and the middle point where the original model is located
@@ -4305,29 +4342,12 @@ class WidgetParameter:
         '''
         Check if a Butterfly1 exist, if no disable the display of the combobox
         '''
-        import torch
-        index = 1
-        final_array = None
+        # Only whether a patch exists is read below, so the merged array this
+        # used to build with torch was thrown away every time -- and importing
+        # torch for it cost a second the first time a scan was shown.
+        has_patch = self.isButterflyPatchAvailable(polydata, "Butterfly1")
 
-        while True:
-            array_name = f"Butterfly{index}"
-            
-            if self.isButterflyPatchAvailable(polydata,array_name):
-                current_array = polydata.GetPointData().GetArray(array_name)
-                current_tensor = torch.tensor(vtk_to_numpy(current_array)).to(torch.float32)
-                
-                if final_array is None:
-                    final_array = current_tensor
-                else:
-                    # Use ane operation OR to merge the patches
-                    final_array = torch.logical_or(final_array, current_tensor).to(torch.float32)
-                
-                index += 1
-            else:
-                break
-
-
-        if final_array is None and self.combobox_patch.isVisible():
+        if not has_patch and self.combobox_patch.isVisible():
             self.label_patch.setVisible(False)
             self.combobox_patch.setVisible(False)
             self.delete_patch.setVisible(False)
