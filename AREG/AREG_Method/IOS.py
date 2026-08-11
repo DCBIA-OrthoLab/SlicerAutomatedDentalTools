@@ -29,6 +29,12 @@ logger.addHandler(console_handler)
 MGL_TEETH = ("LL6MG LL5MG LL4MG LL3MG LL2MG LL1MG L0MG "
              "LR1MG LR2MG LR3MG LR4MG LR5MG LR6MG")
 
+# The extension segmenting the crowns, and the CLI it brings. Scans with no
+# teeth labels cannot be landmarked, so this is a hard requirement of the
+# mucogingival flow rather than a convenience.
+SEGMENTATION_EXTENSION = "SlicerDentalModelSeg"
+SEGMENTATION_MODULE = "CrownSegmentationcli"
+
 
 def MGLProcess(method, numberscan, areg_mode, **kwargs):
     """Processes registering the lower arches on the mucogingival band.
@@ -274,7 +280,7 @@ class Auto_IOS(Method):
 
 
     def TestSegmentationAvailable(self, **kwargs) -> str:
-        """Say so when scans need segmenting and nothing here can segment them.
+        """Make sure the scans can be segmented, offering the extension if not.
 
         ALI aims its cameras tooth by tooth and places nothing on a scan with
         no teeth labels, so the run would end on an empty output folder.
@@ -289,9 +295,59 @@ class Auto_IOS(Method):
             return ""
         if hasattr(slicer.modules, "crownsegmentationcli"):
             return ""
-        return ("Some scans carry no teeth segmentation, and the extension that "
-                "segments them (SlicerDentalModelSeg) is not installed. Install "
-                "it, or select scans holding a Universal_ID array\n")
+        if self.InstallSegmentationExtension():
+            return ""
+        return (f"Some scans carry no teeth segmentation, and {SEGMENTATION_EXTENSION}, "
+                "which segments them, was not installed. Install it from the "
+                "Extensions Manager, or select scans holding a Universal_ID array\n")
+
+    def InstallSegmentationExtension(self) -> bool:
+        """Download the segmentation extension, with the user's go-ahead.
+
+        Being told to go and install an extension costs a trip to the
+        Extensions Manager, a restart and the run that was just started, so the
+        download is offered here and the module registered on the spot. True
+        when the segmentation can run afterwards.
+        """
+        import qt
+
+        if not slicer.util.confirmYesNoDisplay(
+                "These scans carry no teeth segmentation, which the mucogingival "
+                f"landmarks need.\n\nThe {SEGMENTATION_EXTENSION} extension "
+                "segments them and is not installed yet.\n\n"
+                "Download and install it now?"):
+            return False
+
+        manager = slicer.app.extensionsManagerModel()
+        manager.setInteractive(False)
+        logger.info(f"Installing {SEGMENTATION_EXTENSION} from the extensions server")
+        if not manager.installExtensionFromServer(SEGMENTATION_EXTENSION, False, False):
+            slicer.util.errorDisplay(
+                f"{SEGMENTATION_EXTENSION} could not be downloaded. Check the "
+                "internet connection, or install it from the Extensions Manager."
+            )
+            return False
+
+        # Load it right away: a freshly installed extension is otherwise only
+        # picked up by the next Slicer session, and the run would be lost.
+        factory = slicer.app.moduleManager().factoryManager()
+        for path in manager.extensionModulePaths(SEGMENTATION_EXTENSION):
+            module = os.path.join(path, f"{SEGMENTATION_MODULE}.py")
+            if os.path.isfile(module):
+                factory.registerModule(qt.QFileInfo(module))
+                factory.loadModules([SEGMENTATION_MODULE])
+                break
+
+        if hasattr(slicer.modules, "crownsegmentationcli"):
+            logger.info(f"{SEGMENTATION_EXTENSION} installed and loaded")
+            return True
+
+        # Loading it in place did not take; a restart always does.
+        if slicer.util.confirmYesNoDisplay(
+                f"{SEGMENTATION_EXTENSION} is installed, but Slicer has to "
+                "restart to use it.\n\nRestart now?"):
+            slicer.util.restart()
+        return False
 
     def TestMGLModel(self, **kwargs) -> str:
         """Validate what MGL needs instead of the palatal checkpoint."""
