@@ -347,7 +347,7 @@ def main(args):
                         # from the arch of the teeth it does know, instead of
                         # skipping their landmark.
                         mg_estimated = {}
-                        if models_type == "MG":
+                        if models_type == "MG" and args.estimate_missing:
                             surf_est = ReadSurf(path_vtk)
                             unit_est, mean_est, scale_est = ScaleSurf(surf_est)
                             (V_est, _f_est, _cn_est, RI_est) = GetSurfProp(unit_est, mean_est, scale_est)
@@ -543,10 +543,14 @@ def main(args):
                                         logger.error(f"Error during neural network inference for label {label}: {e}")
                                         continue
                                 else:
+                                    reason = ("too few teeth are segmented to estimate it"
+                                              if args.estimate_missing else
+                                              "a point aimed at a guessed position lands 4 to 21 mm "
+                                              "away, so it is left out (--estimate_missing places it)")
                                     logger.warning(
                                         f"Label {label} is not in the segmentation of {patient_id} "
-                                        f"and too few teeth are segmented to estimate it: the "
-                                        f"landmark(s) {LABEL[str(label)]} cannot be placed")
+                                        f"and {reason}: the landmark(s) {LABEL[str(label)]} "
+                                        "are not placed")
                                     
                             except Exception as e:
                                 logger.error(f"Error processing label {label} for patient {patient_id}: {e}")
@@ -562,8 +566,9 @@ def main(args):
                                     f"{patient_id}: only {len(requested) - len(missing)} of the "
                                     f"{len(requested)} requested MG landmarks were placed. Missing: "
                                     f"{', '.join(missing)} — their teeth are not in the segmentation "
-                                    "(Universal_ID / PredictedID) and too few teeth were segmented "
-                                    "to estimate their position along the arch")
+                                    "(Universal_ID / PredictedID). The curve spans the gap; pass "
+                                    "--estimate_missing to place a point there anyway, 4 to 21 mm "
+                                    "off in the scans this was measured on")
 
                         if back_to_file is not None:
                             # The prediction ran on the oriented copy; what is
@@ -628,6 +633,15 @@ if __name__ == "__main__":
                             help="leave an MG landmark out when the network predicts nothing")
         parser.add_argument("--force_topk", type=int, default=50,
                             help="number of most likely pixels averaged when an MG landmark is forced")
+        parser.add_argument("--estimate_missing", dest="estimate_missing", action="store_true",
+                            default=False,
+                            help="place an MG point for a tooth the segmentation does not have, by "
+                                 "aiming the cameras at a position fitted through the arch. Measured "
+                                 "against hand annotations those points land 4 to 21 mm away, where a "
+                                 "point aimed at a real tooth lands within 0.5 mm, so they are left out "
+                                 "by default: the curve simply spans the gap")
+        parser.add_argument("--no-estimate_missing", dest="estimate_missing", action="store_false",
+                            help="leave out the MG landmark of a tooth absent from the segmentation")
 
         args = parser.parse_args()
         
