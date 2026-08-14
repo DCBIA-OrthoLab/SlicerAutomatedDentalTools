@@ -828,11 +828,13 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         self.isCondaSetUp = False
         self.conda = self.init_conda()
         self.name_env = "shapeaxi"
-        # ALI, AREG and ASO share this environment and build it on 3.9. It has
-        # to stay there : shapeaxi 1.0.10 pins grpcio==1.51.1, whose newest
-        # wheels are cp311, so anything newer falls back to a source build that
-        # fails on modern setuptools.
-        self.python_version = "3.9"
+        # ALI, AREG, ASO and DOCShapeAXI share this environment, so the Python
+        # version has to move in all of them at once. 3.9 was forced by
+        # shapeaxi 1.0.10, which pinned grpcio==1.51.1 (no cp312 wheel, and a
+        # source build that fails on modern setuptools). shapeaxi >= 2.0.2
+        # dropped that pin, and prebuilt pytorch3d wheels only exist for
+        # cp310-cp313, so 3.12 is now both possible and required.
+        self.python_version = "3.12"
 
     def setDefaultParameters(self, parameterNode):
         """
@@ -936,7 +938,7 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["ocnn==2.2.1","shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["ocnn==2.2.1","shapeaxi>=2.0.2","SimpleITK"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()

@@ -2414,7 +2414,7 @@ class ASOLogic(ScriptedLoadableModuleLogic):
         self.conda = self.init_conda()
         self.name_env = "shapeaxi"
         self.cliNode = None
-        self.python_version = "3.9"
+        self.python_version = "3.12"
         
     def init_conda(self):
         # check if CondaSetUp exists
@@ -2437,7 +2437,7 @@ class ASOLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["ocnn==2.2.1","shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["ocnn==2.2.1","shapeaxi>=2.0.2","SimpleITK"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()

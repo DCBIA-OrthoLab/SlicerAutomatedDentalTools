@@ -2107,7 +2107,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
     self.conda = self.init_conda()
     self.name_env = "shapeaxi"
     self.cliNode = None
-    self.pythonVersion = "3.9"  # Default Python version for the conda environment
+    self.pythonVersion = "3.12"  # shared "shapeaxi" env - see FlexReg.py for why
 
   def init_conda(self):
     # check if CondaSetUp exists
@@ -2130,7 +2130,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
     self.process.start()
     
   def install_shapeaxi(self):
-    self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.pythonVersion,["ocnn==2.2.1","shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+    self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.pythonVersion,["ocnn==2.2.1","shapeaxi>=2.0.2","SimpleITK"],)) #run in parallel to not block slicer
     
   def check_if_pytorch3d(self):
     conda_exe = self.conda.getCondaExecutable()
