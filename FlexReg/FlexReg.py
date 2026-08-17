@@ -69,6 +69,7 @@ from FlexReg_utils.butterfly_preview import ButterflyPreview, ADJUST_SIGN
 from FlexReg_utils.mgl_patch import (
     MGLPatchBuilder, MGL_ARRAY_NAME, MGL_PREVIEW_ARRAY_NAME, MGL_ORDER,
     DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT, ReadLandmarks, WriteLandmarks,
+    DoubtfulLandmarks,
 )
 
 # Travel of the joystick pads along the antero-posterior axis, in mm. Typing a
@@ -174,6 +175,52 @@ def install_function(self, list_libs: list):
                 return False
         else:
             return False
+    return True
+
+
+def ensureBooted(widget):
+    '''
+    Check the environment, once, when something is about to need it.
+
+    The probes below shell out to conda and take seconds -- measured at 7.6 s
+    on a warm machine: 2.2 s for `conda --version`, 0.6 s for the environment
+    test and 4.8 s to import the install module inside it. None of that is
+    needed to read a .vtk and put it on screen, so the check belongs to the
+    actions that run a CLI or a conda command, not to viewScan.
+
+    widget is a WidgetParameter: the check reports through its label_time and
+    its logic. Returns True when the CLIs can be run.
+    '''
+    if FlexRegBootManager.booted:
+        return True
+
+    # The probes give no sign of life while they run, and the label set inside
+    # onCheckRequirements is only painted once they are over. Say what is
+    # happening first, and pump the event loop so it actually reaches the
+    # screen, rather than leaving a panel that looks hung.
+    widget.label_time.setVisible(True)
+    widget.label_time.setText('Checking the environment, this takes a few seconds '
+                              'the first time...')
+    slicer.app.processEvents()
+
+    if not widget.onCheckRequirements():
+        return False
+
+    # Only torch is missing from a stock Slicer: vtk, numpy, scipy and
+    # SimpleITK all ship with it. numpy in particular must be left exactly as
+    # Slicer installed it: its scipy is built for that numpy, and swapping
+    # numpy on disk under a running session leaves the next scipy import
+    # reading a mix of the two ("No module named 'numpy.strings'"), which is
+    # what used to kill the MGL patch preview.
+    if not install_function(widget, [('torch', None, None)]):  # (lib, version, url)
+        qt.QMessageBox.warning(
+            widget.parent, 'Warning',
+            'The module will not work properly without the required libraries.\n'
+            'Please install them and try again.')
+        return False
+
+    FlexRegBootManager.booted = True
+    widget.label_time.setHidden(True)
     return True
 
 #
@@ -445,7 +492,7 @@ class FlexRegWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditOutput.setText(surface_folder)
 
         if nom=="LowerArch":
-            path_file = QFileDialog.getOpenFileName(self.parent,'Open a file','', 'VTK Files (*.vtk)')
+            path_file = QFileDialog.getOpenFileName(self.parent,'Open a file','', 'Surfaces (*.vtk *.stl)')
             self.ui.lineEditLowerArch.setText(path_file)
 
     def applyDarkModeStyles(self):
@@ -1235,6 +1282,10 @@ class Reg:
             array_name = self.patchArrayName()
             if (self.isButterflyPatchAvailable(self.T1.getSurf(), array_name)
                     and self.isButterflyPatchAvailable(self.T2.getSurf(), array_name)):
+                # The registration itself is a CLI, so the environment is
+                # checked here rather than when the scans were displayed.
+                if not ensureBooted(self.T1):
+                    return
                 self.preview = preview
                 self.temp_folder = None
                 if preview:
@@ -2123,11 +2174,15 @@ class WidgetParameter:
         self.slider_mgl_height_up, self.lineedit_mgl_height_up = self.mglHeightControls(
             column_values, 'up', 'Upper extension (mm)',
             'How far the band climbs from the line towards the teeth, '
-            'for the checked landmarks')
+            'for the checked landmarks. Both extensions at 0 leave the '
+            'landmarks alone, with no surface around them : the registration '
+            'then runs on those points only, which is the control case.')
         self.slider_mgl_height_down, self.lineedit_mgl_height_down = self.mglHeightControls(
             column_values, 'down', 'Lower extension (mm)',
             'How far the band descends from the line towards the vestibule, '
-            'for the checked landmarks')
+            'for the checked landmarks. Both extensions at 0 leave the '
+            'landmarks alone, with no surface around them : the registration '
+            'then runs on those points only, which is the control case.')
         self.label_mgl_state = QLabel('')
         column_values.addWidget(self.label_mgl_state)
         column_values.addStretch()
@@ -2397,6 +2452,15 @@ class WidgetParameter:
                 checkbox.setChecked(False)
         self.showMGLLandmarks()
         self.markPreviewDirty()
+
+        # Say which points ALI doubted rather than dropping them silently: the
+        # curve is then drawn on fewer landmarks than the file holds, and the
+        # user is the one who knows whether that stretch matters.
+        doubtful = DoubtfulLandmarks(path)
+        if doubtful:
+            self.label_mgl_state.setText(
+                f'{len(doubtful)} landmark(s) left out : {", ".join(sorted(doubtful))}')
+            logger.info(f"MG landmarks left out of the curve: {doubtful}")
         return True
 
     def showMGLLandmarks(self):
@@ -2452,6 +2516,11 @@ class WidgetParameter:
         path = str(self.lineedit.text)
         if not os.path.isfile(path):
             self.warning('Select the scan first.')
+            return
+
+        # ALI runs in the conda environment, so this is one of the places the
+        # environment check has to happen.
+        if not ensureBooted(self):
             return
 
         models = self.mglModelsFolder()
@@ -2577,7 +2646,8 @@ class WidgetParameter:
             tangent_offsets=self.mgl_tangent[rows],
         )
         if labels.sum() == 0:
-            self.warning('The patch is empty, raise the height.')
+            self.warning('The patch is empty, raise the height or move the '
+                         'landmarks off the crowns.')
             return
 
         path = str(self.lineedit.text)
@@ -2758,6 +2828,8 @@ class WidgetParameter:
         '''
         Call the cli to delete a patch. Launch onProcessUpdateDelete
         '''
+        if not ensureBooted(self):
+            return
 
         index = int(self.combobox_patch.currentText)
         self._processed3 = False
@@ -3281,7 +3353,7 @@ class WidgetParameter:
 
 
     def selectFile(self):
-        path_file = QFileDialog.getOpenFileName(self.parent,'Open a file','', 'VTK Files (*.vtk)')
+        path_file = QFileDialog.getOpenFileName(self.parent,'Open a file','', 'Surfaces (*.vtk *.stl)')
 
         self.lineedit.setText(path_file)
 
@@ -3363,47 +3435,67 @@ class WidgetParameter:
         writer = vtk.vtkPolyDataWriter()
         writer.SetFileName(path)
         writer.SetInputData(polydata)
+        # Binary rather than the ASCII default: three to five times faster to
+        # write, and the reader takes both.
+        writer.SetFileTypeToBinary()
         writer.Write()
         return path
 
     def checkLineEdit(self)->bool:
         '''
-        check if input path is a vtk file
+        check if input path is a surface this module can work on
         '''
         fname, extension = os.path.splitext(os.path.basename(self.lineedit.text))
-        return extension=='.vtk'
+        return extension.lower() in ('.vtk', '.stl')
+
+    def ensureVtkInput(self):
+        '''Turn a selected .stl into the .vtk everything downstream needs.
+
+        The patch is a point array stored inside the scan file, and the STL
+        format holds no arrays at all: the CLIs read and write .vtk. The scan
+        is therefore converted once, beside the file the user picked so the
+        patch stays with their data, and the panel then works on that copy.
+        '''
+        path = str(self.lineedit.text)
+        if not path.lower().endswith('.stl'):
+            return
+
+        converted = os.path.splitext(path)[0] + '.vtk'
+        if not os.path.isfile(converted):
+            reader = vtk.vtkSTLReader()
+            reader.SetFileName(path)
+            reader.Update()
+            writer = vtk.vtkPolyDataWriter()
+            writer.SetFileName(converted)
+            writer.SetInputData(reader.GetOutput())
+            writer.SetFileTypeToBinary()
+            if not writer.Write():
+                # Read-only folder: keep going from a copy of our own rather
+                # than refusing the scan.
+                folder = os.path.join(slicer.app.temporaryPath, 'FlexReg_converted')
+                os.makedirs(folder, exist_ok=True)
+                converted = os.path.join(folder, os.path.basename(converted))
+                writer.SetFileName(converted)
+                writer.Write()
+            logger.info(f"{os.path.basename(path)} converted to {converted}: "
+                        "the patch is stored in the scan file, which .stl cannot do")
+
+        self.lineedit.setText(converted)
 
 
     def viewScan(self):
         '''
         Display the scan in the correct window. If scan already loaded, delete it and display the new one
         '''
-        
-        # Install the libraries only if it's the first time
-        if not FlexRegBootManager.booted:
-            check_env = self.onCheckRequirements()
-            is_installed = False
-            if check_env:
-                # Only torch is missing from a stock Slicer: vtk, numpy, scipy
-                # and SimpleITK all ship with it. numpy in particular must be
-                # left exactly as Slicer installed it: its scipy is built for
-                # that numpy, and swapping numpy on disk under a running
-                # session leaves the next scipy import reading a mix of the
-                # two ("No module named 'numpy.strings'"), which is what used
-                # to kill the MGL patch preview.
-                list_libs = [('torch', None, None)]  # (lib_name, version, url)
-                is_installed = install_function(self, list_libs)
+        # No environment check here: showing a scan is vtk and Slicer, nothing
+        # else. The conda probes it used to run cost about 7 s and froze the
+        # panel before the scan appeared -- ensureBooted() now runs them from
+        # the actions that really need the environment, the first time one of
+        # them is used.
 
-            if not is_installed:
-                qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
-                return
-
-            FlexRegBootManager.booted = True
-            self.label_time.setHidden(True)
-        
-        
         if self.surf == None :
             if self.checkLineEdit():
+                self.ensureVtkInput()
                 # Load model
                 self.surf = slicer.util.loadModel(self.lineedit.text)
 
@@ -3427,20 +3519,11 @@ class WidgetParameter:
                 else:
                     slicer.util.errorDisplay(f"There is 3D windows available with the index : {self.title - 1}.")
 
-                # Get data of model
+                # Get center of model. One GetPoint() per vertex costs 40 ms on
+                # a 100k scan and 70 ms on a 170k one, for a mean numpy reads
+                # off the same buffer in under 2 ms.
                 points = self.surf.GetPolyData().GetPoints()
-
-                # Get center of model
-                center = [0.0, 0.0, 0.0]
-                for i in range(points.GetNumberOfPoints()):
-                    x, y, z = points.GetPoint(i)
-                    center[0] += x
-                    center[1] += y
-                    center[2] += z
-
-                center[0] /= points.GetNumberOfPoints()
-                center[1] /= points.GetNumberOfPoints()
-                center[2] /= points.GetNumberOfPoints()
+                center = list(vtk_to_numpy(points.GetData()).mean(axis=0).astype(float))
 
 
                 # Get the focal point of the camera
@@ -3479,7 +3562,7 @@ class WidgetParameter:
                 self.schedulePreview()
 
             else:
-                slicer.util.infoDisplay("Enter a path to a vtk file")
+                slicer.util.infoDisplay("Enter a path to a .vtk or .stl surface")
 
 
         else :
@@ -3573,6 +3656,13 @@ class WidgetParameter:
         This function is doing the first step of makebutterfly to be sure the segmentation and the tooth are existing.
         If the segmentation is not existing, calling the module crownsegmentation to do it
         '''
+        # The scan is read here and segmented in place below, so it has to be
+        # the .vtk copy and never the .stl the user selected: handed an .stl to
+        # overwrite, the segmentation deletes it (shapeaxi, dental_model_seg.py
+        # "if ext == '.stl': os.remove(args.stl)"). viewScan already converted,
+        # this is for a path edited afterwards.
+        self.ensureVtkInput()
+
         reader = vtk.vtkPolyDataReader()
         reader.SetFileName(str(self.lineedit.text))
         reader.Update()
@@ -3626,6 +3716,10 @@ class WidgetParameter:
             
     def shapeaxi_conda(self):
         slicer.app.processEvents()
+
+        # Segmenting overwrites the file it is given, and an .stl would be
+        # deleted rather than written to.
+        self.ensureVtkInput()
         
         output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
         clean_output = re.search(r"Result: (.+)", output_command)
@@ -3896,6 +3990,8 @@ class WidgetParameter:
         Call the cli for the butterfly patch. Launch onProcessUpdateButterfly
         '''
         if self.checkSurfExist() :
+            if not ensureBooted(self):
+                return
             seg = self.checkSegmentation()
             if seg:
                 self._processed2 = False
@@ -4142,6 +4238,8 @@ class WidgetParameter:
         launch the cli for the curve patch and lauch onProcessUpdateCurve
         '''
         if self.checkSurfExist():
+            if not ensureBooted(self):
+                return
             self._processed = False
             
             # Move the curve and the middle point where the original model is located
@@ -4302,29 +4400,12 @@ class WidgetParameter:
         '''
         Check if a Butterfly1 exist, if no disable the display of the combobox
         '''
-        import torch
-        index = 1
-        final_array = None
+        # Only whether a patch exists is read below, so the merged array this
+        # used to build with torch was thrown away every time -- and importing
+        # torch for it cost a second the first time a scan was shown.
+        has_patch = self.isButterflyPatchAvailable(polydata, "Butterfly1")
 
-        while True:
-            array_name = f"Butterfly{index}"
-            
-            if self.isButterflyPatchAvailable(polydata,array_name):
-                current_array = polydata.GetPointData().GetArray(array_name)
-                current_tensor = torch.tensor(vtk_to_numpy(current_array)).to(torch.float32)
-                
-                if final_array is None:
-                    final_array = current_tensor
-                else:
-                    # Use ane operation OR to merge the patches
-                    final_array = torch.logical_or(final_array, current_tensor).to(torch.float32)
-                
-                index += 1
-            else:
-                break
-
-
-        if final_array is None and self.combobox_patch.isVisible():
+        if not has_patch and self.combobox_patch.isVisible():
             self.label_patch.setVisible(False)
             self.combobox_patch.setVisible(False)
             self.delete_patch.setVisible(False)

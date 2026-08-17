@@ -14,6 +14,8 @@ import time
 import os
 import glob
 import sys
+import tempfile
+import shutil
 import vtk
 import platform
 import argparse
@@ -62,6 +64,8 @@ if check_platform()=="WSL":
     from ALI_IOS_utils.surface import ReadSurf, ScaleSurf, GetSurfProp, RemoveExtraFaces, Upscale
     from ALI_IOS_utils.model import dic_cam, dic_label, MODELS_DICT
     from ALI_IOS_utils.io import GenControlPoint, WriteJson, TradLabel, TradLabelMG
+    from ALI_IOS_utils.orientation import LowerArchMatrix, TransformSurf, TransformPoint
+    from ALI_IOS_utils.segmentation import IsSegmented, SegmentSurface
     from ALI_IOS_utils.agent import Agent
 
 else :
@@ -69,10 +73,17 @@ else :
         GenPhongRenderer, ReadSurf, ScaleSurf,
         GetSurfProp, RemoveExtraFaces, Upscale,
         dic_cam, dic_label, MODELS_DICT,
-        GenControlPoint, WriteJson, TradLabel, TradLabelMG, Agent
+        GenControlPoint, WriteJson, TradLabel, TradLabelMG, Agent,
+        LowerArchMatrix, TransformSurf, TransformPoint,
+        IsSegmented, SegmentSurface
     )
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Surfaces ReadSurf opens. Only .vtk and .vtp can carry the teeth labels the
+# cameras are aimed with; the others are segmented on the way in, which is
+# also what converts them.
+SURFACES = (".vtk", ".vtp", ".stl", ".obj", ".off")
 
 
 def EstimateMissingArchPositions(lst_teeth, RI, V):
@@ -255,13 +266,27 @@ def main(args):
             logger.info(f"Loading data from directory: {args.input}")
             normpath = os.path.normpath("/".join([args.input, '**', '']))
             for vtkfile in sorted(glob.iglob(normpath, recursive=True)):
-                if os.path.isfile(vtkfile) and True in [ext in vtkfile for ext in [".vtk"]]:
+                if os.path.isfile(vtkfile) and os.path.splitext(vtkfile)[1].lower() in SURFACES:
                     basename = os.path.basename(vtkfile).split('.')[0]
                     if basename not in dic_patients.keys():
                         dic_patients[basename] = vtkfile
         
         if not dic_patients:
-            logger.error("No valid medical imaging files found. Use .vtk format")
+            # A .stl is a common thing to point this at, and the reason it is
+            # not read is worth saying: the landmarks are placed tooth by
+            # tooth, and only a .vtk can carry the segmentation that names
+            # them. Segment the scans first, which also converts them.
+            others = [name for name in os.listdir(args.input)
+                      if os.path.splitext(name)[1].lower() in (".stl", ".obj", ".vtp", ".off")] \
+                if os.path.isdir(args.input) else []
+            if others:
+                logger.error(
+                    f"No .vtk found in {args.input}, but {len(others)} other surface(s) "
+                    f"are there ({', '.join(sorted(others)[:3])}...). Those formats hold "
+                    "no teeth segmentation, which the landmarks are placed from: run the "
+                    "crown segmentation on them first, it writes the .vtk this needs")
+            else:
+                logger.error("No valid medical imaging files found. Use .vtk format")
             raise FileNotFoundError("No .vtk files found in input path")
         
         logger.info(f'Loaded {len(dic_patients)} patient(s)')
@@ -297,15 +322,57 @@ def main(args):
 
                     try:
                         path_vtk = patient_path
+
+                        # The cameras are aimed tooth by tooth, off a
+                        # Universal_ID array. A scan that has none gets it here
+                        # rather than being turned away, which is also what
+                        # turns an .stl into the .vtk the rest of this reads.
+                        # The segmentation leaves the points where they are, so
+                        # the landmarks stay valid in the file the user gave.
+                        segmented_folder = None
+                        if not IsSegmented(path_vtk):
+                            segmented_folder = tempfile.mkdtemp(prefix="ALI_IOS_segmented_")
+                            segmented = SegmentSurface(path_vtk, folder=segmented_folder)
+                            if segmented is None:
+                                shutil.rmtree(segmented_folder, ignore_errors=True)
+                                logger.error(f"{patient_id} cannot be segmented, no landmark "
+                                             "can be placed on it")
+                                continue
+                            path_vtk = segmented
+
                         model = models_to_use[models_type]['Lower'] if jaw == 'Lower' else models_to_use[models_type]['Upper']
                         camera_position = dic_cam[models_type]['L'] if jaw == 'Lower' else dic_cam[models_type]['U']
+
+                        # The MG cameras are built on a vertical axis taken to
+                        # be Z, so the scan is brought into that frame before
+                        # anything is predicted on it and the landmarks are
+                        # sent back to the coordinates of the file afterwards.
+                        # A scan left as it came off the scanner puts its arch
+                        # on another axis, and the cameras then frame the
+                        # crowns instead of the gingival margin.
+                        back_to_file = None
+                        if models_type == "MG":
+                            matrix = LowerArchMatrix(ReadSurf(path_vtk))
+                            if matrix is not None:
+                                oriented = os.path.join(
+                                    tempfile.mkdtemp(prefix="ALI_IOS_oriented_"),
+                                    os.path.basename(path_vtk))
+                                writer = vtk.vtkPolyDataWriter()
+                                writer.SetFileName(oriented)
+                                writer.SetInputData(TransformSurf(ReadSurf(path_vtk), matrix))
+                                writer.SetFileTypeToBinary()
+                                writer.Write()
+                                path_vtk = oriented
+                                back_to_file = np.linalg.inv(matrix)
+                                logger.info(f"{patient_id}: oriented on its four lower teeth "
+                                            "for the mucogingival prediction")
 
                         # The MG cameras need a position per tooth. For the
                         # teeth the segmentation does not know, estimate one
                         # from the arch of the teeth it does know, instead of
                         # skipping their landmark.
                         mg_estimated = {}
-                        if models_type == "MG":
+                        if models_type == "MG" and args.estimate_missing:
                             surf_est = ReadSurf(path_vtk)
                             unit_est, mean_est, scale_est = ScaleSurf(surf_est)
                             (V_est, _f_est, _cn_est, RI_est) = GetSurfProp(unit_est, mean_est, scale_est)
@@ -501,10 +568,14 @@ def main(args):
                                         logger.error(f"Error during neural network inference for label {label}: {e}")
                                         continue
                                 else:
+                                    reason = ("too few teeth are segmented to estimate it"
+                                              if args.estimate_missing else
+                                              "a point aimed at a guessed position lands 4 to 21 mm "
+                                              "away, so it is left out (--estimate_missing places it)")
                                     logger.warning(
                                         f"Label {label} is not in the segmentation of {patient_id} "
-                                        f"and too few teeth are segmented to estimate it: the "
-                                        f"landmark(s) {LABEL[str(label)]} cannot be placed")
+                                        f"and {reason}: the landmark(s) {LABEL[str(label)]} "
+                                        "are not placed")
                                     
                             except Exception as e:
                                 logger.error(f"Error processing label {label} for patient {patient_id}: {e}")
@@ -520,8 +591,18 @@ def main(args):
                                     f"{patient_id}: only {len(requested) - len(missing)} of the "
                                     f"{len(requested)} requested MG landmarks were placed. Missing: "
                                     f"{', '.join(missing)} — their teeth are not in the segmentation "
-                                    "(Universal_ID / PredictedID) and too few teeth were segmented "
-                                    "to estimate their position along the arch")
+                                    "(Universal_ID / PredictedID). The curve spans the gap; pass "
+                                    "--estimate_missing to place a point there anyway, 4 to 21 mm "
+                                    "off in the scans this was measured on")
+
+                        if back_to_file is not None:
+                            # The prediction ran on the oriented copy; what is
+                            # written has to be in the coordinates of the file
+                            # the user gave, or nothing lines up with it.
+                            for entry in group_data.values():
+                                x, y, z = TransformPoint(
+                                    (entry["x"], entry["y"], entry["z"]), back_to_file)
+                                entry["x"], entry["y"], entry["z"] = x, y, z
 
                         if len(group_data.keys()) > 0:
                             try:
@@ -531,6 +612,12 @@ def main(args):
                                 logger.info(f"Saved predictions to {output_file}")
                             except Exception as e:
                                 logger.error(f"Error saving predictions for {patient_id}_{jaw}_{models_type}: {e}")
+
+                        if back_to_file is not None:
+                            # The oriented copy has served its purpose.
+                            shutil.rmtree(os.path.dirname(path_vtk), ignore_errors=True)
+                        if segmented_folder is not None:
+                            shutil.rmtree(segmented_folder, ignore_errors=True)
                                 
                     except Exception as e:
                         logger.error(f"Error processing jaw {jaw} for patient {patient_id}, model {models_type}: {e}")
@@ -573,6 +660,15 @@ if __name__ == "__main__":
                             help="leave an MG landmark out when the network predicts nothing")
         parser.add_argument("--force_topk", type=int, default=50,
                             help="number of most likely pixels averaged when an MG landmark is forced")
+        parser.add_argument("--estimate_missing", dest="estimate_missing", action="store_true",
+                            default=False,
+                            help="place an MG point for a tooth the segmentation does not have, by "
+                                 "aiming the cameras at a position fitted through the arch. Measured "
+                                 "against hand annotations those points land 4 to 21 mm away, where a "
+                                 "point aimed at a real tooth lands within 0.5 mm, so they are left out "
+                                 "by default: the curve simply spans the gap")
+        parser.add_argument("--no-estimate_missing", dest="estimate_missing", action="store_false",
+                            help="leave out the MG landmark of a tooth absent from the segmentation")
 
         args = parser.parse_args()
         

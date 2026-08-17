@@ -62,7 +62,8 @@ if check_platform()=="WSL":
     from AREG_IOS_utils.utils import WriteSurf, ReadSurf, LoadJsonLandmarks
     from AREG_IOS_utils.transformation import TransformSurf
     from AREG_IOS.AREG_IOS_utils.transformation import saveMatrixAsTfm
-    from AREG_IOS_utils.mgl_patch import MGLPatch, DEFAULT_RADIUS, MGL_ARRAY_NAME
+    from AREG_IOS_utils.mgl_patch import (
+        MGLPatch, DropDoubtfulLandmarks, DEFAULT_RADIUS, MGL_ARRAY_NAME)
 
 else :
     from AREG_IOS_utils import (
@@ -78,6 +79,7 @@ else :
         TransformSurf,
         saveMatrixAsTfm,
         MGLPatch,
+        DropDoubtfulLandmarks,
         DEFAULT_RADIUS,
         MGL_ARRAY_NAME,
     )
@@ -127,7 +129,9 @@ def RunMGL(args, icp):
             for time in ("T1", "T2"):
                 surf = ReadSurf(pair[time])
                 folder = args.lm_T1 if time == "T1" else args.lm_T2
-                landmarks = LoadJsonLandmarks(FindLandmarkFile(folder, pair[time]))
+                landmark_path = FindLandmarkFile(folder, pair[time])
+                landmarks = DropDoubtfulLandmarks(
+                    LoadJsonLandmarks(landmark_path), landmark_path)
                 surfaces[time] = MGLPatch(surf, landmarks, radius=args.patch_radius)
 
             output_icp = icp.run(surfaces["T2"], surfaces["T1"])
@@ -149,6 +153,16 @@ def RunMGL(args, icp):
     logger.info(f"MGL registration completed: {processed}/{len(pairs)} pair(s) processed successfully")
     for idx, error in failed:
         logger.warning(f"  Pair {idx}: {error}")
+
+    if processed == 0:
+        # Every pair failed for the same reason more often than not, and a run
+        # that reports success while leaving the output folder empty sends the
+        # user looking for the answer in the wrong place. Fail with the first
+        # reason instead.
+        raise RuntimeError(
+            f"No pair could be registered out of {len(pairs)}. First error: "
+            f"{failed[0][1] if failed else 'unknown'}"
+        )
 
 
 def main(args):
@@ -405,7 +419,8 @@ if __name__ == "__main__":
                                 help="'Butterfly' (palatal patch, upper arch) or "
                                      "'MGL' (band along the mucogingival line, lower arch)")
             parser.add_argument("patch_radius", type=float, nargs="?", default=DEFAULT_RADIUS,
-                                help="MGL only: half-height of the band around the curve, in mm")
+                                help="MGL only: half-height of the band around the curve, in mm. "
+                                     "0 leaves no band: the registration runs on the landmarks alone")
             parser.add_argument("lm_T1", type=str, nargs="?", default="None",
                                 help="MGL only: folder holding the T1 MG landmark json files")
             parser.add_argument("lm_T2", type=str, nargs="?", default="None",

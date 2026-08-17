@@ -28,8 +28,8 @@ console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 # Height of the MGL patch on each side of the mucogingival line, in mm. At 0
-# the band degenerates into the snapped curve itself and the registration runs
-# on the line only; above 20 mm it runs past the scanned mucosa.
+# nothing is left of the patch but the landmarks, and the registration runs on
+# those points alone; above 20 mm it runs past the scanned mucosa.
 # Row of the models folder field inside gridLayout_2 of AREG.ui, where the
 # Browse button is added beside its Download button.
 MODEL3_GRID_ROW = 8
@@ -662,9 +662,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.lineEditMGLRadius.setToolTip(
             f"How far the patch spreads on each side of the mucogingival line, "
             f"along the surface, in mm (between {MGL_MIN_RADIUS} and {MGL_MAX_RADIUS}). "
-            "At 0 the patch is the line itself : the registration runs on the "
-            "curve through the landmarks only. Vertices belonging to the crowns "
-            "are always left out, whatever the value."
+            "At 0 there is no patch left, only the MGL landmarks : the "
+            "registration then runs on those points alone, which is the control "
+            "case rather than a setting to work with. Vertices belonging to the "
+            "crowns are always left out, whatever the value."
         )
         grid.addWidget(self.label_mgl_radius, row + 1, 0)
         grid.addWidget(self.lineEditMGLRadius, row + 1, 1)
@@ -2100,8 +2101,15 @@ qMRMLNodeComboBox:focus {
                 logger.error("Error: Unable to find dentalmodelseg path.")
                 return
             
-            nbr_run = 2 if self.type == "IOS" else 1
-            
+            # As many segmentation steps as the pipeline actually holds, at its
+            # head: a timepoint whose scans are already segmented produces no
+            # step, and consuming a fixed two would swallow whatever follows.
+            nbr_run = 0
+            for process in self.list_Processes_Parameters:
+                if not process["Module"].startswith("CrownSegmentationcli"):
+                    break
+                nbr_run += 1
+
             for i in range(nbr_run):
                 self.nb_extension_did += 1
                 args = self.list_Processes_Parameters[0]["Parameter"]
@@ -2130,6 +2138,9 @@ qMRMLNodeComboBox:focus {
                     self.ui.ButtonCancel.setVisible(True)
                     self.onCondaProcessUpdate()
                     slicer.app.processEvents()
+                    # A bare spin pegs a core and leaves the console no room to
+                    # drain what the tool is writing.
+                    time.sleep(0.05)
                     current_time = time.time()
                     gap=current_time-previous_time
                     if gap>0.3:
@@ -2171,6 +2182,7 @@ qMRMLNodeComboBox:focus {
                 self.ui.ButtonCancel.setVisible(True)
                 self.onCondaProcessUpdate()
                 slicer.app.processEvents()
+                time.sleep(0.05)
                 current_time = time.time()
                 gap=current_time-previous_time
                 if gap>0.3:
@@ -2210,6 +2222,7 @@ qMRMLNodeComboBox:focus {
             while self.process.is_alive():
                 self.onCondaProcessUpdate()
                 slicer.app.processEvents()
+                time.sleep(0.05)
                 current_time = time.time()
                 gap=current_time-previous_time
                 if gap>0.3:
@@ -2770,10 +2783,36 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         # reading two pipes with sequential blocking readline() calls can deadlock: if the child
         # fills one pipe's OS buffer while the parent is blocked reading the other pipe, both sides
         # wait on each other forever.
+        #
+        # The lines are grouped rather than logged one by one. This runs in a
+        # worker thread while the caller spins on processEvents, and Slicer
+        # reads its console through a pipe of its own: one log call per line
+        # fills that pipe faster than the main thread drains it, and the two
+        # deadlock with the panel frozen and nothing written. That is what a
+        # crown segmentation, which prints thousands of lines in one burst,
+        # used to do to a whole AREG run.
         try:
             stdout = self.subpro.stdout
+            pending = []
+            last_flush = time.time()
+
+            def flush_output():
+                if pending:
+                    logger.info("\n".join(pending))
+                    pending.clear()
+
             for line in iter(stdout.readline, '') if stdout is not None else []:
-                logger.info(line.rstrip())
+                # Progress bars rewrite one line with \r: keep the last state
+                # only, which is all that means anything once it is logged.
+                line = line.rsplit("\r", 1)[-1].rstrip()
+                if not line:
+                    continue
+                pending.append(line)
+                if len(pending) >= 100 or time.time() - last_flush > 0.5:
+                    flush_output()
+                    last_flush = time.time()
+
+            flush_output()
             self.subpro.wait()
 
         except Exception:
