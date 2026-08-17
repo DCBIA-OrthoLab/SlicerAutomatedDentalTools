@@ -65,6 +65,7 @@ if check_platform()=="WSL":
     from ALI_IOS_utils.model import dic_cam, dic_label, MODELS_DICT
     from ALI_IOS_utils.io import GenControlPoint, WriteJson, TradLabel, TradLabelMG
     from ALI_IOS_utils.orientation import LowerArchMatrix, TransformSurf, TransformPoint
+    from ALI_IOS_utils.segmentation import IsSegmented, SegmentSurface
     from ALI_IOS_utils.agent import Agent
 
 else :
@@ -73,10 +74,16 @@ else :
         GetSurfProp, RemoveExtraFaces, Upscale,
         dic_cam, dic_label, MODELS_DICT,
         GenControlPoint, WriteJson, TradLabel, TradLabelMG, Agent,
-        LowerArchMatrix, TransformSurf, TransformPoint
+        LowerArchMatrix, TransformSurf, TransformPoint,
+        IsSegmented, SegmentSurface
     )
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Surfaces ReadSurf opens. Only .vtk and .vtp can carry the teeth labels the
+# cameras are aimed with; the others are segmented on the way in, which is
+# also what converts them.
+SURFACES = (".vtk", ".vtp", ".stl", ".obj", ".off")
 
 
 def EstimateMissingArchPositions(lst_teeth, RI, V):
@@ -259,7 +266,7 @@ def main(args):
             logger.info(f"Loading data from directory: {args.input}")
             normpath = os.path.normpath("/".join([args.input, '**', '']))
             for vtkfile in sorted(glob.iglob(normpath, recursive=True)):
-                if os.path.isfile(vtkfile) and True in [ext in vtkfile for ext in [".vtk"]]:
+                if os.path.isfile(vtkfile) and os.path.splitext(vtkfile)[1].lower() in SURFACES:
                     basename = os.path.basename(vtkfile).split('.')[0]
                     if basename not in dic_patients.keys():
                         dic_patients[basename] = vtkfile
@@ -315,6 +322,24 @@ def main(args):
 
                     try:
                         path_vtk = patient_path
+
+                        # The cameras are aimed tooth by tooth, off a
+                        # Universal_ID array. A scan that has none gets it here
+                        # rather than being turned away, which is also what
+                        # turns an .stl into the .vtk the rest of this reads.
+                        # The segmentation leaves the points where they are, so
+                        # the landmarks stay valid in the file the user gave.
+                        segmented_folder = None
+                        if not IsSegmented(path_vtk):
+                            segmented_folder = tempfile.mkdtemp(prefix="ALI_IOS_segmented_")
+                            segmented = SegmentSurface(path_vtk, folder=segmented_folder)
+                            if segmented is None:
+                                shutil.rmtree(segmented_folder, ignore_errors=True)
+                                logger.error(f"{patient_id} cannot be segmented, no landmark "
+                                             "can be placed on it")
+                                continue
+                            path_vtk = segmented
+
                         model = models_to_use[models_type]['Lower'] if jaw == 'Lower' else models_to_use[models_type]['Upper']
                         camera_position = dic_cam[models_type]['L'] if jaw == 'Lower' else dic_cam[models_type]['U']
 
@@ -591,6 +616,8 @@ def main(args):
                         if back_to_file is not None:
                             # The oriented copy has served its purpose.
                             shutil.rmtree(os.path.dirname(path_vtk), ignore_errors=True)
+                        if segmented_folder is not None:
+                            shutil.rmtree(segmented_folder, ignore_errors=True)
                                 
                     except Exception as e:
                         logger.error(f"Error processing jaw {jaw} for patient {patient_id}, model {models_type}: {e}")

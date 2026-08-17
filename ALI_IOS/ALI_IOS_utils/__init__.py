@@ -9,5 +9,6 @@ from .model import (
 )
 from .io import GenControlPoint, WriteJson, TradLabel, TradLabelMG
 from .orientation import LowerArchMatrix, TransformSurf, TransformPoint
+from .segmentation import IsSegmented, SegmentSurface
 from .agent import Agent
 from .mask_renderer import MaskRenderer
