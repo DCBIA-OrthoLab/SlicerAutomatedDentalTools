@@ -1,3 +1,5 @@
+import inspect
+
 import torch
 import monai
 
@@ -81,12 +83,17 @@ class MonaiUNetHRes(LightningModule):
         if class_weights is not None:
             self.class_weights = torch.tensor(class_weights).to(torch.float32)
 
-        self.loss = monai.losses.DiceCELoss(
+        # MONAI renamed DiceCELoss' cross-entropy weight from `ce_weight` to
+        # `weight`, then dropped the old name entirely. Pick whichever the
+        # installed version accepts so the module works on both.
+        loss_kwargs = dict(
             include_background=False,
             to_onehot_y=True,
             softmax=True,
-            ce_weight=self.class_weights,
         )
+        dice_ce_params = inspect.signature(monai.losses.DiceCELoss.__init__).parameters
+        loss_kwargs["weight" if "weight" in dice_ce_params else "ce_weight"] = self.class_weights
+        self.loss = monai.losses.DiceCELoss(**loss_kwargs)
         self.accuracy = torchmetrics.Accuracy(
             num_classes=out_channels, task="multiclass"
         )

@@ -480,13 +480,28 @@ def main(args):
             
             if os.path.isdir(input_path):
                 logger.debug(f"Input is directory, scanning for volume files")
+                # Walk sub-directories: AREG writes its registered scans to
+                # <output>/<Region>/<patient>_OutReg/, so a flat listing finds
+                # none of them and the segmentation silently produces nothing.
+                skip_own_output = not args["isSegmentInput"]
+                own_suffix = "_{}_".format(args["prediction_ID"])
                 input_files = []
-                for f in os.listdir(input_path):
-                    file = os.path.join(input_path, f)
-                    if f.lower().endswith(extensions):
-                        if 'MASK' not in f:
-                            input_files.append(file)
-                            logger.debug(f"Found input file: {file}")
+                for root, _, files in os.walk(input_path):
+                    for f in sorted(files):
+                        if not f.lower().endswith(extensions):
+                            continue
+                        if 'MASK' in f:
+                            continue
+                        # An earlier pass may have written its segmentations
+                        # into this same tree. Re-segmenting one as if it were
+                        # a scan yields an empty mesh, so skip our own output
+                        # unless the caller really is feeding us segmentations.
+                        if skip_own_output and own_suffix in f:
+                            logger.debug(f"Skipping previously generated segmentation: {f}")
+                            continue
+                        file = os.path.join(root, f)
+                        input_files.append(file)
+                        logger.debug(f"Found input file: {file}")
             else:
                 if not input_path.lower().endswith(extensions):
                     logger.warning(f"Input file has unexpected extension: {input_path}")

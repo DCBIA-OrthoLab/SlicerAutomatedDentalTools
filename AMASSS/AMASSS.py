@@ -42,11 +42,34 @@ formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
+# torch 2.2.0 is compiled against numpy 1.x: numpy>=2 breaks every torch import
+# with "_ARRAY_API not found", including in the nnUNet subprocesses.
+NUMPY_PINNED_VERSION = "1.26.4"
+
 def _get_installed_version(lib_name):
     try:
         return importlib_metadata.version(lib_name)
     except importlib_metadata.PackageNotFoundError:
         raise importlib_metadata.PackageNotFoundError
+
+def fix_numpy_version():
+    '''
+    Restore the numpy version torch was built against.
+    pip resolves each install independently, so a package installed afterwards
+    (nnunetv2 requires numpy>=1.24) can silently pull numpy 2.x and break torch.
+    Has to be re-checked once every package is installed.
+    '''
+    from packaging.version import Version
+    try:
+        installed_version = _get_installed_version("numpy")
+    except importlib_metadata.PackageNotFoundError:
+        installed_version = None
+
+    if installed_version is None or Version(installed_version) >= Version("2.0.0"):
+        logger.info(f'numpy {installed_version} is incompatible with torch: reinstalling numpy=={NUMPY_PINNED_VERSION}')
+        pip_install(f'numpy=={NUMPY_PINNED_VERSION}')
+        return True
+    return False
 
 def check_lib_installed(lib_name, required_version=None,system="Windows"):
     '''
@@ -160,23 +183,27 @@ def install_function(self,list_libs:list,system:str):
                     nb_installed += 1
                   self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
 
+                fix_numpy_version()
                 return True
 
               else:
-                pip_install(f'torch>=2.2.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
-                for lib, version in libs_to_install:
+                torch_libs = ["torch", "torchvision", "torchaudio"]
+                libs_to_pip = libs_to_install + libs_to_update
+
+                if any(lib in torch_libs for lib, version in libs_to_pip):
+                  pip_install(f'torch>=2.2.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
+                  nb_installed += sum(1 for lib, version in libs_to_pip if lib in torch_libs)
+                  self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
+
+                for lib, version in libs_to_pip:
+                  if lib in torch_libs:
+                    continue
                   lib_version = f'{lib}=={version}' if version else lib
                   pip_install(lib_version)
                   nb_installed += 1
                   self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
 
-
-                for lib, version in libs_to_update:
-                  lib_version = f'{lib}=={version}' if version else lib
-                  pip_install(lib_version)
-                  nb_installed += 1
-                  self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
-
+                fix_numpy_version()
                 return True
           else :
             return False
@@ -832,8 +859,11 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       try:
         list_libs = [
           ('torch','2.2.0'),('torchvision', "0.17.0"),('torchaudio',"2.2.0"),
-          ('itk', None),('blosc2', None),('dicom2nifti', '2.3.0'), 
-          ('pydicom', '2.2.2'),('einops',None),('nibabel',None),('nnunetv2','2.8.0')
+          ('itk', None),('blosc2', None),('dicom2nifti', '2.6.2'),
+          # pydicom is kept on the version Slicer ships: downgrading it to 2.x breaks
+          # dicomweb-client and highdicom, hence every DICOM module of Slicer.
+          ('pydicom', '3.0.2'),('einops',None),('nibabel',None),('nnunetv2','2.8.0'),
+          ('numpy', NUMPY_PINNED_VERSION)
         ]
         logger.info('Checking/installing required libraries...')
         libs_installation = install_function(self, list_libs, platform.system())

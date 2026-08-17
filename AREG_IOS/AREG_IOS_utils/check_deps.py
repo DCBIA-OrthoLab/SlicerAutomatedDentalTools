@@ -7,7 +7,6 @@ import sys
 import subprocess
 import os
 from pathlib import Path
-from distutils.version import StrictVersion
 
 import logging
 import sys
@@ -27,35 +26,18 @@ logger.addHandler(console_handler)
 def remove_broken_image_so():
     """Remove broken image.so file that causes import warnings"""
     try:
-        # Find and remove broken image.so
-        python_prefix = sys.prefix
-        image_so_path = Path(python_prefix) / "lib" / "python3.9" / "site-packages" / "torchvision" / "image.so"
-        
+        # Ask torchvision where it actually lives rather than guessing a
+        # lib/pythonX.Y directory - the interpreter version is not knowable
+        # in advance and hardcoding it silently skipped the cleanup.
+        import torchvision
+
+        image_so_path = Path(torchvision.__file__).parent / "image.so"
         if image_so_path.exists():
-            try:
-                image_so_path.unlink()
-                return True
-            except Exception as e:
-                return False
-        
-        # Also check other potential locations
-        other_paths = [
-            Path(python_prefix) / "lib" / "python3.8" / "site-packages" / "torchvision" / "image.so",
-            Path(python_prefix) / "lib" / "python3.10" / "site-packages" / "torchvision" / "image.so",
-            Path(python_prefix) / "lib" / "python3.11" / "site-packages" / "torchvision" / "image.so",
-        ]
-        
-        for path in other_paths:
-            if path.exists():
-                try:
-                    path.unlink()
-                    return True
-                except:
-                    pass
-        
-    except Exception as e:
+            image_so_path.unlink()
+            return True
+    except Exception:
         pass
-    
+
     return False
 
 

@@ -1752,16 +1752,22 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         logger.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
 
-        s = PopUpWindow(
-            title="Process Done",
-            text="Successfully done in {} min and {} sec \nAverage time per Patient: {} min and {} sec".format(
+        # OnEndProcess is reached from onProcessUpdate, i.e. from inside a VTK
+        # observer callback. Opening an application-modal dialog there starts a
+        # nested event loop while the CLI node is still dispatching events, and
+        # the modal grab can leave the whole desktop session unresponsive, not
+        # just Slicer. Defer it so the callback returns first.
+        done_message = (
+            "Successfully done in {} min and {} sec \nAverage time per Patient: {} min and {} sec".format(
                 int(total_time / 60),
                 int(total_time % 60),
                 int(average_time / 60),
                 int(average_time % 60),
-            ),
+            )
         )
-        s.exec_()
+        qt.QTimer.singleShot(
+            0, lambda: PopUpWindow(title="Process Done", text=done_message).exec_()
+        )
 
         file_path = os.path.abspath(__file__)
         folder_path = os.path.dirname(file_path)
@@ -2590,7 +2596,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         self.conda = self.init_conda()
         self.name_env = "shapeaxi"
         self.cliNode = None
-        self.python_version = "3.9"
+        self.python_version = "3.12"
 
     def init_conda(self):
         # check if CondaSetUp exists
@@ -2613,7 +2619,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["ocnn==2.2.1","shapeaxi==1.0.10"],)) #run in parallel to not block slicer
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["ocnn==2.2.1","shapeaxi>=2.0.2","SimpleITK"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
