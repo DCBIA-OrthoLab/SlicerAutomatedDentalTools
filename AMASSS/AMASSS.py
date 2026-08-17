@@ -859,8 +859,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       try:
         list_libs = [
           ('torch','2.2.0'),('torchvision', "0.17.0"),('torchaudio',"2.2.0"),
-          ('itk', None),('blosc2', None),('dicom2nifti', '2.3.0'), 
-          ('pydicom', '2.2.2'),('einops',None),('nibabel',None),('nnunetv2','2.8.0'),
+          ('itk', None),('blosc2', None),('dicom2nifti', '2.6.2'),
+          # pydicom is kept on the version Slicer ships: downgrading it to 2.x breaks
+          # dicomweb-client and highdicom, hence every DICOM module of Slicer.
+          ('pydicom', '3.0.2'),('einops',None),('nibabel',None),('nnunetv2','2.8.0'),
           ('numpy', NUMPY_PINNED_VERSION)
         ]
         logger.info('Checking/installing required libraries...')
