@@ -15,6 +15,7 @@
 #   - the band grows along the surface (geodesic), never through it, so a
 #     buccal patch cannot leak onto the lingual side where the ridge is thin.
 import heapq
+import json
 import logging
 import sys
 
@@ -48,12 +49,51 @@ MGL_ORDER_LEGACY = [name[:-2] for name in MGL_ORDER]
 MGL_ARRAY_NAME = "Bottom_MGL"
 
 DEFAULT_RADIUS = 5.0        # mm, half-height of the band around the curve
+                            # 0 leaves no band at all: the landmarks alone
 DEFAULT_SAMPLES = 300       # samples along the spline
 
 # Universal_ID labels of the lower teeth. The gingiva carries its own label, so
 # the patch can be kept off the crowns, which are the structures that move
 # between the two timepoints and must not drive the registration.
 LOWER_TOOTH_LABELS = range(18, 32)
+
+
+def DropDoubtfulLandmarks(landmarks, path):
+    """Landmarks minus the ones ALI itself was not sure of.
+
+    ALI records how it came by each point in the description of the markup:
+    a point it forced out of the top pixels, one it fell back on the tooth for,
+    one whose tooth was absent and whose cameras were aimed at an estimated
+    position. Measured over 364 predictions, those sit a median 4.2 mm off the
+    curve their neighbours draw, against 1.2 mm for the rest, so they are the
+    ones that pull the mucogingival line out of shape.
+
+    The curve is built from whatever is left, and a hole is nothing new: the
+    spline spans it. All of them are kept when too few would remain, since a
+    doubtful line still beats no registration.
+    """
+    try:
+        with open(path) as f:
+            markups = json.load(f)["markups"][0]["controlPoints"]
+    except Exception as error:
+        logger.warning(f"Could not read the landmark descriptions from {path}: {error}")
+        return landmarks
+
+    doubtful = {point["label"]: point["description"] for point in markups
+                if point.get("description")}
+    if not doubtful:
+        return landmarks
+
+    kept = {name: position for name, position in landmarks.items() if name not in doubtful}
+    if len(kept) < 3:
+        logger.warning(
+            f"{len(doubtful)} of the {len(landmarks)} landmarks are flagged by ALI, "
+            "too many to leave out: the line is built on all of them")
+        return landmarks
+
+    logger.info(f"Leaving out {len(doubtful)} landmark(s) ALI was unsure of: "
+                + ", ".join(f"{name} ({reason})" for name, reason in sorted(doubtful.items())))
+    return kept
 
 
 def OrderedMGLandmarks(landmarks):
@@ -190,23 +230,36 @@ def MGLPatch(surf, landmarks, radius=DEFAULT_RADIUS, n_samples=DEFAULT_SAMPLES,
 
     Writes a 0/1 point array shaped like the palatal one, so the registration
     reads it the same way, under a name that says what it is. Returns the surface.
+
+    A radius of 0 leaves no band and no curve either: the array then holds the
+    landmarks alone and the registration runs on those points only.
     """
     points = OrderedMGLandmarks(landmarks)
     logger.info(f"Building the MGL patch from {len(points)} landmark(s), radius {radius} mm")
+
     if radius == 0:
-        logger.info("Radius 0: the patch is the snapped curve itself, the "
-                    "registration will run on the mucogingival line only")
+        # Neither a band nor the curve joining the landmarks: the patch is the
+        # landmarks themselves, so the ICP runs on those few points alone. Kept
+        # as the control case, to measure on real scans what the surface around
+        # the mucogingival line brings over the points that carry it.
+        seeds = SnapToSurface(surf, points)
+        logger.info(f"Height 0: registering on the {len(seeds)} landmark(s) "
+                    "alone, without any surface around them")
+        inside = np.zeros(surf.GetNumberOfPoints(), dtype=bool)
+        inside[seeds] = True
+    else:
+        samples = SplineThroughLandmarks(points, n_samples)
+        seeds = SnapToSurface(surf, samples)
+        logger.debug(f"{len(samples)} spline sample(s) snapped onto {len(seeds)} vertex(es)")
 
-    samples = SplineThroughLandmarks(points, n_samples)
-    seeds = SnapToSurface(surf, samples)
-    logger.debug(f"{len(samples)} spline sample(s) snapped onto {len(seeds)} vertex(es)")
-
-    inside = GrowBand(surf, seeds, radius)
+        inside = GrowBand(surf, seeds, radius)
 
     if exclude_teeth:
         on_teeth = _tooth_mask(surf) & inside
         if on_teeth.any():
-            logger.info(f"Dropping {int(on_teeth.sum())} vertex(es) of the band that reached the crowns")
+            what = ("landmark(s) that snapped onto a crown" if radius == 0
+                    else "vertex(es) of the band that reached the crowns")
+            logger.info(f"Dropping {int(on_teeth.sum())} {what}")
             inside = inside & ~on_teeth
 
     n_inside = int(inside.sum())

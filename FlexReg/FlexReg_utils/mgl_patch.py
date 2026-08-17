@@ -117,9 +117,11 @@ MGL_ARRAY_NAME = "Bottom_MGL"
 MGL_PREVIEW_ARRAY_NAME = "Bottom_MGLPreview"
 
 DEFAULT_HEIGHT = 2.5        # mm of surface on each side of the line
-# 0 is meaningful: the band degenerates into the snapped curve itself, so the
-# registration runs on the mucogingival line rather than on a patch. A short
-# slider travel keeps every 0.1 mm step wide under the finger.
+# 0 is meaningful: the band vanishes, the curve between the landmarks goes with
+# it, and the landmarks alone are left, so the registration runs on those 13
+# points rather than on a patch. That is the control case, kept to measure on
+# real scans what the surface around the line brings over the points carrying
+# it. A short slider travel keeps every 0.1 mm step wide under the finger.
 MIN_HEIGHT = 0.0
 MAX_HEIGHT = 5.0
 SAMPLES_PER_SEGMENT = 25    # spline samples between two consecutive landmarks
@@ -129,14 +131,48 @@ SAMPLES_PER_SEGMENT = 25    # spline samples between two consecutive landmarks
 LOWER_TOOTH_LABELS = range(18, 32)
 
 
-def ReadLandmarks(path):
-    """Read a Slicer markups json as {label: position}."""
+def _controlPoints(path):
     import json
     with open(path) as f:
         data = json.load(f)
+    return [point for point in data["markups"][0]["controlPoints"]
+            if point.get("position")]
+
+
+def DoubtfulLandmarks(path):
+    """{label: why} for the points ALI was unsure of, read from its json.
+
+    ALI records how it came by each point in the markup description: one it
+    forced out of the top pixels, one it fell back on the tooth for, one whose
+    tooth was absent and whose cameras were aimed at a guess. Measured over 364
+    predictions, those sit a median 4.2 mm off the curve their neighbours draw,
+    against 1.2 mm for the rest.
+
+    Empty when dropping them would leave fewer than three points, since a
+    doubtful line still beats no line at all.
+    """
+    points = _controlPoints(path)
+    doubtful = {point["label"]: point["description"] for point in points
+                if point.get("description")}
+    if len(points) - len(doubtful) < 3:
+        return {}
+    return doubtful
+
+
+def ReadLandmarks(path, drop_doubtful=True):
+    """Read a Slicer markups json as {label: position}.
+
+    The points ALI was unsure of are left out by default: they are the ones
+    that pull the mucogingival line out of shape, and the spline spans the
+    hole they leave. DoubtfulLandmarks says which those are.
+    """
+    doubtful = DoubtfulLandmarks(path) if drop_doubtful else {}
+    if doubtful:
+        logger.info(f"Leaving out {len(doubtful)} landmark(s) ALI was unsure of: "
+                    + ", ".join(sorted(doubtful)))
     return {point["label"]: np.array(point["position"], dtype=float)
-            for point in data["markups"][0]["controlPoints"]
-            if point.get("position")}
+            for point in _controlPoints(path)
+            if point["label"] not in doubtful}
 
 
 def WriteLandmarks(path, names, positions):
@@ -388,6 +424,11 @@ class MGLPatchBuilder:
         With `heights_down`, the band is asymmetric: `heights` bounds the crown
         side of the curve and `heights_down` the vestibule side. Left to None,
         both sides use `heights` and the band is the symmetric one of before.
+
+        The landmarks themselves always belong to the patch, and nothing else
+        does where both heights are 0: a stretch brought down to 0 keeps its
+        landmarks and drops the curve joining them, so heights left at 0 all
+        along the arch leave the landmarks alone for the registration to run on.
         """
         from scipy.sparse.csgraph import dijkstra
 
@@ -441,7 +482,16 @@ class MGLPatchBuilder:
                 (self._points[reached_ids] - self._points[source_ids]) * self._apical,
                 axis=1) > 0
             allowed = np.where(below, seed_down[source_at], seed_up[source_at])
-            inside[reached_ids] = distances[reached] <= allowed
+            # A height of 0 keeps nothing, the curve included: a vertex needs a
+            # band to belong to, and the seeds of a stretch left at 0 have none.
+            inside[reached_ids] = (distances[reached] <= allowed) & (allowed > 0)
+
+        # The landmarks are what the band is built around, so they stay whatever
+        # the heights are. They are also all that is left of a patch flattened
+        # to 0 everywhere, which is what makes the registration on the landmarks
+        # alone reachable from the sliders.
+        landmark_ids = [self._locator.FindClosestPoint(point) for point in moved]
+        inside[landmark_ids] = True
 
         if exclude_teeth:
             inside &= ~self._tooth_mask

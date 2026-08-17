@@ -29,6 +29,12 @@ logger.addHandler(console_handler)
 MGL_TEETH = ("LL6MG LL5MG LL4MG LL3MG LL2MG LL1MG L0MG "
              "LR1MG LR2MG LR3MG LR4MG LR5MG LR6MG")
 
+# The extension segmenting the crowns, and the CLI it brings. Scans with no
+# teeth labels cannot be landmarked, so this is a hard requirement of the
+# mucogingival flow rather than a convenience.
+SEGMENTATION_EXTENSION = "SlicerDentalModelSeg"
+SEGMENTATION_MODULE = "CrownSegmentationcli"
+
 
 def MGLProcess(method, numberscan, areg_mode, **kwargs):
     """Processes registering the lower arches on the mucogingival band.
@@ -36,13 +42,14 @@ def MGLProcess(method, numberscan, areg_mode, **kwargs):
     ALI predicts the landmarks for both timepoints unless the user points at a
     folder that already holds them, which also lets a run be repeated without
     paying for the prediction again.
+
+    numberscan is how many lower pairs are to be processed, counted by the
+    caller on the folders the user selected. Counting it here instead would
+    read the segmentation folders, which are still empty while this list is
+    being built, and a progress bar dividing by that zero stops the run.
     """
     landmarks_folder = kwargs.get("mgl_landmarks", "").strip()
     predict = not landmarks_folder
-
-    # MGL works on the mandibles, so the progress must count those, not the
-    # maxillae numberscan reports.
-    numberscan = method.NumberScanLower(kwargs["input_t1_folder"], kwargs["input_t2_folder"])
 
     if predict:
         landmarks_folder = os.path.join(slicer.util.tempDirectory(), "MGL_landmarks")
@@ -272,8 +279,82 @@ class Auto_IOS(Method):
         return super().getALIModelList()
 
 
+    def TestSegmentationAvailable(self, **kwargs) -> str:
+        """Make sure the scans can be segmented, offering the extension if not.
+
+        ALI aims its cameras tooth by tooth and places nothing on a scan with
+        no teeth labels, so the run would end on an empty output folder.
+        """
+        files = []
+        for folder in (kwargs.get("input_t1_folder", ""), kwargs.get("input_t2_folder", "")):
+            if folder:
+                found = self.search(folder, ".vtk", ".stl")
+                files += found[".vtk"] + found[".stl"]
+
+        if all(self.__isSegmented__(f) for f in files):
+            return ""
+        if hasattr(slicer.modules, "crownsegmentationcli"):
+            return ""
+        if self.InstallSegmentationExtension():
+            return ""
+        return (f"Some scans carry no teeth segmentation, and {SEGMENTATION_EXTENSION}, "
+                "which segments them, was not installed. Install it from the "
+                "Extensions Manager, or select scans holding a Universal_ID array\n")
+
+    def InstallSegmentationExtension(self) -> bool:
+        """Download the segmentation extension, with the user's go-ahead.
+
+        Being told to go and install an extension costs a trip to the
+        Extensions Manager, a restart and the run that was just started, so the
+        download is offered here and the module registered on the spot. True
+        when the segmentation can run afterwards.
+        """
+        import qt
+
+        if not slicer.util.confirmYesNoDisplay(
+                "These scans carry no teeth segmentation, which the mucogingival "
+                f"landmarks need.\n\nThe {SEGMENTATION_EXTENSION} extension "
+                "segments them and is not installed yet.\n\n"
+                "Download and install it now?"):
+            return False
+
+        manager = slicer.app.extensionsManagerModel()
+        manager.setInteractive(False)
+        logger.info(f"Installing {SEGMENTATION_EXTENSION} from the extensions server")
+        if not manager.installExtensionFromServer(SEGMENTATION_EXTENSION, False, False):
+            slicer.util.errorDisplay(
+                f"{SEGMENTATION_EXTENSION} could not be downloaded. Check the "
+                "internet connection, or install it from the Extensions Manager."
+            )
+            return False
+
+        # Load it right away: a freshly installed extension is otherwise only
+        # picked up by the next Slicer session, and the run would be lost.
+        factory = slicer.app.moduleManager().factoryManager()
+        for path in manager.extensionModulePaths(SEGMENTATION_EXTENSION):
+            module = os.path.join(path, f"{SEGMENTATION_MODULE}.py")
+            if os.path.isfile(module):
+                factory.registerModule(qt.QFileInfo(module))
+                factory.loadModules([SEGMENTATION_MODULE])
+                break
+
+        if hasattr(slicer.modules, "crownsegmentationcli"):
+            logger.info(f"{SEGMENTATION_EXTENSION} installed and loaded")
+            return True
+
+        # Loading it in place did not take; a restart always does.
+        if slicer.util.confirmYesNoDisplay(
+                f"{SEGMENTATION_EXTENSION} is installed, but Slicer has to "
+                "restart to use it.\n\nRestart now?"):
+            slicer.util.restart()
+        return False
+
     def TestMGLModel(self, **kwargs) -> str:
         """Validate what MGL needs instead of the palatal checkpoint."""
+        segmentation = self.TestSegmentationAvailable(**kwargs)
+        if segmentation:
+            return segmentation
+
         if kwargs.get("mgl_landmarks", "").strip():
             folder = kwargs["mgl_landmarks"].strip()
             if len(self.search(folder, ".json")[".json"]) == 0:
@@ -373,8 +454,15 @@ class Auto_IOS(Method):
         list_label = [point_data.GetArrayName(i) for i in range(point_data.GetNumberOfArrays())]
         return any(label in properties for label in list_label if label is not None)
 
-    def Process(self, **kwargs):
+    def SegmentTeeth(self, **kwargs):
+        """Steps segmenting the scans of both timepoints, and where they land.
 
+        Scans already carrying Universal_ID are copied straight to the
+        segmented folder, so a timepoint that is ready to use produces no step
+        at all: an empty list means there is nothing left to segment.
+
+        Returns (processes, path_tmp, path_seg_T1, path_seg_T2).
+        """
         path_tmp = slicer.util.tempDirectory()
         path_input = os.path.join(path_tmp, "input_seg")
         path_input_T1 = os.path.join(path_input, "T1")
@@ -382,22 +470,11 @@ class Auto_IOS(Method):
         path_seg = os.path.join(path_tmp, "seg")
         path_seg_T1 = os.path.join(path_seg, "T1")
         path_seg_T2 = os.path.join(path_seg, "T2")
-        path_or = os.path.join(path_tmp, "Or")
-        path_or_T1 = os.path.join(path_or, "T1")
-        path_or_T2 = os.path.join(path_or, "T2")
-        
-        os.makedirs(path_seg, exist_ok=True)
-        os.makedirs(path_seg_T1, exist_ok=True)
-        os.makedirs(path_seg_T2, exist_ok=True)
-        os.makedirs(path_or, exist_ok=True)
-        os.makedirs(path_or_T1, exist_ok=True)
-        os.makedirs(path_or_T2, exist_ok=True)
-        os.makedirs(path_input, exist_ok=True)
-        os.makedirs(path_input_T1, exist_ok=True)
-        os.makedirs(path_input_T2, exist_ok=True)
-        os.makedirs(kwargs["folder_output"], exist_ok=True)
 
-        path_error = os.path.join(kwargs["folder_output"], "Error")
+        for folder in (path_seg, path_seg_T1, path_seg_T2,
+                       path_input, path_input_T1, path_input_T2):
+            os.makedirs(folder, exist_ok=True)
+        os.makedirs(kwargs["folder_output"], exist_ok=True)
 
         number_scan_toseg_T1 = self.__BypassCrownseg__(
             kwargs["input_t1_folder"], path_input_T1, path_seg_T1
@@ -415,7 +492,7 @@ class Auto_IOS(Method):
             extension = os.path.splitext(self.input)[1]
             if extension == ".vtk" or extension == ".stl":
               surf_T1 = path_input_T1
-              
+
         elif os.path.isdir(path_input_T1):
           input_csv_T1 = self.create_csv(path_input_T1,"liste_csv_file_T1")
           vtk_folder_T1 = path_input_T1
@@ -441,7 +518,7 @@ class Auto_IOS(Method):
             extension = os.path.splitext(self.input)[1]
             if extension == ".vtk" or extension == ".stl":
               surf_T2 = path_input_T2
-              
+
         elif os.path.isdir(path_input_T2):
           input_csv_T2 = self.create_csv(path_input_T2,"liste_csv_file_T2")
           vtk_folder_T2 = path_input_T2
@@ -459,7 +536,45 @@ class Auto_IOS(Method):
             "vtk_folder": vtk_folder_T2,
             "dentalmodelseg_path": dentalmodelseg_path
         }
-        
+
+        to_segment = []
+        for timepoint, number, parameter in (("T1", number_scan_toseg_T1, parameter_segteeth_T1),
+                                             ("T2", number_scan_toseg_T2, parameter_segteeth_T2)):
+            if number == 0:
+                # Every scan of this timepoint already carries its labels.
+                # Running the CLI on the empty folder left behind would only
+                # cost minutes and report nothing.
+                logger.info(f"{timepoint}: all the scans are already segmented, skipping the segmentation")
+                continue
+            to_segment.append((timepoint, number, parameter))
+
+        if not to_segment:
+            # Nothing to segment, so nothing to ask of SlicerDentalModelSeg:
+            # a Slicer without that extension still registers scans that are
+            # already labelled.
+            return [], path_tmp, path_seg_T1, path_seg_T2
+
+        SegProcess = slicer.modules.crownsegmentationcli
+        processes = [{
+            "Process": SegProcess,
+            "Parameter": parameter,
+            "Module": f"CrownSegmentationcli {timepoint}",
+            "Display": DisplayCrownSeg(number, kwargs["logPath"], f"{timepoint} Scan"),
+        } for timepoint, number, parameter in to_segment]
+
+        return processes, path_tmp, path_seg_T1, path_seg_T2
+
+    def Process(self, **kwargs):
+
+        seg_processes, path_tmp, path_seg_T1, path_seg_T2 = self.SegmentTeeth(**kwargs)
+
+        path_or = os.path.join(path_tmp, "Or")
+        path_or_T1 = os.path.join(path_or, "T1")
+        path_or_T2 = os.path.join(path_or, "T2")
+        for folder in (path_or, path_or_T1, path_or_T2):
+            os.makedirs(folder, exist_ok=True)
+
+        path_error = os.path.join(kwargs["folder_output"], "Error")
 
         numberscan = self.NumberScan(
             kwargs["input_t1_folder"], kwargs["input_t2_folder"]
@@ -468,28 +583,16 @@ class Auto_IOS(Method):
         if kwargs.get("reg_type") == "MGL":
             # The mucogingival band needs the teeth segmentation, not the palatal
             # orientation: the landmarks carry the pose the patch is built on.
+            # MGL works on the mandibles, so the progress counts those, on the
+            # folders the user selected rather than on the segmented copies that
+            # do not exist yet.
+            numberlower = self.NumberScanLower(
+                kwargs["input_t1_folder"], kwargs["input_t2_folder"]
+            )
             mgl_kwargs = dict(kwargs)
             mgl_kwargs["input_t1_folder"] = path_seg_T1
             mgl_kwargs["input_t2_folder"] = path_seg_T2
-            SegProcess = slicer.modules.crownsegmentationcli
-            return [
-                {
-                    "Process": SegProcess,
-                    "Parameter": parameter_segteeth_T1,
-                    "Module": "CrownSegmentationcli T1",
-                    "Display": DisplayCrownSeg(
-                        number_scan_toseg_T1, kwargs["logPath"], "T1 Scan"
-                    ),
-                },
-                {
-                    "Process": SegProcess,
-                    "Parameter": parameter_segteeth_T2,
-                    "Module": "CrownSegmentationcli T2",
-                    "Display": DisplayCrownSeg(
-                        number_scan_toseg_T2, kwargs["logPath"], "T2 Scan"
-                    ),
-                },
-            ] + MGLProcess(self, numberscan, "Auto_IOS", **mgl_kwargs)
+            return seg_processes + MGLProcess(self, numberlower, "Auto_IOS", **mgl_kwargs)
 
         parameter_pre_aso_T1 = {
             "input": path_seg_T1,
@@ -525,32 +628,14 @@ class Auto_IOS(Method):
             "areg_mode": "Auto_IOS",
         }
 
-        logger.info(f"Parameter seg: {parameter_segteeth_T1}")
         logger.info(f"Parameter pre_aso1 : {parameter_pre_aso_T1}")
         logger.info(f"Parameter pre_aso2 : {parameter_pre_aso_T2}")
         logger.info(f"Parameter reg: {parameter_reg}")
 
         PreOrientProcess = slicer.modules.pre_aso_ios
-        SegProcess = slicer.modules.crownsegmentationcli
         RegProcess = slicer.modules.areg_ios
 
-        list_process = [
-            {
-                "Process": SegProcess,
-                "Parameter": parameter_segteeth_T1,
-                "Module": "CrownSegmentationcli T1",
-                "Display": DisplayCrownSeg(
-                    number_scan_toseg_T1, kwargs["logPath"], "T1 Scan"
-                ),
-            },
-            {
-                "Process": SegProcess,
-                "Parameter": parameter_segteeth_T2,
-                "Module": "CrownSegmentationcli T2",
-                "Display": DisplayCrownSeg(
-                    number_scan_toseg_T2, kwargs["logPath"], "T2 Scan"
-                ),
-            },
+        list_process = seg_processes + [
             {
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso_T1,
@@ -618,7 +703,19 @@ class Semi_IOS(Auto_IOS):
         )
 
         if kwargs.get("reg_type") == "MGL":
-            return MGLProcess(self, numberscan, "Semi_IOS", **kwargs)
+            # ALI aims its cameras tooth by tooth, so it places nothing on a
+            # scan carrying no teeth labels: without the segmentation the run
+            # ends with no landmark file and an empty output folder. Registering
+            # on the mucogingival line therefore segments what needs it here
+            # too, and scans already labelled go through untouched.
+            numberlower = self.NumberScanLower(
+                kwargs["input_t1_folder"], kwargs["input_t2_folder"]
+            )
+            seg_processes, _path_tmp, path_seg_T1, path_seg_T2 = self.SegmentTeeth(**kwargs)
+            mgl_kwargs = dict(kwargs)
+            mgl_kwargs["input_t1_folder"] = path_seg_T1
+            mgl_kwargs["input_t2_folder"] = path_seg_T2
+            return seg_processes + MGLProcess(self, numberlower, "Semi_IOS", **mgl_kwargs)
 
         parameter_reg = {
             "T1": kwargs["input_t1_folder"],

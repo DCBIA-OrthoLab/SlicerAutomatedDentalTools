@@ -178,13 +178,18 @@ def SortLower(T1: str, T2: str) -> list:
     registration works on the mandible alone, so it pairs the lower files on
     their own.
 
+    The search goes through subfolders: the crown segmentation writes its
+    output into a folder of its own under the one it was given, so scans that
+    were segmented on the way here sit one level down, and a flat listing
+    would pair nothing at all.
+
     Returns:
         list[dict]: [{'T1': 'path/P1_LowerT1.vtk', 'T2': 'path/P1_LowerT2.vtk'}, ...]
     """
     surface_extensions = ('.vtk', '.vtp', '.stl', '.obj')
 
     def lower_files(folder):
-        files = [f for f in glob.glob(os.path.join(folder, "*"))
+        files = [f for f in glob.glob(os.path.join(folder, "**", "*"), recursive=True)
                  if f.lower().endswith(surface_extensions)]
         return [f for f in files if not isLowerUpper(f, choice="Upper")]
 
