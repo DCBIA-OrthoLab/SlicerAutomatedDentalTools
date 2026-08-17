@@ -3654,6 +3654,13 @@ class WidgetParameter:
         This function is doing the first step of makebutterfly to be sure the segmentation and the tooth are existing.
         If the segmentation is not existing, calling the module crownsegmentation to do it
         '''
+        # The scan is read here and segmented in place below, so it has to be
+        # the .vtk copy and never the .stl the user selected: handed an .stl to
+        # overwrite, the segmentation deletes it (shapeaxi, dental_model_seg.py
+        # "if ext == '.stl': os.remove(args.stl)"). viewScan already converted,
+        # this is for a path edited afterwards.
+        self.ensureVtkInput()
+
         reader = vtk.vtkPolyDataReader()
         reader.SetFileName(str(self.lineedit.text))
         reader.Update()
@@ -3707,6 +3714,10 @@ class WidgetParameter:
             
     def shapeaxi_conda(self):
         slicer.app.processEvents()
+
+        # Segmenting overwrites the file it is given, and an .stl would be
+        # deleted rather than written to.
+        self.ensureVtkInput()
         
         output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
         clean_output = re.search(r"Result: (.+)", output_command)
