@@ -17,6 +17,7 @@
 import heapq
 import json
 import logging
+import re
 import sys
 
 import numpy as np
@@ -58,6 +59,34 @@ DEFAULT_SAMPLES = 300       # samples along the spline
 LOWER_TOOTH_LABELS = range(18, 32)
 
 
+# What ALI writes in a markup description when the point is not a plain
+# prediction. A description may also carry the confidence of a point that was
+# won outright, which says nothing against it.
+DOUBTFUL_MARKS = ("forced", "fallback", "arch fit")
+
+
+# Below this the network was, on the corpus it was trained on, wrong by 3.8 mm
+# where a confident point is wrong by 1.0 mm. It is that corpus's 5th
+# percentile: a point the model is less sure of than 95% of what it was taught
+# on. A quarter of the points of another dataset fall under it, which is what
+# a model working outside its domain looks like.
+MIN_CONFIDENCE = 0.785
+
+
+def IsDoubtful(description):
+    """True when a description says the point is not to be trusted.
+
+    Either it was not predicted outright -- forced, fallen back on, aimed at a
+    guessed tooth -- or it was predicted with less confidence than the model
+    ever showed on the scans it was trained on.
+    """
+    text = (description or "").lower()
+    if any(mark in text for mark in DOUBTFUL_MARKS):
+        return True
+    found = re.search(r"confidence ([0-9.]+)", text)
+    return bool(found) and float(found.group(1)) < MIN_CONFIDENCE
+
+
 def DropDoubtfulLandmarks(landmarks, path):
     """Landmarks minus the ones ALI itself was not sure of.
 
@@ -80,7 +109,7 @@ def DropDoubtfulLandmarks(landmarks, path):
         return landmarks
 
     doubtful = {point["label"]: point["description"] for point in markups
-                if point.get("description")}
+                if IsDoubtful(point.get("description"))}
     if not doubtful:
         return landmarks
 

@@ -64,7 +64,8 @@ if check_platform()=="WSL":
     from ALI_IOS_utils.surface import ReadSurf, ScaleSurf, GetSurfProp, RemoveExtraFaces, Upscale
     from ALI_IOS_utils.model import dic_cam, dic_label, MODELS_DICT
     from ALI_IOS_utils.io import GenControlPoint, WriteJson, TradLabel, TradLabelMG
-    from ALI_IOS_utils.orientation import LowerArchMatrix, TransformSurf, TransformPoint
+    from ALI_IOS_utils.orientation import (
+        LowerArchMatrix, TransformSurf, TransformPoint, ArchScale)
     from ALI_IOS_utils.segmentation import IsSegmented, SegmentSurface
     from ALI_IOS_utils.agent import Agent
 
@@ -74,7 +75,7 @@ else :
         GetSurfProp, RemoveExtraFaces, Upscale,
         dic_cam, dic_label, MODELS_DICT,
         GenControlPoint, WriteJson, TradLabel, TradLabelMG, Agent,
-        LowerArchMatrix, TransformSurf, TransformPoint,
+        LowerArchMatrix, TransformSurf, TransformPoint, ArchScale,
         IsSegmented, SegmentSurface
     )
 
@@ -367,6 +368,18 @@ def main(args):
                                 logger.info(f"{patient_id}: oriented on its four lower teeth "
                                             "for the mucogingival prediction")
 
+                        # The cameras are placed at a fixed distance in the
+                        # normalised space, so what that space measures decides
+                        # how they frame the gum. Read off the arch, it follows
+                        # the jaw; read off the scan extent, it follows how much
+                        # vestibule was captured.
+                        mg_scale = None
+                        if models_type == "MG" and args.arch_scale:
+                            mg_scale = ArchScale(ReadSurf(path_vtk))
+                            if mg_scale is not None:
+                                logger.info(f"{patient_id}: scaled on the arch "
+                                            f"(1 unit = {1 / mg_scale:.1f} mm)")
+
                         # The MG cameras need a position per tooth. For the
                         # teeth the segmentation does not know, estimate one
                         # from the arch of the teeth it does know, instead of
@@ -374,7 +387,7 @@ def main(args):
                         mg_estimated = {}
                         if models_type == "MG" and args.estimate_missing:
                             surf_est = ReadSurf(path_vtk)
-                            unit_est, mean_est, scale_est = ScaleSurf(surf_est)
+                            unit_est, mean_est, scale_est = ScaleSurf(surf_est, scale_factor=mg_scale)
                             (V_est, _f_est, _cn_est, RI_est) = GetSurfProp(unit_est, mean_est, scale_est)
                             mg_estimated = EstimateMissingArchPositions(lst_teeth, RI_est, V_est)
 
@@ -395,7 +408,8 @@ def main(args):
                                 )
 
                                 SURF = ReadSurf(path_vtk)
-                                surf_unit, mean_arr, scale_factor = ScaleSurf(SURF)
+                                surf_unit, mean_arr, scale_factor = ScaleSurf(
+                                    SURF, scale_factor=mg_scale if models_type == "MG" else None)
                                 (V, F, CN, RI) = GetSurfProp(surf_unit, mean_arr, scale_factor)
 
                                 estimated = mg_estimated.get(int(label)) if models_type == "MG" else None
@@ -469,6 +483,18 @@ def main(args):
                                         # most likely anyway, so a point is always placed. Confidence is
                                         # reported and stored in the json, because a forced point is
                                         # markedly less accurate than a won one.
+                                        # How sure the network was, over the pixels it chose. It
+                                        # costs nothing to keep and it is the only thing that says,
+                                        # on a dataset with no annotation to check against, whether
+                                        # the model recognises what it is looking at.
+                                        won_conf = None
+                                        if models_type == "MG":
+                                            prob1_all = torch.softmax(logits, dim=1)[:, 1]
+                                            if len(index_label_land_r) > 0:
+                                                chosen = [float(prob1_all[idx[1], idx[3], idx[4]])
+                                                          for idx in index_label_land_r]
+                                                won_conf = float(np.mean(chosen))
+
                                         forced_conf = None
                                         if models_type == "MG" and args.force_landmarks and len(index_label_land_r) == 0:
                                             prob1 = torch.softmax(logits, dim=1)[:, 1]
@@ -543,6 +569,8 @@ def main(args):
                                                         notes.append("cameras aimed from an arch fit, tooth not segmented")
                                                     if forced_conf is not None:
                                                         notes.append(f"forced (confidence {forced_conf:.3f})")
+                                                    elif won_conf is not None:
+                                                        notes.append(f"confidence {won_conf:.3f}")
                                                     if notes:
                                                         entry["desc"] = "; ".join(notes)
                                                     group_data[land_name] = entry
@@ -669,6 +697,12 @@ if __name__ == "__main__":
                                  "by default: the curve simply spans the gap")
         parser.add_argument("--no-estimate_missing", dest="estimate_missing", action="store_false",
                             help="leave out the MG landmark of a tooth absent from the segmentation")
+        parser.add_argument("--arch_scale", dest="arch_scale", action="store_true", default=False,
+                            help="normalise the MG scan on the distance between its first molars "
+                                 "rather than on its bounding box, so the cameras frame the gum "
+                                 "the same way whatever amount of vestibule was scanned")
+        parser.add_argument("--no-arch_scale", dest="arch_scale", action="store_false",
+                            help="normalise the MG scan on its bounding box, as before")
 
         args = parser.parse_args()
         

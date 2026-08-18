@@ -16,6 +16,7 @@
 #   - the height is carried by the landmarks and interpolated in between, so
 #     moving one point only reshapes the patch around it.
 import logging
+import re
 import sys
 
 import numpy as np
@@ -131,6 +132,29 @@ SAMPLES_PER_SEGMENT = 25    # spline samples between two consecutive landmarks
 LOWER_TOOTH_LABELS = range(18, 32)
 
 
+# What ALI writes in a markup description when the point is not a plain
+# prediction. The description may also hold the confidence of a point won
+# outright, which is not a reason to leave it out.
+DOUBTFUL_MARKS = ("forced", "fallback", "arch fit")
+
+
+# Below this the network was, on the corpus it was trained on, wrong by 3.8 mm
+# where a confident point is wrong by 1.0 mm. It is that corpus's 5th
+# percentile: a point the model is less sure of than 95% of what it was taught
+# on. A quarter of the points of another dataset fall under it, which is what
+# a model working outside its domain looks like.
+MIN_CONFIDENCE = 0.785
+
+
+def _isDoubtful(description):
+    """Not predicted outright, or predicted with unusually little confidence."""
+    text = (description or "").lower()
+    if any(mark in text for mark in DOUBTFUL_MARKS):
+        return True
+    found = re.search(r"confidence ([0-9.]+)", text)
+    return bool(found) and float(found.group(1)) < MIN_CONFIDENCE
+
+
 def _controlPoints(path):
     import json
     with open(path) as f:
@@ -153,7 +177,7 @@ def DoubtfulLandmarks(path):
     """
     points = _controlPoints(path)
     doubtful = {point["label"]: point["description"] for point in points
-                if point.get("description")}
+                if _isDoubtful(point.get("description"))}
     if len(points) - len(doubtful) < 3:
         return {}
     return doubtful
