@@ -158,3 +158,48 @@ def TransformPoint(position, matrix):
     """A single point through `matrix`, as a plain list."""
     moved = matrix[:3, :3] @ np.asarray(position, dtype=float) + matrix[:3, 3]
     return moved.tolist()
+
+
+# Ratio of scan extent to arch width on the corpus the MG model was trained on
+# (46.5 mm half-diagonal for 43.1 mm between the molars, over 25 scans).
+TRAINED_SCAN_TO_ARCH = 1.08
+
+# The two molars the arch is measured across: the ends of the MG line.
+ARCH_TEETH = (19, 30)
+
+
+def ArchScale(surf, ratio=TRAINED_SCAN_TO_ARCH):
+    """Unit-sphere scale factor read off the arch instead of the scan extent.
+
+    ScaleSurf divides by the bounding box half-diagonal, which measures how
+    much was scanned rather than the patient: a scan that captured more
+    vestibule comes out smaller, and the cameras -- placed at a fixed distance
+    in that normalised space -- then sit further away and aim lower. Between
+    the training corpus and another dataset that difference measured 13%, which
+    put the aim 1.1 mm below where it was trained to be, on a band 5 mm tall.
+
+    Scaling on the distance between the first molars instead makes the framing
+    depend on the jaw and not on the operator. The ratio is the one the
+    training corpus had, so a scan like those is scaled as it always was.
+
+    None when the two molars are not both segmented, leaving ScaleSurf to its
+    own measure.
+    """
+    labels = _labels(surf)
+    if labels is None:
+        return None
+
+    points = vtk_to_numpy(surf.GetPoints().GetData()).astype(float)
+    centres = []
+    for tooth in ARCH_TEETH:
+        selection = labels == tooth
+        if not selection.any():
+            logger.info(f"Tooth {tooth} is not segmented, the scan keeps the scale "
+                        "read from its own extent")
+            return None
+        centres.append(points[selection].mean(axis=0))
+
+    width = float(np.linalg.norm(centres[0] - centres[1]))
+    if width < 1e-6:
+        return None
+    return 1.0 / (ratio * width)
