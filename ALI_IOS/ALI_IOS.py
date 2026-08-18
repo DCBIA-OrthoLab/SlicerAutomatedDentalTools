@@ -67,6 +67,7 @@ if check_platform()=="WSL":
     from ALI_IOS_utils.orientation import (
         LowerArchMatrix, TransformSurf, TransformPoint, ArchScale)
     from ALI_IOS_utils.segmentation import IsSegmented, SegmentSurface
+    from ALI_IOS_utils.fill_gaps import FillGaps
     from ALI_IOS_utils.agent import Agent
 
 else :
@@ -76,7 +77,7 @@ else :
         dic_cam, dic_label, MODELS_DICT,
         GenControlPoint, WriteJson, TradLabel, TradLabelMG, Agent,
         LowerArchMatrix, TransformSurf, TransformPoint, ArchScale,
-        IsSegmented, SegmentSurface
+        IsSegmented, SegmentSurface, FillGaps
     )
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -375,7 +376,8 @@ def main(args):
                         # vestibule was captured.
                         mg_scale = None
                         if models_type == "MG" and args.arch_scale:
-                            mg_scale = ArchScale(ReadSurf(path_vtk))
+                            mg_scale = (ArchScale(ReadSurf(path_vtk), args.arch_ratio)
+                                        if args.arch_ratio else ArchScale(ReadSurf(path_vtk)))
                             if mg_scale is not None:
                                 logger.info(f"{patient_id}: scaled on the arch "
                                             f"(1 unit = {1 / mg_scale:.1f} mm)")
@@ -623,6 +625,12 @@ def main(args):
                                     "--estimate_missing to place a point there anyway, 4 to 21 mm "
                                     "off in the scans this was measured on")
 
+                        # A hole in the line is awkward to work with, and the
+                        # curve through the points that are trusted goes as
+                        # close to a missing one as the network itself does.
+                        if models_type == "MG" and args.fill_gaps:
+                            FillGaps(group_data)
+
                         if back_to_file is not None:
                             # The prediction ran on the oriented copy; what is
                             # written has to be in the coordinates of the file
@@ -697,12 +705,25 @@ if __name__ == "__main__":
                                  "by default: the curve simply spans the gap")
         parser.add_argument("--no-estimate_missing", dest="estimate_missing", action="store_false",
                             help="leave out the MG landmark of a tooth absent from the segmentation")
-        parser.add_argument("--arch_scale", dest="arch_scale", action="store_true", default=False,
+        parser.add_argument("--arch_scale", dest="arch_scale", action="store_true", default=True,
                             help="normalise the MG scan on the distance between its first molars "
                                  "rather than on its bounding box, so the cameras frame the gum "
-                                 "the same way whatever amount of vestibule was scanned")
+                                 "the same way whatever amount of vestibule was scanned. Measured "
+                                 "better on the training corpus and better still outside it")
         parser.add_argument("--no-arch_scale", dest="arch_scale", action="store_false",
                             help="normalise the MG scan on its bounding box, as before")
+        parser.add_argument("--arch_ratio", type=float, default=None,
+                            help="with --arch_scale, how wide the framing is: the scan extent the "
+                                 "normalisation pretends to see, as a multiple of the distance "
+                                 "between the first molars. Defaults to the training corpus value")
+        parser.add_argument("--fill_gaps", dest="fill_gaps", action="store_true", default=True,
+                            help="rebuild an MG landmark the prediction could not give -- its tooth "
+                                 "absent, or the network unsure of it -- by following the curve "
+                                 "through the points that are trusted, when there are trusted "
+                                 "points on both sides. Measured at 1.53 mm from the annotation "
+                                 "against 1.20 mm for a predicted point. Marked as rebuilt")
+        parser.add_argument("--no-fill_gaps", dest="fill_gaps", action="store_false",
+                            help="leave a hole where a landmark could not be predicted")
 
         args = parser.parse_args()
         

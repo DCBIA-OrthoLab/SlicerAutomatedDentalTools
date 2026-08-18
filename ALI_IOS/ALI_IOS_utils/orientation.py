@@ -160,9 +160,15 @@ def TransformPoint(position, matrix):
     return moved.tolist()
 
 
-# Ratio of scan extent to arch width on the corpus the MG model was trained on
-# (46.5 mm half-diagonal for 43.1 mm between the molars, over 25 scans).
-TRAINED_SCAN_TO_ARCH = 1.08
+# How wide the framing is made: the scan extent the normalisation is told to
+# see, as a multiple of the distance between the first molars.
+#
+# Not the training corpus average (1.08) but the value the model actually works
+# best at, found by sweeping it: widening the framing costs accuracy, gently at
+# first and then sharply -- at 1.18 the share of landmarks within 2 mm fell from
+# 80% to 69%. Held at 0.98 the corpus improves (1.05 -> 0.95 mm) and a dataset
+# that arrives at 1.24, framed far wider, improves more.
+TRAINED_SCAN_TO_ARCH = 0.98
 
 # The two molars the arch is measured across: the ends of the MG line.
 ARCH_TEETH = (19, 30)
