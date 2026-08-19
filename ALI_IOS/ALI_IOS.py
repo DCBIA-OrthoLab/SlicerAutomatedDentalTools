@@ -393,7 +393,17 @@ def main(args):
                             (V_est, _f_est, _cn_est, RI_est) = GetSurfProp(unit_est, mean_est, scale_est)
                             mg_estimated = EstimateMissingArchPositions(lst_teeth, RI_est, V_est)
 
-                        for label in lst_teeth:
+                        # A second look, aimed at what the first one found. The
+                        # cameras are otherwise pointed at an anatomical prior,
+                        # the same offset for every patient, so the landmark
+                        # sits off-centre whenever that prior is off -- and the
+                        # network was taught on images where it is centred.
+                        refine = models_type == "MG" and args.refine
+                        first_aim = {}
+                        rounds = ([(0, label) for label in lst_teeth]
+                                  + ([(1, label) for label in lst_teeth] if refine else []))
+
+                        for pass_index, label in rounds:
                             try:
                                 logger.debug(f"Loading model for patient {patient_id}, label {label}, jaw {jaw}")
                                 
@@ -423,6 +433,9 @@ def main(args):
                                         logger.info(
                                             f"Label {label} is not in the segmentation of {patient_id}: "
                                             "cameras aimed at its position estimated from the arch")
+                                    if pass_index == 1 and int(label) in first_aim:
+                                        agent.aim_points = first_aim[int(label)]
+
                                     textures = TexturesVertex(verts_features=CN)
                                     meshe = Meshes(verts=V, faces=F, textures=textures).to(DEVICE)
 
@@ -561,6 +574,9 @@ def main(args):
                                                         landmark_pos = vert_coord / len(all_verts)
                                                     pid = locator.FindClosestPoint(landmark_pos.cpu().numpy())
                                                     closest_pos = torch.tensor(surf_unit.GetPoint(pid))
+                                                    if refine and pass_index == 0:
+                                                        first_aim[int(label)] = closest_pos.view(1, 3).to(
+                                                            DEVICE, dtype=torch.float32)
                                                     upscale_pos = Upscale(closest_pos, mean_arr, scale_factor)
                                                     final = upscale_pos.detach().cpu().numpy()
 
@@ -712,6 +728,12 @@ if __name__ == "__main__":
                                  "better on the training corpus and better still outside it")
         parser.add_argument("--no-arch_scale", dest="arch_scale", action="store_false",
                             help="normalise the MG scan on its bounding box, as before")
+        parser.add_argument("--refine", dest="refine", action="store_true", default=False,
+                            help="look twice at each tooth: the second time with the cameras aimed "
+                                 "at where the first look found the landmark, instead of at the "
+                                 "anatomical prior. Doubles the time")
+        parser.add_argument("--no-refine", dest="refine", action="store_false",
+                            help="look at each tooth once")
         parser.add_argument("--arch_ratio", type=float, default=None,
                             help="with --arch_scale, how wide the framing is: the scan extent the "
                                  "normalisation pretends to see, as a multiple of the distance "
