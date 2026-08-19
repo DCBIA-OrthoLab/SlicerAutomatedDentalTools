@@ -68,6 +68,7 @@ if check_platform()=="WSL":
         LowerArchMatrix, TransformSurf, TransformPoint, ArchScale)
     from ALI_IOS_utils.segmentation import IsSegmented, SegmentSurface
     from ALI_IOS_utils.fill_gaps import FillGaps
+    from ALI_IOS_utils.smooth import SmoothAlongArch, DEFAULT_STRENGTH as SMOOTH_STRENGTH
     from ALI_IOS_utils.agent import Agent
 
 else :
@@ -77,8 +78,9 @@ else :
         dic_cam, dic_label, MODELS_DICT,
         GenControlPoint, WriteJson, TradLabel, TradLabelMG, Agent,
         LowerArchMatrix, TransformSurf, TransformPoint, ArchScale,
-        IsSegmented, SegmentSurface, FillGaps
+        IsSegmented, SegmentSurface, FillGaps, SmoothAlongArch
     )
+    from ALI_IOS_utils.smooth import DEFAULT_STRENGTH as SMOOTH_STRENGTH
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -647,6 +649,13 @@ def main(args):
                         if models_type == "MG" and args.fill_gaps:
                             FillGaps(group_data)
 
+                        # last, once every point is there: the line as a whole
+                        # knows more about any one point than that point does
+                        if models_type == "MG" and args.smooth:
+                            SmoothAlongArch(group_data, args.smooth_strength
+                                            if args.smooth_strength is not None
+                                            else SMOOTH_STRENGTH)
+
                         if back_to_file is not None:
                             # The prediction ran on the oriented copy; what is
                             # written has to be in the coordinates of the file
@@ -728,6 +737,13 @@ if __name__ == "__main__":
                                  "better on the training corpus and better still outside it")
         parser.add_argument("--no-arch_scale", dest="arch_scale", action="store_false",
                             help="normalise the MG scan on its bounding box, as before")
+        parser.add_argument("--smooth", dest="smooth", action="store_true", default=True,
+                            help="pull each mucogingival landmark part of the way onto the curve "
+                                 "its neighbours draw, so a point that strays comes back")
+        parser.add_argument("--no-smooth", dest="smooth", action="store_false",
+                            help="leave every landmark exactly where the network put it")
+        parser.add_argument("--smooth_strength", type=float, default=None,
+                            help="how far along, 0 to 1. Defaults to 0.3")
         parser.add_argument("--refine", dest="refine", action="store_true", default=False,
                             help="look twice at each tooth: the second time with the cameras aimed "
                                  "at where the first look found the landmark, instead of at the "
