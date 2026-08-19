@@ -84,6 +84,14 @@ else :
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# How far the second look at a tooth may move its landmark before the first
+# answer is kept instead, in millimetres. On scans like the ones the network
+# was trained on it hardly ever bites -- 4% of points -- and costs nothing.
+# On scans unlike them a third of the points cross it, some by tens of
+# millimetres, and without it the share of landmarks landing somewhere
+# anatomically impossible goes from 3% to 13%.
+REFINE_LIMIT = 3.0
+
 # Surfaces ReadSurf opens. Only .vtk and .vtp can carry the teeth labels the
 # cameras are aimed with; the others are segmented on the way in, which is
 # also what converts them.
@@ -401,7 +409,7 @@ def main(args):
                         # sits off-centre whenever that prior is off -- and the
                         # network was taught on images where it is centred.
                         refine = models_type == "MG" and args.refine
-                        first_aim = {}
+                        first_aim, first_point = {}, {}
                         rounds = ([(0, label) for label in lst_teeth]
                                   + ([(1, label) for label in lst_teeth] if refine else []))
 
@@ -581,6 +589,22 @@ def main(args):
                                                             DEVICE, dtype=torch.float32)
                                                     upscale_pos = Upscale(closest_pos, mean_arr, scale_factor)
                                                     final = upscale_pos.detach().cpu().numpy()
+
+                                                    # The second look is only worth having when it agrees
+                                                    # roughly with the first. Where the first prediction was
+                                                    # already off, aiming the cameras at it sends the second
+                                                    # further astray -- on scans unlike the training ones a
+                                                    # third of the points jumped more than this, some of them
+                                                    # clean off the arch. Past the limit the first answer stands.
+                                                    if pass_index == 1 and int(label) in first_point:
+                                                        jumped = float(np.linalg.norm(final - first_point[int(label)]))
+                                                        if jumped > REFINE_LIMIT:
+                                                            logger.info(
+                                                                f"{land_name}: the second look moved it {jumped:.1f} mm, "
+                                                                f"further than {REFINE_LIMIT:.0f} mm, keeping the first")
+                                                            continue
+                                                    if refine and pass_index == 0:
+                                                        first_point[int(label)] = final
 
                                                     entry = {"x": final[0], "y": final[1], "z": final[2]}
                                                     # Flag degraded points in the json: they need a clinical review
