@@ -744,10 +744,10 @@ if __name__ == "__main__":
                             help="leave every landmark exactly where the network put it")
         parser.add_argument("--smooth_strength", type=float, default=None,
                             help="how far along, 0 to 1. Defaults to 0.3")
-        parser.add_argument("--refine", dest="refine", action="store_true", default=False,
+        parser.add_argument("--refine", dest="refine", action="store_true", default=True,
                             help="look twice at each tooth: the second time with the cameras aimed "
                                  "at where the first look found the landmark, instead of at the "
-                                 "anatomical prior. Doubles the time")
+                                 "anatomical prior. Costs about 11 s more per arch")
         parser.add_argument("--no-refine", dest="refine", action="store_false",
                             help="look at each tooth once")
         parser.add_argument("--arch_ratio", type=float, default=None,
