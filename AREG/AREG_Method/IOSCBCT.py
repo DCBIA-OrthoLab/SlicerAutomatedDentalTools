@@ -242,7 +242,7 @@ class Semi_IOSCBCT(IOSCBCT):
         input_csv = "None"
         vtk_folder = "None"
         if os.path.isfile(kwargs["input_t1_folder"]):
-            extension = os.path.splitext(self.input)[1]
+            extension = os.path.splitext(kwargs["input_t1_folder"])[1]
             if extension == ".vtk" or extension == ".stl":
               surf = kwargs["input_t1_folder"]
               
@@ -675,7 +675,7 @@ class Auto_IOSCBCT(IOSCBCT):
         input_csv = "None"
         vtk_folder = "None"
         if os.path.isfile(kwargs["input_t1_folder"]):
-            extension = os.path.splitext(self.input)[1]
+            extension = os.path.splitext(kwargs["input_t1_folder"])[1]
             if extension == ".vtk" or extension == ".stl":
               surf = kwargs["input_t1_folder"]
               

@@ -489,7 +489,7 @@ class Auto_IOS(Method):
         input_csv_T1 = "None"
         vtk_folder_T1 = "None"
         if os.path.isfile(path_input_T1):
-            extension = os.path.splitext(self.input)[1]
+            extension = os.path.splitext(path_input_T1)[1]
             if extension == ".vtk" or extension == ".stl":
               surf_T1 = path_input_T1
 
@@ -515,7 +515,7 @@ class Auto_IOS(Method):
         input_csv_T2 = "None"
         vtk_folder_T2 = "None"
         if os.path.isfile(path_input_T2):
-            extension = os.path.splitext(self.input)[1]
+            extension = os.path.splitext(path_input_T2)[1]
             if extension == ".vtk" or extension == ".stl":
               surf_T2 = path_input_T2
 
