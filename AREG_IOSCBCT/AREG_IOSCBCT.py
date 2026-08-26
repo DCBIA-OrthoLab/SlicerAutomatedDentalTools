@@ -87,10 +87,14 @@ def run_icp_point_to_plane(moving_mesh, fixed_mesh, max_dist=1.5):
     rmse_threshold = 1e-8
     fitness_threshold = 1e-8
     prev_fitness = 0
-    
+
+    # Only the moving points change from one iteration to the next, so the tree
+    # over the fixed points is built once instead of being rebuilt up to
+    # max_iterations times over the very same coordinates.
+    kdtree = cKDTree(fixed_pts)
+
     for iteration in range(max_iterations):
         # 2. Find correspondances (nearest neighbors)
-        kdtree = cKDTree(fixed_pts)
         distances, indices = kdtree.query(moving_pts_transformed, k=1)
         
         # Filter the points too far
