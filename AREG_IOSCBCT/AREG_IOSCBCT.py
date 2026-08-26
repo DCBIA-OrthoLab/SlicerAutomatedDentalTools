@@ -258,11 +258,17 @@ def getPatients(ios_folder, cbct_folder, ios_lm_folder, cbct_lm_folder):
         return match.group(0) if match else None
     
     def extract_jaw(filename):
-        """Extract jaw from filename (_u, _U, u_, _l, _L, l_)"""
-        # Check for patterns: _u, _U, u_, _l, _L, l_
-        if re.search(r'[_]?[uU][_]?', filename):
+        """Extract jaw from filename (_u, _U, u_, _l, _L, l_, _upper, _lower)
+
+        The letter has to be a token of its own, delimited by an underscore,
+        the start of the name or a dot. Matching a bare "u" anywhere used to
+        read "Dupont_003_T1_L.vtk" or "P001_T1_L_Surface.vtk" as upper, which
+        registers the lower arch against the upper CBCT landmarks without any
+        error being raised.
+        """
+        if re.search(r'(?:^|_)(?:u|upper)(?=_|\.|$)', filename, re.IGNORECASE):
             return 'upper'
-        elif re.search(r'[_]?[lL][_]?', filename):
+        elif re.search(r'(?:^|_)(?:l|lower)(?=_|\.|$)', filename, re.IGNORECASE):
             return 'lower'
         return None
     
