@@ -595,8 +595,11 @@ if __name__ == "__main__":
         logger.info("PRE_ASO_IOS processing completed")
         logger.info("="*80)
         
-        # Exit with appropriate status
-        sys.exit(0 if result['failed'] == 0 else 1)
+        # Exit with appropriate status. Every stage that bails out early
+        # returns failed=0 with nothing processed, so testing only 'failed'
+        # reported "no surface file found" as a success and Slicer showed a
+        # green PROCESS COMPLETED for a run that wrote no file at all.
+        sys.exit(0 if result['successful'] > 0 and result['failed'] == 0 else 1)
     
     except Exception as e:
         logger.error(f"Fatal error in PRE_ASO_IOS: {str(e)}", exc_info=True)

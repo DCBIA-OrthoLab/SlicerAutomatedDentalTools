@@ -389,6 +389,7 @@ def main(args):
         logger.info(f"Created output directory: {output_dir}")
     
     # Process each patient
+    registered = 0
     for patient_id, patient_data in sorted(patients.items()):
         logger.info(f"Processing patient {patient_id}...")
         
@@ -455,6 +456,7 @@ def main(args):
                 output_dir, patient_id,
                 landmarks_json_cbct_U, landmarks_json_cbct_L
             )
+            registered += 1
             logger.info(f"Patient {patient_id} processed successfully")
             
         except Exception as e:
@@ -462,6 +464,14 @@ def main(args):
             continue
     
     logger.info("AREG_IOSCBCT processing completed")
+    # Every patient can fail on a missing landmark file and the loop still ends
+    # normally, which used to exit 0 and let Slicer report the whole pipeline as
+    # a success while the output folder stayed empty.
+    if not registered:
+        raise RuntimeError(
+            "No patient could be registered: check that every patient has an "
+            "IOS surface, a CBCT, and the landmark files for both arches.")
+    logger.info(f"{registered}/{len(patients)} patient(s) registered")
 
 
 if __name__ == "__main__":
