@@ -2137,7 +2137,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
     
   def check_if_pytorch3d(self):
     conda_exe = self.conda.getCondaExecutable()
-    command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import pytorch3d;import pytorch3d.renderer;import shapeaxi\""]
+    command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import pytorch3d;import pytorch3d.renderer;import shapeaxi.dental_model_seg as d;d.saxi_nets_lightning.DentalModelSeg\""]
     return self.conda.condaRunCommand(command)
 
   def install_pytorch3d(self):
