@@ -183,8 +183,32 @@ def install_pytorch3d(pip_path):
     return verify_gpu()
 
 
+SHAPEAXI_REQUIREMENT = "shapeaxi>=2.0.2"
+
+
+def install_shapeaxi(pip_path):
+    """Install shapeaxi once pytorch3d is in place.
+
+    shapeaxi declares pytorch3d as a hard requirement, and PyPI serves no
+    distribution for it at all, so asking pip for shapeaxi in a bare
+    environment ends on "No matching distribution found for pytorch3d" and
+    leaves nothing behind. Installing it here, after the wheel above, gives
+    pip an already-satisfied requirement to resolve against.
+    """
+    if run_pip(pip_path, [SHAPEAXI_REQUIREMENT]):
+        logger.info("{} installed in the environment".format(SHAPEAXI_REQUIREMENT))
+        return True
+    logger.error("{} installation failed.".format(SHAPEAXI_REQUIREMENT))
+    return False
+
+
 def main(pip_path):
-    install_pytorch3d(pip_path)
+    if not install_pytorch3d(pip_path):
+        logger.error(
+            "Not installing shapeaxi: it requires a working pytorch3d, and pip "
+            "cannot resolve pytorch3d from PyPI on its own.")
+        return
+    install_shapeaxi(pip_path)
 
 
 if __name__ == "__main__":
