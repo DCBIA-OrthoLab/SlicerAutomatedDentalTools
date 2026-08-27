@@ -307,6 +307,9 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.paused_for_visualization = False
         self.current_output_to_load = None
         self.current_process_info = None
+        # onCliUpdated only assigns this when progress is 0, so a first event
+        # carrying a non-zero progress would read it before it exists.
+        self.updateProgessBar = False
 
     def reloadCustomModules(self) -> None:
         """
