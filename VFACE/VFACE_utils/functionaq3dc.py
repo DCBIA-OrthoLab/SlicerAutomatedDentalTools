@@ -1480,8 +1480,10 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
                     patients_lst.append(patient)
                 if patient not in patients_dict:
                     patients_dict[patient] = {}
-                json_file = pd.read_json(jsonfile)
-                markups = json_file.loc[0, "markups"]
+                # A markup file is a handful of control points: json.load reads it
+                # ~20x faster than building a DataFrame just to pull one cell out.
+                with open(jsonfile, encoding="utf-8") as f:
+                    markups = json.load(f)["markups"][0]
                 controlPoints = markups["controlPoints"]
                 for i in range(len(controlPoints)):
                     landmark_name = controlPoints[i]["label"]
@@ -1497,13 +1499,12 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
 
                     # check if landmarks are useable
                     good = False
-                    if isinstance(position, list):
-                        if len(position) == 3:
-                            if not False in [
-                                isinstance(value, (int, float, np.ndarray))
-                                for value in position
-                            ] and not True in np.isnan(position):
-                                good = True
+                    if isinstance(position, list) and len(position) == 3:
+                        # value != value is only true for NaN
+                        if all(isinstance(value, (int, float)) for value in position) and not any(
+                            value != value for value in position
+                        ):
+                            good = True
                     if not good:
                         logger.warning(
                             f"For this file {jsonfile} this landmark {landmark_name} are not good "
@@ -2158,7 +2159,6 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
                     continue
 
                 try:
-                    logger.warning(f"measure : {measure}")
                     measure.computation()
                 except ZeroDivisionError as Zero:
                     logger.warning(
