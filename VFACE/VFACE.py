@@ -26,12 +26,12 @@ try:
     
     from VFACE_utils import createlistprocess
     importlib.reload(createlistprocess)
-    from VFACE_utils.createlistprocess import CreateListProcess
+    from VFACE_utils.createlistprocess import CreateListProcess, NumberScan
 
 except Exception as e:
     logger.error(f"Error loading VFACE utilities: {e}")
     from VFACE_utils.Progress import DisplayALICBCT,DisplayAMASSS,DisplayASOCBCT,Display
-    from VFACE_utils.createlistprocess import CreateListProcess
+    from VFACE_utils.createlistprocess import CreateListProcess, NumberScan
 
 import vtk
 
@@ -1003,6 +1003,13 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onApplyButton(self) -> None:
         import time
+
+        # Every step downstream reports "0 file" on an input folder holding nothing
+        # it can read, and the run walks its whole plan producing nothing. Say so
+        # here instead, while the user can still act on it.
+        if not self.checkInputFolder():
+            return
+
         self.CliStartTime = time.time()
         slicer.app.processEvents()
 
@@ -1021,6 +1028,14 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                 mode2 = self.ui.comboBox4.currentText,
                                 model_vface = os.path.join(self.SlicerDownloadPath,"V_FACE"))
 
+        if not self.list_process:
+            PopUpWindow(
+                title="Nothing to run",
+                text="No processing step could be built for the selected options.\n"
+                     "Check the log for the reason.",
+            ).exec_()
+            return
+
         self.ui.applyButton.enabled = False
         self.ui.CheckDependencyButton.enabled = False
         self.ui.cancelButton.setVisible(True)
@@ -1030,6 +1045,34 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.NumberProcess = len(self.list_process)
         self.executeProcess(self.list_process[0])
         del self.list_process[0]
+
+    def checkInputFolder(self) -> bool:
+        """Warn and refuse to start when the input folder holds no readable scan."""
+        input_folder = self._parameterNode.InputFolder
+
+        if not input_folder or not os.path.isdir(input_folder):
+            PopUpWindow(
+                title="Input folder not found",
+                text=f"This input folder does not exist:\n\n{input_folder}",
+            ).exec_()
+            return False
+
+        nb_scan = NumberScan(input_folder)
+        if nb_scan == 0:
+            PopUpWindow(
+                title="No scan found",
+                text=(
+                    f"No scan found in:\n\n{input_folder}\n\n"
+                    "Expected a CBCT volume per patient, as .nii, .nii.gz, .nrrd,\n"
+                    ".nrrd.gz, .gipl or .gipl.gz. Surface meshes (.vtk, .stl) are\n"
+                    "produced by this module, they are not an input for it."
+                ),
+            ).exec_()
+            logger.error(f"No scan found in the input folder: {input_folder}")
+            return False
+
+        logger.info(f"{nb_scan} patient(s) found in the input folder")
+        return True
 
     def onContinueButton(self) -> None:
         """
