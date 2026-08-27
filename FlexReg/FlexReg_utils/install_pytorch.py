@@ -183,8 +183,77 @@ def install_pytorch3d(pip_path):
     return verify_gpu()
 
 
+SHAPEAXI_REQUIREMENT = "shapeaxi>=2.0.2"
+
+
+def install_shapeaxi(pip_path):
+    """Install shapeaxi once pytorch3d is in place.
+
+    shapeaxi declares pytorch3d as a hard requirement, and PyPI serves no
+    distribution for it at all, so asking pip for shapeaxi in a bare
+    environment ends on "No matching distribution found for pytorch3d" and
+    leaves nothing behind. Installing it here, after the wheel above, gives
+    pip an already-satisfied requirement to resolve against.
+    """
+    if run_pip(pip_path, [SHAPEAXI_REQUIREMENT]):
+        logger.info("{} installed in the environment".format(SHAPEAXI_REQUIREMENT))
+        return True
+    logger.error("{} installation failed.".format(SHAPEAXI_REQUIREMENT))
+    return False
+
+
+STALE_CALL = "saxi_nets.DentalModelSeg"
+STALE_IMPORT = "from shapeaxi import saxi_nets, utils"
+FIXED_IMPORT = "from shapeaxi import saxi_nets_lightning, utils"
+
+
+def patch_dentalmodelseg():
+    """Repoint dentalmodelseg at the class it needs, on shapeaxi 2.0.0 - 2.0.2.
+
+    `dental_model_seg.py` calls `saxi_nets.DentalModelSeg`, but the class moved
+    to `saxi_nets_lightning` in the 2.0 split and `saxi_nets` never re-exported
+    it, so every crown segmentation dies on
+
+        AttributeError: module 'shapeaxi.saxi_nets' has no attribute 'DentalModelSeg'
+
+    Reported upstream (ImageMindAnalytics/ShapeAXI); this rewrites the two stale
+    references until a release carries the fix. It is a no-op on any version
+    that does not have the problem, so it disappears on its own once shapeaxi is
+    updated. `saxi_nets` is not used anywhere else in that file.
+    """
+    try:
+        from shapeaxi import dental_model_seg
+        path = dental_model_seg.__file__
+        with open(path) as handle:
+            source = handle.read()
+    except Exception as exc:
+        logger.warning("Could not read shapeaxi.dental_model_seg: {}".format(exc))
+        return False
+
+    if STALE_CALL not in source:
+        logger.info("dentalmodelseg needs no patching on this shapeaxi")
+        return True
+
+    try:
+        with open(path, "w") as handle:
+            handle.write(source.replace(STALE_IMPORT, FIXED_IMPORT)
+                               .replace(STALE_CALL, "saxi_nets_lightning.DentalModelSeg"))
+    except Exception as exc:
+        logger.error("Could not patch {}: {}".format(path, exc))
+        return False
+
+    logger.info("Patched {} so dentalmodelseg finds DentalModelSeg".format(path))
+    return True
+
+
 def main(pip_path):
-    install_pytorch3d(pip_path)
+    if not install_pytorch3d(pip_path):
+        logger.error(
+            "Not installing shapeaxi: it requires a working pytorch3d, and pip "
+            "cannot resolve pytorch3d from PyPI on its own.")
+        return
+    if install_shapeaxi(pip_path):
+        patch_dentalmodelseg()
 
 
 if __name__ == "__main__":

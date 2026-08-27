@@ -214,9 +214,10 @@ class Semi_IOSCBCT(IOSCBCT):
         return platform.system() == "Linux" and "microsoft" in platform.release().lower()
     
     def create_csv(self, input_dir, name_csv):
-        file_path = os.path.abspath(__file__)
-        folder_path = os.path.dirname(file_path)
-        csv_file = os.path.join(folder_path, f"{name_csv}.csv")
+        # Written next to the module until now, which needs the extension
+        # install to be writable. The basename is what CrownSegmentation names
+        # its output subfolder after, so only the folder changes here.
+        csv_file = os.path.join(slicer.util.tempDirectory(), f"{name_csv}.csv")
         with open(csv_file, 'w', newline='') as fichier:
             writer = csv.writer(fichier)
             writer.writerow(["surf"])
@@ -242,7 +243,7 @@ class Semi_IOSCBCT(IOSCBCT):
         input_csv = "None"
         vtk_folder = "None"
         if os.path.isfile(kwargs["input_t1_folder"]):
-            extension = os.path.splitext(self.input)[1]
+            extension = os.path.splitext(kwargs["input_t1_folder"])[1]
             if extension == ".vtk" or extension == ".stl":
               surf = kwargs["input_t1_folder"]
               
@@ -541,9 +542,10 @@ class Auto_IOSCBCT(IOSCBCT):
         return platform.system() == "Linux" and "microsoft" in platform.release().lower()
     
     def create_csv(self, input_dir, name_csv):
-        file_path = os.path.abspath(__file__)
-        folder_path = os.path.dirname(file_path)
-        csv_file = os.path.join(folder_path, f"{name_csv}.csv")
+        # Written next to the module until now, which needs the extension
+        # install to be writable. The basename is what CrownSegmentation names
+        # its output subfolder after, so only the folder changes here.
+        csv_file = os.path.join(slicer.util.tempDirectory(), f"{name_csv}.csv")
         with open(csv_file, 'w', newline='') as fichier:
             writer = csv.writer(fichier)
             writer.writerow(["surf"])
@@ -675,7 +677,7 @@ class Auto_IOSCBCT(IOSCBCT):
         input_csv = "None"
         vtk_folder = "None"
         if os.path.isfile(kwargs["input_t1_folder"]):
-            extension = os.path.splitext(self.input)[1]
+            extension = os.path.splitext(kwargs["input_t1_folder"])[1]
             if extension == ".vtk" or extension == ".stl":
               surf = kwargs["input_t1_folder"]
               

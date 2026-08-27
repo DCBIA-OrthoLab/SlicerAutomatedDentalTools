@@ -189,9 +189,10 @@ class Auto_IOS(Method):
         return platform.system() == "Linux" and "microsoft" in platform.release().lower()
     
     def create_csv(self, input_dir, name_csv):
-        file_path = os.path.abspath(__file__)
-        folder_path = os.path.dirname(file_path)
-        csv_file = os.path.join(folder_path, f"{name_csv}.csv")
+        # Written next to the module until now, which needs the extension
+        # install to be writable. The basename is what CrownSegmentation names
+        # its output subfolder after, so only the folder changes here.
+        csv_file = os.path.join(slicer.util.tempDirectory(), f"{name_csv}.csv")
         with open(csv_file, 'w', newline='') as fichier:
             writer = csv.writer(fichier)
             writer.writerow(["surf"])
@@ -489,7 +490,7 @@ class Auto_IOS(Method):
         input_csv_T1 = "None"
         vtk_folder_T1 = "None"
         if os.path.isfile(path_input_T1):
-            extension = os.path.splitext(self.input)[1]
+            extension = os.path.splitext(path_input_T1)[1]
             if extension == ".vtk" or extension == ".stl":
               surf_T1 = path_input_T1
 
@@ -515,7 +516,7 @@ class Auto_IOS(Method):
         input_csv_T2 = "None"
         vtk_folder_T2 = "None"
         if os.path.isfile(path_input_T2):
-            extension = os.path.splitext(self.input)[1]
+            extension = os.path.splitext(path_input_T2)[1]
             if extension == ".vtk" or extension == ".stl":
               surf_T2 = path_input_T2
 

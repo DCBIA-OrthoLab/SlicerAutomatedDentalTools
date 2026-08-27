@@ -87,10 +87,14 @@ def run_icp_point_to_plane(moving_mesh, fixed_mesh, max_dist=1.5):
     rmse_threshold = 1e-8
     fitness_threshold = 1e-8
     prev_fitness = 0
-    
+
+    # Only the moving points change from one iteration to the next, so the tree
+    # over the fixed points is built once instead of being rebuilt up to
+    # max_iterations times over the very same coordinates.
+    kdtree = cKDTree(fixed_pts)
+
     for iteration in range(max_iterations):
         # 2. Find correspondances (nearest neighbors)
-        kdtree = cKDTree(fixed_pts)
         distances, indices = kdtree.query(moving_pts_transformed, k=1)
         
         # Filter the points too far
@@ -254,11 +258,17 @@ def getPatients(ios_folder, cbct_folder, ios_lm_folder, cbct_lm_folder):
         return match.group(0) if match else None
     
     def extract_jaw(filename):
-        """Extract jaw from filename (_u, _U, u_, _l, _L, l_)"""
-        # Check for patterns: _u, _U, u_, _l, _L, l_
-        if re.search(r'[_]?[uU][_]?', filename):
+        """Extract jaw from filename (_u, _U, u_, _l, _L, l_, _upper, _lower)
+
+        The letter has to be a token of its own, delimited by an underscore,
+        the start of the name or a dot. Matching a bare "u" anywhere used to
+        read "Dupont_003_T1_L.vtk" or "P001_T1_L_Surface.vtk" as upper, which
+        registers the lower arch against the upper CBCT landmarks without any
+        error being raised.
+        """
+        if re.search(r'(?:^|_)(?:u|upper)(?=_|\.|$)', filename, re.IGNORECASE):
             return 'upper'
-        elif re.search(r'[_]?[lL][_]?', filename):
+        elif re.search(r'(?:^|_)(?:l|lower)(?=_|\.|$)', filename, re.IGNORECASE):
             return 'lower'
         return None
     
@@ -379,6 +389,7 @@ def main(args):
         logger.info(f"Created output directory: {output_dir}")
     
     # Process each patient
+    registered = 0
     for patient_id, patient_data in sorted(patients.items()):
         logger.info(f"Processing patient {patient_id}...")
         
@@ -445,6 +456,7 @@ def main(args):
                 output_dir, patient_id,
                 landmarks_json_cbct_U, landmarks_json_cbct_L
             )
+            registered += 1
             logger.info(f"Patient {patient_id} processed successfully")
             
         except Exception as e:
@@ -452,6 +464,14 @@ def main(args):
             continue
     
     logger.info("AREG_IOSCBCT processing completed")
+    # Every patient can fail on a missing landmark file and the loop still ends
+    # normally, which used to exit 0 and let Slicer report the whole pipeline as
+    # a success while the output folder stayed empty.
+    if not registered:
+        raise RuntimeError(
+            "No patient could be registered: check that every patient has an "
+            "IOS surface, a CBCT, and the landmark files for both arches.")
+    logger.info(f"{registered}/{len(patients)} patient(s) registered")
 
 
 if __name__ == "__main__":

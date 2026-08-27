@@ -2619,11 +2619,14 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["ocnn==2.2.1","shapeaxi>=2.0.2","SimpleITK"],)) #run in parallel to not block slicer
+        # shapeaxi is installed later, by install_pytorch: it declares pytorch3d,
+        # which PyPI does not carry, so pip fails here and the env is never created.
+        # torch has to come first, install_pytorch reads its version to pick a wheel.
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["torch>=2.8,<2.13","ocnn==2.2.1","SimpleITK"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
-        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import pytorch3d;import pytorch3d.renderer\""]
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import pytorch3d;import pytorch3d.renderer;import shapeaxi.dental_model_seg as d;d.saxi_nets_lightning.DentalModelSeg\""]
         return self.conda.condaRunCommand(command)
     
     def install_pytorch3d(self):
