@@ -65,7 +65,10 @@ class SegmentationLogic:
     """
     Class containing all the dental segmentation logic without UI
     """
-    
+
+    # Set once the nnUNet requirements have been resolved in this Slicer session.
+    _dependenciesChecked = False
+
     def __init__(self):
         self.folderPath = ""
         self.folderFiles = []
@@ -89,7 +92,10 @@ class SegmentationLogic:
         self.folderPath = folderPath
         folder = Path(folderPath)
         # Filtrer selon vos formats, ex. tous les fichiers NIfTI
-        self.folderFiles = list(folder.rglob("*.nii*")) + list(folder.rglob("*.gipl")) + list(folder.rglob("*.gipl.gz"))
+        self.folderFiles = [
+            f for f in sorted(folder.rglob("*"))
+            if f.is_file() and f.name.endswith((".nii", ".nii.gz", ".nrrd", ".nrrd.gz", ".gipl", ".gipl.gz"))
+        ]
         self.currentFileIndex = 0
         self.log_info(f"Found {len(self.folderFiles)} file(s) in the folder.")
     
@@ -191,21 +197,27 @@ class SegmentationLogic:
     def _installDependencies(self):
         """Install the dependencies"""
         try:
+            if SegmentationLogic._dependenciesChecked:
+                return True
+
             self.log_info("Checking dependencies...")
-            
+
             if not self.isNNUNetModuleInstalled():
                 self.log_error("NNUNet module not installed")
                 return False
-            
+
             if not self._installNNUNetIfNeeded():
                 return False
-            
+
             if not self._dependencyChecker.downloadWeightsIfNeeded(self.log_info):
                 return False
-            
+
+            # run_bds is called once per folder, five times per pipeline: resolving
+            # the pip requirements again each time costs minutes and finds nothing.
+            SegmentationLogic._dependenciesChecked = True
             self.log_info("Dependencies check completed")
             return True
-            
+
         except Exception as e:
             self.log_error(f"Error installing dependencies: {str(e)}")
             return False
@@ -263,13 +275,13 @@ class SegmentationLogic:
                 elif hasattr(self.logic, 'running'):
                     segmentation_finished = not self.logic.running
                 else:
-                    try:
-                        test_seg = self.logic.loadSegmentation()
-                        if test_seg:
-                            segmentation_finished = True
-                    except:
-                        segmentation_finished = False
-                        
+                    # SlicerNNUNetLib exposes none of the above: watch the inference
+                    # QProcess itself. Loading the result here instead would read the
+                    # file while nnUNet is still writing it and leak a node per scan,
+                    # since _processSegmentationResults loads it again right after.
+                    process = self.logic.inferenceProcess.process
+                    segmentation_finished = process.state() == qt.QProcess.NotRunning
+
             except Exception as e:
                 self.log_error(f"Error checking segmentation status: {str(e)}")
                 # If error just wait
@@ -545,9 +557,12 @@ class SegmentationLogic:
             self.log_info("MergedVTK: MarchingCubes")
             mc = vtk.vtkDiscreteMarchingCubes()
             mc.SetInputData(img)
-            for l in np.unique(vtk_to_numpy(img.GetPointData().GetScalars())):
-                if l: 
-                    mc.SetValue(int(l), int(l))
+            # SetValue takes a contour index, not a label value: indexing by label
+            # leaves index 0 at its default and meshes the background as well.
+            labelValues = [int(l) for l in np.unique(vtk_to_numpy(img.GetPointData().GetScalars())) if l]
+            mc.SetNumberOfContours(len(labelValues))
+            for i, l in enumerate(labelValues):
+                mc.SetValue(i, l)
             mc.Update()
 
             # Clean + smooth
@@ -615,8 +630,7 @@ class SegmentationLogic:
                 constLabel.SetName("Label")
                 constLabel.SetNumberOfComponents(1)
                 constLabel.SetNumberOfTuples(out.GetNumberOfCells())
-                for c in range(out.GetNumberOfCells()):
-                    constLabel.SetValue(c, int(labelValue))
+                constLabel.FillComponent(0, float(labelValue))
                 out.GetCellData().AddArray(constLabel)
                 out.GetCellData().SetScalars(constLabel)
 
