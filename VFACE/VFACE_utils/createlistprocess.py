@@ -935,84 +935,79 @@ def CreateListProcess(**kwargs):
             mirrored_registered_max_landmarks_folder_path = os.path.join(mirrored_registered_landmarks_folder_path,"MAX")
             os.makedirs(mirrored_registered_max_landmarks_folder_path, exist_ok=True)
 
-            for patient,data in patients.items():
+            # One run per structure, not one per patient: AutoMatrix pairs each
+            # matrix with its patient by name when input_matrix is a folder. Passing
+            # a single .tfm made it apply that patient's matrix to every landmark
+            # file in the folder, and the constant suffix made each run overwrite
+            # the previous one, so only the last patient's matrix survived.
+            parameter_automatrix_register_ldm_cb = {
+                "input_patient": mirrored_landmarks_cb_folder_path,
+                "input_matrix": os.path.join(registeredscan_folder_path,"Cranial Base"),
+                "reference_file": "None",
+                "suffix": "_CB_reg",
+                "matrix_name": False,
+                "fromAreg": False,
+                "output_folder": mirrored_registered_cb_landmarks_folder_path,
+                "log_path": slicer.util.tempDirectory(),
+                "is_seg": False
+                }
 
-                parameter_automatrix_register_ldm_cb = {        
-                    "input_patient": mirrored_landmarks_cb_folder_path,
-                    "input_matrix": os.path.join(registeredscan_folder_path,"Cranial Base",patient+"_OutReg",patient + "_" + "CB" + "_Reg" + "_matrix.tfm"),
-                    "reference_file": "None",
-                    "suffix": "_CB_reg",
-                    "matrix_name": False,
-                    "fromAreg": False,
-                    "output_folder": mirrored_registered_cb_landmarks_folder_path,
-                    "log_path": slicer.util.tempDirectory(),
-                    "is_seg": False
-                    }
-                
-                if kwargs["mode"] == "File already Registered":
-                        parameter_automatrix_register_ldm_cb["input_matrix"] = os.path.join(registeredscan_folder_path,"Cranial Base")
+            list_process.append(
+                {
+                    "Process": AutomatrixProcess,
+                    "Parameter": parameter_automatrix_register_ldm_cb,
+                    "Module": "Apply matrixes T1 to landmarks (CB)",
+                    "Display": DisplayAREGCBCT(
+                        nb_scan
+                    ),
+                },
+            )
 
-                list_process.append(
-                    {
-                        "Process": AutomatrixProcess,
-                        "Parameter": parameter_automatrix_register_ldm_cb,
-                        "Module": "Apply matrixes T1 to landmarks (CB)",
-                        "Display": DisplayAREGCBCT(
-                            nb_scan
-                        ),
-                    },
-                )
+            parameter_automatrix_register_ldm_mand = {
+                "input_patient": mirrored_landmarks_cb_folder_path,
+                "input_matrix": os.path.join(registeredscan_folder_path,"Mandible"),
+                "reference_file": "None",
+                "suffix": "_MAND_reg",
+                "matrix_name": False,
+                "fromAreg": False,
+                "output_folder": mirrored_registered_mand_landmarks_folder_path,
+                "log_path": slicer.util.tempDirectory(),
+                "is_seg": False
+                }
 
-                parameter_automatrix_register_ldm_mand = {        
-                    "input_patient": mirrored_landmarks_cb_folder_path,
-                    "input_matrix": os.path.join(registeredscan_folder_path,"Mandible",patient+"_OutReg",patient + "_" + "MAND" + "_Reg" + "_matrix.tfm"),
-                    "reference_file": "None",
-                    "suffix": "_MAND_reg",
-                    "matrix_name": False,
-                    "fromAreg": False,
-                    "output_folder": mirrored_registered_mand_landmarks_folder_path,
-                    "log_path": slicer.util.tempDirectory(),
-                    "is_seg": False
-                    }
-                
-                if kwargs["mode"] == "File already Registered":
-                    parameter_automatrix_register_ldm_mand["input_matrix"] = os.path.join(registeredscan_folder_path,"Mandible")
+            list_process.append(
+                {
+                    "Process": AutomatrixProcess,
+                    "Parameter": parameter_automatrix_register_ldm_mand,
+                    "Module": "Apply matrixes T1 to landmarks (MAND)",
+                    "Display": DisplayAREGCBCT(
+                        nb_scan
+                    ),
+                },
+            )
 
-                list_process.append(
-                    {
-                        "Process": AutomatrixProcess,
-                        "Parameter": parameter_automatrix_register_ldm_mand,
-                        "Module": "Apply matrixes T1 to landmarks (MAND)",
-                        "Display": DisplayAREGCBCT(
-                            nb_scan
-                        ),
-                    },
-                )
+            parameter_automatrix_register_ldm_MAX = {
+                "input_patient": mirrored_landmarks_max_folder_path,
+                "input_matrix": os.path.join(registeredscan_folder_path,"Maxilla"),
+                "reference_file": "None",
+                "suffix": "_MAX_reg",
+                "matrix_name": False,
+                "fromAreg": False,
+                "output_folder": mirrored_registered_max_landmarks_folder_path,
+                "log_path": slicer.util.tempDirectory(),
+                "is_seg": False
+                }
 
-                parameter_automatrix_register_ldm_MAX = {        
-                    "input_patient": mirrored_landmarks_max_folder_path,
-                    "input_matrix": os.path.join(registeredscan_folder_path,"Maxilla",patient+"_OutReg",patient + "_" + "MAX" + "_Reg" + "_matrix.tfm"),
-                    "reference_file": "None",
-                    "suffix": "_MAX_reg",
-                    "matrix_name": False,
-                    "fromAreg": False,
-                    "output_folder": mirrored_registered_max_landmarks_folder_path,
-                    "log_path": slicer.util.tempDirectory(),
-                    "is_seg": False
-                    }
-                if kwargs["mode"] == "File already Registered":
-                    parameter_automatrix_register_ldm_MAX["input_matrix"] = os.path.join(registeredscan_folder_path,"Maxilla")
-
-                list_process.append(
-                    {
-                        "Process": AutomatrixProcess,
-                        "Parameter": parameter_automatrix_register_ldm_MAX,
-                        "Module": "Apply matrixes to T1 landmarks (MAX)",
-                        "Display": DisplayAREGCBCT(
-                            nb_scan
-                        ),
-                    },
-                )
+            list_process.append(
+                {
+                    "Process": AutomatrixProcess,
+                    "Parameter": parameter_automatrix_register_ldm_MAX,
+                    "Module": "Apply matrixes to T1 landmarks (MAX)",
+                    "Display": DisplayAREGCBCT(
+                        nb_scan
+                    ),
+                },
+            )
         else:
             t2_landmarks_folder_path = os.path.join(kwargs["OutputFolder"],"T2 Landmarks")
             os.makedirs(t2_landmarks_folder_path, exist_ok=True)
