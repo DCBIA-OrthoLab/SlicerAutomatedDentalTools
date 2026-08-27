@@ -128,8 +128,9 @@ def CreateListProcess(**kwargs):
     AREGProcess = slicer.modules.areg_cbct
     AsymProcess = slicer.modules.vface_cli
 
-    nb_scan = NumberScan(kwargs["InputFolder"])
+    # NumberScan is just len(GetPatients(...)), so scan the input folder once.
     patients = GetPatients(kwargs["InputFolder"], time_point="T1")
+    nb_scan = len(patients)
 
     if kwargs["bool_quantification"]:
         cb_measurements_path, mand_measurements_path, max_measurements_path,feature_path = SplitMeasurements(kwargs["measurements_folder"],kwargs["mode2"])
@@ -1748,9 +1749,13 @@ def create_list_landmark(df_path):
 
 def GetListFiles(folder_path, file_extension):
     """Return a list of files in folder_path finishing by file_extension"""
+    # search() already returns every extension at once, and each of its keys walks
+    # the tree: calling it once per extension walked the tree len(file_extension)**2
+    # times and threw away all but one result each round.
+    found = search(folder_path, file_extension)
     file_list = []
     for extension_type in file_extension:
-        file_list += search(folder_path, file_extension)[extension_type]
+        file_list += found[extension_type]
     return file_list
 
 
@@ -2513,18 +2518,11 @@ def search(path, *args):
             arguments.extend(arg)
         else:
             arguments.append(arg)
-    return {
-        key: sorted(
-            [
-                i
-                for i in iglob(
-                    os.path.normpath("/".join([path, "**", "*"])), recursive=True
-                )
-                if i.endswith(key)
-            ]
-        )
-        for key in arguments
-    }
+    # Walk the tree once and bucket by extension rather than re-globbing per key.
+    entries = sorted(
+        iglob(os.path.normpath("/".join([path, "**", "*"])), recursive=True)
+    )
+    return {key: [i for i in entries if i.endswith(key)] for key in arguments}
 
 def postprocess (cb_path,mand_path,max_path,exemple_path,outputfolder):
     file_cb = pd.read_excel(cb_path)
