@@ -1094,11 +1094,13 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         if parent_dir not in sys.path:
                             sys.path.insert(0, parent_dir)
                         
-                        from VFACE_utils.segmentation_logic import SegmentationLogic
-                        # Create temporary instance to stop all processes
-                        temp_logic = SegmentationLogic()
-                        temp_logic.stop()
-                        logger.info("Segmentation process canceled")
+                        from VFACE_utils.segmentation_logic import stop_active_segmentation
+                        # Stop the logic that is actually running: building a fresh
+                        # SegmentationLogic here only killed a brand new idle process.
+                        if stop_active_segmentation():
+                            logger.info("Segmentation process canceled")
+                        else:
+                            logger.info("No segmentation currently running")
                     except Exception as e:
                         logger.error(f"Error stopping segmentation: {e}")
                 

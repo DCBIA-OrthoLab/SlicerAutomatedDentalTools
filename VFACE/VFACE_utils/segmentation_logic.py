@@ -871,6 +871,21 @@ class SegmentationLogic:
 
 # ─── Utils functions ─────────────────────────────────────────────────────
 
+# The SegmentationLogic currently running, so Cancel can reach it. Slicer stays
+# responsive during segmentation (processEvents is called between files and while
+# waiting on nnUNet), but a Cancel handler that built a fresh SegmentationLogic
+# was stopping a brand new idle process instead of the running one.
+_activeLogic = None
+
+
+def stop_active_segmentation():
+    """Stop the segmentation currently running, if any."""
+    if _activeLogic is None:
+        return False
+    _activeLogic.stop()
+    return True
+
+
 def run_dental_segmentation(input_folder, output_folder, model_name="DentalSegmentator", 
                            device="cuda", export_formats=None):
     """
@@ -891,8 +906,10 @@ def run_dental_segmentation(input_folder, output_folder, model_name="DentalSegme
         export_formats = ExportFormat.STL | ExportFormat.NIFTI
     
     # Create Logic instance
+    global _activeLogic
     logic = SegmentationLogic()
-    
+    _activeLogic = logic
+
     try:
         # Configuration
         logic.setInputFolder(input_folder)
@@ -913,3 +930,4 @@ def run_dental_segmentation(input_folder, output_folder, model_name="DentalSegme
     finally:
         # Nettoyage
         logic.stop()
+        _activeLogic = None
