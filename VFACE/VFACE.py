@@ -1446,7 +1446,10 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if "Visualization" in self.ui.comboBox2.currentText:
                 files_to_keep.append("Heatmaps")
                 files_to_keep.append("VTK Files")
-            if "Quantification" in self.ui.comboBox2.currentText:
+            # The menu says "Quantitative", which is also what onApplyButton tests
+            # to enable the quantification steps. Testing "Quantification" here
+            # never matched, so the run deleted the results it had just produced.
+            if "Quantitative" in self.ui.comboBox2.currentText:
                 files_to_keep.append("Measurements")
                 files_to_keep.append("Classification")
 
