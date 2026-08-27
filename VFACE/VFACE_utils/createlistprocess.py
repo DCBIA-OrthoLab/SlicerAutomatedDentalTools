@@ -2524,6 +2524,23 @@ def search(path, *args):
     )
     return {key: [i for i in entries if i.endswith(key)] for key in arguments}
 
+def _landmark_label(dic_features, composant, i):
+    """Rebuild the "Landmarks" cell a feature column refers to."""
+    first = dic_features.get("Landmarks"+str(2*i+1))
+    second = dic_features.get("Landmarks"+str(2*i+2))
+    if composant in ["Transverse","Vertical","AP"]:
+        return first+" - "+second
+    return (first+" / "+second).replace("_","-")
+
+
+def _index_measurements(df):
+    """{patient: {landmark: row}}, keeping the first row of a repeated landmark."""
+    index = {}
+    for row in df.to_dict("records"):
+        index.setdefault(row["ID"], {}).setdefault(row["Landmarks"], row)
+    return index
+
+
 def postprocess (cb_path,mand_path,max_path,exemple_path,outputfolder):
     file_cb = pd.read_excel(cb_path)
     file_mand = pd.read_excel(mand_path)
@@ -2578,7 +2595,14 @@ def postprocess (cb_path,mand_path,max_path,exemple_path,outputfolder):
                         else:
                             logger.error("Issue")
 
-    output_df = pd.DataFrame(columns=file_alls.columns)
+    # Index each measurement table by patient then by landmark once, instead of
+    # rescanning the whole frame with a boolean mask for every single feature.
+    measurements = {
+        "CB": _index_measurements(file_cb),
+        "MAX": _index_measurements(file_max),
+        "MAND": _index_measurements(file_mand),
+    }
+
     unique_cb = file_cb["ID"].unique()
     unique_max = file_max["ID"].unique()
     unique_mand = file_mand["ID"].unique()
@@ -2586,82 +2610,32 @@ def postprocess (cb_path,mand_path,max_path,exemple_path,outputfolder):
     if unique_cb.all() != unique_max.all() or unique_cb.all() !=unique_mand.all():
         logger.error("Issue on the ID patient")
 
+    records = []
     for val in unique_cb:
-        output_df.loc[val, "ID"] = val
+        record = {"ID": val}
 
-        cb_df = file_cb[file_cb["ID"]==val]
-        for cb_features,dic_features in dic_columns.items():
-            if dic_features.get("Location")=="CB":
-                if dic_features.get("Average") == "No":
-                    if dic_features.get("Composant") in ["Transverse","Vertical","AP"]:
-                        landmark = dic_features.get("Landmarks1")+" - "+dic_features.get("Landmarks2")
-                    else:
-                        landmark = dic_features.get("Landmarks1")+" / "+dic_features.get("Landmarks2")
-                        landmark = landmark.replace("_","-")
-                    line_specific = cb_df[cb_df["Landmarks"] == landmark]
-                    output_df.loc[val, cb_features] = float(line_specific[dic_features.get("Composant")].values[0])
-                else:
-                    average = 0
-                    nbr = dic_features.get("Nbr_Landmarks")//2
-                    for i in range(nbr):
-                        if dic_features.get("Composant") in ["Transverse","Vertical","AP"]:
-                            landmark = dic_features.get("Landmarks"+str(2*i+1))+" - "+dic_features.get("Landmarks"+str(2*i+2))
-                        else:
-                            landmark = dic_features.get("Landmarks"+str(2*i+1))+" / "+dic_features.get("Landmarks"+str(2*i+2))
-                            landmark = landmark.replace("_","-")
-                        line_specific = cb_df[cb_df["Landmarks"] == landmark]
-                        average += float(line_specific[dic_features.get("Composant")].values[0])
-                    average /= nbr
-                    output_df.loc[val, cb_features] = average
-        
-        max_df = file_max[file_max["ID"]==val]
-        for max_features,dic_features in dic_columns.items():
-            if dic_features.get("Location")=="MAX":
-                if dic_features.get("Average") == "No":
-                    if dic_features.get("Composant") in ["Transverse","Vertical","AP"]:
-                        landmark = dic_features.get("Landmarks1")+" - "+dic_features.get("Landmarks2")
-                    else:
-                        landmark = dic_features.get("Landmarks1")+" / "+dic_features.get("Landmarks2")
-                        landmark = landmark.replace("_","-")
-                    line_specific = max_df[max_df["Landmarks"] == landmark]
-                    output_df.loc[val, max_features] = float(line_specific[dic_features.get("Composant")].values[0])
-                else:
-                    average = 0
-                    nbr = dic_features.get("Nbr_Landmarks")//2
-                    for i in range(nbr):
-                        if dic_features.get("Composant") in ["Transverse","Vertical","AP"]:
-                            landmark = dic_features.get("Landmarks"+str(2*i+1))+" - "+dic_features.get("Landmarks"+str(2*i+2))
-                        else:
-                            landmark = dic_features.get("Landmarks"+str(2*i+1))+" / "+dic_features.get("Landmarks"+str(2*i+2))
-                            landmark = landmark.replace("_","-")
-                        line_specific = max_df[max_df["Landmarks"] == landmark]
-                        average += float(line_specific[dic_features.get("Composant")].values[0])
-                    average /= nbr
-                    output_df.loc[val, max_features] = average
-        
-        mand_df = file_mand[file_mand["ID"]==val]
-        for mand_features,dic_features in dic_columns.items():
-            if dic_features.get("Location")=="MAND":
-                if dic_features.get("Average") == "No":
-                    if dic_features.get("Composant") in ["Transverse","Vertical","AP"]:
-                        landmark = dic_features.get("Landmarks1")+" - "+dic_features.get("Landmarks2")
-                    else:
-                        landmark = dic_features.get("Landmarks1")+" / "+dic_features.get("Landmarks2")
-                        landmark = landmark.replace("_","-")
-                    line_specific = mand_df[mand_df["Landmarks"] == landmark]
-                    output_df.loc[val, mand_features] = float(line_specific[dic_features.get("Composant")].values[0])
-                else:
-                    average = 0
-                    nbr = dic_features.get("Nbr_Landmarks")//2
-                    for i in range(nbr):
-                        if dic_features.get("Composant") in ["Transverse","Vertical","AP"]:
-                            landmark = dic_features.get("Landmarks"+str(2*i+1))+" - "+dic_features.get("Landmarks"+str(2*i+2))
-                        else:
-                            landmark = dic_features.get("Landmarks"+str(2*i+1))+" / "+dic_features.get("Landmarks"+str(2*i+2))
-                            landmark = landmark.replace("_","-")
-                        line_specific = mand_df[mand_df["Landmarks"] == landmark]
-                        average += float(line_specific[dic_features.get("Composant")].values[0])
-                    average /= nbr
-                    output_df.loc[val, mand_features] = average
+        for feature, dic_features in dic_columns.items():
+            location = dic_features.get("Location")
+            if location not in measurements:
+                continue
+
+            by_landmark = measurements[location].get(val)
+            if by_landmark is None:
+                logger.warning(f"No {location} measurement for this patient {val}")
+                continue
+
+            composant = dic_features.get("Composant")
+            if dic_features.get("Average") == "No":
+                record[feature] = float(by_landmark[_landmark_label(dic_features, composant, 0)][composant])
+            else:
+                nbr = dic_features.get("Nbr_Landmarks")//2
+                average = 0
+                for i in range(nbr):
+                    average += float(by_landmark[_landmark_label(dic_features, composant, i)][composant])
+                record[feature] = average / nbr
+
+        records.append(record)
+
+    output_df = pd.DataFrame(records, columns=file_alls.columns)
 
     output_df.to_excel(os.path.join(outputfolder,"PostProcess_Measurements.xlsx"),index=False)
