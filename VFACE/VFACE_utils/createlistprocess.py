@@ -1905,6 +1905,7 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
     import subprocess
     import json
     import tempfile
+    import time
     
     input_dir1 = Path(t1_dir)
     input_dir2 = Path(t2_dir)
@@ -2053,72 +2054,99 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
     logger.info(f"Using Python executable: {slicer_python}")
     logger.info(f"Worker script: {worker_script}")
 
+    # Each pair already runs in its own process, and pairs are independent, so
+    # run a few at a time instead of one. Capped low because each worker holds a
+    # full pair of meshes plus the distance filter's locators in memory.
+    try:
+        max_workers = max(1, min(4, (os.cpu_count() or 2) // 2))
+    except Exception:
+        max_workers = 2
+    logger.info(f"Running up to {max_workers} worker(s) at a time")
+
     processed_pairs = []
-    
-    for idx, pair in enumerate(pairs_to_process):
-        processed_count = idx + 1
+    running = []          # (Popen, pair, output_filename, deadline)
+    queue = list(pairs_to_process)
+    launched = 0
+
+    def _launch(pair):
+        nonlocal launched
+        launched += 1
         output_filename = f"{pair['patient']}_{pair['zone']}_ModelDistance{output_text}"
         output_path = str(output_dir / output_filename)
 
-        logger.info(f"Processing [{processed_count}/{total_files}]: {Path(pair['file1']).name}")
+        logger.info(f"Processing [{launched}/{total_files}]: {Path(pair['file1']).name}")
         logger.info(f"  with: {Path(pair['file2']).name}")
         logger.info(f"  Patient: {pair['patient_id']}, Zone: {pair['zone']}")
-        
-        if psutil:
-            mem = psutil.virtual_memory()
-            logger.debug(f"Memory before: {mem.percent:.1f}% ({mem.used / 1024**3:.1f}GB / {mem.total / 1024**3:.1f}GB)")
 
-        try:
-            cmd = [
-                slicer_python, worker_script,
-                "--file1", pair['file1'],
-                "--file2", pair['file2'],
-                "--output", output_path,
-                "--signed" if signed else "--unsigned",
-            ]
-            
-            logger.info(f"Launching subprocess...")
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=600,
-            )
-            
-            if proc.stdout:
-                for line in proc.stdout.strip().split('\n'):
-                    logger.info(f"  [worker] {line}")
-            
-            if proc.returncode != 0:
-                logger.error(f"  [worker] ERROR (exit code {proc.returncode}):")
-                if proc.stderr:
-                    for line in proc.stderr.strip().split('\n')[-5:]:
-                        logger.error(f"  [worker] {line}")
-                continue
-            
-            processed_pairs.append({
-                'patient_id': pair['patient_id'],
-                'zone': pair['zone'],
-                't1_file': Path(pair['file1']).name,
-                't2_file': Path(pair['file2']).name,
-                'output_file': output_filename,
-            })
-            
-            logger.info(f"Successfully processed {output_filename}")
-            
-        except subprocess.TimeoutExpired:
+        cmd = [
+            slicer_python, worker_script,
+            "--file1", pair['file1'],
+            "--file2", pair['file2'],
+            "--output", output_path,
+            "--signed" if signed else "--unsigned",
+        ]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return (proc, pair, output_filename, time.monotonic() + 600)
+
+    def _collect(proc, pair, output_filename, timed_out):
+        if timed_out:
+            proc.kill()
+            proc.communicate()
             logger.error(f"  TIMEOUT processing {Path(pair['file1']).name} (>10 min)")
-        except Exception as e:
-            logger.error(f"  Error: {e}")
-            traceback.print_exc()
-        
+            return
+
+        stdout, stderr = proc.communicate()
+        if stdout:
+            for line in stdout.strip().split('\n'):
+                logger.info(f"  [worker] {line}")
+
+        if proc.returncode != 0:
+            logger.error(f"  [worker] ERROR (exit code {proc.returncode}):")
+            if stderr:
+                for line in stderr.strip().split('\n')[-5:]:
+                    logger.error(f"  [worker] {line}")
+            return
+
+        processed_pairs.append({
+            'patient_id': pair['patient_id'],
+            'zone': pair['zone'],
+            't1_file': Path(pair['file1']).name,
+            't2_file': Path(pair['file2']).name,
+            'output_file': output_filename,
+        })
+        logger.info(f"Successfully processed {output_filename}")
+
+    while queue or running:
+        # Hold back a new worker while memory is already tight.
+        while queue and len(running) < max_workers and not (running and check_memory_usage()):
+            try:
+                running.append(_launch(queue.pop(0)))
+            except Exception as e:
+                logger.error(f"  Error: {e}")
+                traceback.print_exc()
+
+        still_running = []
+        for proc, pair, output_filename, deadline in running:
+            timed_out = proc.poll() is None and time.monotonic() > deadline
+            if proc.poll() is None and not timed_out:
+                still_running.append((proc, pair, output_filename, deadline))
+                continue
+            try:
+                _collect(proc, pair, output_filename, timed_out)
+            except Exception as e:
+                logger.error(f"  Error: {e}")
+                traceback.print_exc()
+        running = still_running
+
         if psutil:
             mem = psutil.virtual_memory()
-            logger.debug(f"Memory after:  {mem.percent:.1f}% ({mem.used / 1024**3:.1f}GB / {mem.total / 1024**3:.1f}GB)")
-        
+            logger.debug(f"Memory: {mem.percent:.1f}% ({mem.used / 1024**3:.1f}GB / {mem.total / 1024**3:.1f}GB)")
+
         if 'slicer' in globals():
             slicer.app.processEvents()
-    
+        if running:
+            time.sleep(0.2)
+
     logger.info(f"Processing complete. {len(processed_pairs)}/{total_files} pairs processed.")
     for pair in processed_pairs:
         logger.info(f"  {pair['patient_id']} ({pair['zone']}): {pair['output_file']}")
