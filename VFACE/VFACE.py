@@ -813,6 +813,13 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "V_FACE": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/VFACE/V_FACE_Models.zip",
         }
 
+        # A file each archive is known to contain. Without it the folder alone is
+        # used to decide whether the download already happened, and the V_FACE
+        # folder is created by the Default List button before the models exist.
+        check_files = {
+            "V_FACE": "sym_asymm.txt",
+        }
+
         if not os.path.exists(self.SlicerDownloadPath):
             os.makedirs(self.SlicerDownloadPath)
 
@@ -822,6 +829,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     url=url_or_dict,
                     directory=self.SlicerDownloadPath,
                     folder_name=name,
+                    check_file=check_files.get(name),
                 )
             elif isinstance(url_or_dict, dict):
                 for subfolder_name, url in url_or_dict.items():
@@ -833,12 +841,17 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             else:
                 logger.warning(f"Warning: Unknown type for {name}: {type(url_or_dict)}")
             
-    def DownloadUnzip(self, url, directory, folder_name=None, num_downl=1, total_downloads=1):
+    def DownloadUnzip(self, url, directory, folder_name=None, num_downl=1, total_downloads=1, check_file=None):
 
         out_path = os.path.join(directory, folder_name)
-        if not os.path.exists(out_path):
+        # The folder alone is a poor "already installed" test: another feature may
+        # have created it (Default List creates V_FACE/DefaultList, hence V_FACE),
+        # and a download that fails leaves it behind empty. Either way this skipped
+        # the download for ever. check_file names something the archive contains.
+        installed = os.path.join(out_path, check_file) if check_file else out_path
+        if not os.path.exists(installed):
             logger.info("Downloading {}...".format(folder_name.split(os.sep)[-1]))
-            os.makedirs(out_path)
+            os.makedirs(out_path, exist_ok=True)
 
             temp_path = os.path.join(directory, "temp.zip")
 
