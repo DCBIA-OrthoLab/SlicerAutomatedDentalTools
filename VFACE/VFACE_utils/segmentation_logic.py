@@ -209,6 +209,7 @@ class SegmentationLogic:
             return False
         
         # Processing all files
+        processed = 0
         for i, file_path in enumerate(self.folderFiles):
             self.currentFileIndex = i
             self.log_info(f"Processing file {i+1}/{len(self.folderFiles)}: {file_path.name}")
@@ -229,9 +230,16 @@ class SegmentationLogic:
                 self.log_error(f"Exception processing file {file_path}: {str(e)}")
                 continue
             
+            processed += 1
             slicer.app.processEvents()
-        
-        self.log_info("All files processing completed")
+
+        self.log_info(f"Processing completed: {processed}/{len(self.folderFiles)} file(s) segmented")
+
+        # Returning True regardless meant the caller logged "completed
+        # successfully" and moved on to steps reading an empty output folder.
+        if processed == 0:
+            self.log_error("No file could be segmented")
+            return False
         return True
     
     def processFile(self, file_path):
@@ -303,9 +311,19 @@ class SegmentationLogic:
             
             #Start the segmentation
             self.logic.startSegmentation(volumeNode)
-            
+
+            # startSegmentation reports an invalid configuration through
+            # errorOccurred and returns without launching anything. Both return
+            # values used to be discarded, so the wait below polled a process
+            # that would never run until its one hour timeout expired.
+            process = self._inferenceProcess()
+            if process is not None and process.state() == qt.QProcess.NotRunning:
+                self.log_error("nnUNet did not start, see the error above")
+                return False
+
             # Wait end of segmentation
-            self._waitForSegmentationWithEvents()
+            if not self._waitForSegmentationWithEvents():
+                return False
             
             # Process results
             return self._processSegmentationResults(volumeNode)
@@ -314,6 +332,13 @@ class SegmentationLogic:
             self.log_error(f"Error in segmentation: {str(e)}")
             return False
     
+    def _inferenceProcess(self):
+        """The QProcess running nnUNet, or None when the logic exposes no such process."""
+        try:
+            return self.logic.inferenceProcess.process
+        except AttributeError:
+            return None
+
     def _waitForSegmentationWithEvents(self):
         """Wait the end of the segmentation"""
         import time
@@ -344,7 +369,10 @@ class SegmentationLogic:
                     # QProcess itself. Loading the result here instead would read the
                     # file while nnUNet is still writing it and leak a node per scan,
                     # since _processSegmentationResults loads it again right after.
-                    process = self.logic.inferenceProcess.process
+                    process = self._inferenceProcess()
+                    if process is None:
+                        self.log_error("Cannot tell whether the segmentation is running, giving up")
+                        return False
                     segmentation_finished = process.state() == qt.QProcess.NotRunning
 
             except Exception as e:
