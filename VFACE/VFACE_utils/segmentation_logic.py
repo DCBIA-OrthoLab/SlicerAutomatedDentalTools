@@ -4,6 +4,7 @@ import slicer
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import zipfile
@@ -200,6 +201,23 @@ class SegmentationLogic:
         """Error log"""
         logger.error(f"[ERROR] {message}")
         self.fullInfoLogs.append(f"ERROR: {message}")
+
+    # A tqdm bar: " 42%|####      | 118/280 [00:02<00:03, 45.29it/s]"
+    _PROGRESS_LINE = re.compile(r"\d+%\|")
+
+    def logInferenceOutput(self, message):
+        """Log nnUNet's output, minus its progress bars.
+
+        Qt delivers this from inside slicer.app.processEvents(), and the logger
+        writes to a stdout that Slicer captures into a pipe it drains from that
+        same event loop. Echoing a tqdm bar redrawn dozens of times per scan
+        fills the pipe while the loop is busy in this very handler: write()
+        blocks, nothing can drain the pipe any more, and Slicer freezes for good.
+        """
+        for line in str(message).splitlines():
+            line = line.strip()
+            if line and not self._PROGRESS_LINE.search(line):
+                self.log_info(line)
     
     def processAllFiles(self):
         """Process all input files"""
@@ -955,7 +973,7 @@ class SegmentationLogic:
         try:
             from SlicerNNUNetLib import SegmentationLogic
             logic = SegmentationLogic()
-            logic.progressInfo.connect(self.log_info)
+            logic.progressInfo.connect(self.logInferenceOutput)
             logic.errorOccurred.connect(self.log_error)
             return logic
         except Exception as e:
