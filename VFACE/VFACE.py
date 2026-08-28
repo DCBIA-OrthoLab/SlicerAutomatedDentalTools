@@ -1336,7 +1336,11 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             logger.info(f"{self.module_name} is executed.")
             self.ui.label_3.setText(f"Process : {self.module_name} ({self.ActualProcess}/{self.NumberProcess})")
-            
+
+            # No CLI is running during a Python step: forget the previous node so
+            # a late event from it cannot advance the chain from under our feet.
+            self.cliNode = None
+
             # For long Python process, use a timer to maintain reactivity
             self.python_process = process
             self.python_parameters = parameters
@@ -1402,6 +1406,18 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         import time
         import json
         import subprocess
+
+        # Only the node the pipeline is currently waiting on may advance it.
+        # Observers can outlive their step, so a stale callback would start the
+        # next step while the current CLI was still writing its results - the
+        # measurements then read a folder that AutoMatrix had not filled yet -
+        # and would fire again after OnEndProcess had cleared the state, raising
+        # AttributeError on current_process_info.
+        if self.cliNode is None or self.current_process_info is None:
+            return
+        if caller.GetID() != self.cliNode.GetID():
+            return
+
         cliNode = caller
 
         status = cliNode.GetStatus()
