@@ -1304,12 +1304,13 @@ def reorganizeStat(patient_compute):
         for i in range(len(patient_compute["Patient"])) :
 
 
-            if patient_compute["Patient"][i][0].lower()=="p" :
-                dic_stats["ID"].append(patient_compute["Patient"][i][1:])
-            elif patient_compute["Patient"][i][:3].lower() == "pat" :
-                dic_stats["ID"].append(patient_compute["Patient"][i][3:])
-            else :
-                dic_stats["ID"].append(patient_compute["Patient"][i])
+            # Strip a P/Pat/Patient prefix only when it is glued to the number
+            # (P1 -> 1), which is what this was for. Chopping the first character
+            # unconditionally turned P_0001 into "_0001" and "P" into "", and an
+            # empty ID leaves postprocess with nothing to group the rows by.
+            patient = str(patient_compute["Patient"][i])
+            numbered = re.fullmatch(r"(?:patient|pat|p)[ _-]?(\d+)", patient, re.IGNORECASE)
+            dic_stats["ID"].append(numbered.group(1) if numbered else patient)
 
             dic_stats["Landmarks"].append(patient_compute["Landmarks"][i])
 

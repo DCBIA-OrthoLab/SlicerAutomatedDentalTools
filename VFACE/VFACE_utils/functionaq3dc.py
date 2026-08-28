@@ -1366,6 +1366,14 @@ class AQ3DCWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 # ============================================================================================================================#
 
 
+def patientIdFromFileName(basename: str) -> str:
+    """Patient id of a landmark file, matching createlistprocess.GetPatients."""
+    for token in ["_Scan", "_scan", "_Or", "_OR", "_MAND", "_MD", "_MAX", "_MX",
+                  "_CB", "_lm", "_T2", "_T1", "_Cl", "."]:
+        basename = basename.split(token)[0]
+    return basename
+
+
 class AQ3DCLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
   computation done by your module.  The interface
@@ -1475,7 +1483,10 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
         for jsonfile in sorted(glob.iglob(normpath, recursive=True)):
             if os.path.isfile(jsonfile) and ".json" in jsonfile:
                 lst_files.append(jsonfile)
-                patient = os.path.basename(jsonfile).split("_")[0].split('.mrk')[0]
+                # Same rule as GetPatients: taking the text before the first "_"
+                # turned every P_0001, P_0002... into a single patient "P", so a
+                # cohort collapsed onto one entry and the ID column came out empty.
+                patient = patientIdFromFileName(os.path.basename(jsonfile))
                 if patient not in patients_lst:
                     patients_lst.append(patient)
                 if patient not in patients_dict:
