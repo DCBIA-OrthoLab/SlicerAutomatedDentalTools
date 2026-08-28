@@ -1199,8 +1199,14 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.list_process.clear()
         self.resetUIAfterCancel()
 
-        confirmation = PopUpWindow(title="Process Cancelled", text="The process has been successfully cancelled.")
-        confirmation.exec_()
+        # Deferred for the same reason as the completion dialog above: cancelling
+        # can be reached while a CLI observer is still dispatching.
+        qt.QTimer.singleShot(
+            0,
+            lambda: PopUpWindow(
+                title="Process Cancelled", text="The process has been successfully cancelled."
+            ).exec_(),
+        )
 
     def resetUIAfterCancel(self) -> None:
         """
@@ -1508,11 +1514,10 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.current_output_to_load = None
         self.current_process_info = None
 
-        completion_dialog = PopUpWindow(title="Process Complete", text="Processing completed successfully!")
-        completion_dialog.exec_()
         self._checkCanApply()
 
-        # Clean up temporary files if requested
+        # Clean up temporary files if requested. This used to sit after the dialog
+        # below, so a dialog left unanswered also left the output folder half done.
         if not self.ui.checkBox.isChecked():
             files_to_keep = []
             if "Visualization" in self.ui.comboBox2.currentText:
@@ -1533,6 +1538,18 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         logger.info(f"Cleaned temporary folder: {item.name}")
             except Exception as e:
                 logger.error(f"Error cleaning temporary files: {e}")
+
+        # OnEndProcess is reached from onCliUpdated, i.e. from inside a VTK
+        # observer callback. Opening an application-modal dialog there starts a
+        # nested event loop while the CLI node is still dispatching events, and
+        # the modal grab can leave the whole desktop session unresponsive, not
+        # just Slicer. Same fix as AREG: defer it so the callback returns first.
+        qt.QTimer.singleShot(
+            0,
+            lambda: PopUpWindow(
+                title="Process Complete", text="Processing completed successfully!"
+            ).exec_(),
+        )
             
             
             
