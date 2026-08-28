@@ -139,9 +139,13 @@ def CreateListProcess(**kwargs):
         elif not feature_path and kwargs["mode2"] != "Longitudinal studies":
                 logger.warning("There is an issue, it miss feature list in the ML folder")
         
-        list_landmark = []
-        list_landmark += create_list_landmark(mand_measurements_path)
-        list_landmark += create_list_landmark(cb_measurements_path)
+        # The MAND and CB measurement lists share landmarks, and concatenating them
+        # made ALI spawn a second agent for each shared one and search it twice for
+        # the same position. dict.fromkeys keeps the original order.
+        list_landmark = list(dict.fromkeys(
+            create_list_landmark(mand_measurements_path)
+            + create_list_landmark(cb_measurements_path)
+        ))
         
         list_landmark_max = create_list_landmark(max_measurements_path)
 
