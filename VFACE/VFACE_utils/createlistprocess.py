@@ -2069,7 +2069,7 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
     logger.info(f"Running up to {max_workers} worker(s) at a time")
 
     processed_pairs = []
-    running = []          # (Popen, pair, output_filename, deadline)
+    running = []          # (Popen, pair, output_filename, deadline, log_dir)
     queue = list(pairs_to_process)
     launched = 0
 
@@ -2090,36 +2090,54 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
             "--output", output_path,
             "--signed" if signed else "--unsigned",
         ]
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        return (proc, pair, output_filename, time.monotonic() + 600)
+        # Pipes would deadlock: nothing reads them until the worker exits, so a
+        # worker writing more than the pipe buffer blocks for ever. Files never do.
+        log_dir = tempfile.mkdtemp(prefix="vface_worker_")
+        out_log = os.path.join(log_dir, "stdout.txt")
+        err_log = os.path.join(log_dir, "stderr.txt")
+        proc = subprocess.Popen(cmd, stdout=open(out_log, "w"), stderr=open(err_log, "w"), text=True)
+        return (proc, pair, output_filename, time.monotonic() + 600, log_dir)
 
-    def _collect(proc, pair, output_filename, timed_out):
-        if timed_out:
-            proc.kill()
-            proc.communicate()
-            logger.error(f"  TIMEOUT processing {Path(pair['file1']).name} (>10 min)")
-            return
+    def _read_log(path):
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                return f.read().strip()
+        except OSError:
+            return ""
 
-        stdout, stderr = proc.communicate()
-        if stdout:
-            for line in stdout.strip().split('\n'):
-                logger.info(f"  [worker] {line}")
+    def _collect(proc, pair, output_filename, timed_out, log_dir):
+        out_log = os.path.join(log_dir, "stdout.txt")
+        err_log = os.path.join(log_dir, "stderr.txt")
+        try:
+            if timed_out:
+                proc.kill()
+                proc.wait()
+                logger.error(f"  TIMEOUT processing {Path(pair['file1']).name} (>10 min)")
+                return
 
-        if proc.returncode != 0:
-            logger.error(f"  [worker] ERROR (exit code {proc.returncode}):")
-            if stderr:
-                for line in stderr.strip().split('\n')[-5:]:
-                    logger.error(f"  [worker] {line}")
-            return
+            stdout = _read_log(out_log)
+            if stdout:
+                for line in stdout.split('\n'):
+                    logger.info(f"  [worker] {line}")
 
-        processed_pairs.append({
-            'patient_id': pair['patient_id'],
-            'zone': pair['zone'],
-            't1_file': Path(pair['file1']).name,
-            't2_file': Path(pair['file2']).name,
-            'output_file': output_filename,
-        })
-        logger.info(f"Successfully processed {output_filename}")
+            if proc.returncode != 0:
+                logger.error(f"  [worker] ERROR (exit code {proc.returncode}):")
+                stderr = _read_log(err_log)
+                if stderr:
+                    for line in stderr.split('\n')[-5:]:
+                        logger.error(f"  [worker] {line}")
+                return
+
+            processed_pairs.append({
+                'patient_id': pair['patient_id'],
+                'zone': pair['zone'],
+                't1_file': Path(pair['file1']).name,
+                't2_file': Path(pair['file2']).name,
+                'output_file': output_filename,
+            })
+            logger.info(f"Successfully processed {output_filename}")
+        finally:
+            shutil.rmtree(log_dir, ignore_errors=True)
 
     while queue or running:
         # Hold back a new worker while memory is already tight.
@@ -2131,13 +2149,13 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
                 traceback.print_exc()
 
         still_running = []
-        for proc, pair, output_filename, deadline in running:
+        for proc, pair, output_filename, deadline, log_dir in running:
             timed_out = proc.poll() is None and time.monotonic() > deadline
             if proc.poll() is None and not timed_out:
-                still_running.append((proc, pair, output_filename, deadline))
+                still_running.append((proc, pair, output_filename, deadline, log_dir))
                 continue
             try:
-                _collect(proc, pair, output_filename, timed_out)
+                _collect(proc, pair, output_filename, timed_out, log_dir)
             except Exception as e:
                 logger.error(f"  Error: {e}")
                 traceback.print_exc()
