@@ -1,9 +1,12 @@
 import vtk
 import numpy as np
 import slicer
+import json
 import logging
 import os
+import shutil
 import sys
+import zipfile
 from pathlib import Path
 from enum import Flag, auto
 import qt
@@ -51,11 +54,73 @@ class ExportFormat(Flag):
     VTK = auto()
     VTK_MERGED = auto()
 
+def nnUnetFolder() -> Path:
+    """Folder holding the nnUNet weights shipped with the module."""
+    return Path(__file__).parent.parent.joinpath("Resources", "ML").resolve()
+
+
 class PythonDependencyChecker:
-    """Check python dependency"""
-    
+    """Download the DentalSegmentator weights when they are missing.
+
+    Only dataset.json and plans.json are committed: the checkpoint is far too
+    large for the repository, and .gitignore excludes it. This class used to
+    report "Weights check completed" without checking anything, so nnUNet was
+    handed a model folder with no fold_0, refused to start, and the caller then
+    waited out its full one hour timeout on a process that was never launched.
+    """
+
+    # Relative to the weights folder, the file that proves they are installed.
+    CHECKPOINT = Path(
+        "Dataset111_453CT", "nnUNetTrainer__nnUNetPlans__3d_fullres", "fold_0", "checkpoint_final.pth"
+    )
+
+    def __init__(self, weightsFolder=None):
+        self.weightsFolder = Path(weightsFolder) if weightsFolder else nnUnetFolder()
+
+    def areWeightsMissing(self) -> bool:
+        return not self.weightsFolder.joinpath(self.CHECKPOINT).is_file()
+
+    def downloadUrl(self):
+        """The URL recorded in download_info.json, or None if unusable."""
+        info_path = self.weightsFolder.joinpath("download_info.json")
+        try:
+            with open(info_path, encoding="utf-8") as f:
+                return json.load(f).get("download_url")
+        except (OSError, ValueError) as e:
+            logger.error(f"Cannot read {info_path}: {e}")
+            return None
+
     def downloadWeightsIfNeeded(self, onLine):
         """Check and download the weights if necessary"""
+        if not self.areWeightsMissing():
+            onLine("Weights check completed")
+            return True
+
+        url = self.downloadUrl()
+        if not url:
+            onLine(f"Model weights are missing and no download URL is available in {self.weightsFolder}")
+            return False
+
+        onLine(f"Model weights are missing, downloading them from {url}")
+        onLine("This is about 220 MB and only happens once.")
+
+        temp_dir = Path(slicer.util.tempDirectory())
+        zip_path = temp_dir.joinpath("weights.zip")
+        try:
+            slicer.util.downloadFile(url, str(zip_path))
+            self.weightsFolder.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(zip_path, "r") as archive:
+                archive.extractall(self.weightsFolder)
+        except Exception as e:
+            onLine(f"Failed to download the model weights: {e}")
+            return False
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+        if self.areWeightsMissing():
+            onLine(f"The downloaded archive did not contain {self.CHECKPOINT}")
+            return False
+
         onLine("Weights check completed")
         return True
 
@@ -865,8 +930,8 @@ class SegmentationLogic:
     @classmethod
     def nnUnetFolder(cls) -> Path:
         """Retourne le dossier NNUNet"""
-        fileDir = Path(__file__).parent
-        return fileDir.joinpath("VFACE", "Resources", "ML").resolve()
+        # This used to build <...>/VFACE_utils/VFACE/Resources/ML, which does not exist.
+        return nnUnetFolder()
 
 
 # ─── Utils functions ─────────────────────────────────────────────────────
