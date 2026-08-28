@@ -110,7 +110,14 @@ class PythonDependencyChecker:
             slicer.util.downloadFile(url, str(zip_path))
             self.weightsFolder.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(zip_path, "r") as archive:
-                archive.extractall(self.weightsFolder)
+                # dataset.json and plans.json are versioned with the module, and
+                # the archive ships them with CRLF line endings: extracting over
+                # them leaves the checkout dirty for no change of content.
+                members = [
+                    m for m in archive.namelist()
+                    if not self.weightsFolder.joinpath(m).exists()
+                ]
+                archive.extractall(self.weightsFolder, members)
         except Exception as e:
             onLine(f"Failed to download the model weights: {e}")
             return False
