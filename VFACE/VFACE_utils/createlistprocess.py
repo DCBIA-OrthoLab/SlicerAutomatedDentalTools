@@ -14,7 +14,6 @@ import re
 import shutil
 from pathlib import Path
 import pandas as pd
-import vtk
 import traceback
 
 import logging
@@ -128,8 +127,9 @@ def CreateListProcess(**kwargs):
     AREGProcess = slicer.modules.areg_cbct
     AsymProcess = slicer.modules.vface_cli
 
-    nb_scan = NumberScan(kwargs["InputFolder"])
+    # NumberScan is just len(GetPatients(...)), so scan the input folder once.
     patients = GetPatients(kwargs["InputFolder"], time_point="T1")
+    nb_scan = len(patients)
 
     if kwargs["bool_quantification"]:
         cb_measurements_path, mand_measurements_path, max_measurements_path,feature_path = SplitMeasurements(kwargs["measurements_folder"],kwargs["mode2"])
@@ -139,9 +139,13 @@ def CreateListProcess(**kwargs):
         elif not feature_path and kwargs["mode2"] != "Longitudinal studies":
                 logger.warning("There is an issue, it miss feature list in the ML folder")
         
-        list_landmark = []
-        list_landmark += create_list_landmark(mand_measurements_path)
-        list_landmark += create_list_landmark(cb_measurements_path)
+        # The MAND and CB measurement lists share landmarks, and concatenating them
+        # made ALI spawn a second agent for each shared one and search it twice for
+        # the same position. dict.fromkeys keeps the original order.
+        list_landmark = list(dict.fromkeys(
+            create_list_landmark(mand_measurements_path)
+            + create_list_landmark(cb_measurements_path)
+        ))
         
         list_landmark_max = create_list_landmark(max_measurements_path)
 
@@ -935,84 +939,79 @@ def CreateListProcess(**kwargs):
             mirrored_registered_max_landmarks_folder_path = os.path.join(mirrored_registered_landmarks_folder_path,"MAX")
             os.makedirs(mirrored_registered_max_landmarks_folder_path, exist_ok=True)
 
-            for patient,data in patients.items():
+            # One run per structure, not one per patient: AutoMatrix pairs each
+            # matrix with its patient by name when input_matrix is a folder. Passing
+            # a single .tfm made it apply that patient's matrix to every landmark
+            # file in the folder, and the constant suffix made each run overwrite
+            # the previous one, so only the last patient's matrix survived.
+            parameter_automatrix_register_ldm_cb = {
+                "input_patient": mirrored_landmarks_cb_folder_path,
+                "input_matrix": os.path.join(registeredscan_folder_path,"Cranial Base"),
+                "reference_file": "None",
+                "suffix": "_CB_reg",
+                "matrix_name": False,
+                "fromAreg": False,
+                "output_folder": mirrored_registered_cb_landmarks_folder_path,
+                "log_path": slicer.util.tempDirectory(),
+                "is_seg": False
+                }
 
-                parameter_automatrix_register_ldm_cb = {        
-                    "input_patient": mirrored_landmarks_cb_folder_path,
-                    "input_matrix": os.path.join(registeredscan_folder_path,"Cranial Base",patient+"_OutReg",patient + "_" + "CB" + "_Reg" + "_matrix.tfm"),
-                    "reference_file": "None",
-                    "suffix": "_CB_reg",
-                    "matrix_name": False,
-                    "fromAreg": False,
-                    "output_folder": mirrored_registered_cb_landmarks_folder_path,
-                    "log_path": slicer.util.tempDirectory(),
-                    "is_seg": False
-                    }
-                
-                if kwargs["mode"] == "File already Registered":
-                        parameter_automatrix_register_ldm_cb["input_matrix"] = os.path.join(registeredscan_folder_path,"Cranial Base")
+            list_process.append(
+                {
+                    "Process": AutomatrixProcess,
+                    "Parameter": parameter_automatrix_register_ldm_cb,
+                    "Module": "Apply matrixes T1 to landmarks (CB)",
+                    "Display": DisplayAREGCBCT(
+                        nb_scan
+                    ),
+                },
+            )
 
-                list_process.append(
-                    {
-                        "Process": AutomatrixProcess,
-                        "Parameter": parameter_automatrix_register_ldm_cb,
-                        "Module": "Apply matrixes T1 to landmarks (CB)",
-                        "Display": DisplayAREGCBCT(
-                            nb_scan
-                        ),
-                    },
-                )
+            parameter_automatrix_register_ldm_mand = {
+                "input_patient": mirrored_landmarks_cb_folder_path,
+                "input_matrix": os.path.join(registeredscan_folder_path,"Mandible"),
+                "reference_file": "None",
+                "suffix": "_MAND_reg",
+                "matrix_name": False,
+                "fromAreg": False,
+                "output_folder": mirrored_registered_mand_landmarks_folder_path,
+                "log_path": slicer.util.tempDirectory(),
+                "is_seg": False
+                }
 
-                parameter_automatrix_register_ldm_mand = {        
-                    "input_patient": mirrored_landmarks_cb_folder_path,
-                    "input_matrix": os.path.join(registeredscan_folder_path,"Mandible",patient+"_OutReg",patient + "_" + "MAND" + "_Reg" + "_matrix.tfm"),
-                    "reference_file": "None",
-                    "suffix": "_MAND_reg",
-                    "matrix_name": False,
-                    "fromAreg": False,
-                    "output_folder": mirrored_registered_mand_landmarks_folder_path,
-                    "log_path": slicer.util.tempDirectory(),
-                    "is_seg": False
-                    }
-                
-                if kwargs["mode"] == "File already Registered":
-                    parameter_automatrix_register_ldm_mand["input_matrix"] = os.path.join(registeredscan_folder_path,"Mandible")
+            list_process.append(
+                {
+                    "Process": AutomatrixProcess,
+                    "Parameter": parameter_automatrix_register_ldm_mand,
+                    "Module": "Apply matrixes T1 to landmarks (MAND)",
+                    "Display": DisplayAREGCBCT(
+                        nb_scan
+                    ),
+                },
+            )
 
-                list_process.append(
-                    {
-                        "Process": AutomatrixProcess,
-                        "Parameter": parameter_automatrix_register_ldm_mand,
-                        "Module": "Apply matrixes T1 to landmarks (MAND)",
-                        "Display": DisplayAREGCBCT(
-                            nb_scan
-                        ),
-                    },
-                )
+            parameter_automatrix_register_ldm_MAX = {
+                "input_patient": mirrored_landmarks_max_folder_path,
+                "input_matrix": os.path.join(registeredscan_folder_path,"Maxilla"),
+                "reference_file": "None",
+                "suffix": "_MAX_reg",
+                "matrix_name": False,
+                "fromAreg": False,
+                "output_folder": mirrored_registered_max_landmarks_folder_path,
+                "log_path": slicer.util.tempDirectory(),
+                "is_seg": False
+                }
 
-                parameter_automatrix_register_ldm_MAX = {        
-                    "input_patient": mirrored_landmarks_max_folder_path,
-                    "input_matrix": os.path.join(registeredscan_folder_path,"Maxilla",patient+"_OutReg",patient + "_" + "MAX" + "_Reg" + "_matrix.tfm"),
-                    "reference_file": "None",
-                    "suffix": "_MAX_reg",
-                    "matrix_name": False,
-                    "fromAreg": False,
-                    "output_folder": mirrored_registered_max_landmarks_folder_path,
-                    "log_path": slicer.util.tempDirectory(),
-                    "is_seg": False
-                    }
-                if kwargs["mode"] == "File already Registered":
-                    parameter_automatrix_register_ldm_MAX["input_matrix"] = os.path.join(registeredscan_folder_path,"Maxilla")
-
-                list_process.append(
-                    {
-                        "Process": AutomatrixProcess,
-                        "Parameter": parameter_automatrix_register_ldm_MAX,
-                        "Module": "Apply matrixes to T1 landmarks (MAX)",
-                        "Display": DisplayAREGCBCT(
-                            nb_scan
-                        ),
-                    },
-                )
+            list_process.append(
+                {
+                    "Process": AutomatrixProcess,
+                    "Parameter": parameter_automatrix_register_ldm_MAX,
+                    "Module": "Apply matrixes to T1 landmarks (MAX)",
+                    "Display": DisplayAREGCBCT(
+                        nb_scan
+                    ),
+                },
+            )
         else:
             t2_landmarks_folder_path = os.path.join(kwargs["OutputFolder"],"T2 Landmarks")
             os.makedirs(t2_landmarks_folder_path, exist_ok=True)
@@ -1305,12 +1304,13 @@ def reorganizeStat(patient_compute):
         for i in range(len(patient_compute["Patient"])) :
 
 
-            if patient_compute["Patient"][i][0].lower()=="p" :
-                dic_stats["ID"].append(patient_compute["Patient"][i][1:])
-            elif patient_compute["Patient"][i][:3].lower() == "pat" :
-                dic_stats["ID"].append(patient_compute["Patient"][i][3:])
-            else :
-                dic_stats["ID"].append(patient_compute["Patient"][i])
+            # Strip a P/Pat/Patient prefix only when it is glued to the number
+            # (P1 -> 1), which is what this was for. Chopping the first character
+            # unconditionally turned P_0001 into "_0001" and "P" into "", and an
+            # empty ID leaves postprocess with nothing to group the rows by.
+            patient = str(patient_compute["Patient"][i])
+            numbered = re.fullmatch(r"(?:patient|pat|p)[ _-]?(\d+)", patient, re.IGNORECASE)
+            dic_stats["ID"].append(numbered.group(1) if numbered else patient)
 
             dic_stats["Landmarks"].append(patient_compute["Landmarks"][i])
 
@@ -1753,9 +1753,13 @@ def create_list_landmark(df_path):
 
 def GetListFiles(folder_path, file_extension):
     """Return a list of files in folder_path finishing by file_extension"""
+    # search() already returns every extension at once, and each of its keys walks
+    # the tree: calling it once per extension walked the tree len(file_extension)**2
+    # times and threw away all but one result each round.
+    found = search(folder_path, file_extension)
     file_list = []
     for extension_type in file_extension:
-        file_list += search(folder_path, file_extension)[extension_type]
+        file_list += found[extension_type]
     return file_list
 
 
@@ -1894,381 +1898,6 @@ def ModifiedDictPatients(patients, todo_str):
 
     return patients
 
-def read_vtk(file_path):
-    file_path = str(file_path)  # Convert Path to string
-    if file_path.endswith('.vtk'):
-        reader = vtk.vtkPolyDataReader()
-    elif file_path.endswith('.vtp'):
-        reader = vtk.vtkXMLPolyDataReader()
-    else:
-        raise ValueError(f"Unsupported format: {file_path}")
-    reader.SetFileName(str(file_path))
-    reader.Update()
-
-    raw_output = reader.GetOutput()
-    if not raw_output or raw_output.GetNumberOfPoints() == 0:
-        raise ValueError(f"Failed to read or empty polydata from: {file_path}")
-
-    polydata = vtk.vtkPolyData()
-    polydata.DeepCopy(raw_output)
-
-    reader.SetFileName("")
-    reader.RemoveAllInputs()
-    del reader
-
-    return polydata
-
-
-def write_vtk(polydata, file_path):
-    file_path = str(file_path)
-    if file_path.endswith('.vtk'):
-        writer = vtk.vtkPolyDataWriter()
-    elif file_path.endswith('.vtp'):
-        writer = vtk.vtkXMLPolyDataWriter()
-    else:
-        raise ValueError(f"Unsupported format: {file_path}")
-    writer.SetFileName(file_path)
-    writer.SetInputData(polydata)
-    writer.Write()
-
-    writer.RemoveAllInputs()
-    del writer
-
-def clean_and_triangulate(polydata):
-    """
-    Clean and triangulate a polydata.
-    Use DeepCopy to cut the links with inter VTK pipelines.
-    """
-    if not polydata or polydata.GetNumberOfPoints() == 0:
-        raise ValueError("Cannot clean empty or invalid polydata")
-    
-    num_points = polydata.GetNumberOfPoints()
-    num_cells = polydata.GetNumberOfCells()
-    logger.debug(f"Input polydata: {num_points} points, {num_cells} cells")
-    
-    try:
-        logger.info("Cleaning polydata...")
-        cleaner = vtk.vtkCleanPolyData()
-        cleaner.SetInputData(polydata)
-        cleaner.PointMergingOn()
-        cleaner.Update()
-
-        cleaned = vtk.vtkPolyData()
-        cleaned.DeepCopy(cleaner.GetOutput())
-
-        cleaner.RemoveAllInputs()
-        del cleaner
-        
-        if not cleaned or cleaned.GetNumberOfPoints() == 0:
-            raise ValueError("Cleaning resulted in empty polydata")
-        
-        logger.debug("Triangulating polydata...")
-        triangle_filter = vtk.vtkTriangleFilter()
-        triangle_filter.SetInputData(cleaned)
-        triangle_filter.Update()
-
-        triangulated = vtk.vtkPolyData()
-        triangulated.DeepCopy(triangle_filter.GetOutput())
-
-        triangle_filter.RemoveAllInputs()
-        del triangle_filter
-        del cleaned
-        
-        if not triangulated or triangulated.GetNumberOfPoints() == 0:
-            raise ValueError("Triangulation resulted in empty polydata")
-        
-        logger.info(f"Clean and triangulate completed: {triangulated.GetNumberOfPoints()} points, {triangulated.GetNumberOfCells()} cells")
-        return triangulated
-        
-    except Exception as e:
-        raise ValueError(f"Error during clean and triangulate: {str(e)}")
-
-def compute_distance(polydata1, polydata2, signed=True):
-    logger.info("Starting distance computation...")
-    
-    if not polydata1 or polydata1.GetNumberOfPoints() == 0:
-        raise ValueError("Invalid or empty polydata1")
-    if not polydata2 or polydata2.GetNumberOfPoints() == 0:
-        raise ValueError("Invalid or empty polydata2")
-    
-    num_points1 = polydata1.GetNumberOfPoints()
-    num_points2 = polydata2.GetNumberOfPoints()
-    num_cells1 = polydata1.GetNumberOfCells()
-    num_cells2 = polydata2.GetNumberOfCells()
-    
-    logger.debug(f"Polydata1: {num_points1} points, {num_cells1} cells")
-    logger.debug(f"Polydata2: {num_points2} points, {num_cells2} cells")
-    
-    total_complexity = num_points1 + num_points2 + num_cells1 + num_cells2
-    
-    if total_complexity > 5000000:
-        logger.debug(f"Very large dataset detected (complexity: {total_complexity}). Using aggressive subsampling.")
-        return compute_distance_subsampled(polydata1, polydata2, signed, target_points=300000)
-    elif total_complexity > 2000000:
-        logger.debug(f"Large dataset detected (complexity: {total_complexity}). Using subsampling approach.")
-        return compute_distance_subsampled(polydata1, polydata2, signed, target_points=500000)
-    elif total_complexity > 1000000:
-        logger.debug(f"Medium dataset detected (complexity: {total_complexity}). Using optimized approach.")
-        return compute_distance_subsampled(polydata1, polydata2, signed, target_points=750000)
-    
-    return compute_distance_standard(polydata1, polydata2, signed)
-
-
-def compute_distance_subsampled(polydata1, polydata2, signed=True, target_points=500000):
-    """
-    Optimized subsample
-    """
-    import gc
-    logger.info("Using subsampled distance computation...")
-    
-    try:
-        if polydata1.GetNumberOfPoints() > target_points:
-            logger.debug(f"Subsampling polydata1 from {polydata1.GetNumberOfPoints()} to ~{target_points} points")
-            ratio1 = target_points / polydata1.GetNumberOfPoints()
-            pd1_subsampled = subsample_polydata(polydata1, ratio1)
-        else:
-            pd1_subsampled = polydata1
-        
-        if polydata2.GetNumberOfPoints() > target_points:
-            logger.debug(f"Subsampling polydata2 from {polydata2.GetNumberOfPoints()} to ~{target_points} points")
-            ratio2 = target_points / polydata2.GetNumberOfPoints()
-            pd2_subsampled = subsample_polydata(polydata2, ratio2)
-        else:
-            pd2_subsampled = polydata2
-        
-        logger.debug(f"Computing distance on subsampled data: {pd1_subsampled.GetNumberOfPoints()} vs {pd2_subsampled.GetNumberOfPoints()} points")
-        
-        result_subsampled = compute_distance_standard(pd1_subsampled, pd2_subsampled, signed)
-        
-        if pd1_subsampled != polydata1:
-            pd1_subsampled = None
-        if pd2_subsampled != polydata2:
-            pd2_subsampled = None
-        gc.collect()
-        
-        if polydata1.GetNumberOfPoints() > 1000000:
-            logger.debug("Very large dataset - returning subsampled result directly")
-            return result_subsampled
-        
-        logger.debug("Interpolating results back to original resolution...")
-        result_full = interpolate_distance_to_original(result_subsampled, polydata1)
-
-        result_subsampled = None
-        gc.collect()
-        
-        return result_full
-        
-    except Exception as e:
-        logger.error(f"Error in subsampled computation: {e}")
-        logger.error("Falling back to simplified approach...")
-        
-        gc.collect()
-        
-        return create_fallback_result(polydata1, signed)
-
-
-def create_fallback_result(polydata, signed=True):
-    """
-    Create a fallback for null distance
-    """
-    logger.info("Creating fallback result with zero distances...")
-    
-    try:
-        output = vtk.vtkPolyData()
-        output.DeepCopy(polydata)
-        
-        distance_name = "SignedDistance" if signed else "AbsoluteDistance"
-        distance_array = vtk.vtkDoubleArray()
-        distance_array.SetName(distance_name)
-        distance_array.SetNumberOfTuples(output.GetNumberOfPoints())
-        distance_array.FillComponent(0, 0.0)
-        output.GetPointData().SetScalars(distance_array)
-        
-        const_array = vtk.vtkDoubleArray()
-        const_array.SetName("Original")
-        const_array.SetNumberOfTuples(output.GetNumberOfPoints())
-        const_array.FillComponent(0, 1.0)
-        output.GetPointData().AddArray(const_array)
-        
-        logger.info(f"Fallback result created: {output.GetNumberOfPoints()} points with zero distances")
-        return output
-        
-    except Exception as e:
-        logger.error(f"Error creating fallback result: {e}")
-        raise RuntimeError("Cannot create fallback result")
-
-
-def subsample_polydata(polydata, ratio):
-    """
-    Subsample using DeepCopy
-    """
-    logger.info(f"Decimating mesh with target ratio {ratio:.3f}")
-    
-    try:
-        decimate = vtk.vtkQuadricDecimation()
-        decimate.SetInputData(polydata)
-        decimate.SetTargetReduction(1.0 - ratio)
-        decimate.VolumePreservationOn()
-        decimate.AttributeErrorMetricOn()
-        decimate.Update()
-        
-        raw_result = decimate.GetOutput()
-        
-        if raw_result.GetNumberOfPoints() > ratio * polydata.GetNumberOfPoints() * 1.5:
-            logger.debug("Decimation not sufficient, using point masking...")
-            
-            decimate.RemoveAllInputs()
-            del decimate
-            
-            mask = vtk.vtkMaskPoints()
-            mask.SetInputData(polydata)
-            mask.SetOnRatio(max(1, int(1.0 / ratio)))
-            mask.RandomModeOn()
-            mask.Update()
-            
-            points_to_poly = vtk.vtkVertexGlyphFilter()
-            points_to_poly.SetInputData(mask.GetOutput())
-            points_to_poly.Update()
-            
-            result = vtk.vtkPolyData()
-            result.DeepCopy(points_to_poly.GetOutput())
-            
-            points_to_poly.RemoveAllInputs()
-            mask.RemoveAllInputs()
-            del points_to_poly, mask
-        else:
-            result = vtk.vtkPolyData()
-            result.DeepCopy(raw_result)
-            
-            decimate.RemoveAllInputs()
-            del decimate
-        
-        logger.info(f"Subsampling result: {result.GetNumberOfPoints()} points, {result.GetNumberOfCells()} cells")
-        return result
-        
-    except Exception as e:
-        logger.error(f"Error in subsampling: {e}")
-        logger.error("Warning: Using original data without subsampling")
-        return polydata
-
-
-def interpolate_distance_to_original(distance_result, original_polydata):
-    """
-    Simplified Interpolation
-    """
-    logger.info("Creating result with original geometry...")
-    
-    try:
-        output = vtk.vtkPolyData()
-        output.DeepCopy(original_polydata)
-        
-        distance_array = vtk.vtkDoubleArray()
-        distance_array.SetName("SignedDistance")
-        distance_array.SetNumberOfTuples(output.GetNumberOfPoints())
-        distance_array.FillComponent(0, 0.0)
-        
-        source_distance_array = distance_result.GetPointData().GetArray("SignedDistance") or distance_result.GetPointData().GetArray("Distance")
-        if source_distance_array:
-            logger.info("Attempting simple interpolation...")
-            
-            source_points = distance_result.GetPoints()
-            target_points = output.GetPoints()
-            
-            for i in range(min(1000, output.GetNumberOfPoints())):
-                target_point = target_points.GetPoint(i)
-                
-                closest_distance = float('inf')
-                closest_value = 0.0
-                
-                for j in range(min(100, distance_result.GetNumberOfPoints())):
-                    source_point = source_points.GetPoint(j)
-                    dist = ((target_point[0] - source_point[0])**2 + 
-                           (target_point[1] - source_point[1])**2 + 
-                           (target_point[2] - source_point[2])**2)**0.5
-                    
-                    if dist < closest_distance:
-                        closest_distance = dist
-                        closest_value = source_distance_array.GetValue(j)
-                
-                distance_array.SetValue(i, closest_value)
-                
-                if i % 100 == 0:  # Progress update
-                    if 'slicer' in globals():
-                        slicer.app.processEvents()
-        
-        output.GetPointData().SetScalars(distance_array)
-        
-        const_array = vtk.vtkDoubleArray()
-        const_array.SetName("Original")
-        const_array.SetNumberOfTuples(output.GetNumberOfPoints())
-        const_array.FillComponent(0, 1.0)
-        output.GetPointData().AddArray(const_array)
-        
-        logger.info(f"Interpolation completed: {output.GetNumberOfPoints()} points")
-        return output
-        
-    except Exception as e:
-        logger.error(f"Error in interpolation: {e}")
-        logger.error("Returning subsampled result...")
-        return distance_result
-
-
-def compute_distance_standard(polydata1, polydata2, signed=True):
-
-    try:
-        logger.info("Creating distance filter...")
-        distance_filter = vtk.vtkDistancePolyDataFilter()
-        
-        logger.info("Setting input data...")
-        distance_filter.SetInputData(0, polydata1)
-        distance_filter.SetInputData(1, polydata2)
-        distance_filter.SetSignedDistance(signed)
-        
-        if 'slicer' in globals():
-            slicer.app.processEvents()
-        
-        logger.info("Computing distances...")
-        distance_filter.Update()
-        
-        logger.info("Getting output...")
-        raw_output = distance_filter.GetOutput()
-        
-        if not raw_output or raw_output.GetNumberOfPoints() == 0:
-            raise ValueError("Distance computation failed - empty output")
-        
-        output = vtk.vtkPolyData()
-        output.DeepCopy(raw_output)
-        
-        distance_filter.RemoveAllInputs()
-        del distance_filter
-        del raw_output
-        
-        logger.info("Processing results...")
-        if output.GetCellData().GetArray("Distance"):
-            output.GetCellData().RemoveArray("Distance")
-        
-        distance_name = "SignedDistance" if signed else "AbsoluteDistance"
-        distance_array = output.GetPointData().GetArray("Distance")
-        if distance_array:
-            distance_array.SetName(distance_name)
-        else:
-            raise ValueError("No distance array found in output")
-
-        # Add a constant scalar array to visualize the original model easily
-        const_array = vtk.vtkDoubleArray()
-        const_array.SetName("Original")
-        const_array.SetNumberOfTuples(output.GetNumberOfPoints())
-        const_array.FillComponent(0, 1.0)
-        output.GetPointData().AddArray(const_array)
-        
-        logger.info(f"Distance computation completed successfully: {output.GetNumberOfPoints()} points")
-        return output
-        
-    except Exception as e:
-        logger.error(f"Error during distance computation: {str(e)}")
-        traceback.print_exc()
-        raise RuntimeError(f"Distance computation failed: {str(e)}")
-
 def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_text=".vtk", zone_type="merged"):
     """
     A batch process that executes each pair of files in a separate subprocess
@@ -2281,6 +1910,7 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
     import subprocess
     import json
     import tempfile
+    import time
     
     input_dir1 = Path(t1_dir)
     input_dir2 = Path(t2_dir)
@@ -2429,49 +2059,75 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
     logger.info(f"Using Python executable: {slicer_python}")
     logger.info(f"Worker script: {worker_script}")
 
+    # Each pair already runs in its own process, and pairs are independent, so
+    # run a few at a time instead of one. Capped low because each worker holds a
+    # full pair of meshes plus the distance filter's locators in memory.
+    try:
+        max_workers = max(1, min(4, (os.cpu_count() or 2) // 2))
+    except Exception:
+        max_workers = 2
+    logger.info(f"Running up to {max_workers} worker(s) at a time")
+
     processed_pairs = []
-    
-    for idx, pair in enumerate(pairs_to_process):
-        processed_count = idx + 1
+    running = []          # (Popen, pair, output_filename, deadline, log_dir)
+    queue = list(pairs_to_process)
+    launched = 0
+
+    def _launch(pair):
+        nonlocal launched
+        launched += 1
         output_filename = f"{pair['patient']}_{pair['zone']}_ModelDistance{output_text}"
         output_path = str(output_dir / output_filename)
 
-        logger.info(f"Processing [{processed_count}/{total_files}]: {Path(pair['file1']).name}")
+        logger.info(f"Processing [{launched}/{total_files}]: {Path(pair['file1']).name}")
         logger.info(f"  with: {Path(pair['file2']).name}")
         logger.info(f"  Patient: {pair['patient_id']}, Zone: {pair['zone']}")
-        
-        if psutil:
-            mem = psutil.virtual_memory()
-            logger.debug(f"Memory before: {mem.percent:.1f}% ({mem.used / 1024**3:.1f}GB / {mem.total / 1024**3:.1f}GB)")
 
+        cmd = [
+            slicer_python, worker_script,
+            "--file1", pair['file1'],
+            "--file2", pair['file2'],
+            "--output", output_path,
+            "--signed" if signed else "--unsigned",
+        ]
+        # Pipes would deadlock: nothing reads them until the worker exits, so a
+        # worker writing more than the pipe buffer blocks for ever. Files never do.
+        log_dir = tempfile.mkdtemp(prefix="vface_worker_")
+        out_log = os.path.join(log_dir, "stdout.txt")
+        err_log = os.path.join(log_dir, "stderr.txt")
+        proc = subprocess.Popen(cmd, stdout=open(out_log, "w"), stderr=open(err_log, "w"), text=True)
+        return (proc, pair, output_filename, time.monotonic() + 600, log_dir)
+
+    def _read_log(path):
         try:
-            cmd = [
-                slicer_python, worker_script,
-                "--file1", pair['file1'],
-                "--file2", pair['file2'],
-                "--output", output_path,
-                "--signed" if signed else "--unsigned",
-            ]
-            
-            logger.info(f"Launching subprocess...")
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=600,
-            )
-            
-            if proc.stdout:
-                for line in proc.stdout.strip().split('\n'):
+            with open(path, encoding="utf-8", errors="replace") as f:
+                return f.read().strip()
+        except OSError:
+            return ""
+
+    def _collect(proc, pair, output_filename, timed_out, log_dir):
+        out_log = os.path.join(log_dir, "stdout.txt")
+        err_log = os.path.join(log_dir, "stderr.txt")
+        try:
+            if timed_out:
+                proc.kill()
+                proc.wait()
+                logger.error(f"  TIMEOUT processing {Path(pair['file1']).name} (>10 min)")
+                return
+
+            stdout = _read_log(out_log)
+            if stdout:
+                for line in stdout.split('\n'):
                     logger.info(f"  [worker] {line}")
-            
+
             if proc.returncode != 0:
                 logger.error(f"  [worker] ERROR (exit code {proc.returncode}):")
-                if proc.stderr:
-                    for line in proc.stderr.strip().split('\n')[-5:]:
+                stderr = _read_log(err_log)
+                if stderr:
+                    for line in stderr.split('\n')[-5:]:
                         logger.error(f"  [worker] {line}")
-                continue
-            
+                return
+
             processed_pairs.append({
                 'patient_id': pair['patient_id'],
                 'zone': pair['zone'],
@@ -2479,22 +2135,41 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
                 't2_file': Path(pair['file2']).name,
                 'output_file': output_filename,
             })
-            
             logger.info(f"Successfully processed {output_filename}")
-            
-        except subprocess.TimeoutExpired:
-            logger.error(f"  TIMEOUT processing {Path(pair['file1']).name} (>10 min)")
-        except Exception as e:
-            logger.error(f"  Error: {e}")
-            traceback.print_exc()
-        
+        finally:
+            shutil.rmtree(log_dir, ignore_errors=True)
+
+    while queue or running:
+        # Hold back a new worker while memory is already tight.
+        while queue and len(running) < max_workers and not (running and check_memory_usage()):
+            try:
+                running.append(_launch(queue.pop(0)))
+            except Exception as e:
+                logger.error(f"  Error: {e}")
+                traceback.print_exc()
+
+        still_running = []
+        for proc, pair, output_filename, deadline, log_dir in running:
+            timed_out = proc.poll() is None and time.monotonic() > deadline
+            if proc.poll() is None and not timed_out:
+                still_running.append((proc, pair, output_filename, deadline, log_dir))
+                continue
+            try:
+                _collect(proc, pair, output_filename, timed_out, log_dir)
+            except Exception as e:
+                logger.error(f"  Error: {e}")
+                traceback.print_exc()
+        running = still_running
+
         if psutil:
             mem = psutil.virtual_memory()
-            logger.debug(f"Memory after:  {mem.percent:.1f}% ({mem.used / 1024**3:.1f}GB / {mem.total / 1024**3:.1f}GB)")
-        
+            logger.debug(f"Memory: {mem.percent:.1f}% ({mem.used / 1024**3:.1f}GB / {mem.total / 1024**3:.1f}GB)")
+
         if 'slicer' in globals():
             slicer.app.processEvents()
-    
+        if running:
+            time.sleep(0.2)
+
     logger.info(f"Processing complete. {len(processed_pairs)}/{total_files} pairs processed.")
     for pair in processed_pairs:
         logger.info(f"  {pair['patient_id']} ({pair['zone']}): {pair['output_file']}")
@@ -2518,18 +2193,28 @@ def search(path, *args):
             arguments.extend(arg)
         else:
             arguments.append(arg)
-    return {
-        key: sorted(
-            [
-                i
-                for i in iglob(
-                    os.path.normpath("/".join([path, "**", "*"])), recursive=True
-                )
-                if i.endswith(key)
-            ]
-        )
-        for key in arguments
-    }
+    # Walk the tree once and bucket by extension rather than re-globbing per key.
+    entries = sorted(
+        iglob(os.path.normpath("/".join([path, "**", "*"])), recursive=True)
+    )
+    return {key: [i for i in entries if i.endswith(key)] for key in arguments}
+
+def _landmark_label(dic_features, composant, i):
+    """Rebuild the "Landmarks" cell a feature column refers to."""
+    first = dic_features.get("Landmarks"+str(2*i+1))
+    second = dic_features.get("Landmarks"+str(2*i+2))
+    if composant in ["Transverse","Vertical","AP"]:
+        return first+" - "+second
+    return (first+" / "+second).replace("_","-")
+
+
+def _index_measurements(df):
+    """{patient: {landmark: row}}, keeping the first row of a repeated landmark."""
+    index = {}
+    for row in df.to_dict("records"):
+        index.setdefault(row["ID"], {}).setdefault(row["Landmarks"], row)
+    return index
+
 
 def postprocess (cb_path,mand_path,max_path,exemple_path,outputfolder):
     file_cb = pd.read_excel(cb_path)
@@ -2585,7 +2270,14 @@ def postprocess (cb_path,mand_path,max_path,exemple_path,outputfolder):
                         else:
                             logger.error("Issue")
 
-    output_df = pd.DataFrame(columns=file_alls.columns)
+    # Index each measurement table by patient then by landmark once, instead of
+    # rescanning the whole frame with a boolean mask for every single feature.
+    measurements = {
+        "CB": _index_measurements(file_cb),
+        "MAX": _index_measurements(file_max),
+        "MAND": _index_measurements(file_mand),
+    }
+
     unique_cb = file_cb["ID"].unique()
     unique_max = file_max["ID"].unique()
     unique_mand = file_mand["ID"].unique()
@@ -2593,82 +2285,32 @@ def postprocess (cb_path,mand_path,max_path,exemple_path,outputfolder):
     if unique_cb.all() != unique_max.all() or unique_cb.all() !=unique_mand.all():
         logger.error("Issue on the ID patient")
 
+    records = []
     for val in unique_cb:
-        output_df.loc[val, "ID"] = val
+        record = {"ID": val}
 
-        cb_df = file_cb[file_cb["ID"]==val]
-        for cb_features,dic_features in dic_columns.items():
-            if dic_features.get("Location")=="CB":
-                if dic_features.get("Average") == "No":
-                    if dic_features.get("Composant") in ["Transverse","Vertical","AP"]:
-                        landmark = dic_features.get("Landmarks1")+" - "+dic_features.get("Landmarks2")
-                    else:
-                        landmark = dic_features.get("Landmarks1")+" / "+dic_features.get("Landmarks2")
-                        landmark = landmark.replace("_","-")
-                    line_specific = cb_df[cb_df["Landmarks"] == landmark]
-                    output_df.loc[val, cb_features] = float(line_specific[dic_features.get("Composant")].values[0])
-                else:
-                    average = 0
-                    nbr = dic_features.get("Nbr_Landmarks")//2
-                    for i in range(nbr):
-                        if dic_features.get("Composant") in ["Transverse","Vertical","AP"]:
-                            landmark = dic_features.get("Landmarks"+str(2*i+1))+" - "+dic_features.get("Landmarks"+str(2*i+2))
-                        else:
-                            landmark = dic_features.get("Landmarks"+str(2*i+1))+" / "+dic_features.get("Landmarks"+str(2*i+2))
-                            landmark = landmark.replace("_","-")
-                        line_specific = cb_df[cb_df["Landmarks"] == landmark]
-                        average += float(line_specific[dic_features.get("Composant")].values[0])
-                    average /= nbr
-                    output_df.loc[val, cb_features] = average
-        
-        max_df = file_max[file_max["ID"]==val]
-        for max_features,dic_features in dic_columns.items():
-            if dic_features.get("Location")=="MAX":
-                if dic_features.get("Average") == "No":
-                    if dic_features.get("Composant") in ["Transverse","Vertical","AP"]:
-                        landmark = dic_features.get("Landmarks1")+" - "+dic_features.get("Landmarks2")
-                    else:
-                        landmark = dic_features.get("Landmarks1")+" / "+dic_features.get("Landmarks2")
-                        landmark = landmark.replace("_","-")
-                    line_specific = max_df[max_df["Landmarks"] == landmark]
-                    output_df.loc[val, max_features] = float(line_specific[dic_features.get("Composant")].values[0])
-                else:
-                    average = 0
-                    nbr = dic_features.get("Nbr_Landmarks")//2
-                    for i in range(nbr):
-                        if dic_features.get("Composant") in ["Transverse","Vertical","AP"]:
-                            landmark = dic_features.get("Landmarks"+str(2*i+1))+" - "+dic_features.get("Landmarks"+str(2*i+2))
-                        else:
-                            landmark = dic_features.get("Landmarks"+str(2*i+1))+" / "+dic_features.get("Landmarks"+str(2*i+2))
-                            landmark = landmark.replace("_","-")
-                        line_specific = max_df[max_df["Landmarks"] == landmark]
-                        average += float(line_specific[dic_features.get("Composant")].values[0])
-                    average /= nbr
-                    output_df.loc[val, max_features] = average
-        
-        mand_df = file_mand[file_mand["ID"]==val]
-        for mand_features,dic_features in dic_columns.items():
-            if dic_features.get("Location")=="MAND":
-                if dic_features.get("Average") == "No":
-                    if dic_features.get("Composant") in ["Transverse","Vertical","AP"]:
-                        landmark = dic_features.get("Landmarks1")+" - "+dic_features.get("Landmarks2")
-                    else:
-                        landmark = dic_features.get("Landmarks1")+" / "+dic_features.get("Landmarks2")
-                        landmark = landmark.replace("_","-")
-                    line_specific = mand_df[mand_df["Landmarks"] == landmark]
-                    output_df.loc[val, mand_features] = float(line_specific[dic_features.get("Composant")].values[0])
-                else:
-                    average = 0
-                    nbr = dic_features.get("Nbr_Landmarks")//2
-                    for i in range(nbr):
-                        if dic_features.get("Composant") in ["Transverse","Vertical","AP"]:
-                            landmark = dic_features.get("Landmarks"+str(2*i+1))+" - "+dic_features.get("Landmarks"+str(2*i+2))
-                        else:
-                            landmark = dic_features.get("Landmarks"+str(2*i+1))+" / "+dic_features.get("Landmarks"+str(2*i+2))
-                            landmark = landmark.replace("_","-")
-                        line_specific = mand_df[mand_df["Landmarks"] == landmark]
-                        average += float(line_specific[dic_features.get("Composant")].values[0])
-                    average /= nbr
-                    output_df.loc[val, mand_features] = average
+        for feature, dic_features in dic_columns.items():
+            location = dic_features.get("Location")
+            if location not in measurements:
+                continue
+
+            by_landmark = measurements[location].get(val)
+            if by_landmark is None:
+                logger.warning(f"No {location} measurement for this patient {val}")
+                continue
+
+            composant = dic_features.get("Composant")
+            if dic_features.get("Average") == "No":
+                record[feature] = float(by_landmark[_landmark_label(dic_features, composant, 0)][composant])
+            else:
+                nbr = dic_features.get("Nbr_Landmarks")//2
+                average = 0
+                for i in range(nbr):
+                    average += float(by_landmark[_landmark_label(dic_features, composant, i)][composant])
+                record[feature] = average / nbr
+
+        records.append(record)
+
+    output_df = pd.DataFrame(records, columns=file_alls.columns)
 
     output_df.to_excel(os.path.join(outputfolder,"PostProcess_Measurements.xlsx"),index=False)

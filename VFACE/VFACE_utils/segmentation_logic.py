@@ -1,9 +1,13 @@
 import vtk
 import numpy as np
 import slicer
+import json
 import logging
 import os
+import re
+import shutil
 import sys
+import zipfile
 from pathlib import Path
 from enum import Flag, auto
 import qt
@@ -51,11 +55,80 @@ class ExportFormat(Flag):
     VTK = auto()
     VTK_MERGED = auto()
 
+def nnUnetFolder() -> Path:
+    """Folder holding the nnUNet weights shipped with the module."""
+    return Path(__file__).parent.parent.joinpath("Resources", "ML").resolve()
+
+
 class PythonDependencyChecker:
-    """Check python dependency"""
-    
+    """Download the DentalSegmentator weights when they are missing.
+
+    Only dataset.json and plans.json are committed: the checkpoint is far too
+    large for the repository, and .gitignore excludes it. This class used to
+    report "Weights check completed" without checking anything, so nnUNet was
+    handed a model folder with no fold_0, refused to start, and the caller then
+    waited out its full one hour timeout on a process that was never launched.
+    """
+
+    # Relative to the weights folder, the file that proves they are installed.
+    CHECKPOINT = Path(
+        "Dataset111_453CT", "nnUNetTrainer__nnUNetPlans__3d_fullres", "fold_0", "checkpoint_final.pth"
+    )
+
+    def __init__(self, weightsFolder=None):
+        self.weightsFolder = Path(weightsFolder) if weightsFolder else nnUnetFolder()
+
+    def areWeightsMissing(self) -> bool:
+        return not self.weightsFolder.joinpath(self.CHECKPOINT).is_file()
+
+    def downloadUrl(self):
+        """The URL recorded in download_info.json, or None if unusable."""
+        info_path = self.weightsFolder.joinpath("download_info.json")
+        try:
+            with open(info_path, encoding="utf-8") as f:
+                return json.load(f).get("download_url")
+        except (OSError, ValueError) as e:
+            logger.error(f"Cannot read {info_path}: {e}")
+            return None
+
     def downloadWeightsIfNeeded(self, onLine):
         """Check and download the weights if necessary"""
+        if not self.areWeightsMissing():
+            onLine("Weights check completed")
+            return True
+
+        url = self.downloadUrl()
+        if not url:
+            onLine(f"Model weights are missing and no download URL is available in {self.weightsFolder}")
+            return False
+
+        onLine(f"Model weights are missing, downloading them from {url}")
+        onLine("This is about 220 MB and only happens once.")
+
+        temp_dir = Path(slicer.util.tempDirectory())
+        zip_path = temp_dir.joinpath("weights.zip")
+        try:
+            slicer.util.downloadFile(url, str(zip_path))
+            self.weightsFolder.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(zip_path, "r") as archive:
+                # dataset.json and plans.json are versioned with the module, and
+                # the archive ships them with CRLF line endings: extracting over
+                # them leaves the checkout dirty for no change of content.
+                members = [
+                    m for m in archive.namelist()
+                    if not self.weightsFolder.joinpath(m).exists()
+                ]
+                archive.extractall(self.weightsFolder, members)
+        except Exception as e:
+            onLine(f"Failed to download the model weights: {e}")
+            return False
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+        if self.areWeightsMissing():
+            onLine(f"The downloaded archive did not contain {self.CHECKPOINT}")
+            return False
+
         onLine("Weights check completed")
         return True
 
@@ -65,7 +138,10 @@ class SegmentationLogic:
     """
     Class containing all the dental segmentation logic without UI
     """
-    
+
+    # Set once the nnUNet requirements have been resolved in this Slicer session.
+    _dependenciesChecked = False
+
     def __init__(self):
         self.folderPath = ""
         self.folderFiles = []
@@ -89,7 +165,10 @@ class SegmentationLogic:
         self.folderPath = folderPath
         folder = Path(folderPath)
         # Filtrer selon vos formats, ex. tous les fichiers NIfTI
-        self.folderFiles = list(folder.rglob("*.nii*")) + list(folder.rglob("*.gipl")) + list(folder.rglob("*.gipl.gz"))
+        self.folderFiles = [
+            f for f in sorted(folder.rglob("*"))
+            if f.is_file() and f.name.endswith((".nii", ".nii.gz", ".nrrd", ".nrrd.gz", ".gipl", ".gipl.gz"))
+        ]
         self.currentFileIndex = 0
         self.log_info(f"Found {len(self.folderFiles)} file(s) in the folder.")
     
@@ -122,6 +201,23 @@ class SegmentationLogic:
         """Error log"""
         logger.error(f"[ERROR] {message}")
         self.fullInfoLogs.append(f"ERROR: {message}")
+
+    # A tqdm bar: " 42%|####      | 118/280 [00:02<00:03, 45.29it/s]"
+    _PROGRESS_LINE = re.compile(r"\d+%\|")
+
+    def logInferenceOutput(self, message):
+        """Log nnUNet's output, minus its progress bars.
+
+        Qt delivers this from inside slicer.app.processEvents(), and the logger
+        writes to a stdout that Slicer captures into a pipe it drains from that
+        same event loop. Echoing a tqdm bar redrawn dozens of times per scan
+        fills the pipe while the loop is busy in this very handler: write()
+        blocks, nothing can drain the pipe any more, and Slicer freezes for good.
+        """
+        for line in str(message).splitlines():
+            line = line.strip()
+            if line and not self._PROGRESS_LINE.search(line):
+                self.log_info(line)
     
     def processAllFiles(self):
         """Process all input files"""
@@ -138,6 +234,7 @@ class SegmentationLogic:
             return False
         
         # Processing all files
+        processed = 0
         for i, file_path in enumerate(self.folderFiles):
             self.currentFileIndex = i
             self.log_info(f"Processing file {i+1}/{len(self.folderFiles)}: {file_path.name}")
@@ -158,9 +255,16 @@ class SegmentationLogic:
                 self.log_error(f"Exception processing file {file_path}: {str(e)}")
                 continue
             
+            processed += 1
             slicer.app.processEvents()
-        
-        self.log_info("All files processing completed")
+
+        self.log_info(f"Processing completed: {processed}/{len(self.folderFiles)} file(s) segmented")
+
+        # Returning True regardless meant the caller logged "completed
+        # successfully" and moved on to steps reading an empty output folder.
+        if processed == 0:
+            self.log_error("No file could be segmented")
+            return False
         return True
     
     def processFile(self, file_path):
@@ -191,21 +295,27 @@ class SegmentationLogic:
     def _installDependencies(self):
         """Install the dependencies"""
         try:
+            if SegmentationLogic._dependenciesChecked:
+                return True
+
             self.log_info("Checking dependencies...")
-            
+
             if not self.isNNUNetModuleInstalled():
                 self.log_error("NNUNet module not installed")
                 return False
-            
+
             if not self._installNNUNetIfNeeded():
                 return False
-            
+
             if not self._dependencyChecker.downloadWeightsIfNeeded(self.log_info):
                 return False
-            
+
+            # run_bds is called once per folder, five times per pipeline: resolving
+            # the pip requirements again each time costs minutes and finds nothing.
+            SegmentationLogic._dependenciesChecked = True
             self.log_info("Dependencies check completed")
             return True
-            
+
         except Exception as e:
             self.log_error(f"Error installing dependencies: {str(e)}")
             return False
@@ -226,9 +336,19 @@ class SegmentationLogic:
             
             #Start the segmentation
             self.logic.startSegmentation(volumeNode)
-            
+
+            # startSegmentation reports an invalid configuration through
+            # errorOccurred and returns without launching anything. Both return
+            # values used to be discarded, so the wait below polled a process
+            # that would never run until its one hour timeout expired.
+            process = self._inferenceProcess()
+            if process is not None and process.state() == qt.QProcess.NotRunning:
+                self.log_error("nnUNet did not start, see the error above")
+                return False
+
             # Wait end of segmentation
-            self._waitForSegmentationWithEvents()
+            if not self._waitForSegmentationWithEvents():
+                return False
             
             # Process results
             return self._processSegmentationResults(volumeNode)
@@ -237,6 +357,13 @@ class SegmentationLogic:
             self.log_error(f"Error in segmentation: {str(e)}")
             return False
     
+    def _inferenceProcess(self):
+        """The QProcess running nnUNet, or None when the logic exposes no such process."""
+        try:
+            return self.logic.inferenceProcess.process
+        except AttributeError:
+            return None
+
     def _waitForSegmentationWithEvents(self):
         """Wait the end of the segmentation"""
         import time
@@ -263,13 +390,16 @@ class SegmentationLogic:
                 elif hasattr(self.logic, 'running'):
                     segmentation_finished = not self.logic.running
                 else:
-                    try:
-                        test_seg = self.logic.loadSegmentation()
-                        if test_seg:
-                            segmentation_finished = True
-                    except:
-                        segmentation_finished = False
-                        
+                    # SlicerNNUNetLib exposes none of the above: watch the inference
+                    # QProcess itself. Loading the result here instead would read the
+                    # file while nnUNet is still writing it and leak a node per scan,
+                    # since _processSegmentationResults loads it again right after.
+                    process = self._inferenceProcess()
+                    if process is None:
+                        self.log_error("Cannot tell whether the segmentation is running, giving up")
+                        return False
+                    segmentation_finished = process.state() == qt.QProcess.NotRunning
+
             except Exception as e:
                 self.log_error(f"Error checking segmentation status: {str(e)}")
                 # If error just wait
@@ -545,9 +675,12 @@ class SegmentationLogic:
             self.log_info("MergedVTK: MarchingCubes")
             mc = vtk.vtkDiscreteMarchingCubes()
             mc.SetInputData(img)
-            for l in np.unique(vtk_to_numpy(img.GetPointData().GetScalars())):
-                if l: 
-                    mc.SetValue(int(l), int(l))
+            # SetValue takes a contour index, not a label value: indexing by label
+            # leaves index 0 at its default and meshes the background as well.
+            labelValues = [int(l) for l in np.unique(vtk_to_numpy(img.GetPointData().GetScalars())) if l]
+            mc.SetNumberOfContours(len(labelValues))
+            for i, l in enumerate(labelValues):
+                mc.SetValue(i, l)
             mc.Update()
 
             # Clean + smooth
@@ -615,8 +748,7 @@ class SegmentationLogic:
                 constLabel.SetName("Label")
                 constLabel.SetNumberOfComponents(1)
                 constLabel.SetNumberOfTuples(out.GetNumberOfCells())
-                for c in range(out.GetNumberOfCells()):
-                    constLabel.SetValue(c, int(labelValue))
+                constLabel.FillComponent(0, float(labelValue))
                 out.GetCellData().AddArray(constLabel)
                 out.GetCellData().SetScalars(constLabel)
 
@@ -841,7 +973,7 @@ class SegmentationLogic:
         try:
             from SlicerNNUNetLib import SegmentationLogic
             logic = SegmentationLogic()
-            logic.progressInfo.connect(self.log_info)
+            logic.progressInfo.connect(self.logInferenceOutput)
             logic.errorOccurred.connect(self.log_error)
             return logic
         except Exception as e:
@@ -851,11 +983,26 @@ class SegmentationLogic:
     @classmethod
     def nnUnetFolder(cls) -> Path:
         """Retourne le dossier NNUNet"""
-        fileDir = Path(__file__).parent
-        return fileDir.joinpath("VFACE", "Resources", "ML").resolve()
+        # This used to build <...>/VFACE_utils/VFACE/Resources/ML, which does not exist.
+        return nnUnetFolder()
 
 
 # ─── Utils functions ─────────────────────────────────────────────────────
+
+# The SegmentationLogic currently running, so Cancel can reach it. Slicer stays
+# responsive during segmentation (processEvents is called between files and while
+# waiting on nnUNet), but a Cancel handler that built a fresh SegmentationLogic
+# was stopping a brand new idle process instead of the running one.
+_activeLogic = None
+
+
+def stop_active_segmentation():
+    """Stop the segmentation currently running, if any."""
+    if _activeLogic is None:
+        return False
+    _activeLogic.stop()
+    return True
+
 
 def run_dental_segmentation(input_folder, output_folder, model_name="DentalSegmentator", 
                            device="cuda", export_formats=None):
@@ -877,8 +1024,10 @@ def run_dental_segmentation(input_folder, output_folder, model_name="DentalSegme
         export_formats = ExportFormat.STL | ExportFormat.NIFTI
     
     # Create Logic instance
+    global _activeLogic
     logic = SegmentationLogic()
-    
+    _activeLogic = logic
+
     try:
         # Configuration
         logic.setInputFolder(input_folder)
@@ -899,3 +1048,4 @@ def run_dental_segmentation(input_folder, output_folder, model_name="DentalSegme
     finally:
         # Nettoyage
         logic.stop()
+        _activeLogic = None

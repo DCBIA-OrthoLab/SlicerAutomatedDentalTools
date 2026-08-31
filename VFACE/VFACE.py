@@ -26,12 +26,12 @@ try:
     
     from VFACE_utils import createlistprocess
     importlib.reload(createlistprocess)
-    from VFACE_utils.createlistprocess import CreateListProcess
+    from VFACE_utils.createlistprocess import CreateListProcess, NumberScan
 
 except Exception as e:
     logger.error(f"Error loading VFACE utilities: {e}")
     from VFACE_utils.Progress import DisplayALICBCT,DisplayAMASSS,DisplayASOCBCT,Display
-    from VFACE_utils.createlistprocess import CreateListProcess
+    from VFACE_utils.createlistprocess import CreateListProcess, NumberScan
 
 import vtk
 
@@ -307,6 +307,9 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.paused_for_visualization = False
         self.current_output_to_load = None
         self.current_process_info = None
+        # onCliUpdated only assigns this when progress is 0, so a first event
+        # carrying a non-zero progress would read it before it exists.
+        self.updateProgessBar = False
 
     def reloadCustomModules(self) -> None:
         """
@@ -810,6 +813,13 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "V_FACE": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/VFACE/V_FACE_Models.zip",
         }
 
+        # A file each archive is known to contain. Without it the folder alone is
+        # used to decide whether the download already happened, and the V_FACE
+        # folder is created by the Default List button before the models exist.
+        check_files = {
+            "V_FACE": "sym_asymm.txt",
+        }
+
         if not os.path.exists(self.SlicerDownloadPath):
             os.makedirs(self.SlicerDownloadPath)
 
@@ -819,6 +829,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     url=url_or_dict,
                     directory=self.SlicerDownloadPath,
                     folder_name=name,
+                    check_file=check_files.get(name),
                 )
             elif isinstance(url_or_dict, dict):
                 for subfolder_name, url in url_or_dict.items():
@@ -830,12 +841,17 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             else:
                 logger.warning(f"Warning: Unknown type for {name}: {type(url_or_dict)}")
             
-    def DownloadUnzip(self, url, directory, folder_name=None, num_downl=1, total_downloads=1):
+    def DownloadUnzip(self, url, directory, folder_name=None, num_downl=1, total_downloads=1, check_file=None):
 
         out_path = os.path.join(directory, folder_name)
-        if not os.path.exists(out_path):
+        # The folder alone is a poor "already installed" test: another feature may
+        # have created it (Default List creates V_FACE/DefaultList, hence V_FACE),
+        # and a download that fails leaves it behind empty. Either way this skipped
+        # the download for ever. check_file names something the archive contains.
+        installed = os.path.join(out_path, check_file) if check_file else out_path
+        if not os.path.exists(installed):
             logger.info("Downloading {}...".format(folder_name.split(os.sep)[-1]))
-            os.makedirs(out_path)
+            os.makedirs(out_path, exist_ok=True)
 
             temp_path = os.path.join(directory, "temp.zip")
 
@@ -987,6 +1003,13 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onApplyButton(self) -> None:
         import time
+
+        # Every step downstream reports "0 file" on an input folder holding nothing
+        # it can read, and the run walks its whole plan producing nothing. Say so
+        # here instead, while the user can still act on it.
+        if not self.checkInputFolder():
+            return
+
         self.CliStartTime = time.time()
         slicer.app.processEvents()
 
@@ -1005,6 +1028,14 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                 mode2 = self.ui.comboBox4.currentText,
                                 model_vface = os.path.join(self.SlicerDownloadPath,"V_FACE"))
 
+        if not self.list_process:
+            PopUpWindow(
+                title="Nothing to run",
+                text="No processing step could be built for the selected options.\n"
+                     "Check the log for the reason.",
+            ).exec_()
+            return
+
         self.ui.applyButton.enabled = False
         self.ui.CheckDependencyButton.enabled = False
         self.ui.cancelButton.setVisible(True)
@@ -1014,6 +1045,34 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.NumberProcess = len(self.list_process)
         self.executeProcess(self.list_process[0])
         del self.list_process[0]
+
+    def checkInputFolder(self) -> bool:
+        """Warn and refuse to start when the input folder holds no readable scan."""
+        input_folder = self._parameterNode.InputFolder
+
+        if not input_folder or not os.path.isdir(input_folder):
+            PopUpWindow(
+                title="Input folder not found",
+                text=f"This input folder does not exist:\n\n{input_folder}",
+            ).exec_()
+            return False
+
+        nb_scan = NumberScan(input_folder)
+        if nb_scan == 0:
+            PopUpWindow(
+                title="No scan found",
+                text=(
+                    f"No scan found in:\n\n{input_folder}\n\n"
+                    "Expected a CBCT volume per patient, as .nii, .nii.gz, .nrrd,\n"
+                    ".nrrd.gz, .gipl or .gipl.gz. Surface meshes (.vtk, .stl) are\n"
+                    "produced by this module, they are not an input for it."
+                ),
+            ).exec_()
+            logger.error(f"No scan found in the input folder: {input_folder}")
+            return False
+
+        logger.info(f"{nb_scan} patient(s) found in the input folder")
+        return True
 
     def onContinueButton(self) -> None:
         """
@@ -1091,11 +1150,13 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         if parent_dir not in sys.path:
                             sys.path.insert(0, parent_dir)
                         
-                        from VFACE_utils.segmentation_logic import SegmentationLogic
-                        # Create temporary instance to stop all processes
-                        temp_logic = SegmentationLogic()
-                        temp_logic.stop()
-                        logger.info("Segmentation process canceled")
+                        from VFACE_utils.segmentation_logic import stop_active_segmentation
+                        # Stop the logic that is actually running: building a fresh
+                        # SegmentationLogic here only killed a brand new idle process.
+                        if stop_active_segmentation():
+                            logger.info("Segmentation process canceled")
+                        else:
+                            logger.info("No segmentation currently running")
                     except Exception as e:
                         logger.error(f"Error stopping segmentation: {e}")
                 
@@ -1138,8 +1199,14 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.list_process.clear()
         self.resetUIAfterCancel()
 
-        confirmation = PopUpWindow(title="Process Cancelled", text="The process has been successfully cancelled.")
-        confirmation.exec_()
+        # Deferred for the same reason as the completion dialog above: cancelling
+        # can be reached while a CLI observer is still dispatching.
+        qt.QTimer.singleShot(
+            0,
+            lambda: PopUpWindow(
+                title="Process Cancelled", text="The process has been successfully cancelled."
+            ).exec_(),
+        )
 
     def resetUIAfterCancel(self) -> None:
         """
@@ -1275,7 +1342,11 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             logger.info(f"{self.module_name} is executed.")
             self.ui.label_3.setText(f"Process : {self.module_name} ({self.ActualProcess}/{self.NumberProcess})")
-            
+
+            # No CLI is running during a Python step: forget the previous node so
+            # a late event from it cannot advance the chain from under our feet.
+            self.cliNode = None
+
             # For long Python process, use a timer to maintain reactivity
             self.python_process = process
             self.python_parameters = parameters
@@ -1341,6 +1412,18 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         import time
         import json
         import subprocess
+
+        # Only the node the pipeline is currently waiting on may advance it.
+        # Observers can outlive their step, so a stale callback would start the
+        # next step while the current CLI was still writing its results - the
+        # measurements then read a folder that AutoMatrix had not filled yet -
+        # and would fire again after OnEndProcess had cleared the state, raising
+        # AttributeError on current_process_info.
+        if self.cliNode is None or self.current_process_info is None:
+            return
+        if caller.GetID() != self.cliNode.GetID():
+            return
+
         cliNode = caller
 
         status = cliNode.GetStatus()
@@ -1431,17 +1514,19 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.current_output_to_load = None
         self.current_process_info = None
 
-        completion_dialog = PopUpWindow(title="Process Complete", text="Processing completed successfully!")
-        completion_dialog.exec_()
         self._checkCanApply()
 
-        # Clean up temporary files if requested
+        # Clean up temporary files if requested. This used to sit after the dialog
+        # below, so a dialog left unanswered also left the output folder half done.
         if not self.ui.checkBox.isChecked():
             files_to_keep = []
             if "Visualization" in self.ui.comboBox2.currentText:
                 files_to_keep.append("Heatmaps")
                 files_to_keep.append("VTK Files")
-            if "Quantification" in self.ui.comboBox2.currentText:
+            # The menu says "Quantitative", which is also what onApplyButton tests
+            # to enable the quantification steps. Testing "Quantification" here
+            # never matched, so the run deleted the results it had just produced.
+            if "Quantitative" in self.ui.comboBox2.currentText:
                 files_to_keep.append("Measurements")
                 files_to_keep.append("Classification")
 
@@ -1453,6 +1538,18 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         logger.info(f"Cleaned temporary folder: {item.name}")
             except Exception as e:
                 logger.error(f"Error cleaning temporary files: {e}")
+
+        # OnEndProcess is reached from onCliUpdated, i.e. from inside a VTK
+        # observer callback. Opening an application-modal dialog there starts a
+        # nested event loop while the CLI node is still dispatching events, and
+        # the modal grab can leave the whole desktop session unresponsive, not
+        # just Slicer. Same fix as AREG: defer it so the callback returns first.
+        qt.QTimer.singleShot(
+            0,
+            lambda: PopUpWindow(
+                title="Process Complete", text="Processing completed successfully!"
+            ).exec_(),
+        )
             
             
             
