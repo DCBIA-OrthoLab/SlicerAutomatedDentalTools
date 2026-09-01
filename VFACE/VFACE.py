@@ -1453,8 +1453,15 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             self.removeObserver(cliNode, vtk.vtkCommand.ModifiedEvent, self.onCliUpdated)
 
-            logger.info("\n\n ========= PROCESSED ========= \n")
-            logger.info(self._briefCliOutput(caller.GetOutputText()))
+            # Deferred on purpose: Slicer captures its own stdout into a pipe
+            # that it drains from the Qt event loop, and this method runs inside
+            # a VTK observer callback where that loop cannot run. Writing here
+            # is what lets the pipe fill until the main thread blocks in write()
+            # with no reader left - the black window that never comes back.
+            cli_output = self._briefCliOutput(caller.GetOutputText())
+            qt.QTimer.singleShot(
+                0, lambda: logger.info(f"\n\n ========= PROCESSED ========= \n{cli_output}")
+            )
             
             if self.shouldPauseAfterProcess(self.current_process_info) and self.ui.checkBox_2.isChecked():
                 output_path = self.getOutputPathForModule(self.module_name)
