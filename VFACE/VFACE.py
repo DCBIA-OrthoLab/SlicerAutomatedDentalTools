@@ -1408,6 +1408,26 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         except IndexError:
             self.OnEndProcess()
 
+    # onCliUpdated runs inside a VTK observer callback, where the Qt event loop is
+    # not running. With --disable-terminal-outputs Slicer captures its own stdout
+    # into a pipe that it drains from that same loop, so a single oversized write
+    # fills the pipe and blocks the main thread for good - Slicer goes black and
+    # never comes back. Slicer already logs each CLI's full standard output
+    # itself, so echoing a bounded tail here is enough.
+    MAX_CLI_OUTPUT_CHARS = 8000
+
+    @classmethod
+    def _briefCliOutput(cls, text) -> str:
+        """The tail of a CLI's output, small enough to never fill the stdout pipe."""
+        text = text or ""
+        if len(text) <= cls.MAX_CLI_OUTPUT_CHARS:
+            return text
+        kept = text[-cls.MAX_CLI_OUTPUT_CHARS:]
+        return (
+            f"[... {len(text) - len(kept)} characters omitted, "
+            f"full output in the Slicer log ...]\n{kept}"
+        )
+
     def onCliUpdated(self, caller, event):
         import time
         import json
@@ -1434,7 +1454,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.removeObserver(cliNode, vtk.vtkCommand.ModifiedEvent, self.onCliUpdated)
 
             logger.info("\n\n ========= PROCESSED ========= \n")
-            logger.info(caller.GetOutputText())
+            logger.info(self._briefCliOutput(caller.GetOutputText()))
             
             if self.shouldPauseAfterProcess(self.current_process_info) and self.ui.checkBox_2.isChecked():
                 output_path = self.getOutputPathForModule(self.module_name)
