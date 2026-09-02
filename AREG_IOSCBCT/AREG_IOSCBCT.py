@@ -95,7 +95,10 @@ def run_icp_point_to_plane(moving_mesh, fixed_mesh, max_dist=1.5):
 
     for iteration in range(max_iterations):
         # 2. Find correspondances (nearest neighbors)
-        distances, indices = kdtree.query(moving_pts_transformed, k=1)
+        # workers=-1 spreads the query over every core: it is the dominant cost
+        # of the loop (one lookup per moving point, per iteration) and the
+        # default of a single worker left the other cores idle.
+        distances, indices = kdtree.query(moving_pts_transformed, k=1, workers=-1)
         
         # Filter the points too far
         valid_mask = distances < max_dist
