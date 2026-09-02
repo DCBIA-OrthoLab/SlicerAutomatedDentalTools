@@ -1382,8 +1382,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 list_libs_CBCT_windows = [
                     ('itk', '==5.4.0', None),
                     ('itk-elastix', '==0.19.2', None),
-                    ('dicom2nifti', '==2.3.0', None),
-                    ('pydicom', '==2.2.2', None),
+                    ('dicom2nifti', '==2.6.2', None),
+                    # pydicom is kept on the version Slicer ships: downgrading it to 2.x breaks
+                    # dicomweb-client and highdicom, hence every DICOM module of Slicer.
+                    ('pydicom', '==3.0.2', None),
                     ('einops', None, None),
                     ('nibabel', None, None),
                     ('connected-components-3d', '>=3.13.0', None),
@@ -1398,8 +1400,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 list_libs_CBCT = [
                     ('itk', '==5.4.0', None),
                     ('itk-elastix', '==0.19.2', None),
-                    ('dicom2nifti', '==2.3.0', None),
-                    ('pydicom', '==2.2.2', None),
+                    ('dicom2nifti', '==2.6.2', None),
+                    # pydicom is kept on the version Slicer ships: downgrading it to 2.x breaks
+                    # dicomweb-client and highdicom, hence every DICOM module of Slicer.
+                    ('pydicom', '==3.0.2', None),
                     ('einops', None, None),
                     ('nibabel', None, None),
                     ('connected-components-3d', '>=3.13.0', None),
