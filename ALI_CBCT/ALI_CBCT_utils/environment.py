@@ -71,6 +71,14 @@ class Environment :
         for scale_id,path in images_path.items():
             data = {"path":path}
             img = sitk.ReadImage(path)
+            # The agents move through the raw array and never look at the
+            # direction cosines, so a volume stored as LAS reaches them
+            # mirrored front to back against the LPS volumes the nets were
+            # trained on: the learned policy then walks them away from the
+            # anatomy until they stall against the far wall of the volume.
+            # Reorienting keeps every voxel at the same physical point and is
+            # a no-op on a volume that is already LPS.
+            img = sitk.DICOMOrient(img, "LPS")
             img_ar = sitk.GetArrayFromImage(img)
             if sys.version_info >= (3, 10):
                 data["image"] = self.transform(img_ar).to(dtype=torch.int16)

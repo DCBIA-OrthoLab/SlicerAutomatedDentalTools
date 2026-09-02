@@ -335,7 +335,7 @@ class GreedyRegLogic(ScriptedLoadableModuleLogic):
 
   def _aliRequiredLibs(self):
     monaiVersion = '1.3.2' if sys.version_info >= (3, 10) else '0.7.0'
-    return [('itk', None), ('dicom2nifti', '2.3.0'), ('pydicom', '2.2.2'), ('monai', monaiVersion)]
+    return [('itk', None), ('dicom2nifti', '2.6.2'), ('pydicom', '3.0.2'), ('monai', monaiVersion)]
 
   def _checkLibInstalled(self, libName, requiredVersion=None):
     import importlib.metadata
