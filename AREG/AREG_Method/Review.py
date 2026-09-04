@@ -122,7 +122,7 @@ class ReviewSession:
 
         # Landmarks mean nothing without the scan they were placed on, and a
         # registration can only be judged against what it was registered to.
-        references = self._index(step.get("ReviewReferenceFolder"), VOLUME_EXT + MODEL_EXT)
+        references = self._indexAll(step.get("ReviewReferenceFolder"), VOLUME_EXT + MODEL_EXT)
 
         # An adjusted registration is only worth saving if its matrix can be
         # updated with it: what comes after follows the matrix, not the voxels.
@@ -141,13 +141,13 @@ class ReviewSession:
                 logger.warning(
                     f"No matrix for {patient}: its registration can be looked at, not moved"
                 )
-            reference = references.get(patient) or self._matchAcrossNaming(
+            found = references.get(patient) or self._matchAcrossNaming(
                 patient, references
             )
             queue.append({
                 "patient": patient,
                 "files": by_patient[patient],
-                "reference": reference,
+                "references": list(found or []),
                 "kind": kind,
                 "editable": kind == LANDMARKS,
                 "adjustable": adjustable,
@@ -196,12 +196,26 @@ class ReviewSession:
     def _index(folder, extensions):
         """First file of each patient in a folder, by patient id."""
         found = {}
+        for patient, paths in ReviewSession._indexAll(folder, extensions).items():
+            found[patient] = paths[0]
+        return found
+
+    @staticmethod
+    def _indexAll(folder, extensions):
+        """Every file of each patient in a folder, by patient id.
+
+        An IOS is two files, one arch each, and keeping only the first left the
+        upper arch off the screen while its landmarks were shown on it.
+        """
+        found = {}
         if not folder or not os.path.isdir(folder):
             return found
         for root, _, files in os.walk(folder):
             for name in sorted(files):
                 if name.endswith(extensions):
-                    found.setdefault(patientIdFromFileName(name), os.path.join(root, name))
+                    found.setdefault(patientIdFromFileName(name), []).append(
+                        os.path.join(root, name)
+                    )
         return found
 
     # ---------------------------------------------------------------- loading
@@ -214,11 +228,12 @@ class ReviewSession:
 
         self.clearNodes()
         loaded = False
-        reference = None
 
-        if item.get("reference"):
-            reference = self._load(item["reference"])
-            if reference is not None:
+        loaded_references = []
+        for path in item.get("references", []):
+            node = self._load(path)
+            if node is not None:
+                loaded_references.append(node)
                 loaded = True
 
         moving = None
@@ -230,6 +245,13 @@ class ReviewSession:
 
         if not loaded:
             return False
+
+        # A volume is what the slice views can show behind everything else; an
+        # IOS reference is a pair of surfaces and has no such role.
+        reference = next(
+            (n for n in loaded_references if n.IsA("vtkMRMLScalarVolumeNode")),
+            loaded_references[0] if loaded_references else None,
+        )
 
         if item["adjustable"] and moving is not None:
             self._setUpAdjustment(item, reference, moving)
@@ -327,9 +349,11 @@ class ReviewSession:
         manager = slicer.app.layoutManager()
         if manager is None:
             return
-        paths = list(item["files"]) + ([item["reference"]] if item.get("reference") else [])
-        surfaces_only = paths and all(p.endswith(MODEL_EXT) for p in paths)
-        if surfaces_only:
+        paths = list(item["files"]) + list(item.get("references", []))
+        # Landmarks sitting on a pair of surfaces belong in the 3D view: the
+        # slice views have no volume to draw them against.
+        no_volume = paths and not any(p.endswith(VOLUME_EXT) for p in paths)
+        if no_volume:
             manager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView)
             widget = manager.threeDWidget(0)
             if widget:
