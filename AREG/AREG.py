@@ -245,7 +245,10 @@ class PopUpWindow(qt.QDialog):
         type=None,
         tocheck=None,
     ):
-        QWidget.__init__(self)
+        # Without a parent the window manager attaches the dialog to a 1x1
+        # dummy window and never maps it. A modal one then takes every click
+        # with nothing on screen to dismiss - the run looks frozen at the end.
+        QWidget.__init__(self, slicer.util.mainWindow())
         self.setWindowTitle(title)
         layout = QGridLayout()
         self.setLayout(layout)
@@ -1963,6 +1966,18 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.review.reset()
         self.advanceToNextProcess()
 
+    def showDoneMessage(self, text):
+        """Say the run is over without taking the application hostage.
+
+        Nothing waits on this answer, so it is shown rather than executed: a
+        modal dialog that fails to appear leaves the user with no way to click
+        anything, and that is exactly what a finished run must not do.
+        """
+        self.done_popup = PopUpWindow(title="Process Done", text=text)
+        self.done_popup.setModal(False)
+        self.done_popup.show()
+        self.done_popup.raise_()
+
     def resetReviewUi(self):
         """Put the panel back the way it was before the pause."""
         self.ui.ReviewContinueButton.setVisible(False)
@@ -2012,9 +2027,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 int(average_time % 60),
             )
         )
-        qt.QTimer.singleShot(
-            0, lambda: PopUpWindow(title="Process Done", text=done_message).exec_()
-        )
+        qt.QTimer.singleShot(0, lambda: self.showDoneMessage(done_message))
 
         file_path = os.path.abspath(__file__)
         folder_path = os.path.dirname(file_path)
