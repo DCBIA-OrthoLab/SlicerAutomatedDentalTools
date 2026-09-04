@@ -1,4 +1,5 @@
 from AREG_Method.Method import Method
+from AREG_Method import Review
 from AREG_Method.Progress import (
     DisplayAREGCBCT,
     DisplayAMASSS,
@@ -254,6 +255,14 @@ class Semi_CBCT(Method):
             "https://github.com/lucanchling/Areg_CBCT/releases/download/TestFiles/SemiAuto.zip",
         )
 
+    def getReviewSteps(self, **kwargs) -> list:
+        """Pauses this mode can offer, in the order the run reaches them."""
+        return Review.stepsFor([
+            "cbct_centered_t2",
+            "cbct_registration",
+            "cbct_segmentation",
+        ])
+
     def Process(self, **kwargs):
         list_struct = self.CheckboxisChecked(kwargs["dic_checkbox"])
         full_reg_struct, full_seg_struct = (
@@ -286,6 +295,8 @@ class Semi_CBCT(Method):
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso,
                 "Module": "Centering T2",
+                "ReviewId": "cbct_centered_t2",
+                "ReviewFolder": centered_T2,
                 "Display": DisplayASOCBCT(nb_scan),
             }
         ]
@@ -311,6 +322,9 @@ class Semi_CBCT(Method):
                     "Process": AREGProcess,
                     "Parameter": parameter_areg_cbct,
                     "Module": "AREG_CBCT for {}".format(full_reg_struct[i]),
+                    "ReviewId": "cbct_registration",
+                    "ReviewFolder": kwargs["folder_output"],
+                    "ReviewReferenceFolder": kwargs["input_t1_folder"],
                     "Display": DisplayAREGCBCT(nb_scan),
                 }
             )
@@ -362,6 +376,8 @@ class Semi_CBCT(Method):
                     "Process": AMASSSProcess,
                     "Parameter": parameter_amasss_seg_t2,
                     "Module": "AMASSS_CBCT Segmentation of T2",
+                    "ReviewId": "cbct_segmentation",
+                    "ReviewFolder": kwargs["folder_output"],
                     "Display": DisplayAMASSS(
                         nb_scan, len(full_seg_struct), len(full_reg_struct)
                     ),
@@ -411,6 +427,15 @@ class Auto_CBCT(Semi_CBCT):
         return out
 
 
+    def getReviewSteps(self, **kwargs) -> list:
+        """Pauses this mode can offer, in the order the run reaches them."""
+        return Review.stepsFor([
+            "cbct_masks",
+            "cbct_centered_t2",
+            "cbct_registration",
+            "cbct_segmentation",
+        ])
+
     def Process(self, **kwargs):
 
         list_struct = self.CheckboxisChecked(kwargs["dic_checkbox"])
@@ -441,6 +466,8 @@ class Auto_CBCT(Semi_CBCT):
                 "Process": AMASSSProcess,
                 "Parameter": parameter_amasss_mask_t1,
                 "Module": "AMASSS_CBCT - Masks Generation for T1",
+                "ReviewId": "cbct_masks",
+                "ReviewFolder": kwargs["input_t1_folder"],
                 "Display": DisplayAMASSS(
                     nb_scan, len(full_reg_struct)
                 ),
@@ -466,6 +493,8 @@ class Auto_CBCT(Semi_CBCT):
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso,
                 "Module": "Centering T2",
+                "ReviewId": "cbct_centered_t2",
+                "ReviewFolder": centered_T2,
                 "Display": DisplayASOCBCT(
                     nb_scan
                 ),
@@ -496,6 +525,9 @@ class Auto_CBCT(Semi_CBCT):
                     "Process": AREGProcess,
                     "Parameter": parameter_areg_cbct,
                     "Module": "AREG_CBCT for {}".format(full_reg_struct[i]),
+                    "ReviewId": "cbct_registration",
+                    "ReviewFolder": kwargs["folder_output"],
+                    "ReviewReferenceFolder": kwargs["input_t1_folder"],
                     "Display": DisplayAREGCBCT(
                         nb_scan
                     ),
@@ -554,6 +586,8 @@ class Auto_CBCT(Semi_CBCT):
                     "Process": AMASSSProcess,
                     "Parameter": parameter_amasss_seg_t2,
                     "Module": "AMASSS_CBCT Segmentation for T2",
+                    "ReviewId": "cbct_segmentation",
+                    "ReviewFolder": kwargs["folder_output"],
                     "Display": DisplayAMASSS(
                         nb_scan, len(full_seg_struct), len(full_reg_struct)
                     ),
@@ -669,6 +703,17 @@ class Or_Auto_CBCT(Semi_CBCT):
         lms = lm_str.strip().split()
         return ", ".join(f"'{lm}'" for lm in lms)
 
+    def getReviewSteps(self, **kwargs) -> list:
+        """Pauses this mode can offer, in the order the run reaches them."""
+        return Review.stepsFor([
+            "cbct_landmarks_orientation",
+            "cbct_oriented",
+            "cbct_masks",
+            "cbct_centered_t2",
+            "cbct_registration",
+            "cbct_segmentation",
+        ])
+
     def Process(self, **kwargs):
 
         # ====================== ASO Process ======================
@@ -741,12 +786,17 @@ class Or_Auto_CBCT(Semi_CBCT):
                 "Process": ALIProcess,
                 "Parameter": parameter_ali,
                 "Module": "ALI_CBCT",
+                "ReviewId": "cbct_landmarks_orientation",
+                "ReviewFolder": temp_folder,
+                "ReviewReferenceFolder": temp_folder,
                 "Display": DisplayALICBCT(nb_landmark, nb_scan),
             },
             {
                 "Process": OrientProcess,
                 "Parameter": parameter_semi_aso,
                 "Module": "SEMI_ASO_CBCT",
+                "ReviewId": "cbct_oriented",
+                "ReviewFolder": ASO_T1_Oriented,
                 "Display": DisplayASOCBCT(nb_scan),
             },
         ]
@@ -779,6 +829,8 @@ class Or_Auto_CBCT(Semi_CBCT):
                 "Process": AMASSSProcess,
                 "Parameter": parameter_amasss_mask_t1,
                 "Module": "AMASSS_CBCT - Masks Generation for T1",
+                "ReviewId": "cbct_masks",
+                "ReviewFolder": ASO_T1_Oriented,
                 "Display": DisplayAMASSS(nb_scan, len(full_reg_struct)),
             }
         ]
@@ -800,6 +852,8 @@ class Or_Auto_CBCT(Semi_CBCT):
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso,
                 "Module": "Centering T2",
+                "ReviewId": "cbct_centered_t2",
+                "ReviewFolder": centered_T2,
                 "Display": DisplayASOCBCT(nb_scan),
             }
         )
@@ -828,6 +882,9 @@ class Or_Auto_CBCT(Semi_CBCT):
                     "Process": AREGProcess,
                     "Parameter": parameter_areg_cbct,
                     "Module": "AREG_CBCT for {}".format(full_reg_struct[i]),
+                    "ReviewId": "cbct_registration",
+                    "ReviewFolder": kwargs["folder_output"],
+                    "ReviewReferenceFolder": ASO_T1_Oriented,
                     "Display": DisplayAREGCBCT(nb_scan),
                 }
             )
@@ -882,6 +939,8 @@ class Or_Auto_CBCT(Semi_CBCT):
                     "Process": AMASSSProcess,
                     "Parameter": parameter_amasss_seg_t2,
                     "Module": "AMASSS_CBCT Segmentation for T2",
+                    "ReviewId": "cbct_segmentation",
+                    "ReviewFolder": kwargs["folder_output"],
                     "Display": DisplayAMASSS(
                         nb_scan, len(full_seg_struct), len(full_reg_struct)
                     ),

@@ -1,4 +1,5 @@
 from AREG_Method.Method import Method
+from AREG_Method import Review
 from AREG_Method.Progress import DisplayAREGIOSCBCT, DisplayALICBCT,DisplayASOIOS,DisplayASOCBCT,DisplayCrownSeg,DisplayALIIOS
 import webbrowser
 import os
@@ -232,6 +233,15 @@ class Semi_IOSCBCT(IOSCBCT):
                             writer.writerow([self.windows_to_linux_path(norm_file_path)])
         return csv_file
 
+    def getReviewSteps(self, **kwargs) -> list:
+        """Pauses this mode can offer, in the order the run reaches them."""
+        return Review.stepsFor([
+            "ios_segmented",
+            "cbct_landmarks_registration",
+            "ios_landmarks",
+            "ioscbct_registration",
+        ])
+
     def Process(self, **kwargs):
 
         nb_scan = self.NumberScan(kwargs["input_t1_folder"],kwargs["input_t2_folder"])
@@ -276,6 +286,8 @@ class Semi_IOSCBCT(IOSCBCT):
                 "Process": SegProcess_IOS,
                 "Parameter": parameter_seg,
                 "Module": "CrownSegmentationcli",
+                "ReviewId": "ios_segmented",
+                "ReviewFolder": seg_ios_folder_path,
                 "Display": DisplayCrownSeg(
                     nb_scan, kwargs["logPath"],"Segmentation Patient"
                 ),
@@ -306,6 +318,9 @@ class Semi_IOSCBCT(IOSCBCT):
                 "Process": ALIProcess_CBCT,
                 "Parameter": parameter_ali_cbct,
                 "Module": "ALI_CBCT",
+                "ReviewId": "cbct_landmarks_registration",
+                "ReviewFolder": cbct_landmarks_folder_path,
+                "ReviewReferenceFolder": kwargs["input_t2_folder"],
                 "Display": DisplayALICBCT(
                     12, nb_scan
                 ),
@@ -338,6 +353,9 @@ class Semi_IOSCBCT(IOSCBCT):
                 "Process": ALIProcess_IOS,
                 "Parameter": parameter_ali_ios,
                 "Module": "ALI_IOS",
+                "ReviewId": "ios_landmarks",
+                "ReviewFolder": ios_landmarks_folder_path,
+                "ReviewReferenceFolder": seg_ios_folder_path,
                 "Display": DisplayALIIOS(
                     12, nb_scan
                 ),
@@ -362,6 +380,9 @@ class Semi_IOSCBCT(IOSCBCT):
                 "Process": AREGProcess,
                 "Parameter": parameter_areg_IOSCBCT,
                 "Module": "AREG IOSCBCT",
+                "ReviewId": "ioscbct_registration",
+                "ReviewFolder": registered_ios_folder_path,
+                "ReviewReferenceFolder": kwargs["input_t2_folder"],
                 "Display": DisplayAREGIOSCBCT(0),
             }
         )
@@ -413,6 +434,12 @@ class Reg_IOSCBCT(IOSCBCT):
     def getReferenceList(self):
         return None
 
+    def getReviewSteps(self, **kwargs) -> list:
+        """Pauses this mode can offer, in the order the run reaches them."""
+        return Review.stepsFor([
+            "ioscbct_registration",
+        ])
+
     def Process(self, **kwargs):
 
         parameter_areg_IOSCBCT = {
@@ -431,6 +458,8 @@ class Reg_IOSCBCT(IOSCBCT):
                 "Process": AREGProcess,
                 "Parameter": parameter_areg_IOSCBCT,
                 "Module": "AREG IOSCBCT",
+                "ReviewId": "ioscbct_registration",
+                "ReviewFolder": kwargs["folder_output"],
                 "Display": DisplayAREGIOSCBCT(0),
             }
         ]
@@ -560,6 +589,19 @@ class Auto_IOSCBCT(IOSCBCT):
                             writer.writerow([self.windows_to_linux_path(norm_file_path)])
         return csv_file
 
+    def getReviewSteps(self, **kwargs) -> list:
+        """Pauses this mode can offer, in the order the run reaches them."""
+        return Review.stepsFor([
+            "cbct_resampled",
+            "cbct_landmarks_orientation",
+            "cbct_oriented",
+            "ios_segmented",
+            "ios_oriented",
+            "cbct_landmarks_registration",
+            "ios_landmarks",
+            "ioscbct_registration",
+        ])
+
     def Process(self, **kwargs):
 
         nb_scan = self.NumberScan(kwargs["input_t1_folder"],kwargs["input_t2_folder"])
@@ -590,6 +632,8 @@ class Auto_IOSCBCT(IOSCBCT):
                 "Process": ResampleProcess_CBCT,
                 "Parameter": parameter_resample_cbct,
                 "Module": "CBCT Resampling",
+                "ReviewId": "cbct_resampled",
+                "ReviewFolder": resample_folder_path,
                 "Display": DisplayASOCBCT(
                     nb_scan
                 ),
@@ -657,6 +701,9 @@ class Auto_IOSCBCT(IOSCBCT):
                 "Process": ALIProcess_CBCT,
                 "Parameter": parameter_ali_cbct,
                 "Module": "ALI_CBCT",
+                "ReviewId": "cbct_landmarks_orientation",
+                "ReviewFolder": pre_aso_cbct_folder_path,
+                "ReviewReferenceFolder": pre_aso_cbct_folder_path,
                 "Display": DisplayALICBCT(
                     nb_landmark, nb_scan
                 ),
@@ -665,6 +712,8 @@ class Auto_IOSCBCT(IOSCBCT):
                 "Process": OrientProcess_CBCT,
                 "Parameter": parameter_semi_aso_cbct,
                 "Module": "SEMI_ASO_CBCT",
+                "ReviewId": "cbct_oriented",
+                "ReviewFolder": oriented_cbct_folder_path,
                 "Display": DisplayASOCBCT(
                     nb_scan
                 ),
@@ -732,6 +781,8 @@ class Auto_IOSCBCT(IOSCBCT):
                 "Process": SegProcess_IOS,
                 "Parameter": parameter_seg,
                 "Module": "CrownSegmentationcli",
+                "ReviewId": "ios_segmented",
+                "ReviewFolder": seg_ios_folder_path,
                 "Display": DisplayCrownSeg(
                     nb_scan, kwargs["logPath"],"Segmentation Patient"
                 ),
@@ -740,6 +791,8 @@ class Auto_IOSCBCT(IOSCBCT):
                 "Process": PreOrientProcess_IOS,
                 "Parameter": parameter_pre_aso_ios,
                 "Module": "PRE_ASO_IOS",
+                "ReviewId": "ios_oriented",
+                "ReviewFolder": pre_aso_ios_folder_path,
                 "Display": DisplayASOIOS(
                     nb_scan, kwargs["logPath"],"Orient IOS Patient"
                 ),
@@ -769,6 +822,9 @@ class Auto_IOSCBCT(IOSCBCT):
                 "Process": ALIProcess_CBCT,
                 "Parameter": parameter_ali_cbct_2,
                 "Module": "ALI_CBCT",
+                "ReviewId": "cbct_landmarks_registration",
+                "ReviewFolder": cbct_landmarks_folder_path,
+                "ReviewReferenceFolder": oriented_cbct_folder_path,
                 "Display": DisplayALICBCT(
                     12, nb_scan
                 ),
@@ -801,6 +857,9 @@ class Auto_IOSCBCT(IOSCBCT):
                 "Process": ALIProcess_IOS,
                 "Parameter": parameter_ali_ios,
                 "Module": "ALI_IOS",
+                "ReviewId": "ios_landmarks",
+                "ReviewFolder": ios_landmarks_folder_path,
+                "ReviewReferenceFolder": pre_aso_ios_folder_path,
                 "Display": DisplayALIIOS(
                     12, nb_scan
                 ),
@@ -825,6 +884,9 @@ class Auto_IOSCBCT(IOSCBCT):
                 "Process": AREGProcess,
                 "Parameter": parameter_areg_IOSCBCT,
                 "Module": "AREG IOSCBCT",
+                "ReviewId": "ioscbct_registration",
+                "ReviewFolder": registered_ios_folder_path,
+                "ReviewReferenceFolder": oriented_cbct_folder_path,
                 "Display": DisplayAREGIOSCBCT(0),
             }
         )
