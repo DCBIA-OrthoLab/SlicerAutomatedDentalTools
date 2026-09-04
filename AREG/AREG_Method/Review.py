@@ -8,6 +8,7 @@ interface.
 
 import logging
 import os
+import re
 
 import slicer
 import vtk
@@ -127,28 +128,69 @@ class ReviewSession:
         # updated with it: what comes after follows the matrix, not the voxels.
         matrices = self._index(step.get("ReviewMatrixFolder") or folder, (".tfm",))
 
+        def matrixFor(patient):
+            return matrices.get(patient) or self._matchAcrossNaming(patient, matrices)
+
         queue = []
         for patient in sorted(by_patient):
             if kind == LANDMARKS and patient not in references:
                 logger.warning(f"No scan found for {patient}, its landmarks lose their context")
-            adjustable = kind == REGISTRATION and patient in matrices
+            matrix = matrixFor(patient)
+            adjustable = kind == REGISTRATION and matrix is not None
             if kind == REGISTRATION and not adjustable:
                 logger.warning(
                     f"No matrix for {patient}: its registration can be looked at, not moved"
                 )
+            reference = references.get(patient) or self._matchAcrossNaming(
+                patient, references
+            )
             queue.append({
                 "patient": patient,
                 "files": by_patient[patient],
-                "reference": references.get(patient),
+                "reference": reference,
                 "kind": kind,
                 "editable": kind == LANDMARKS,
                 "adjustable": adjustable,
-                "matrix": matrices.get(patient),
+                "matrix": matrix,
             })
 
         self.queue = queue
         self.index = 0
         return queue
+
+    @staticmethod
+    def _normalisedId(patient_id):
+        """The id AREG_IOSCBCT reduces a patient to when it pairs the modalities.
+
+        Underscores go, then leading zeros, so P_0001, P001 and P1 all land on
+        the same patient.
+        """
+        compact = (patient_id or "").replace("_", "")
+        match = re.match(r"([A-Za-z]*)([0-9]*)", compact)
+        if not match:
+            return compact
+        letters, digits = match.group(1), match.group(2)
+        if digits:
+            digits = str(int(digits))
+        return letters + digits
+
+    @classmethod
+    def _matchAcrossNaming(cls, patient, index):
+        """Find this patient's file when the two sides name it differently.
+
+        A CBCT keeps the name its dataset gave it while the registered IOS
+        carries the id AREG_IOSCBCT normalised, so P1_T2_Reg_U.vtk and
+        P_0001_T2_Or.nii.gz never match as strings even though they are the
+        same patient - and the review would show the IOS alone, with nothing
+        to judge it against.
+        """
+        target = cls._normalisedId(patient)
+        if not target:
+            return None
+        for other, path in index.items():
+            if cls._normalisedId(other) == target:
+                return path
+        return None
 
     @staticmethod
     def _index(folder, extensions):
