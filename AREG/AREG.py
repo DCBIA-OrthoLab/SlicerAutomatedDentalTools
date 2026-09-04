@@ -43,6 +43,7 @@ from AREG_Method.CBCT import Semi_CBCT, Auto_CBCT, Or_Auto_CBCT
 from AREG_Method.IOSCBCT import Auto_IOSCBCT,Semi_IOSCBCT,Reg_IOSCBCT
 from AREG_Method.Method import Method
 from AREG_Method.Progress import Display
+from AREG_Method import Review
 
 from pathlib import Path
 import textwrap
@@ -350,6 +351,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.nb_patient = 0  # number of scans in the input folder
         self.time_log = 0  # time of the last log update
 
+        # Review pauses: which steps the user ticked, and the one on screen
+        self.module_name = ""
+        self.review = Review.ReviewSession()
+        self.review_checkboxes = {}
+        self.review_step = {}
+
     def setup(self):
         """
         Called when the user opens the module the first time and the widget is initiAREGzed.
@@ -475,6 +482,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.initRegistrationReference()
         self.HideComputeItems()
+        self.setupReviewUi()
         self.SwitchType()
         
         self.ui.label_11.setVisible(False)
@@ -1023,6 +1031,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.label_CBCTInputType.setVisible(False)
             self.isDCMInput = False
 
+        self.rebuildReviewSteps()
+
     def ClearAllLineEdits(self):
         """Function to clear all the line edits"""
         self.ui.lineEditScanT1LmPath.setText("")
@@ -1517,11 +1527,13 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 logger.error("list_Processes_Parameters is empty after calling ActualMeth.Process()")
                 return
 
+            self.markProcessesForReview()
+
             self.nb_extension_launch = len(self.list_Processes_Parameters)
             self.onProcessStarted()
 
             try:
-                self.module_name = self.list_Processes_Parameters[0]["Module"]
+                self.startStep(self.list_Processes_Parameters[0])
             except Exception:
                 logger.exception("Exception while accessing first process entry")
                 return
@@ -1536,7 +1548,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     None,
                     self.list_Processes_Parameters[0]["Parameter"],
                 )
-                self.module_name = self.list_Processes_Parameters[0]["Module"]
+                self.startStep(self.list_Processes_Parameters[0])
                 self.displayModule = self.list_Processes_Parameters[0]["Display"]
                 self.processObserver = self.process.AddObserver(
                     "ModifiedEvent", self.onProcessUpdate
@@ -1573,7 +1585,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             None,
                             self.list_Processes_Parameters[0]["Parameter"],
                         )
-                        self.module_name = self.list_Processes_Parameters[0]["Module"]
+                        self.startStep(self.list_Processes_Parameters[0])
                         self.displayModule = self.list_Processes_Parameters[0]["Display"]
                         self.processObserver = self.process.AddObserver(
                             "ModifiedEvent", self.onProcessUpdate
@@ -1594,7 +1606,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     self.run_conda_tool("seg")
                     self.process = slicer.cli.run(
                     self.list_Processes_Parameters[0]["Process"],None,self.list_Processes_Parameters[0]["Parameter"],)
-                    self.module_name = self.list_Processes_Parameters[0]["Module"]
+                    self.startStep(self.list_Processes_Parameters[0])
                     self.displayModule = self.list_Processes_Parameters[0]["Display"]
                     self.processObserver = self.process.AddObserver(
                         "ModifiedEvent", self.onProcessUpdate
@@ -1606,7 +1618,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         None,
                         self.list_Processes_Parameters[0]["Parameter"],
                     )
-                    self.module_name = self.list_Processes_Parameters[0]["Module"]
+                    self.startStep(self.list_Processes_Parameters[0])
                     self.displayModule = self.list_Processes_Parameters[0]["Display"]
                     self.processObserver = self.process.AddObserver(
                         "ModifiedEvent", self.onProcessUpdate
@@ -1702,34 +1714,265 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             else:
                 logger.info("========= PROCESS COMPLETED SUCCESSFULLY =========")
                 logger.info(self.process.GetOutputText())
-                try:
-                    logger.info(f"Process name: {self.list_Processes_Parameters[0]['Process']}")
-                    if self.list_Processes_Parameters[0]["Module"]=="AREG_IOS":
-                        self.nb_extension_did += 1
-                        self.run_conda_tool("areg")
-                    if self.list_Processes_Parameters[0]["Module"]=="CrownSegmentationcli":
-                        self.run_conda_tool("seg")
-                    if self.list_Processes_Parameters[0]["Module"]=="ALI_IOS":
-                        self.nb_extension_did += 1
-                        self.run_conda_tool("ali")
-                        
-                    self.ui.ButtonCancel.setEnabled(True)
-                    self.process = slicer.cli.run(
-                        self.list_Processes_Parameters[0]["Process"],
-                        None,
-                        self.list_Processes_Parameters[0]["Parameter"],
-                    )
-                    self.module_name = self.list_Processes_Parameters[0]["Module"]
-                    self.displayModule = self.list_Processes_Parameters[0]["Display"]
-                    self.processObserver = self.process.AddObserver(
-                        "ModifiedEvent", self.onProcessUpdate
-                    )
-                    del self.list_Processes_Parameters[0]
-                    # self.displayModule.progress = 0
-                except IndexError:
-                    self.OnEndProcess()
+                if self.enterReviewPause():
+                    return
+                self.advanceToNextProcess()
+
+    def advanceToNextProcess(self):
+        """Launch the next step of the run, or finish if there is none left."""
+        try:
+            logger.info(f"Process name: {self.list_Processes_Parameters[0]['Process']}")
+            # The conda tools run to completion right here rather than through
+            # the CLI observer, so their pause has to be taken on the way back
+            # out - otherwise no IOS step could ever stop the run.
+            if self.list_Processes_Parameters[0]["Module"]=="AREG_IOS":
+                self.nb_extension_did += 1
+                self.run_conda_tool("areg")
+                if self.enterReviewPause():
+                    return
+            if self.list_Processes_Parameters[0]["Module"]=="CrownSegmentationcli":
+                self.run_conda_tool("seg")
+                if self.enterReviewPause():
+                    return
+            if self.list_Processes_Parameters[0]["Module"]=="ALI_IOS":
+                self.nb_extension_did += 1
+                self.run_conda_tool("ali")
+                if self.enterReviewPause():
+                    return
+
+            self.ui.ButtonCancel.setEnabled(True)
+            self.process = slicer.cli.run(
+                self.list_Processes_Parameters[0]["Process"],
+                None,
+                self.list_Processes_Parameters[0]["Parameter"],
+            )
+            self.startStep(self.list_Processes_Parameters[0])
+            self.displayModule = self.list_Processes_Parameters[0]["Display"]
+            self.processObserver = self.process.AddObserver(
+                "ModifiedEvent", self.onProcessUpdate
+            )
+            del self.list_Processes_Parameters[0]
+            # self.displayModule.progress = 0
+        except IndexError:
+            self.OnEndProcess()
+
+    # ----------------------------------------------------------- review pauses
+
+    REVIEW_SETTINGS_KEY = "AREG/ReviewSteps"
+    CONTINUE_TEXT = "Continue"
+
+    def startStep(self, step):
+        """Remember the step being launched, so its pause is found when it ends."""
+        self.module_name = step["Module"]
+        self.review_step = step
+
+    def setupReviewUi(self):
+        """Wire the review section up. Called once, from setup()."""
+        self.ui.ReviewEnableCheckBox.connect("toggled(bool)", self.onReviewEnableToggled)
+        self.ui.ReviewSelectAllButton.connect("clicked(bool)", lambda: self.setAllReviewSteps(True))
+        self.ui.ReviewSelectNoneButton.connect("clicked(bool)", lambda: self.setAllReviewSteps(False))
+        self.ui.ReviewContinueButton.connect("clicked(bool)", self.onReviewContinue)
+        self.ui.ReviewContinueButton.setVisible(False)
+        self.ui.ReviewMessageLabel.setVisible(False)
+        self.onReviewEnableToggled(self.ui.ReviewEnableCheckBox.isChecked())
+
+    def onReviewEnableToggled(self, enabled):
+        """Grey the list out when pausing is off, rather than hiding it."""
+        for widget in (self.ui.ReviewScrollArea, self.ui.ReviewSelectAllButton,
+                       self.ui.ReviewSelectNoneButton, self.ui.ReviewHelpLabel):
+            widget.setEnabled(enabled)
+
+    def rebuildReviewSteps(self):
+        """Rebuild the checkboxes for the mode now selected.
+
+        Modes do not share their steps - IOS has no CBCT landmarks, MGL swaps
+        the orientation for landmark placement - so the list is built from what
+        the current method says it offers, and what the user ticked before is
+        restored where the same step still exists.
+        """
+        contents = getattr(self.ui, "ReviewScrollContents", None)
+        layout = contents.layout() if contents is not None else None
+        if layout is None:
+            logger.warning("Review step list not found in the UI, no pause offered")
+            return
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+        self.review_checkboxes = {}
+
+        method = getattr(self, "ActualMeth", None)
+        if method is None:
+            return
+        try:
+            steps = method.getReviewSteps(
+                reg_type="MGL" if self.isMGLRegistration() else "Butterfly"
+            )
+        except Exception as e:
+            logger.warning(f"Could not list the reviewable steps: {e}")
+            return
+
+        remembered = self.loadReviewSelection()
+        group = None
+        for step in steps:
+            if step["group"] != group:
+                group = step["group"]
+                header = qt.QLabel(f"<b>{group}</b>")
+                layout.addWidget(header)
+
+            box = qt.QCheckBox(step["label"])
+            if step["kind"] == Review.VIEW:
+                box.setToolTip(f"Look only. {step['hint']}")
+            else:
+                box.setToolTip(f"You can correct this. {step['hint']}")
+                box.setText(step["label"] + "  (editable)")
+            box.setChecked(step["id"] in remembered)
+            box.connect("toggled(bool)", lambda _checked: self.saveReviewSelection())
+            layout.addWidget(box)
+            self.review_checkboxes[step["id"]] = box
+
+        layout.addStretch(1)
+
+    def setAllReviewSteps(self, checked):
+        """Tick or untick every step of the current mode."""
+        for box in self.review_checkboxes.values():
+            box.setChecked(checked)
+
+    def selectedReviewIds(self):
+        """Ids the user ticked, empty when pausing is switched off."""
+        if not self.ui.ReviewEnableCheckBox.isChecked():
+            return set()
+        return {i for i, box in self.review_checkboxes.items() if box.isChecked()}
+
+    def saveReviewSelection(self):
+        """Keep the ticked steps between sessions."""
+        chosen = [i for i, box in self.review_checkboxes.items() if box.isChecked()]
+        qt.QSettings().setValue(self.REVIEW_SETTINGS_KEY, ",".join(sorted(chosen)))
+
+    def loadReviewSelection(self):
+        """Steps ticked the last time, as a set of ids."""
+        stored = qt.QSettings().value(self.REVIEW_SETTINGS_KEY, "")
+        if not stored:
+            return set()
+        if isinstance(stored, (list, tuple)):
+            return set(stored)
+        return {i for i in str(stored).split(",") if i}
+
+    def markProcessesForReview(self):
+        """Flag the steps of this run the user asked to stop at."""
+        chosen = self.selectedReviewIds()
+        if not chosen:
+            return 0
+        marked = 0
+        for step in self.list_Processes_Parameters:
+            if step.get("ReviewId") in chosen:
+                step["ReviewPause"] = True
+                marked += 1
+        logger.info(f"{marked} step(s) will pause for review")
+        return marked
+
+    def enterReviewPause(self):
+        """Whether the step that just finished stops the run.
+
+        The loading itself waits for the event loop: this runs inside a VTK
+        observer callback, where Slicer cannot drain the pipe it captures its
+        own output into, and reading a scan there fills it with no reader left.
+        """
+        step = self.review_step or {}
+        if not step.get("ReviewPause"):
+            return False
+
+        self.review.pending = True
+        qt.QTimer.singleShot(0, self.beginReview)
+        return True
+
+    def beginReview(self):
+        """Load the finished step's result, once the event loop is turning."""
+        if not self.review.pending:
+            return          # cancelled between the callback returning and now
+        self.review.pending = False
+
+        step = self.review_step or {}
+        name = step.get("Module", "this step")
+        self.review.build(step)
+        if not self.review.total or not self.showReviewItem():
+            logger.warning(
+                f"Nothing could be loaded to review after {name}, continuing"
+            )
+            self.review.reset()
+            self.advanceToNextProcess()
+            return
+
+        self.ui.ReviewContinueButton.setVisible(True)
+        self.ui.ButtonCancel.setEnabled(True)
+        logger.info(f"Run paused after {name}")
+
+    def showReviewItem(self):
+        """Show the next patient that can be loaded. False if none can."""
+        while self.review.index < self.review.total:
+            if self.review.loadCurrent():
+                self.showReviewMessage()
+                return True
+            item = self.review.current
+            logger.warning(f"Nothing to load for {item['patient']}, skipping it")
+            self.review.index += 1
+        return False
+
+    def showReviewMessage(self):
+        """Say where the run is and what may be changed, in the module panel."""
+        item = self.review.current
+        step = self.review_step or {}
+        entry = Review.describe(step.get("ReviewId", ""))
+        title = entry.get("label") or step.get("Module", "Result")
+        hint = entry.get("hint", "")
+
+        position = ""
+        if self.review.total > 1:
+            position = f" - patient {self.review.index + 1} of {self.review.total}"
+
+        if item["editable"]:
+            action = "You can move the points"
+        elif item["adjustable"]:
+            action = "You can drag it into place"
+        else:
+            action = "Review only"
+
+        self.ui.ReviewMessageLabel.setText(
+            f"<b>Paused: {title}</b><br/>"
+            f"{item['patient']}{position} &nbsp;·&nbsp; <i>{action}</i><br/>{hint}"
+        )
+        self.ui.ReviewMessageLabel.setVisible(True)
+
+        remaining = self.review.remaining
+        self.ui.ReviewContinueButton.setText(
+            f"Continue - {remaining} more patient(s) here" if remaining
+            else self.CONTINUE_TEXT
+        )
+        logger.info(f"Review - {title} - {item['patient']}{position}")
+
+    def onReviewContinue(self):
+        """Save what changed, then move on to the next patient or step."""
+        self.review.saveEdits()
+        self.review.index += 1
+
+        if self.review.index < self.review.total and self.showReviewItem():
+            return
+
+        self.resetReviewUi()
+        self.review.reset()
+        self.advanceToNextProcess()
+
+    def resetReviewUi(self):
+        """Put the panel back the way it was before the pause."""
+        self.ui.ReviewContinueButton.setVisible(False)
+        self.ui.ReviewContinueButton.setText(self.CONTINUE_TEXT)
+        self.ui.ReviewMessageLabel.setVisible(False)
+        self.ui.ReviewMessageLabel.setText("")
 
     def OnEndProcess(self):
+        self.resetReviewUi()
+        self.review.reset()
         self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
         self.ui.LabelProgressExtension.setText(
             f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
@@ -2064,9 +2307,11 @@ qMRMLNodeComboBox:focus {
             self.process.Cancel()
         except Exception as e:
             self.logic.cancel_process()
-            
+
         logger.warning("========= PROCESS CANCELED =========")
 
+        self.resetReviewUi()
+        self.review.reset()
         self.RunningUI(False)
 
     def RunningUI(self, run=False):
@@ -2117,7 +2362,7 @@ qMRMLNodeComboBox:focus {
             for i in range(nbr_run):
                 self.nb_extension_did += 1
                 args = self.list_Processes_Parameters[0]["Parameter"]
-                self.module_name = self.list_Processes_Parameters[0]["Module"]
+                self.startStep(self.list_Processes_Parameters[0])
                 logger.debug(f"Arguments: {args}")
                 conda_exe = self.logic.conda.getCondaExecutable()
                 command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
@@ -2165,7 +2410,7 @@ qMRMLNodeComboBox:focus {
             args = self.list_Processes_Parameters[0]["Parameter"]
             logger.info(f"Module: {self.list_Processes_Parameters[0]['Module']}")
             logger.debug(f"Arguments: {args}")
-            self.module_name = self.list_Processes_Parameters[0]["Module"]
+            self.startStep(self.list_Processes_Parameters[0])
             
             conda_exe = self.logic.conda.getCondaExecutable()
             command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AREG_IOS"]
@@ -2203,7 +2448,7 @@ qMRMLNodeComboBox:focus {
 
             del self.list_Processes_Parameters[0]
         elif type == "ali":
-            self.module_name = self.list_Processes_Parameters[0]["Module"]
+            self.startStep(self.list_Processes_Parameters[0])
             args = self.list_Processes_Parameters[0]["Parameter"]
             logger.debug(f"Processing arguments: {args}")
             conda_exe = self.logic.conda.getCondaExecutable()
