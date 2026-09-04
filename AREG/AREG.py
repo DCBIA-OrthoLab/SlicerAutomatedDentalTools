@@ -1898,7 +1898,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         step = self.review_step or {}
         name = step.get("Module", "this step")
-        self.review.build(step)
+        # Output folders are reused between runs: without this the review walks
+        # patients this run never processed.
+        self.review.build(step, since=getattr(self, "startTime", None))
         if not self.review.total or not self.showReviewItem():
             logger.warning(
                 f"Nothing could be loaded to review after {name}, continuing"

@@ -84,11 +84,15 @@ class ReviewSession:
 
     # --------------------------------------------------------------- building
 
-    def build(self, step: dict) -> list:
+    def build(self, step: dict, since=None) -> list:
         """One review item per patient for the step that just finished.
 
         Args:
             step: the finished step's dictionary, carrying its Review* keys
+            since: only review files written after this timestamp. Output
+                folders get reused between runs, and without this the review
+                walks patients the run never touched - "patient 1 of 5" on a
+                batch of two.
 
         Returns:
             list: the items, which is also kept as this session's queue
@@ -113,12 +117,18 @@ class ReviewSession:
             wanted = VOLUME_EXT + MODEL_EXT
 
         by_patient = {}
+        skipped = 0
         for root, _, files in os.walk(folder):
             for name in sorted(files):
-                if name.endswith(wanted):
-                    by_patient.setdefault(patientIdFromFileName(name), []).append(
-                        os.path.join(root, name)
-                    )
+                if not name.endswith(wanted):
+                    continue
+                path = os.path.join(root, name)
+                if since is not None and not self._writtenSince(path, since):
+                    skipped += 1
+                    continue
+                by_patient.setdefault(patientIdFromFileName(name), []).append(path)
+        if skipped:
+            logger.info(f"{skipped} file(s) from an earlier run left out of the review")
 
         # Landmarks mean nothing without the scan they were placed on, and a
         # registration can only be judged against what it was registered to.
@@ -159,6 +169,18 @@ class ReviewSession:
         return queue
 
     @staticmethod
+    def _writtenSince(path, since):
+        """Whether this run produced the file, rather than an earlier one.
+
+        A missing or unreadable timestamp counts as recent: leaving a file out
+        of the review is worse than showing one extra.
+        """
+        try:
+            return os.path.getmtime(path) >= since
+        except OSError:
+            return True
+
+    @staticmethod
     def _normalisedId(patient_id):
         """The id AREG_IOSCBCT reduces a patient to when it pairs the modalities.
 
@@ -187,10 +209,19 @@ class ReviewSession:
         target = cls._normalisedId(patient)
         if not target:
             return None
-        for other, path in index.items():
-            if cls._normalisedId(other) == target:
-                return path
-        return None
+        matches = [path for other, path in index.items()
+                   if cls._normalisedId(other) == target]
+        if not matches:
+            return None
+        if len(matches) > 1:
+            # Two patients whose ids collide once normalised. Which one belongs
+            # to this scan is not recoverable here, so say so rather than pick
+            # one quietly and show the wrong anatomy underneath.
+            logger.warning(
+                f"{patient}: several candidates match once the id is normalised "
+                f"({[os.path.basename(str(m)) for m in matches]}), taking the first"
+            )
+        return matches[0]
 
     @staticmethod
     def _index(folder, extensions):
