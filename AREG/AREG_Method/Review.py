@@ -174,6 +174,11 @@ class ReviewSession:
 
         A missing or unreadable timestamp counts as recent: leaving a file out
         of the review is worse than showing one extra.
+
+        This rests on the pipeline copying with shutil.copy, which stamps the
+        copy with the current time. shutil.copy2 keeps the original date, and
+        an already-segmented scan copied that way would silently vanish from
+        the review.
         """
         try:
             return os.path.getmtime(path) >= since
