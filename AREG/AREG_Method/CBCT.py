@@ -323,7 +323,14 @@ class Semi_CBCT(Method):
                     "Parameter": parameter_areg_cbct,
                     "Module": "AREG_CBCT for {}".format(full_reg_struct[i]),
                     "ReviewId": "cbct_registration",
-                    "ReviewFolder": kwargs["folder_output"],
+                    # Scoped to the structure this run of AREG just wrote.
+                    # The whole output folder accumulates every structure, so
+                    # the mandible pause showed the cranial base and maxilla
+                    # too - and the displacement the user drags would be folded
+                    # into whichever matrix turned up first, not this one's.
+                    "ReviewFolder": os.path.join(
+                        kwargs["folder_output"], full_reg_struct[i]
+                    ),
                     "ReviewReferenceFolder": kwargs["input_t1_folder"],
                     "Display": DisplayAREGCBCT(nb_scan),
                 }
@@ -526,7 +533,14 @@ class Auto_CBCT(Semi_CBCT):
                     "Parameter": parameter_areg_cbct,
                     "Module": "AREG_CBCT for {}".format(full_reg_struct[i]),
                     "ReviewId": "cbct_registration",
-                    "ReviewFolder": kwargs["folder_output"],
+                    # Scoped to the structure this run of AREG just wrote.
+                    # The whole output folder accumulates every structure, so
+                    # the mandible pause showed the cranial base and maxilla
+                    # too - and the displacement the user drags would be folded
+                    # into whichever matrix turned up first, not this one's.
+                    "ReviewFolder": os.path.join(
+                        kwargs["folder_output"], full_reg_struct[i]
+                    ),
                     "ReviewReferenceFolder": kwargs["input_t1_folder"],
                     "Display": DisplayAREGCBCT(
                         nb_scan
@@ -883,7 +897,14 @@ class Or_Auto_CBCT(Semi_CBCT):
                     "Parameter": parameter_areg_cbct,
                     "Module": "AREG_CBCT for {}".format(full_reg_struct[i]),
                     "ReviewId": "cbct_registration",
-                    "ReviewFolder": kwargs["folder_output"],
+                    # Scoped to the structure this run of AREG just wrote.
+                    # The whole output folder accumulates every structure, so
+                    # the mandible pause showed the cranial base and maxilla
+                    # too - and the displacement the user drags would be folded
+                    # into whichever matrix turned up first, not this one's.
+                    "ReviewFolder": os.path.join(
+                        kwargs["folder_output"], full_reg_struct[i]
+                    ),
                     "ReviewReferenceFolder": ASO_T1_Oriented,
                     "Display": DisplayAREGCBCT(nb_scan),
                 }
