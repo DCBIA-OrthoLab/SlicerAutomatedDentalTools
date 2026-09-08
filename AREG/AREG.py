@@ -1707,19 +1707,42 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if caller.GetStatus() & caller.Completed:
             if caller.GetStatus() & caller.ErrorsMask:
                 # error
-                logger.info("========= PROCESS COMPLETED WITH ERRORS =========")
-                logger.info(self.process.GetOutputText())
-                logger.error("========= ERROR DETAILS =========")
-                errorText = self.process.GetErrorText()
-                logger.error(f"CLI execution failed: \n{errorText}")
+                out = self._briefCliOutput(self.process.GetOutputText())
+                err = self._briefCliOutput(self.process.GetErrorText())
+                qt.QTimer.singleShot(0, lambda: logger.error(
+                    "========= PROCESS COMPLETED WITH ERRORS =========\n"
+                    f"{out}\n========= ERROR DETAILS =========\n{err}"
+                ))
                 self.onCancel()
 
             else:
-                logger.info("========= PROCESS COMPLETED SUCCESSFULLY =========")
-                logger.info(self.process.GetOutputText())
+                # Deferred and trimmed on purpose: Slicer captures its own stdout
+                # into a pipe it only drains from the Qt event loop, and this runs
+                # inside a VTK observer callback where that loop cannot turn.
+                # Writing a whole CLI's output here fills the pipe with no reader
+                # left and the main thread blocks in write() for ever - a batch of
+                # three patients through ALI is already enough to do it.
+                cli_output = self._briefCliOutput(self.process.GetOutputText())
+                qt.QTimer.singleShot(0, lambda: logger.info(
+                    f"========= PROCESS COMPLETED SUCCESSFULLY =========\n{cli_output}"
+                ))
                 if self.enterReviewPause():
                     return
                 self.advanceToNextProcess()
+
+    MAX_CLI_OUTPUT_CHARS = 8000
+
+    @classmethod
+    def _briefCliOutput(cls, text) -> str:
+        """The tail of a CLI's output, small enough to never fill the stdout pipe."""
+        text = text or ""
+        if len(text) <= cls.MAX_CLI_OUTPUT_CHARS:
+            return text
+        kept = text[-cls.MAX_CLI_OUTPUT_CHARS:]
+        return (
+            f"[... {len(text) - len(kept)} characters omitted, "
+            f"full output in the Slicer log ...]\n{kept}"
+        )
 
     def advanceToNextProcess(self):
         """Launch the next step of the run, or finish if there is none left."""
