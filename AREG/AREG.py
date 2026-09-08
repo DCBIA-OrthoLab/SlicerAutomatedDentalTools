@@ -1,4 +1,4 @@
-import os, sys,logging, time, zipfile, urllib.request, shutil, glob
+import os, sys,logging, time, traceback, zipfile, urllib.request, shutil, glob
 import vtk, qt, slicer
 from qt import (
     QWidget,
@@ -1671,6 +1671,30 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
 
     def onProcessUpdate(self, caller, event):
+        """Drive the run from the CLI node that just reported in.
+
+        Wrapped because an exception escaping a VTK observer callback is printed
+        by Python straight into the stdout pipe Slicer only drains from the Qt
+        event loop - the very loop this callback is holding. The traceback then
+        freezes the whole application, and the real error is never seen. Report
+        it once the loop turns instead, and stop the run rather than leave it
+        half advanced.
+        """
+        try:
+            self._onProcessUpdate(caller, event)
+        except Exception:
+            details = traceback.format_exc()
+            qt.QTimer.singleShot(0, lambda: self._reportProcessFailure(details))
+
+    def _reportProcessFailure(self, details: str) -> None:
+        """Say what went wrong, then stop the run cleanly."""
+        logger.error(f"The run was stopped by an unexpected error:\n{details}")
+        try:
+            self.onCancel()
+        except Exception as e:
+            logger.error(f"Could not stop the run cleanly: {e}")
+
+    def _onProcessUpdate(self, caller, event):
         # Observers are never removed, and self.process becomes a plain Thread
         # while a conda tool runs. So a finished node can wake this up long
         # after its turn, with self.process pointing at something else - and a
