@@ -723,6 +723,17 @@ qMRMLNodeComboBox:focus {
          </widget>
         </item>
         <item>
+         <widget class="QPushButton" name="ReviewSkipRestButton">
+          <property name="visible"><bool>false</bool></property>
+          <property name="toolTip">
+           <string>Accept the remaining patients of this step without looking at each one, and carry on with the run</string>
+          </property>
+          <property name="text">
+           <string>The rest is fine</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QLabel" name="LabelNameExtension">
           <property name="text">
            <string />

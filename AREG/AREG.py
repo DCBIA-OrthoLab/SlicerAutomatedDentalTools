@@ -1798,7 +1798,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ReviewSelectAllButton.connect("clicked(bool)", lambda: self.setAllReviewSteps(True))
         self.ui.ReviewSelectNoneButton.connect("clicked(bool)", lambda: self.setAllReviewSteps(False))
         self.ui.ReviewContinueButton.connect("clicked(bool)", self.onReviewContinue)
+        self.ui.ReviewSkipRestButton.connect("clicked(bool)", self.onReviewSkipRest)
         self.ui.ReviewContinueButton.setVisible(False)
+        self.ui.ReviewSkipRestButton.setVisible(False)
         self.ui.ReviewMessageLabel.setVisible(False)
         self.onReviewEnableToggled(self.ui.ReviewEnableCheckBox.isChecked())
 
@@ -1977,7 +1979,29 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             f"Continue - {remaining} more patient(s) here" if remaining
             else self.CONTINUE_TEXT
         )
+        # On a large batch, stepping through every patient of every step is the
+        # thing that stops people using the pauses at all. Two or three are
+        # usually enough to tell whether the whole batch went the same way.
+        self.ui.ReviewSkipRestButton.setVisible(remaining > 0)
+        self.ui.ReviewSkipRestButton.setText(
+            f"The rest is fine - skip {remaining} patient(s)"
+        )
         logger.info(f"Review - {title} - {item['patient']}{position}")
+
+    def onReviewSkipRest(self):
+        """Accept the patients left at this step without looking at each one.
+
+        Whatever the user changed on the one in front of them is still saved:
+        they may well have corrected this patient and only then decided the
+        others were fine.
+        """
+        skipped = self.review.remaining
+        self.review.saveEdits()
+        logger.info(f"{skipped} patient(s) accepted without review at this step")
+
+        self.resetReviewUi()
+        self.review.reset()
+        self.advanceToNextProcess()
 
     def onReviewContinue(self):
         """Save what changed, then move on to the next patient or step."""
@@ -2007,6 +2031,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Put the panel back the way it was before the pause."""
         self.ui.ReviewContinueButton.setVisible(False)
         self.ui.ReviewContinueButton.setText(self.CONTINUE_TEXT)
+        self.ui.ReviewSkipRestButton.setVisible(False)
         self.ui.ReviewMessageLabel.setVisible(False)
         self.ui.ReviewMessageLabel.setText("")
 
