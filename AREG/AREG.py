@@ -1671,6 +1671,13 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
 
     def onProcessUpdate(self, caller, event):
+        # Observers are never removed, and self.process becomes a plain Thread
+        # while a conda tool runs. So a finished node can wake this up long
+        # after its turn, with self.process pointing at something else - and a
+        # stale Completed event would launch the next step out of order.
+        if self.process is not caller:
+            return
+
         currentTime = time.time() - self.startTime
         if currentTime < 60:
             timer = f"Time : {int(currentTime)}s"
@@ -1708,8 +1715,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if caller.GetStatus() & caller.Completed:
             if caller.GetStatus() & caller.ErrorsMask:
                 # error
-                out = self._briefCliOutput(self.process.GetOutputText())
-                err = self._briefCliOutput(self.process.GetErrorText())
+                out = self._briefCliOutput(caller.GetOutputText())
+                err = self._briefCliOutput(caller.GetErrorText())
                 qt.QTimer.singleShot(0, lambda: logger.error(
                     "========= PROCESS COMPLETED WITH ERRORS =========\n"
                     f"{out}\n========= ERROR DETAILS =========\n{err}"
@@ -1723,7 +1730,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 # Writing a whole CLI's output here fills the pipe with no reader
                 # left and the main thread blocks in write() for ever - a batch of
                 # three patients through ALI is already enough to do it.
-                cli_output = self._briefCliOutput(self.process.GetOutputText())
+                cli_output = self._briefCliOutput(caller.GetOutputText())
                 qt.QTimer.singleShot(0, lambda: logger.info(
                     f"========= PROCESS COMPLETED SUCCESSFULLY =========\n{cli_output}"
                 ))
