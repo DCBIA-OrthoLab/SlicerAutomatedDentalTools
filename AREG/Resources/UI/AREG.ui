@@ -723,6 +723,17 @@ qMRMLNodeComboBox:focus {
          </widget>
         </item>
         <item>
+         <widget class="QPushButton" name="ReviewGoBackButton">
+          <property name="visible"><bool>false</bool></property>
+          <property name="toolTip">
+           <string>Go back to the last step you can correct, fix it there, and replay everything since</string>
+          </property>
+          <property name="text">
+           <string>Go back and fix</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QPushButton" name="ReviewSkipRestButton">
           <property name="visible"><bool>false</bool></property>
           <property name="toolTip">

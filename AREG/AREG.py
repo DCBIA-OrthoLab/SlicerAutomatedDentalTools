@@ -359,6 +359,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.review = Review.ReviewSession()
         self.review_checkboxes = {}
         self.review_step = {}
+        self.executed_steps = []
 
     def setup(self):
         """
@@ -1788,9 +1789,14 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     CONTINUE_TEXT = "Continue"
 
     def startStep(self, step):
-        """Remember the step being launched, so its pause is found when it ends."""
+        """Remember the step being launched, so its pause is found when it ends.
+
+        The run consumes its own list as it goes, so replaying a step needs a
+        record of what has already gone by.
+        """
         self.module_name = step["Module"]
         self.review_step = step
+        self.executed_steps.append(step)
 
     def setupReviewUi(self):
         """Wire the review section up. Called once, from setup()."""
@@ -1799,8 +1805,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ReviewSelectNoneButton.connect("clicked(bool)", lambda: self.setAllReviewSteps(False))
         self.ui.ReviewContinueButton.connect("clicked(bool)", self.onReviewContinue)
         self.ui.ReviewSkipRestButton.connect("clicked(bool)", self.onReviewSkipRest)
+        self.ui.ReviewGoBackButton.connect("clicked(bool)", self.onReviewGoBack)
         self.ui.ReviewContinueButton.setVisible(False)
         self.ui.ReviewSkipRestButton.setVisible(False)
+        self.ui.ReviewGoBackButton.setVisible(False)
         self.ui.ReviewMessageLabel.setVisible(False)
         self.onReviewEnableToggled(self.ui.ReviewEnableCheckBox.isChecked())
 
@@ -1986,7 +1994,69 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ReviewSkipRestButton.setText(
             f"The rest is fine - skip {remaining} patient(s)"
         )
+
+        # A result that only reads badly is worth nothing on its own: what the
+        # user needs is the step that caused it.
+        target, _ = self.previousCorrectableStep()
+        self.ui.ReviewGoBackButton.setVisible(target is not None)
+        if target is not None:
+            name = Review.describe(target.get("ReviewId", "")).get("label", "the previous step")
+            self.ui.ReviewGoBackButton.setText(f"Go back and fix: {name}")
         logger.info(f"Review - {title} - {item['patient']}{position}")
+
+    def previousCorrectableStep(self):
+        """The nearest step behind this one the user can actually change.
+
+        Looking at a bad orientation is useless without a way back to the
+        landmarks that caused it. Steps that only ever get looked at are
+        skipped over, so the button lands where something can be done.
+
+        Returns:
+            tuple: (step, steps to replay after it), or (None, []) if there is
+                nothing correctable behind the current one
+        """
+        current = self.review_step or {}
+        history = self.executed_steps
+        try:
+            # the last time this step ran, not the first
+            here = len(history) - 1 - history[::-1].index(current)
+        except ValueError:
+            return None, []
+
+        for i in range(here - 1, -1, -1):
+            kind = Review.describe(history[i].get("ReviewId", "")).get("kind")
+            if kind in (Review.LANDMARKS, Review.REGISTRATION):
+                return history[i], history[i + 1:here + 1]
+        return None, []
+
+    def onReviewGoBack(self):
+        """Return to the last correctable step, then replay everything since.
+
+        Correcting the landmarks changes nothing on its own - the orientation
+        was computed from the old ones. So the steps in between are queued to
+        run again, and the run comes back to this same pause with the new
+        result.
+        """
+        target, replay = self.previousCorrectableStep()
+        if target is None:
+            logger.warning("Nothing correctable behind this step")
+            return
+
+        name = Review.describe(target.get("ReviewId", "")).get("label", target.get("Module"))
+        logger.info(
+            f"Going back to '{name}'; {len(replay)} step(s) will run again afterwards"
+        )
+
+        self.review.reset()
+        self.resetReviewUi()
+
+        # Everything between the two runs again, ahead of whatever was left.
+        self.list_Processes_Parameters[0:0] = replay
+        self.review_step = target
+        # beginReview guards against a pause cancelled between the callback and
+        # the event loop; this one comes from a button, so it is armed here.
+        self.review.pending = True
+        self.beginReview()
 
     def onReviewSkipRest(self):
         """Accept the patients left at this step without looking at each one.
@@ -2032,6 +2102,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ReviewContinueButton.setVisible(False)
         self.ui.ReviewContinueButton.setText(self.CONTINUE_TEXT)
         self.ui.ReviewSkipRestButton.setVisible(False)
+        self.ui.ReviewGoBackButton.setVisible(False)
         self.ui.ReviewMessageLabel.setVisible(False)
         self.ui.ReviewMessageLabel.setText("")
 
