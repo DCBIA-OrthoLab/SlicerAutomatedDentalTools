@@ -1964,7 +1964,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         name = step.get("Module", "this step")
         # Output folders are reused between runs: without this the review walks
         # patients this run never processed.
-        self.review.build(step, since=getattr(self, "startTime", None))
+        self.review.build(step, expected=self.runPatientIds())
         if not self.review.total or not self.showReviewItem():
             logger.warning(
                 f"Nothing could be loaded to review after {name}, continuing"
@@ -2034,6 +2034,29 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             name = Review.describe(target.get("ReviewId", "")).get("label", "the previous step")
             self.ui.ReviewGoBackButton.setText(f"Go back and fix: {name}")
         logger.info(f"Review - {title} - {item['patient']}{position}")
+
+    def runPatientIds(self):
+        """The patients this run is about, read from the folder it was given.
+
+        The scans on the input side are what defines the run; an output folder
+        may hold results from months of earlier work, and a step that skips a
+        patient it has already done leaves that patient's file untouched and
+        old. Only the input list says who is really being processed.
+
+        Returns:
+            set: patient ids, empty if the folder cannot be read
+        """
+        folder = self.ui.lineEditScanT1LmPath.text
+        if not folder or not os.path.isdir(folder):
+            return set()
+
+        wanted = Review.VOLUME_EXT + Review.MODEL_EXT + (".json",)
+        ids = set()
+        for root, _, files in os.walk(folder):
+            for name in files:
+                if name.endswith(wanted):
+                    ids.add(Review.patientIdFromFileName(name))
+        return ids
 
     def previousCorrectableStep(self):
         """The nearest step behind this one the user can actually change.

@@ -84,19 +84,22 @@ class ReviewSession:
 
     # --------------------------------------------------------------- building
 
-    def build(self, step: dict, since=None) -> list:
+    def build(self, step: dict, expected=None) -> list:
         """One review item per patient for the step that just finished.
 
         Args:
             step: the finished step's dictionary, carrying its Review* keys
-            since: only review files written after this timestamp. Output
-                folders get reused between runs, and without this the review
-                walks patients the run never touched - "patient 1 of 5" on a
-                batch of two.
+            expected: patient ids this run is about. Output folders are reused
+                between runs, so without it the review walks patients the run
+                never touched. Identity rather than file date: a module that
+                skips a patient whose output is already there leaves a file
+                weeks old, and dating the file drops a patient that really is
+                part of the run.
 
         Returns:
             list: the items, which is also kept as this session's queue
         """
+        wanted_ids = {self._normalisedId(p) for p in (expected or ())} or None
         self.step = step
         folder = step.get("ReviewFolder")
         if not folder or not os.path.isdir(folder):
@@ -117,18 +120,21 @@ class ReviewSession:
             wanted = VOLUME_EXT + MODEL_EXT
 
         by_patient = {}
-        skipped = 0
+        skipped = set()
         for root, _, files in os.walk(folder):
             for name in sorted(files):
                 if not name.endswith(wanted):
                     continue
-                path = os.path.join(root, name)
-                if since is not None and not self._writtenSince(path, since):
-                    skipped += 1
+                patient = patientIdFromFileName(name)
+                if wanted_ids is not None and self._normalisedId(patient) not in wanted_ids:
+                    skipped.add(patient)
                     continue
-                by_patient.setdefault(patientIdFromFileName(name), []).append(path)
+                by_patient.setdefault(patient, []).append(os.path.join(root, name))
         if skipped:
-            logger.info(f"{skipped} file(s) from an earlier run left out of the review")
+            logger.info(
+                f"{len(skipped)} patient(s) left out of the review, not part of this "
+                f"run: {sorted(skipped)}"
+            )
 
         # Landmarks mean nothing without the scan they were placed on, and a
         # registration can only be judged against what it was registered to.
@@ -167,23 +173,6 @@ class ReviewSession:
         self.queue = queue
         self.index = 0
         return queue
-
-    @staticmethod
-    def _writtenSince(path, since):
-        """Whether this run produced the file, rather than an earlier one.
-
-        A missing or unreadable timestamp counts as recent: leaving a file out
-        of the review is worse than showing one extra.
-
-        This rests on the pipeline copying with shutil.copy, which stamps the
-        copy with the current time. shutil.copy2 keeps the original date, and
-        an already-segmented scan copied that way would silently vanish from
-        the review.
-        """
-        try:
-            return os.path.getmtime(path) >= since
-        except OSError:
-            return True
 
     @staticmethod
     def _normalisedId(patient_id):
