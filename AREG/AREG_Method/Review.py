@@ -751,20 +751,29 @@ def restrictStepToPatients(step, patients, tempdir_factory=None):
 
         linked = make_temp()
         kept = 0
-        for name in sorted(os.listdir(folder)):
-            source = os.path.join(folder, name)
-            if not os.path.isfile(source):
-                continue
-            if ReviewSession._normalisedId(patientIdFromFileName(name)) not in wanted:
-                continue
-            try:
-                os.symlink(source, os.path.join(linked, name))
-                kept += 1
-            except OSError as e:
-                # A filesystem without links is no reason to lose the replay.
-                logger.warning(f"Could not link {name}, copying instead: {e}")
-                shutil.copy(source, os.path.join(linked, name))
-                kept += 1
+        # Walked, and the tree kept: AREG writes its registered scans to
+        # <Region>/<patient>_OutReg/, and AMASSS walks sub-directories to find
+        # them. A flat listing of that folder sees only the segmentations left
+        # at the top from an earlier pass - which AMASSS then skips as its own
+        # output, leaving it with nothing to segment.
+        for root, _, names in os.walk(folder):
+            for name in sorted(names):
+                source = os.path.join(root, name)
+                if not os.path.isfile(source):
+                    continue
+                if ReviewSession._normalisedId(patientIdFromFileName(name)) not in wanted:
+                    continue
+                relative = os.path.relpath(source, folder)
+                target = os.path.join(linked, relative)
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                try:
+                    os.symlink(source, target)
+                    kept += 1
+                except OSError as e:
+                    # A filesystem without links is no reason to lose the replay.
+                    logger.warning(f"Could not link {relative}, copying instead: {e}")
+                    shutil.copy(source, target)
+                    kept += 1
 
         if kept == 0:
             logger.warning(
