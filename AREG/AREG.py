@@ -360,6 +360,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.review_checkboxes = {}
         self.review_step = {}
         self.executed_steps = []
+        self.review_flagged_carry = []
+        self.review_temp_folders = []
 
     def setup(self):
         """
@@ -1817,7 +1819,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # ----------------------------------------------------------- review pauses
 
     REVIEW_SETTINGS_KEY = "AREG/ReviewSteps"
-    CONTINUE_TEXT = "Continue"
+    # It only ever goes forward: going back has a button of its own.
+    CONTINUE_TEXT = "Next step"
 
     def startStep(self, step):
         """Remember the step being launched, so its pause is found when it ends.
@@ -1835,12 +1838,16 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ReviewSelectAllButton.connect("clicked(bool)", lambda: self.setAllReviewSteps(True))
         self.ui.ReviewSelectNoneButton.connect("clicked(bool)", lambda: self.setAllReviewSteps(False))
         self.ui.ReviewContinueButton.connect("clicked(bool)", self.onReviewContinue)
-        self.ui.ReviewSkipRestButton.connect("clicked(bool)", self.onReviewSkipRest)
         self.ui.ReviewGoBackButton.connect("clicked(bool)", self.onReviewGoBack)
+        self.ui.ReviewPrevPatientButton.connect("clicked(bool)", self.onReviewPreviousPatient)
+        self.ui.ReviewNextPatientButton.connect("clicked(bool)", self.onReviewNextPatient)
+        self.ui.ReviewFlagButton.connect("clicked(bool)", self.onReviewToggleFlag)
         self.ui.ReviewContinueButton.setVisible(False)
-        self.ui.ReviewSkipRestButton.setVisible(False)
         self.ui.ReviewGoBackButton.setVisible(False)
         self.ui.ReviewMessageLabel.setVisible(False)
+        for name in ("ReviewPrevPatientButton", "ReviewNextPatientButton",
+                     "ReviewPatientLabel", "ReviewFlagButton"):
+            getattr(self.ui, name).setVisible(False)
         self.onReviewEnableToggled(self.ui.ReviewEnableCheckBox.isChecked())
 
     def onReviewEnableToggled(self, enabled):
@@ -1963,8 +1970,11 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         step = self.review_step or {}
         name = step.get("Module", "this step")
         # Output folders are reused between runs: without this the review walks
-        # patients this run never processed.
-        self.review.build(step, expected=self.runPatientIds())
+        # patients this run never processed. Coming back from a rollback, the
+        # only patients worth showing are the ones being redone.
+        expected = self.review_flagged_carry or self.runPatientIds()
+        self.review_flagged_carry = []
+        self.review.build(step, expected=expected)
         if not self.review.total or not self.showReviewItem():
             logger.warning(
                 f"Nothing could be loaded to review after {name}, continuing"
@@ -2013,26 +2023,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
         self.ui.ReviewMessageLabel.setVisible(True)
 
-        remaining = self.review.remaining
-        self.ui.ReviewContinueButton.setText(
-            f"Continue - {remaining} more patient(s) here" if remaining
-            else self.CONTINUE_TEXT
-        )
-        # On a large batch, stepping through every patient of every step is the
-        # thing that stops people using the pauses at all. Two or three are
-        # usually enough to tell whether the whole batch went the same way.
-        self.ui.ReviewSkipRestButton.setVisible(remaining > 0)
-        self.ui.ReviewSkipRestButton.setText(
-            f"The rest is fine - skip {remaining} patient(s)"
-        )
-
-        # A result that only reads badly is worth nothing on its own: what the
-        # user needs is the step that caused it.
-        target, _ = self.previousCorrectableStep()
-        self.ui.ReviewGoBackButton.setVisible(target is not None)
-        if target is not None:
-            name = Review.describe(target.get("ReviewId", "")).get("label", "the previous step")
-            self.ui.ReviewGoBackButton.setText(f"Go back and fix: {name}")
+        self.updateReviewButtons()
         logger.info(f"Review - {title} - {item['patient']}{position}")
 
     def runPatientIds(self):
@@ -2083,57 +2074,123 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 return history[i], history[i + 1:here + 1]
         return None, []
 
+    def updateReviewButtons(self):
+        """Show the actions this patient, and this step, actually allow.
+
+        Each button does one thing and says so: moving between patients never
+        advances the run, and going back never hides behind a forward label.
+        """
+        session = self.review
+        total, index = session.total, session.index
+
+        self.ui.ReviewPatientLabel.setVisible(True)
+        self.ui.ReviewPatientLabel.setText(
+            f"<b>{session.currentPatient}</b>"
+            + (f" &nbsp;({index + 1} / {total})" if total > 1 else "")
+        )
+
+        self.ui.ReviewPrevPatientButton.setVisible(total > 1)
+        self.ui.ReviewPrevPatientButton.setEnabled(index > 0)
+        self.ui.ReviewNextPatientButton.setVisible(total > 1)
+        self.ui.ReviewNextPatientButton.setEnabled(index < total - 1)
+
+        # Marking is only worth offering when there is somewhere to go back to.
+        target, _ = self.previousCorrectableStep()
+        self.ui.ReviewFlagButton.setVisible(target is not None)
+        if session.isFlagged():
+            self.ui.ReviewFlagButton.setText("Cancel - this patient is fine")
+        else:
+            self.ui.ReviewFlagButton.setText("Go back and edit this patient")
+
+        self.ui.ReviewContinueButton.setVisible(True)
+        self.ui.ReviewContinueButton.setText(self.CONTINUE_TEXT)
+
+        flagged = session.flaggedPatients()
+        self.ui.ReviewGoBackButton.setVisible(bool(flagged) and target is not None)
+        if flagged and target is not None:
+            name = Review.describe(target.get("ReviewId", "")).get("label", "the previous step")
+            self.ui.ReviewGoBackButton.setText(
+                f"Go back to {name} for {len(flagged)} patient(s)"
+            )
+
+
+    def onReviewPreviousPatient(self):
+        """Show the patient before this one, keeping any edit made here."""
+        if self.review.index > 0:
+            self.review.saveEdits()
+            self.review.index -= 1
+            self.showReviewItem()
+
+    def onReviewNextPatient(self):
+        """Show the next patient of this step, keeping any edit made here."""
+        if self.review.index < self.review.total - 1:
+            self.review.saveEdits()
+            self.review.index += 1
+            self.showReviewItem()
+
+    def onReviewToggleFlag(self):
+        """Mark this patient for rework, or take the mark back."""
+        patient = self.review.currentPatient
+        now = self.review.toggleFlag()
+        logger.info(f"{patient}: {'marked for rework' if now else 'mark removed'}")
+        self.updateReviewButtons()
+
     def onReviewGoBack(self):
-        """Return to the last correctable step, then replay everything since.
+        """Return to the last correctable step, for the patients marked there.
 
         Correcting the landmarks changes nothing on its own - the orientation
         was computed from the old ones. So the steps in between are queued to
-        run again, and the run comes back to this same pause with the new
-        result.
+        run again, narrowed to the marked patients: the rest of the batch keeps
+        the results it already has, and a run of fifty does not start over
+        because one case was wrong.
         """
         target, replay = self.previousCorrectableStep()
         if target is None:
             logger.warning("Nothing correctable behind this step")
             return
 
+        flagged = self.review.flaggedPatients()
+        if not flagged:
+            logger.warning("No patient marked for rework")
+            return
+
         name = Review.describe(target.get("ReviewId", "")).get("label", target.get("Module"))
         logger.info(
-            f"Going back to '{name}'; {len(replay)} step(s) will run again afterwards"
+            f"Going back to '{name}' for {flagged}; "
+            f"{len(replay)} step(s) will run again for them"
         )
+
+        narrowed = []
+        for step in replay:
+            restricted, folders = Review.restrictStepToPatients(step, flagged)
+            self.review_temp_folders.extend(folders)
+            narrowed.append(restricted)
 
         self.review.reset()
         self.resetReviewUi()
 
-        # Everything between the two runs again, ahead of whatever was left.
-        self.list_Processes_Parameters[0:0] = replay
+        # The steps between the two run again, ahead of whatever was left.
+        self.list_Processes_Parameters[0:0] = narrowed
         self.review_step = target
+        self.review_flagged_carry = list(flagged)
         # beginReview guards against a pause cancelled between the callback and
         # the event loop; this one comes from a button, so it is armed here.
         self.review.pending = True
         self.beginReview()
 
-    def onReviewSkipRest(self):
-        """Accept the patients left at this step without looking at each one.
-
-        Whatever the user changed on the one in front of them is still saved:
-        they may well have corrected this patient and only then decided the
-        others were fine.
-        """
-        skipped = self.review.remaining
-        self.review.saveEdits()
-        logger.info(f"{skipped} patient(s) accepted without review at this step")
-
-        self.resetReviewUi()
-        self.review.reset()
-        self.advanceToNextProcess()
-
     def onReviewContinue(self):
-        """Save what changed, then move on to the next patient or step."""
-        self.review.saveEdits()
-        self.review.index += 1
+        """Leave this pause and carry on with the run.
 
-        if self.review.index < self.review.total and self.showReviewItem():
-            return
+        Moving between patients is what the navigation buttons are for, so this
+        one does the single thing its label promises: it ends the pause. What
+        the user changed on the patient in front of them is saved first, and
+        the patients they never opened keep the results they already have.
+        """
+        self.review.saveEdits()
+        seen = self.review.index + 1
+        total = self.review.total
+        if seen < total:
+            logger.info(f"{total - seen} patient(s) accepted without being opened")
 
         self.resetReviewUi()
         self.review.reset()
@@ -2155,14 +2212,27 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Put the panel back the way it was before the pause."""
         self.ui.ReviewContinueButton.setVisible(False)
         self.ui.ReviewContinueButton.setText(self.CONTINUE_TEXT)
-        self.ui.ReviewSkipRestButton.setVisible(False)
         self.ui.ReviewGoBackButton.setVisible(False)
         self.ui.ReviewMessageLabel.setVisible(False)
+        for name in ("ReviewPrevPatientButton", "ReviewNextPatientButton",
+                     "ReviewPatientLabel", "ReviewFlagButton"):
+            getattr(self.ui, name).setVisible(False)
         self.ui.ReviewMessageLabel.setText("")
+
+    def clearReviewTempFolders(self):
+        """Drop the link farms a rollback made. The scans they point at stay."""
+        import shutil
+        for folder in self.review_temp_folders:
+            try:
+                shutil.rmtree(folder, ignore_errors=True)
+            except Exception as e:
+                logger.warning(f"Could not remove {folder}: {e}")
+        self.review_temp_folders = []
 
     def OnEndProcess(self):
         self.resetReviewUi()
         self.review.reset()
+        self.clearReviewTempFolders()
         self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
         self.ui.LabelProgressExtension.setText(
             f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"

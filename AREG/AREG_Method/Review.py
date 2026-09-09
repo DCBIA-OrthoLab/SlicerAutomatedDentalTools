@@ -9,6 +9,7 @@ interface.
 import logging
 import os
 import re
+import shutil
 
 import slicer
 import vtk
@@ -54,6 +55,7 @@ class ReviewSession:
         self.index = 0
         self.pending = False
         self.step = {}
+        self.flagged = set()
 
     def clearNodes(self):
         """Take the previous patient's nodes back out of the scene."""
@@ -81,6 +83,31 @@ class ReviewSession:
     @property
     def remaining(self):
         return max(0, len(self.queue) - (self.index + 1))
+
+    @property
+    def currentPatient(self):
+        item = self.current
+        return item["patient"] if item else None
+
+    def isFlagged(self, patient=None):
+        """Whether this patient is marked for rework."""
+        patient = patient or self.currentPatient
+        return patient in self.flagged
+
+    def toggleFlag(self, patient=None):
+        """Mark or unmark a patient for rework, and say which it now is."""
+        patient = patient or self.currentPatient
+        if patient is None:
+            return False
+        if patient in self.flagged:
+            self.flagged.discard(patient)
+        else:
+            self.flagged.add(patient)
+        return patient in self.flagged
+
+    def flaggedPatients(self):
+        """The patients marked for rework, in the order they were queued."""
+        return [i["patient"] for i in self.queue if i["patient"] in self.flagged]
 
     # --------------------------------------------------------------- building
 
@@ -172,6 +199,7 @@ class ReviewSession:
 
         self.queue = queue
         self.index = 0
+        self.flagged = set()
         return queue
 
     @staticmethod
@@ -670,3 +698,87 @@ def stepsFor(ids) -> list:
             continue
         steps.append(dict(entry, id=review_id))
     return steps
+
+
+# ---------------------------------------------------------------------------
+# Replaying a step for a few patients rather than all of them.
+#
+# Every step reads a folder, so restricting it means handing it a folder that
+# holds only the patients wanted. The files are linked, never copied: a CBCT is
+# 200 MB and a run can hold fifty of them. Their names are kept, because the
+# tools derive their output names from the input ones.
+# ---------------------------------------------------------------------------
+
+# Which parameter of a step names the folder it reads.
+INPUT_KEYS = (
+    "input",              # ALI, PRE_ASO, SEMI_ASO, Centering
+    "inputVolume",        # AMASSS
+    "t1_folder", "t2_folder",        # AREG_CBCT
+    "T1", "T2",                      # AREG_IOS
+    "IOS_folder", "CBCT_folder",     # AREG IOSCBCT
+    "input_folder_CBCT",             # resampling
+)
+
+
+def restrictStepToPatients(step, patients, tempdir_factory=None):
+    """A copy of this step that only reads the patients given.
+
+    Args:
+        step: the step dictionary to narrow
+        patients: patient ids to keep
+        tempdir_factory: callable returning a fresh empty directory, so a
+            caller can control where the links go
+
+    Returns:
+        tuple: (narrowed step, folders created). The step is returned unchanged
+            when nothing can be narrowed, which is the safe outcome: replaying
+            every patient wastes time, replaying none loses work.
+    """
+    wanted = {ReviewSession._normalisedId(p) for p in patients}
+    if not wanted:
+        return step, []
+
+    make_temp = tempdir_factory or slicer.util.tempDirectory
+    narrowed = dict(step)
+    parameters = dict(step.get("Parameter") or {})
+    created = []
+    changed = False
+
+    for key in INPUT_KEYS:
+        folder = parameters.get(key)
+        if not isinstance(folder, str) or not os.path.isdir(folder):
+            continue
+
+        linked = make_temp()
+        kept = 0
+        for name in sorted(os.listdir(folder)):
+            source = os.path.join(folder, name)
+            if not os.path.isfile(source):
+                continue
+            if ReviewSession._normalisedId(patientIdFromFileName(name)) not in wanted:
+                continue
+            try:
+                os.symlink(source, os.path.join(linked, name))
+                kept += 1
+            except OSError as e:
+                # A filesystem without links is no reason to lose the replay.
+                logger.warning(f"Could not link {name}, copying instead: {e}")
+                shutil.copy(source, os.path.join(linked, name))
+                kept += 1
+
+        if kept == 0:
+            logger.warning(
+                f"None of {sorted(patients)} found in {folder}; leaving '{key}' as it was"
+            )
+            continue
+
+        parameters[key] = linked
+        created.append(linked)
+        changed = True
+        logger.info(f"'{key}' narrowed to {kept} file(s) for {sorted(patients)}")
+
+    if not changed:
+        return step, []
+
+    narrowed["Parameter"] = parameters
+    return narrowed, created

@@ -723,6 +723,45 @@ qMRMLNodeComboBox:focus {
          </widget>
         </item>
         <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_ReviewNav">
+          <item>
+           <widget class="QPushButton" name="ReviewPrevPatientButton">
+            <property name="visible"><bool>false</bool></property>
+            <property name="toolTip">
+             <string>Go back to the patient before this one, to look again or change something</string>
+            </property>
+            <property name="text"><string>&#9664; Previous patient</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="ReviewPatientLabel">
+            <property name="visible"><bool>false</bool></property>
+            <property name="alignment"><set>Qt::AlignCenter</set></property>
+            <property name="textFormat"><enum>Qt::RichText</enum></property>
+            <property name="text"><string/></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="ReviewNextPatientButton">
+            <property name="visible"><bool>false</bool></property>
+            <property name="toolTip">
+             <string>Move on to the next patient of this step</string>
+            </property>
+            <property name="text"><string>Next patient &#9654;</string></property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QPushButton" name="ReviewFlagButton">
+          <property name="visible"><bool>false</bool></property>
+          <property name="toolTip">
+           <string>Mark this patient as one to redo: going back will replay the steps for it alone</string>
+          </property>
+          <property name="text"><string>Go back and edit this patient</string></property>
+         </widget>
+        </item>
+        <item>
          <widget class="QPushButton" name="ReviewGoBackButton">
           <property name="visible"><bool>false</bool></property>
           <property name="toolTip">
@@ -730,17 +769,6 @@ qMRMLNodeComboBox:focus {
           </property>
           <property name="text">
            <string>Go back and fix</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="ReviewSkipRestButton">
-          <property name="visible"><bool>false</bool></property>
-          <property name="toolTip">
-           <string>Accept the remaining patients of this step without looking at each one, and carry on with the run</string>
-          </property>
-          <property name="text">
-           <string>The rest is fine</string>
           </property>
          </widget>
         </item>
