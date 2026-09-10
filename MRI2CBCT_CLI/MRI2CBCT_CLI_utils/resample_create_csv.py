@@ -57,11 +57,15 @@ def create_csv(input:str,output_resample:str,output_csv:str,name_csv:str):
         os.makedirs(output_csv)
         
     input_folder = input
-    # Get all nifti files in the folder
+    # Same formats as the rest of the pipeline (PRE_ASO_CBCT, ALI_CBCT, AMASSS...).
+    # Restricting this to .nii dropped .nrrd cohorts here without a word, and every
+    # later step then reported "0 file" on an input folder that was not empty.
+    # SimpleITK, used by get_nifti_info below, reads all of them.
+    scan_extensions = (".nii", ".nii.gz", ".nrrd", ".nrrd.gz", ".gipl", ".gipl.gz")
     nifti_files = []
     for root, dirs, files in os.walk(input_folder):
         for file in files:
-            if file.endswith(".nii") or file.endswith(".nii.gz"):
+            if file.endswith(scan_extensions):
                 nifti_files.append(os.path.join(root, file))
 
     # Get nifti info for every nifti file

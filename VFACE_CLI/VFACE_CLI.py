@@ -152,10 +152,10 @@ def classify_symmetry(df: pd.DataFrame, model_sym_asym, model_mand_asym, model_m
         symmetry_translation = {0: "Asymmetric", 1: "Symmetric"}
         binary_translation = {0: "False", 1: "True"}
         
-        # Clean column names
-        for col in df.columns:
-            if "/" in col:
-                df = df.rename(columns={col: clean_name(col)})
+        # Clean column names -- one rename, not one full copy of df per column
+        renamed = {col: clean_name(col) for col in df.columns if "/" in col}
+        if renamed:
+            df = df.rename(columns=renamed)
         
         # Predict symmetry/asymmetry
         logger.info("Making symmetry/asymmetry predictions...")

@@ -13,7 +13,9 @@ set(MODULE_PYTHON_SCRIPTS
   ${FOLDER_LIBRARY}/io.py
   ${FOLDER_LIBRARY}/mask_renderer.py
   ${FOLDER_LIBRARY}/model.py
+  ${FOLDER_LIBRARY}/orientation.py
   ${FOLDER_LIBRARY}/render.py
+  ${FOLDER_LIBRARY}/segmentation.py
   ${FOLDER_LIBRARY}/surface.py
 )
 

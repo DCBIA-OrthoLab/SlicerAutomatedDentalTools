@@ -303,15 +303,12 @@ class Distance(Measure):
         self.si_sign_meaning = "x"
 
     def __SignMeaningDist(self):
-        lst_measurement = [self.point1["name"], self.point2line["name"]]
         lst_measurement = [self.point1["name"], self.point2line]
-        logger.info(f"lst_measurement : {lst_measurement}")
         try :
             direction1 = lst_measurement[0][0:3]
             direction2 = lst_measurement[1][0:3]
         except :
-            logger.error('AN ERROR OCCURED')
-            logger.info(f"lst_measurement : {lst_measurement}")
+            logger.debug(f"No direction prefix on {lst_measurement}")
             direction1 = "No_direction"
             direction2 = "No_direction"
 
@@ -332,8 +329,6 @@ class Distance(Measure):
 
         if direction2 == "Mid":
             parts = lst_measurement[1].split("_")
-            logger.info(f"lst_measurement : {lst_measurement}")
-            logger.info(f"parts : {parts}")
             landmark1 = parts[1] if len(parts) > 1 else None
             landmark2 = parts[2] if len(parts) > 2 else None
 
@@ -352,8 +347,7 @@ class Distance(Measure):
                 direction1 = lst_measurement[0][0]
                 direction2 = lst_measurement[1][0]
             except :
-                logger.error('AN ERROR OCCURED AGAIN')
-                logger.error(f"lst_measurement : {lst_measurement}")
+                logger.debug(f"No direction initial on {lst_measurement}")
                 direction1 = "No_direction"
                 direction2 = "No_direction"
 

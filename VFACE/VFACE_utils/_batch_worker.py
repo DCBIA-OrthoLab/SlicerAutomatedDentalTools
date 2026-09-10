@@ -226,7 +226,7 @@ def main():
         sys.exit(0)
 
     except Exception as e:
-        logger.error(f"FAILURE: {e}", file=sys.stderr)
+        logger.error(f"FAILURE: {e}")
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 

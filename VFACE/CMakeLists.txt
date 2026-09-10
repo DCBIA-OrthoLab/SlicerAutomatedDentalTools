@@ -19,6 +19,13 @@ set(MODULE_PYTHON_SCRIPTS
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
   Resources/UI/${MODULE_NAME}.ui
+  # The nnUNet model description travels with the module: without these the
+  # installed extension has an empty Resources/ML, the weight downloader finds
+  # no URL and the dental segmentation fails on every scan. Only the checkpoint
+  # itself is left out, it is fetched at first use.
+  Resources/ML/download_info.json
+  Resources/ML/Dataset111_453CT/nnUNetTrainer__nnUNetPlans__3d_fullres/dataset.json
+  Resources/ML/Dataset111_453CT/nnUNetTrainer__nnUNetPlans__3d_fullres/plans.json
   )
 
 #-----------------------------------------------------------------------------
