@@ -243,9 +243,20 @@ def main(args):
                     jaw = Jaw(Lower())
                     logger.debug("Jaw linking enabled for Lower jaw")
                 else:
-                    raise ValueError(f"Invalid jaw specification: {args.jaw[0]}")
+                    # "Upper/Lower" is what the GUI sends when both arches are
+                    # selected, and it is the one thing this mode cannot do:
+                    # linking means one arch is fitted and drags the other, so
+                    # exactly one of them has to be named.
+                    raise ValueError(
+                        f"Invalid jaw specification: {args.jaw[0]}. Orienting the "
+                        "arches in occlusion fits one arch and moves the other "
+                        "with it, so jaw must be Upper or Lower. To orient each "
+                        "arch on its own reference, leave the occlusion option "
+                        "off and give the teeth of both jaws in list_teeth.")
             else:
-                logger.debug("Jaw linking disabled")
+                logger.debug(
+                    "Jaw linking disabled: each arch is oriented on the gold "
+                    "standard of its own jaw")
         except (ValueError, Exception) as je:
             logger.error(f"Jaw configuration failed: {str(je)}")
             error_details.append({"stage": "jaw_config", "message": str(je)})
@@ -314,7 +325,32 @@ def main(args):
                     jaw = Jaw(file_vtk)
                 
                 logger.debug(f"Processing [{index+1}/{len(list_files)}]: {os.path.basename(file_vtk)} ({jaw()})")
-                
+
+                # PrePreAso needs 3 or 4 teeth of this arch to build its frame.
+                # With none it used to fail on a bare assertion naming universal
+                # ids, which says nothing about what the caller got wrong: the
+                # teeth to register on were all from the other jaw.
+                if len(dic_teeth[jaw()]) not in (3, 4):
+                    error_msg = (
+                        f"{len(dic_teeth[jaw()])} {jaw()} teeth given in list_teeth, "
+                        "3 or 4 are needed to orient this arch. Add them (the usual "
+                        "set is UR6,UR4,UL4,UL6 for the upper and LL6,LL4,LR4,LR6 "
+                        "for the lower), or orient the arches in occlusion so the "
+                        "upper's transform carries the lower.")
+                    logger.error(f"[{index}] {error_msg} for {os.path.basename(file_vtk)}")
+                    failed_indices.append(index)
+                    error_details.append({
+                        "index": index,
+                        "file": os.path.basename(file_vtk),
+                        "stage": "teeth_for_jaw",
+                        "message": error_msg,
+                    })
+                    try:
+                        WritefileError(file_vtk, args.folder_error[0], error_msg)
+                    except Exception as we:
+                        logger.warning(f"Could not write error file: {str(we)}")
+                    continue
+
                 # ===== Stage 8.1: Surface Loading =====
                 try:
                     surf = ReadSurf(file_vtk)
@@ -414,8 +450,22 @@ def main(args):
                 # ===== Stage 8.4: Matrix Computation =====
                 try:
                     final_matrix = np.matmul(output_icp["matrix"], matrix)
-                    patient_id = PatientNumber(file_vtk)
-                    tfm_path = os.path.join(args.output_folder[0], f"{patient_id}_SegOr.tfm")
+                    if link:
+                        # One matrix moved the whole mouth, so one file holds it,
+                        # under the patient's name alone. AREG_IOS reads it back
+                        # under that name in Auto_IOS mode.
+                        tfm_name = f"{PatientNumber(file_vtk)}_SegOr.tfm"
+                    else:
+                        # One matrix per arch, so the jaw has to stay in the
+                        # name. PatientNumber cuts the name at _U or _L, which
+                        # gave the upper and the lower the same file name: the
+                        # arch written second overwrote the other one's matrix,
+                        # and both were then read as the one that survived. The
+                        # matrix now shares the stem of the surface it belongs
+                        # to, written alongside it by WriteSurf.
+                        stem = os.path.splitext(os.path.basename(file_vtk))[0]
+                        tfm_name = f"{stem}{args.add_inname[0]}.tfm"
+                    tfm_path = os.path.join(args.output_folder[0], tfm_name)
                     logger.debug(f"Saving transform matrix to {os.path.basename(tfm_path)}")
                     saveMatrixAsTfm(final_matrix, tfm_path)
                     logger.debug(f"Transform matrix saved successfully")

@@ -1,5 +1,6 @@
 import os
 import glob
+import re
 import vtk
 import numpy as np
 import json
@@ -177,6 +178,71 @@ def WriteSurf(surf, output_folder, name, inname):
         raise
 
 
+# Which arch a file belongs to is read from its name, and it has to be read the
+# same way by everything that reads it. Two rules, because the two spellings do
+# not carry the same risk:
+#   - the words "upper" and "lower" are looked for anywhere, as before, so names
+#     like "GoldUpper.vtk" keep working;
+#   - the single letters U and L only count as a jaw when they stand alone
+#     between separators ("P1_T1_U.vtk", "U_P1.vtk", "P1_T1_U_Seg.vtk"). A bare
+#     letter matched anywhere made "Dupont_03_L.vtk" an upper on the strength of
+#     the u in the name, and the old "_U_" wanted a trailing separator the very
+#     common "P1_T1_U.vtk" does not have.
+_JAW_WORD = {"Upper": "upper", "Lower": "lower"}
+_JAW_LETTER = {
+    "Upper": re.compile(r"(?:^|[_\-])u(?=[_\-.]|$)", re.IGNORECASE),
+    "Lower": re.compile(r"(?:^|[_\-])l(?=[_\-.]|$)", re.IGNORECASE),
+}
+
+
+def JawFromFileName(path_filename, default=None):
+    """The arch this file name names: Upper, Lower, or `default` for neither.
+
+    Only the base name is read: a path can hold anything, and an input folder
+    called "lower_arches" used to decide the jaw of every file under it.
+    """
+    filename = os.path.basename(str(path_filename))
+
+    found = {}
+    for jaw, word in _JAW_WORD.items():
+        index = filename.lower().rfind(word)
+        if index != -1:
+            found[jaw] = index
+    for jaw, pattern in _JAW_LETTER.items():
+        if jaw in found:
+            continue
+        matches = list(pattern.finditer(filename))
+        if matches:
+            found[jaw] = matches[-1].start()
+
+    if not found:
+        return default
+
+    if len(found) == 2:
+        # Both arches named in one file name. It happens downstream of ALI_IOS,
+        # which appends the jaw of the model it ran to the name of the scan it
+        # ran on, so the last marker written is the one that describes the file.
+        jaw = max(found, key=found.get)
+        logger.warning(
+            f"{filename} names both arches; read as {jaw}, its last marker")
+        return jaw
+
+    return next(iter(found))
+
+
+def StripJawFromFileName(name_file):
+    """The part of a name that both arches of one patient have in common.
+
+    This is what upper and lower files are paired on, so it has to come out
+    identical for the two of them: "P1_T1_U_Seg" and "P1_T1_L_Seg" both reduce
+    to "P1_T1_Seg", and so does "P1_T1_Upper_Seg".
+    """
+    out = re.sub(r"(?:^|[_\-])(?:u|l)(?=[_\-.]|$)", "_", name_file, flags=re.IGNORECASE)
+    out = re.sub(r"upper|lower", "_", out, flags=re.IGNORECASE)
+    out = re.sub(r"[_\-]{2,}", "_", out)
+    return out.strip("_-")
+
+
 def UpperOrLower(path_filename):
     """tell if the file is for upper jaw of lower
 
@@ -186,13 +252,7 @@ def UpperOrLower(path_filename):
     Returns:
         str: Upper or Lower, for the following exemple if Upper
     """
-    out = "Lower"
-    st = "_U_"
-    st2 = "upper"
-    filename = os.path.basename(path_filename)
-    if st in filename or st2 in filename.lower():
-        out = "Upper"
-    return out
+    return JawFromFileName(path_filename, default="Lower")
 
 
 def search(path, *args):

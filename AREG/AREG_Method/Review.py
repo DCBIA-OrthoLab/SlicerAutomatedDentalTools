@@ -619,7 +619,13 @@ CATALOGUE = {
         "label": "Oriented IOS",
         "group": IOS,
         "kind": VIEW,
-        "hint": "Check the scan is oriented before registration. " + LOOK,
+        # The two arches are oriented one by one here, each on the reference of
+        # its own jaw, so they land in the same place and overlap on screen.
+        # That is expected, and it is not what the registration will look like:
+        # each arch is taken to the CBCT on its own from here.
+        "hint": "Check each arch is oriented before registration. The upper and "
+                "the lower are oriented separately, so they overlap here instead "
+                "of sitting in occlusion. " + LOOK,
     },
     "ios_oriented_t1": {
         "label": "Oriented IOS - T1",
