@@ -21,7 +21,11 @@ formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
-fpath = os.path.join(os.path.dirname(__file__), "..")
+# realpath, not __file__: this CLI sits in a sub-folder, so it is registered
+# through a flat folder of symlinks into the source tree. __file__ then names
+# the link, whose parent holds no MRI2CBCT_CLI_utils. Resolving first lands in
+# MRI2CBCT_CLI either way; a built install has the package on sys.path already.
+fpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")
 sys.path.append(fpath)
 from MRI2CBCT_CLI_utils import approximation, get_transformation, crop_volume
 

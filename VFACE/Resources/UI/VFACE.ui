@@ -164,14 +164,34 @@
        </widget>
       </item>
       <item row="3" column="1">
-       <widget class="ctkPathLineEdit" name="PathLineEdit">
-        <property name="filters">
-         <set>ctkPathLineEdit::Dirs</set>
-        </property>
-        <property name="SlicerParameterName" stdset="0">
-         <string/>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="horizontalLayout_T1">
+        <item>
+         <widget class="ctkPathLineEdit" name="PathLineEdit">
+          <property name="filters">
+           <set>ctkPathLineEdit::Dirs</set>
+          </property>
+          <property name="SlicerParameterName" stdset="0">
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="TestFilesButton">
+          <property name="enabled">
+           <bool>true</bool>
+          </property>
+          <property name="maximumWidth">
+           <number>80</number>
+          </property>
+          <property name="toolTip">
+           <string>Download a sample CBCT scan and use it as the T1 input, along with the default measurement lists (about 280 MB the first time)</string>
+          </property>
+          <property name="text">
+           <string>Test Files</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
       <item row="5" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout">
@@ -262,21 +282,76 @@
        </widget>
       </item>
 
-      <item row="9" column="0">
-       <widget class="QLabel" name="label_7">
-        <property name="text">
-         <string>Intermediate Output Check</string>
-        </property>
-       </widget>
-      </item>
-      <item row="9" column="1">
-       <widget class="QCheckBox" name="checkBox_2">
-        <property name="text">
-         <string/>
-        </property>
-       </widget>
-      </item>
 
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="reviewCollapsibleButton">
+     <property name="text">
+      <string>Review and manual adjustment</string>
+     </property>
+     <property name="collapsed">
+      <bool>true</bool>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_Review">
+      <property name="spacing"><number>6</number></property>
+      <item>
+       <widget class="QCheckBox" name="checkBox_2">
+        <property name="toolTip">
+         <string>Stop after the steps ticked below so you can look at the result, and correct it where the run allows it</string>
+        </property>
+        <property name="text">
+         <string>Pause during the run to check the results</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="reviewHelpLabel">
+        <property name="wordWrap"><bool>true</bool></property>
+        <property name="text">
+         <string>Tick the steps you want to stop at. The run waits for you there, and continues when you say so.</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_Review">
+        <item>
+         <widget class="QPushButton" name="reviewSelectAllButton">
+          <property name="text"><string>Select all</string></property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="reviewSelectNoneButton">
+          <property name="text"><string>Select none</string></property>
+         </widget>
+        </item>
+          <item>
+           <widget class="QPushButton" name="reviewSelectRecommendedButton">
+            <property name="toolTip">
+             <string>The steps worth a look on most runs: the landmarks you can correct, each registration, and the final surfaces</string>
+            </property>
+            <property name="text"><string>Select recommended</string></property>
+           </widget>
+          </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QScrollArea" name="reviewScrollArea">
+        <property name="widgetResizable"><bool>true</bool></property>
+        <property name="minimumSize">
+         <size><width>0</width><height>140</height></size>
+        </property>
+        <property name="maximumSize">
+         <size><width>16777215</width><height>260</height></size>
+        </property>
+        <widget class="QWidget" name="reviewScrollContents">
+         <layout class="QVBoxLayout" name="reviewStepsLayout">
+          <property name="spacing"><number>4</number></property>
+         </layout>
+        </widget>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -300,6 +375,22 @@
     <widget class="QLabel" name="label_3">
      <property name="text">
       <string>Module lance</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="reviewLabel">
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+     <property name="textFormat">
+      <enum>Qt::RichText</enum>
+     </property>
+     <property name="text">
+      <string/>
      </property>
     </widget>
    </item>
@@ -338,9 +429,84 @@
    </item>
 
   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_ReviewNav">
+     <item>
+      <widget class="QPushButton" name="reviewPrevPatientButton">
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="toolTip">
+        <string>Go back to the patient before this one, to look again or change something</string>
+       </property>
+       <property name="text">
+        <string>&#9664; Previous patient</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="reviewPatientLabel">
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+       <property name="textFormat">
+        <enum>Qt::RichText</enum>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="reviewNextPatientButton">
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="toolTip">
+        <string>Move on to the next patient of this step</string>
+       </property>
+       <property name="text">
+        <string>Next patient &#9654;</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+  <item>
+    <widget class="QPushButton" name="reviewFlagButton">
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <property name="toolTip">
+      <string>Mark this patient as one to redo: going back will replay the steps for it alone</string>
+     </property>
+     <property name="text">
+      <string>Go back and edit this patient</string>
+     </property>
+    </widget>
+   </item>
+
+  <item>
     <widget class="QPushButton" name="continueButton">
      <property name="text">
-      <string>Continue on next step</string>
+      <string>Next step</string>
+     </property>
+    </widget>
+   </item>
+
+  <item>
+    <widget class="QPushButton" name="reviewGoBackButton">
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <property name="toolTip">
+      <string>Go back to the last step you can correct, fix it there, and replay everything since</string>
+     </property>
+     <property name="text">
+      <string>Go back and fix</string>
      </property>
     </widget>
    </item>

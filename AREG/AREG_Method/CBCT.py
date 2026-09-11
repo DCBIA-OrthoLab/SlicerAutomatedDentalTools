@@ -1006,6 +1006,9 @@ def GetPatients(folder_path, time_point="T1", segmentationType=None, folder_mask
     
     patients = {}
 
+    # TIMEPOINT-SUFFIX: only _T1/_T2 are stripped here, so _T3/_T4 inputs break
+    # patient pairing. See the full note above GetPatients in
+    # AREG_CBCT/AREG_CBCT_utils/utils.py before changing this.
     for file in all_files:
         basename = os.path.basename(file)
         patient = (

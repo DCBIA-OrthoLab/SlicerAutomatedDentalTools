@@ -26,7 +26,11 @@ formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
-fpath = os.path.join(os.path.dirname(__file__), "..")
+# realpath, not __file__: this CLI sits in a sub-folder, so it is registered
+# through a flat folder of symlinks into the source tree. __file__ then names
+# the link, whose parent holds no ASO_IOS_utils. Resolving first lands in
+# ASO_IOS either way; a built install has the package on sys.path already.
+fpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")
 sys.path.append(fpath)
 
 from ASO_IOS_utils import (

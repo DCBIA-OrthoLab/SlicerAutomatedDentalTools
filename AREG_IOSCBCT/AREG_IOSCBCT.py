@@ -527,6 +527,10 @@ def getPatients(ios_folder, cbct_folder, ios_lm_folder, cbct_lm_folder):
     
     def extract_patient_id(filename):
         """Extract patient ID from filename (letter + digits before timepoint)"""
+        # TIMEPOINT-SUFFIX: [Tt][0-2] accepts T0..T2 only, so a _T3 file matches
+        # nothing at all and this returns None - the patient is skipped rather than
+        # mispaired. Accepting more timepoints means \d+ here. See the full note
+        # above GetPatients in AREG_CBCT/AREG_CBCT_utils/utils.py.
         match = re.search(r'([A-Za-z]+)[_]?([0-9]+)[_]?[Tt][0-2]', filename)
         if match:
             return match.group(1) + match.group(2)  # Combine letter and digits

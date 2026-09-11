@@ -13,6 +13,7 @@ set(MODULE_PYTHON_SCRIPTS
   VFACE_utils/Measure.py
   VFACE_utils/Point.py
   VFACE_utils/Progress.py
+  VFACE_utils/review_steps.py
   VFACE_utils/segmentation_logic.py
   )
 

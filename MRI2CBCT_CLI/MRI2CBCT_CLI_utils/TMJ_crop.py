@@ -18,6 +18,9 @@ logger.addHandler(console_handler)
 def GetListFiles(folder_path, extensions):
     return [str(p) for ext in extensions for p in Path(folder_path).rglob(f"*{ext}")]
 
+# TIMEPOINT-SUFFIX: only _T1/_T2 are stripped here, so _T3/_T4 inputs break
+# patient pairing. See the full note above GetPatients in
+# AREG_CBCT/AREG_CBCT_utils/utils.py before changing this.
 def extract_patient_id(filename: str) -> str:
     # Remove suffixes like _Scan, _CB, _T1, _seg, _mask, etc.
     return (

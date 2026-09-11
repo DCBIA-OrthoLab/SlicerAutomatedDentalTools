@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
@@ -8,10 +9,11 @@ if current_dir not in sys.path:
 from .Progress import DisplayASOCBCT,DisplayAMASSS,DisplayAREGCBCT,DisplayALICBCT
 from glob import iglob
 import slicer
-from .functionaq3dc import AQ3DCLogic, AQ3DCWidget
+from .functionaq3dc import AQ3DCLogic, AQ3DCWidget, patientIdFromFileName
 import qt
 import re
 import shutil
+import tempfile
 from pathlib import Path
 import pandas as pd
 import traceback
@@ -235,7 +237,7 @@ def CreateListProcess(**kwargs):
             "output_folder": preaso_MAX_folder_path,
             "model_folder": False,
             "SmallFOV": False,
-            "temp_folder": slicer.util.tempDirectory(),
+            "temp_folder": _unique_temp_dir("work"),
             "DCMInput": False,
         }
         list_process.append(
@@ -254,7 +256,7 @@ def CreateListProcess(**kwargs):
             "dir_models": kwargs["model_folder_ali"],
             "lm_type": "'ANS','IF','PNS','UL6O','UR1O','UR6O'",
             "output_dir": preaso_MAX_folder_path,
-            "temp_fold": slicer.util.tempDirectory(),
+            "temp_fold": _unique_temp_dir("work"),
             "DCMInput": False,
             "spacing": "[1,0.3]",
             "speed_per_scale": "[1,1]",
@@ -270,6 +272,15 @@ def CreateListProcess(**kwargs):
                 "Display": DisplayALICBCT(6,
                     nb_scan
                 ),
+                "ReviewTitle": "Maxilla orientation landmarks",
+                "ReviewHint": (
+                    "These points decide how the scan is oriented, and every step after it inherits that orientation. Drag any that sits off its anatomy. Your changes are saved when you click Continue - you do not need to save in Slicer."
+                ),
+                "ReviewFolder": preaso_MAX_folder_path,
+                "ReviewVolumeFolder": preaso_MAX_folder_path,
+                "ReviewEditable": True,
+                "ReviewId": "t1_landmarks_orientation_max",
+                "pause_for_visualization": True,
             }
         )
         
@@ -289,6 +300,14 @@ def CreateListProcess(**kwargs):
                 "Display": DisplayASOCBCT(
                     nb_scan
                 ),
+                "ReviewTitle": "Maxilla orientation of the original scan",
+                "ReviewHint": (
+                    "Check the scan is oriented on the occlusal and mid-sagittal "
+                    "planes. Nothing to edit here - look at the result, then click "
+                    "Continue."
+                ),
+                "ReviewFolder": orientation_max_folder_path,
+                "ReviewId": "t1_oriented_max",
                 "pause_for_visualization": True,
             }
         )
@@ -298,7 +317,7 @@ def CreateListProcess(**kwargs):
             "output_folder": preaso_CB_folder_path,
             "model_folder": False,
             "SmallFOV": False,
-            "temp_folder": slicer.util.tempDirectory(),
+            "temp_folder": _unique_temp_dir("work"),
             "DCMInput": False,
         }
 
@@ -318,7 +337,7 @@ def CreateListProcess(**kwargs):
             "dir_models": kwargs["model_folder_ali"],
             "lm_type": "'Ba', 'LPo', 'N', 'RPo', 'S', 'LOr', 'ROr'",
             "output_dir": preaso_CB_folder_path,
-            "temp_fold": slicer.util.tempDirectory(),
+            "temp_fold": _unique_temp_dir("work"),
             "DCMInput": False,
             "spacing": "[1,0.3]",
             "speed_per_scale": "[1,1]",
@@ -334,6 +353,15 @@ def CreateListProcess(**kwargs):
                 "Display": DisplayALICBCT(6,
                     nb_scan
                 ),
+                "ReviewTitle": "Cranial base orientation landmarks",
+                "ReviewHint": (
+                    "These points decide how the scan is oriented, and every step after it inherits that orientation. Drag any that sits off its anatomy. Your changes are saved when you click Continue - you do not need to save in Slicer."
+                ),
+                "ReviewFolder": preaso_CB_folder_path,
+                "ReviewVolumeFolder": preaso_CB_folder_path,
+                "ReviewEditable": True,
+                "ReviewId": "t1_landmarks_orientation_cb",
+                "pause_for_visualization": True,
             }
         )
 
@@ -353,6 +381,14 @@ def CreateListProcess(**kwargs):
                 "Display": DisplayASOCBCT(
                     nb_scan
                 ),
+                "ReviewTitle": "Cranial base orientation of the original scan",
+                "ReviewHint": (
+                    "Check the scan is oriented on the Frankfort horizontal and "
+                    "mid-sagittal planes. Nothing to edit here - look at the "
+                    "result, then click Continue."
+                ),
+                "ReviewFolder": orientation_cb_folder_path,
+                "ReviewId": "t1_oriented_cb",
                 "pause_for_visualization": True,
             }
         )
@@ -399,7 +435,7 @@ def CreateListProcess(**kwargs):
                 "output_folder": t2_centered_folder_path,
                 "model_folder": False,
                 "SmallFOV": False,
-                "temp_folder": slicer.util.tempDirectory(),
+                "temp_folder": _unique_temp_dir("work"),
                 "DCMInput": False,
             }
 
@@ -467,6 +503,14 @@ def CreateListProcess(**kwargs):
                 "Display": DisplayAMASSS(
                     nb_scan, len(full_reg_struct)
                 ),
+                "ReviewTitle": "Bone segmentation of the original scan",
+                "ReviewHint": (
+                    "Check the cranial base, mandible and maxilla masks follow the "
+                    "bone - they guide the registration that comes next. Nothing to "
+                    "edit here - look at the result, then click Continue."
+                ),
+                "ReviewFolder": mask_folder_path,
+                "ReviewId": "t1_masks",
                 "pause_for_visualization": True,
             },
         )
@@ -483,7 +527,7 @@ def CreateListProcess(**kwargs):
                     "matrix_name": False,
                     "fromAreg": False,
                     "output_folder": t2mask_folder_path,
-                    "log_path": slicer.util.tempDirectory(),
+                    "log_path": _unique_temp_dir("log"),
                     "is_seg": True
                 }
                 list_process.append(
@@ -494,6 +538,13 @@ def CreateListProcess(**kwargs):
                         "Display": DisplayAMASSS(
                             nb_scan, len(full_reg_struct)
                         ),
+                        "ReviewTitle": "Mirrored bone segmentation",
+                        "ReviewHint": (
+                            "Check the mirrored masks. Nothing to edit here - look at the "
+                            "result, then click Continue."
+                        ),
+                        "ReviewFolder": t2mask_folder_path,
+                        "ReviewId": "mirror_masks",
                         "pause_for_visualization": True,
                     },
                 )
@@ -506,7 +557,7 @@ def CreateListProcess(**kwargs):
                 "matrix_name": False,
                 "fromAreg": False,
                 "output_folder": t2_cb_folder,
-                "log_path": slicer.util.tempDirectory(),
+                "log_path": _unique_temp_dir("log"),
                 "is_seg": False
             }
 
@@ -529,7 +580,7 @@ def CreateListProcess(**kwargs):
                 "matrix_name": False,
                 "fromAreg": False,
                 "output_folder": t2_max_folder,
-                "log_path": slicer.util.tempDirectory(),
+                "log_path": _unique_temp_dir("log"),
                 "is_seg": False
             }
 
@@ -541,6 +592,20 @@ def CreateListProcess(**kwargs):
                     "Display": DisplayAMASSS(
                         nb_scan, len(full_reg_struct)
                     ),
+                    "ReviewTitle": "Mirrored scan, the side being compared against",
+                    "ReviewHint": (
+                        "Check the mirror of the patient's own scan. Nothing to edit "
+                        "here - look at the result, then click Continue."
+                    ),
+                    # Both mirrored scans, not just the maxilla this step
+                    # happened to write last. In a longitudinal run the two
+                    # already share one folder.
+                    "ReviewFolder": (
+                        t2scan_folder_path
+                        if kwargs["mode2"] != "Longitudinal studies"
+                        else t2_max_folder
+                    ),
+                    "ReviewId": "mirror_scans",
                     "pause_for_visualization": True,
                 },
             )
@@ -556,7 +621,7 @@ def CreateListProcess(**kwargs):
             "add_name": "_Reg",
             "DCMInput": False,
             "SegmentationLabel": "0",
-            "temp_folder": slicer.util.tempDirectory(),
+            "temp_folder": _unique_temp_dir("work"),
             "ApproxReg": False,
             "mask_folder_t1": mask_folder_path,
         }
@@ -569,6 +634,18 @@ def CreateListProcess(**kwargs):
                 "Display": DisplayAREGCBCT(
                     nb_scan
                 ),
+                "ReviewTitle": "Mirrored scan registered on the cranial base",
+                "ReviewHint": (
+                    "Check how closely the mirrored scan (shown half-transparent "
+                    "over the original) matches it. If it is off, drag it into "
+                    "place - the correction is applied to the landmarks too, "
+                    "automatically, when you click Continue."
+                ),
+                "ReviewFolder": os.path.join(registeredscan_folder_path, "Cranial Base"),
+                "ReviewVolumeFolder": orientation_cb_folder_path,
+                "ReviewAdjustable": True,
+                "ReviewId": "registration_cb",
+                "pause_for_visualization": True,
             },
         )
 
@@ -580,7 +657,7 @@ def CreateListProcess(**kwargs):
             "add_name": "_Reg",
             "DCMInput": False,
             "SegmentationLabel": "0",
-            "temp_folder": slicer.util.tempDirectory(),
+            "temp_folder": _unique_temp_dir("work"),
             "ApproxReg": False,
             "mask_folder_t1": mask_folder_path,
         }
@@ -593,6 +670,18 @@ def CreateListProcess(**kwargs):
                 "Display": DisplayAREGCBCT(
                     nb_scan
                 ),
+                "ReviewTitle": "Mirrored scan registered on the maxilla",
+                "ReviewHint": (
+                    "Check how closely the mirrored scan (shown half-transparent "
+                    "over the original) matches it. If it is off, drag it into "
+                    "place - the correction is applied to the landmarks too, "
+                    "automatically, when you click Continue."
+                ),
+                "ReviewFolder": os.path.join(registeredscan_folder_path, "Maxilla"),
+                "ReviewVolumeFolder": orientation_max_folder_path,
+                "ReviewAdjustable": True,
+                "ReviewId": "registration_max",
+                "pause_for_visualization": True,
             },
         )
 
@@ -604,7 +693,7 @@ def CreateListProcess(**kwargs):
             "add_name": "_Reg",
             "DCMInput": False,
             "SegmentationLabel": "0",
-            "temp_folder": slicer.util.tempDirectory(),
+            "temp_folder": _unique_temp_dir("work"),
             "ApproxReg": False,
             "mask_folder_t1": mask_folder_path,
         }
@@ -617,6 +706,17 @@ def CreateListProcess(**kwargs):
                 "Display": DisplayAREGCBCT(
                     nb_scan
                 ),
+                "ReviewTitle": "Mirrored scan registered on the mandible",
+                "ReviewHint": (
+                    "Check how closely the mirrored scan (shown half-transparent "
+                    "over the original) matches it. If it is off, drag it into "
+                    "place - the correction is applied to the landmarks too, "
+                    "automatically, when you click Continue."
+                ),
+                "ReviewFolder": os.path.join(registeredscan_folder_path, "Mandible"),
+                "ReviewVolumeFolder": orientation_cb_folder_path,
+                "ReviewAdjustable": True,
+                "ReviewId": "registration_mand",
                 "pause_for_visualization": True,
             },
         )
@@ -639,179 +739,11 @@ def CreateListProcess(**kwargs):
             logger.error("Issue, it seems to miss some cbct or transform files in the T2 folder")
             return
         
-    if kwargs["bool_visualization"]:
-
-        vtk_folder_path = os.path.join(kwargs["OutputFolder"],"VTK Files")
-        os.makedirs(vtk_folder_path, exist_ok=True)
-
-        BDSProcess = run_bds
-            
-        t1_cb_vtk_folder_path = os.path.join(vtk_folder_path,"T1 CB")
-        os.makedirs(t1_cb_vtk_folder_path, exist_ok=True)
-
-        t1_max_vtk_folder_path = os.path.join(vtk_folder_path,"T1 MAX")
-        os.makedirs(t1_max_vtk_folder_path, exist_ok=True)
-
-        t2_cb_vtk_folder_path = os.path.join(vtk_folder_path,"T2 CB")
-        os.makedirs(t2_cb_vtk_folder_path, exist_ok=True)
-
-        t2_mand_vtk_folder_path = os.path.join(vtk_folder_path,"T2 MAND")
-        os.makedirs(t2_mand_vtk_folder_path, exist_ok=True)
-
-        t2_max_vtk_folder_path = os.path.join(vtk_folder_path,"T2 MAX")
-        os.makedirs(t2_max_vtk_folder_path, exist_ok=True)
-
-        parameter_bds_t1_cb = {
-            "input_path":orientation_cb_folder_path,
-            "output_path":t1_cb_vtk_folder_path,
-            }
-
-        list_process.append(
-            {
-                "Process": BDSProcess,
-                "Parameter": parameter_bds_t1_cb,
-                "Module": "BDS - Segmentation T1 CB",
-                "Display": DisplayAREGCBCT(
-                    nb_scan
-                ),
-            },
-        )
-
-        parameter_bds_t1_max = {
-            "input_path":orientation_max_folder_path,
-            "output_path":t1_max_vtk_folder_path,
-            }
-
-        list_process.append(
-            {
-                "Process": BDSProcess,
-                "Parameter": parameter_bds_t1_max,
-                "Module": "BDS - Segmentation T1 MAX",
-                "Display": DisplayAREGCBCT(
-                    nb_scan
-                ),
-            },
-        )
-
-        parameter_bds_t2_cb = {
-            "input_path":os.path.join(registeredscan_folder_path,"Cranial Base"),
-            "output_path":t2_cb_vtk_folder_path,
-            }
-        
-        if kwargs["mode"] == "File already Registered":
-            parameter_bds_t2_cb["input_path"] = os.path.join(registeredscan_folder_path,"Cranial Base")
-
-        list_process.append(
-            {
-                "Process": BDSProcess,
-                "Parameter": parameter_bds_t2_cb,
-                "Module": "BDS - Segmentation T2 CB",
-                "Display": DisplayAREGCBCT(
-                    nb_scan
-                ),
-            },
-        )
-
-        parameter_bds_t2_mand = {
-            "input_path":os.path.join(registeredscan_folder_path,"Mandible"),
-            "output_path":t2_mand_vtk_folder_path,
-            }
-        
-        if kwargs["mode"] == "File already Registered":
-            parameter_bds_t2_mand["input_path"] = os.path.join(registeredscan_folder_path,"Mandible")
-
-        list_process.append(
-            {
-                "Process": BDSProcess,
-                "Parameter": parameter_bds_t2_mand,
-                "Module": "BDS - Segmentation T2 MAND",
-                "Display": DisplayAREGCBCT(
-                    nb_scan
-                ),
-            },
-        )
-
-        parameter_bds_t2_max = {
-            "input_path":os.path.join(registeredscan_folder_path,"Maxilla"),
-            "output_path":t2_max_vtk_folder_path,
-            }
-        
-        if kwargs["mode"] == "File already Registered":
-            parameter_bds_t2_max["input_path"] = os.path.join(registeredscan_folder_path,"Maxilla")
-
-        list_process.append(
-            {
-                "Process": BDSProcess,
-                "Parameter": parameter_bds_t2_max,
-                "Module": "BDS - Segmentation T2 MAX",
-                "Display": DisplayAREGCBCT(
-                    nb_scan
-                ),
-                "pause_for_visualization": True,
-            },
-        )
-
-        heatmap_folder_path = os.path.join(kwargs["OutputFolder"],"Heatmaps")
-        os.makedirs(heatmap_folder_path, exist_ok=True)
-        HeatmapProcess = batch_process
-
-        parameter_heatmap_cb = {
-            "t1_dir":t1_cb_vtk_folder_path,
-            "t2_dir":t2_cb_vtk_folder_path,
-            "patient_list":patients.keys(),
-            "output_dir":heatmap_folder_path,
-            "zone_type":"merged"
-            }
-
-        list_process.append(
-            {
-                "Process": HeatmapProcess,
-                "Parameter": parameter_heatmap_cb,
-                "Module": "ModelToModel Distance CB",
-                "Display": DisplayAREGCBCT(
-                    nb_scan
-                ),
-            },
-        )
-
-        parameter_heatmap_mand = {
-            "t1_dir":t1_cb_vtk_folder_path,
-            "t2_dir":t2_mand_vtk_folder_path,
-            "patient_list":patients.keys(),
-            "output_dir":heatmap_folder_path,
-            "zone_type":"Mandible"
-            }
-
-        list_process.append(
-            {
-                "Process": HeatmapProcess,
-                "Parameter": parameter_heatmap_mand,
-                "Module": "ModelToModel Distance MAND",
-                "Display": DisplayAREGCBCT(
-                    nb_scan
-                ),
-            },
-        )
-
-        parameter_heatmap_max = {
-            "t1_dir":t1_max_vtk_folder_path,
-            "t2_dir":t2_max_vtk_folder_path,
-            "patient_list":patients.keys(),
-            "output_dir":heatmap_folder_path,
-            "zone_type":"Upper_Skull"
-            }
-
-        list_process.append(
-            {
-                "Process": HeatmapProcess,
-                "Parameter": parameter_heatmap_max,
-                "Module": "ModelToModel Distance MAX",
-                "Display": DisplayAREGCBCT(
-                    nb_scan
-                ),
-            },
-        )
-    
+    # Quantification runs before visualization: nothing here depends on the
+    # surfaces or the heatmaps, and the landmark review is the only step the
+    # user can act on. Behind the visualization block it meant waiting through
+    # five segmentations and three distance runs before being able to correct
+    # a single point.
     if kwargs["bool_quantification"]:
 
         landmarks_folder_path = os.path.join(kwargs["OutputFolder"],"T1 Landmarks")
@@ -823,12 +755,39 @@ def CreateListProcess(**kwargs):
         landmarks_max_folder_path = os.path.join(landmarks_folder_path,"MAX")
         os.makedirs(landmarks_max_folder_path, exist_ok=True)
 
+        # ALI's agent may sample inside the border ALI adds, but it refuses to
+        # step outside the unpadded image, so a landmark at the edge is out of
+        # reach. Hand it a roomier copy: the scans on disk are untouched and
+        # every later step still reads the originals.
+        # tempfile.mkdtemp, not slicer.util.tempDirectory: the latter names its
+        # folder to the millisecond, and the calls that build this list run
+        # microseconds apart, so it handed the padded scans and ALI's own
+        # temp_fold the same directory. ALI then found the leftovers of an
+        # earlier step there - elastix's fixed_image_masked - and landmarked
+        # that instead of the patients.
+        padded_scans_path = _unique_temp_dir("padded")
+
+        list_process.append(
+            {
+                "Process": pad_scans_for_landmarks,
+                "Parameter": {
+                    "input_folder": orientation_cb_folder_path,
+                    "output_folder": padded_scans_path,
+                    "margin_mm": 30,
+                },
+                "Module": "Making room for the landmark search",
+                "Display": DisplayAREGCBCT(
+                    nb_scan
+                ),
+            },
+        )
+
         parameter_ali = {
-                "input": orientation_cb_folder_path,
+                "input": padded_scans_path,
                 "dir_models": kwargs["model_folder_ali"],
                 "lm_type": ",".join([f"'{e}'" for e in list_landmark]),
                 "output_dir": landmarks_cb_folder_path,
-                "temp_fold": slicer.util.tempDirectory(),
+                "temp_fold": _unique_temp_dir("ali"),
                 "DCMInput": False,
                 "spacing": "[1,0.3]",
                 "speed_per_scale": "[1,1]",
@@ -844,30 +803,45 @@ def CreateListProcess(**kwargs):
                 "Display": DisplayALICBCT(30,
                     nb_scan
                 ),
+                "ReviewTitle": "All T1 landmarks",
+                "ReviewHint": (
+                    "Every landmark the measurements use is here, maxilla "
+                    "included - the maxilla set is derived from these, so this is "
+                    "the only review. Drag any misplaced point onto the correct "
+                    "anatomy. Your changes are saved automatically when you click "
+                    "Continue - you do not need to save in Slicer."
+                ),
+                "ReviewFolder": landmarks_cb_folder_path,
+                "ReviewVolumeFolder": orientation_cb_folder_path,
+                "ReviewEditable": True,
+                "ReviewId": "t1_landmarks",
+                "pause_for_visualization": True,
             },
         )
 
-        parameter_ali_max = {
-                "input": orientation_max_folder_path,
-                "dir_models": kwargs["model_folder_ali"],
-                "lm_type": ",".join([f"'{e}'" for e in list_landmark_max]),
-                "output_dir": landmarks_max_folder_path,
-                "temp_fold": slicer.util.tempDirectory(),
-                "DCMInput": False,
-                "spacing": "[1,0.3]",
-                "speed_per_scale": "[1,1]",
-                "agent_FOV": "[64,64,64]",
-                "spawn_radius": "10"
-                }
+        # The maxilla landmarks are the same anatomical points the cranial base
+        # run already found, wanted in the other oriented frame. Both frames come
+        # from the same centred scan, so a rigid transform places them exactly,
+        # in seconds instead of minutes - and it keeps one point from landing in
+        # two slightly different places depending on which run found it. It also
+        # means the review above is the only one: a correction there flows here.
+        parameter_derive_max = {
+            "source_folder": landmarks_cb_folder_path,
+            "source_tfm_folder": orientation_cb_folder_path,
+            "target_tfm_folder": orientation_max_folder_path,
+            "target_scan_folder": orientation_max_folder_path,
+            "keep_landmarks": list_landmark_max,
+            "output_folder": landmarks_max_folder_path,
+        }
 
         list_process.append(
             {
-                "Process": ALIProcess,
-                "Parameter": parameter_ali_max,
-                "Module": "ALI - Identifying T1 Landmarks (MAX)",
-                "Display": DisplayALICBCT(30,
+                "Process": derive_landmarks,
+                "Parameter": parameter_derive_max,
+                "Module": "Deriving T1 Landmarks (MAX)",
+                "Display": DisplayAREGCBCT(
                     nb_scan
-                )
+                ),
             },
         )
         if kwargs["mode2"] == "Asymmetry Assesment":
@@ -888,7 +862,7 @@ def CreateListProcess(**kwargs):
                 "matrix_name": False,
                 "fromAreg": False,
                 "output_folder": mirrored_landmarks_cb_folder_path,
-                "log_path": slicer.util.tempDirectory(),
+                "log_path": _unique_temp_dir("log"),
                 "is_seg": False
                 }
 
@@ -911,7 +885,7 @@ def CreateListProcess(**kwargs):
                 "matrix_name": False,
                 "fromAreg": False,
                 "output_folder": mirrored_landmarks_max_folder_path,
-                "log_path": slicer.util.tempDirectory(),
+                "log_path": _unique_temp_dir("log"),
                 "is_seg": False
                 }
 
@@ -952,7 +926,7 @@ def CreateListProcess(**kwargs):
                 "matrix_name": False,
                 "fromAreg": False,
                 "output_folder": mirrored_registered_cb_landmarks_folder_path,
-                "log_path": slicer.util.tempDirectory(),
+                "log_path": _unique_temp_dir("log"),
                 "is_seg": False
                 }
 
@@ -975,7 +949,7 @@ def CreateListProcess(**kwargs):
                 "matrix_name": False,
                 "fromAreg": False,
                 "output_folder": mirrored_registered_mand_landmarks_folder_path,
-                "log_path": slicer.util.tempDirectory(),
+                "log_path": _unique_temp_dir("log"),
                 "is_seg": False
                 }
 
@@ -998,7 +972,7 @@ def CreateListProcess(**kwargs):
                 "matrix_name": False,
                 "fromAreg": False,
                 "output_folder": mirrored_registered_max_landmarks_folder_path,
-                "log_path": slicer.util.tempDirectory(),
+                "log_path": _unique_temp_dir("log"),
                 "is_seg": False
                 }
 
@@ -1030,7 +1004,7 @@ def CreateListProcess(**kwargs):
                     "dir_models": kwargs["model_folder_ali"],
                     "lm_type": ",".join([f"'{e}'" for e in list_landmark]),
                     "output_dir": t2_landmarks_cb_folder_path,
-                    "temp_fold": slicer.util.tempDirectory(),
+                    "temp_fold": _unique_temp_dir("ali"),
                     "DCMInput": False,
                     "spacing": "[1,0.3]",
                     "speed_per_scale": "[1,1]",
@@ -1054,7 +1028,7 @@ def CreateListProcess(**kwargs):
                     "dir_models": kwargs["model_folder_ali"],
                     "lm_type": ",".join([f"'{e}'" for e in list_landmark_max]),
                     "output_dir": t2_landmarks_max_folder_path,
-                    "temp_fold": slicer.util.tempDirectory(),
+                    "temp_fold": _unique_temp_dir("ali"),
                     "DCMInput": False,
                     "spacing": "[1,0.3]",
                     "speed_per_scale": "[1,1]",
@@ -1078,7 +1052,7 @@ def CreateListProcess(**kwargs):
                     "dir_models": kwargs["model_folder_ali"],
                     "lm_type": ",".join([f"'{e}'" for e in list_landmark_max]),
                     "output_dir": t2_landmarks_mand_folder_path,
-                    "temp_fold": slicer.util.tempDirectory(),
+                    "temp_fold": _unique_temp_dir("ali"),
                     "DCMInput": False,
                     "spacing": "[1,0.3]",
                     "speed_per_scale": "[1,1]",
@@ -1209,6 +1183,195 @@ def CreateListProcess(**kwargs):
                 },
             )
 
+    if kwargs["bool_visualization"]:
+
+        vtk_folder_path = os.path.join(kwargs["OutputFolder"],"VTK Files")
+        os.makedirs(vtk_folder_path, exist_ok=True)
+
+        BDSProcess = run_bds
+            
+        t1_cb_vtk_folder_path = os.path.join(vtk_folder_path,"T1 CB")
+        os.makedirs(t1_cb_vtk_folder_path, exist_ok=True)
+
+        t1_max_vtk_folder_path = os.path.join(vtk_folder_path,"T1 MAX")
+        os.makedirs(t1_max_vtk_folder_path, exist_ok=True)
+
+        t2_cb_vtk_folder_path = os.path.join(vtk_folder_path,"T2 CB")
+        os.makedirs(t2_cb_vtk_folder_path, exist_ok=True)
+
+        t2_mand_vtk_folder_path = os.path.join(vtk_folder_path,"T2 MAND")
+        os.makedirs(t2_mand_vtk_folder_path, exist_ok=True)
+
+        t2_max_vtk_folder_path = os.path.join(vtk_folder_path,"T2 MAX")
+        os.makedirs(t2_max_vtk_folder_path, exist_ok=True)
+
+        parameter_bds_t1_cb = {
+            "input_path":orientation_cb_folder_path,
+            "output_path":t1_cb_vtk_folder_path,
+            }
+
+        list_process.append(
+            {
+                "Process": BDSProcess,
+                "Parameter": parameter_bds_t1_cb,
+                "Module": "BDS - Segmentation T1 CB",
+                "Display": DisplayAREGCBCT(
+                    nb_scan
+                ),
+            },
+        )
+
+        parameter_bds_t1_max = {
+            "input_path":orientation_max_folder_path,
+            "output_path":t1_max_vtk_folder_path,
+            }
+
+        list_process.append(
+            {
+                "Process": BDSProcess,
+                "Parameter": parameter_bds_t1_max,
+                "Module": "BDS - Segmentation T1 MAX",
+                "Display": DisplayAREGCBCT(
+                    nb_scan
+                ),
+            },
+        )
+
+        parameter_bds_t2_cb = {
+            "input_path":os.path.join(registeredscan_folder_path,"Cranial Base"),
+            "output_path":t2_cb_vtk_folder_path,
+            }
+        
+        if kwargs["mode"] == "File already Registered":
+            parameter_bds_t2_cb["input_path"] = os.path.join(registeredscan_folder_path,"Cranial Base")
+
+        list_process.append(
+            {
+                "Process": BDSProcess,
+                "Parameter": parameter_bds_t2_cb,
+                "Module": "BDS - Segmentation T2 CB",
+                "Display": DisplayAREGCBCT(
+                    nb_scan
+                ),
+            },
+        )
+
+        parameter_bds_t2_mand = {
+            "input_path":os.path.join(registeredscan_folder_path,"Mandible"),
+            "output_path":t2_mand_vtk_folder_path,
+            }
+        
+        if kwargs["mode"] == "File already Registered":
+            parameter_bds_t2_mand["input_path"] = os.path.join(registeredscan_folder_path,"Mandible")
+
+        list_process.append(
+            {
+                "Process": BDSProcess,
+                "Parameter": parameter_bds_t2_mand,
+                "Module": "BDS - Segmentation T2 MAND",
+                "Display": DisplayAREGCBCT(
+                    nb_scan
+                ),
+            },
+        )
+
+        parameter_bds_t2_max = {
+            "input_path":os.path.join(registeredscan_folder_path,"Maxilla"),
+            "output_path":t2_max_vtk_folder_path,
+            }
+        
+        if kwargs["mode"] == "File already Registered":
+            parameter_bds_t2_max["input_path"] = os.path.join(registeredscan_folder_path,"Maxilla")
+
+        list_process.append(
+            {
+                "Process": BDSProcess,
+                "Parameter": parameter_bds_t2_max,
+                "Module": "BDS - Segmentation T2 MAX",
+                "Display": DisplayAREGCBCT(
+                    nb_scan
+                ),
+                "ReviewTitle": "Bone surfaces used for the heatmaps",
+                "ReviewHint": (
+                    "Check the surfaces before the distance maps are computed. "
+                    "Nothing to edit here - look at the result, then click "
+                    "Continue."
+                ),
+                # The whole VTK folder, not just the last one written: the
+                # heatmaps compare T1 against T2, and reviewing one side alone
+                # cannot tell whether they are worth comparing. It also keeps
+                # the pause from showing nothing when that folder is empty.
+                "ReviewFolder": vtk_folder_path,
+                # One surface per scan rather than the six BDS writes: the
+                # merged one already holds every structure, and eighteen skulls
+                # at once is a blob nobody can judge.
+                "ReviewNameContains": "_merged",
+                "ReviewId": "bone_surfaces",
+                "pause_for_visualization": True,
+            },
+        )
+
+        heatmap_folder_path = os.path.join(kwargs["OutputFolder"],"Heatmaps")
+        os.makedirs(heatmap_folder_path, exist_ok=True)
+        HeatmapProcess = batch_process
+
+        parameter_heatmap_cb = {
+            "t1_dir":t1_cb_vtk_folder_path,
+            "t2_dir":t2_cb_vtk_folder_path,
+            "patient_list":patients.keys(),
+            "output_dir":heatmap_folder_path,
+            "zone_type":"merged"
+            }
+
+        list_process.append(
+            {
+                "Process": HeatmapProcess,
+                "Parameter": parameter_heatmap_cb,
+                "Module": "ModelToModel Distance CB",
+                "Display": DisplayAREGCBCT(
+                    nb_scan
+                ),
+            },
+        )
+
+        parameter_heatmap_mand = {
+            "t1_dir":t1_cb_vtk_folder_path,
+            "t2_dir":t2_mand_vtk_folder_path,
+            "patient_list":patients.keys(),
+            "output_dir":heatmap_folder_path,
+            "zone_type":"Mandible"
+            }
+
+        list_process.append(
+            {
+                "Process": HeatmapProcess,
+                "Parameter": parameter_heatmap_mand,
+                "Module": "ModelToModel Distance MAND",
+                "Display": DisplayAREGCBCT(
+                    nb_scan
+                ),
+            },
+        )
+
+        parameter_heatmap_max = {
+            "t1_dir":t1_max_vtk_folder_path,
+            "t2_dir":t2_max_vtk_folder_path,
+            "patient_list":patients.keys(),
+            "output_dir":heatmap_folder_path,
+            "zone_type":"Upper_Skull"
+            }
+
+        list_process.append(
+            {
+                "Process": HeatmapProcess,
+                "Parameter": parameter_heatmap_max,
+                "Module": "ModelToModel Distance MAX",
+                "Display": DisplayAREGCBCT(
+                    nb_scan
+                ),
+            },
+        )
+    
     return list_process
 
 def run_aq3dc(t1_path, t2_path, list_measure, output_path, filename):
@@ -1233,6 +1396,186 @@ def run_aq3dc(t1_path, t2_path, list_measure, output_path, filename):
         
     logic.writeMeasurementExcel(compute,output_path,filename)
 
+
+
+def _ali_group_labels():
+    """ALI's landmark-to-group map, read from its source without importing torch."""
+    import ast
+
+    constants = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "ALI_CBCT", "ALI_CBCT_utils", "constants.py",
+    )
+    try:
+        tree = ast.parse(open(constants).read())
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "GROUP_LABELS" for t in node.targets
+            ):
+                groups = ast.literal_eval(node.value)
+                return {lm: g for g, lms in groups.items() for lm in lms}
+    except Exception as e:
+        logger.warning(f"Could not read ALI landmark groups ({e}), writing one group")
+    return {}
+
+
+def _read_landmarks(folder):
+    """{patient: {label: position}} for every .mrk.json under folder."""
+    patients = {}
+    for path in sorted(GetListFiles(folder, [".mrk.json"])):
+        patient = patientIdFromFileName(os.path.basename(path))
+        try:
+            data = json.load(open(path))
+        except Exception as e:
+            logger.warning(f"Could not read {os.path.basename(path)}: {e}")
+            continue
+        for markup in data.get("markups", []):
+            for point in markup.get("controlPoints", []):
+                patients.setdefault(patient, {})[point["label"]] = list(point["position"])
+    return patients
+
+
+def _transforms_by_patient(folder):
+    """{patient: path} for the ASO .tfm files written next to the oriented scans."""
+    found = {}
+    for path in sorted(GetListFiles(folder, [".tfm"])):
+        found[patientIdFromFileName(os.path.basename(path))] = path
+    return found
+
+
+def _scan_stems_by_patient(folder):
+    """{patient: scan basename without extension}, to name outputs as ALI does."""
+    stems = {}
+    for ext in [".nii.gz", ".nii", ".nrrd", ".nrrd.gz", ".gipl.gz", ".gipl"]:
+        for path in sorted(GetListFiles(folder, [ext])):
+            name = os.path.basename(path)
+            stems.setdefault(patientIdFromFileName(name), name[: -len(ext)])
+    return stems
+
+
+def derive_landmarks(source_folder, source_tfm_folder, target_tfm_folder,
+                     target_scan_folder, keep_landmarks, output_folder):
+    """
+    Express landmarks found in one oriented frame in another oriented frame.
+
+    Both orientations come from the same centred scan, so a landmark's position
+    in the target frame is inv(target_transform) . source_transform applied to
+    its position in the source frame. Running the landmark search a second time
+    on the other orientation costs minutes per patient and makes the same
+    anatomical point land in two slightly different places; a rigid transform
+    is exact and instant.
+
+    Args:
+        source_folder: folder holding the landmarks already found
+        source_tfm_folder: folder holding the source orientation's ASO transform
+        target_tfm_folder: folder holding the target orientation's ASO transform
+        target_scan_folder: oriented scans of the target frame, used for naming
+        keep_landmarks: labels to write out
+        output_folder: where the derived landmark files go
+
+    Returns:
+        bool: True if every patient with landmarks produced an output
+    """
+    import SimpleITK as sitk
+
+    source = _read_landmarks(source_folder)
+    source_tfm = _transforms_by_patient(source_tfm_folder)
+    target_tfm = _transforms_by_patient(target_tfm_folder)
+    stems = _scan_stems_by_patient(target_scan_folder)
+    group_of = _ali_group_labels()
+
+    if not source:
+        logger.error(f"No landmarks to derive from in {source_folder}")
+        return False
+
+    wanted = list(keep_landmarks)
+    os.makedirs(output_folder, exist_ok=True)
+    ok = True
+
+    for patient, points in sorted(source.items()):
+        if patient not in source_tfm or patient not in target_tfm:
+            logger.error(
+                f"{patient}: missing an orientation transform, cannot derive its "
+                f"landmarks (source={patient in source_tfm}, target={patient in target_tfm})"
+            )
+            ok = False
+            continue
+
+        try:
+            to_centred = sitk.ReadTransform(source_tfm[patient])
+            from_centred = sitk.ReadTransform(target_tfm[patient]).GetInverse()
+        except Exception as e:
+            logger.error(f"{patient}: could not read an orientation transform: {e}")
+            ok = False
+            continue
+
+        missing = [lm for lm in wanted if lm not in points]
+        if missing:
+            logger.warning(f"{patient}: not found in the source landmarks: {missing}")
+
+        by_group = {}
+        for label in wanted:
+            if label not in points:
+                continue
+            moved = from_centred.TransformPoint(to_centred.TransformPoint(points[label]))
+            by_group.setdefault(group_of.get(label, "U"), []).append((label, moved))
+
+        if not by_group:
+            logger.error(f"{patient}: none of the requested landmarks were available")
+            ok = False
+            continue
+
+        stem = stems.get(patient, f"{patient}_derived")
+        for group, entries in by_group.items():
+            control_points = [
+                {
+                    "id": str(i + 1),
+                    "label": label,
+                    "description": "",
+                    "associatedNodeID": "",
+                    "position": [float(c) for c in position],
+                    "orientation": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+                    "selected": True,
+                    "locked": True,
+                    "visibility": True,
+                    "positionStatus": "defined",
+                }
+                for i, (label, position) in enumerate(entries)
+            ]
+            out_path = os.path.join(output_folder, f"{stem}_lm_Pred_{group}.mrk.json")
+            with open(out_path, "w") as f:
+                json.dump(
+                    {
+                        "@schema": "https://raw.githubusercontent.com/slicer/slicer/"
+                                   "master/Modules/Loadable/Markups/Resources/Schema/"
+                                   "markups-schema-v1.0.0.json#",
+                        "markups": [
+                            {
+                                "type": "Fiducial",
+                                "coordinateSystem": "LPS",
+                                "locked": False,
+                                "labelFormat": "%N-%d",
+                                "controlPoints": control_points,
+                                "measurements": [],
+                                "display": {
+                                    "visibility": False,
+                                    "opacity": 1.0,
+                                    "color": [0.4, 1.0, 0.0],
+                                    "selectedColor": [1.0, 0.5, 0.5],
+                                    "activeColor": [0.4, 1.0, 0.0],
+                                    "propertiesLabelVisibility": False,
+                                    "pointLabelsVisibility": True,
+                                    "textScale": 3.0,
+                                },
+                            }
+                        ],
+                    },
+                    f,
+                    indent=2,
+                )
+            logger.info(f"{patient}: {len(entries)} landmark(s) derived -> {os.path.basename(out_path)}")
+
+    return ok
 
 
 def run_bds(input_path, output_path, model_name="DentalSegmentator", device="cuda"):
@@ -1736,6 +2079,81 @@ def create_list_measure(df_path):
             logger.error("There is an issue in the xlsx file")
     return list_measure
 
+def _unique_temp_dir(what):
+    """A directory no other step can be handed.
+
+    slicer.util.tempDirectory() names its folder from the clock to the
+    millisecond, and the steps of a pipeline are built microseconds apart, so two
+    of them are regularly given the *same* directory. That is not theoretical:
+    the padded scans and ALI's own temp_fold collided, ALI found elastix's
+    leftover fixed_image_masked there and landmarked it instead of the patients.
+
+    Kept under Slicer's temporary root so its own cleanup still applies.
+
+    Args:
+        what: short tag that ends up in the folder name, to make a stray one
+            traceable back to the step that made it
+
+    Returns:
+        str: path of a fresh, empty directory
+    """
+    root = getattr(slicer.app, "temporaryPath", None) or tempfile.gettempdir()
+    os.makedirs(root, exist_ok=True)
+    return tempfile.mkdtemp(prefix=f"VFACE_{what}_", dir=root)
+
+
+def pad_scans_for_landmarks(input_folder, output_folder, margin_mm=30):
+    """Copy each scan with empty space around it so ALI can work at the edges.
+
+    ALI border-pads the image it samples (agent_fov/2 + 1 voxels), but Agent.Move
+    refuses any position outside the *unpadded* size. A landmark sitting a voxel
+    or two from the border therefore sends the agent into a bounds bounce: random
+    restart, attempt counter up, and after three tries it gives up. Me is 1.2 mm
+    above the floor of these CBCTs, and the very same model finds it at once when
+    there is room around it.
+
+    Fixing that mismatch belongs in ALI and would serve every module that calls
+    it. This is the safe half of the answer: give the scan room, touch nothing
+    that AREG and ASO also depend on.
+
+    Physical coordinates are preserved - the origin moves with the padding - so
+    the landmarks come back in the original scan's space. Measured against an
+    unpadded run: points away from the border moved by at most one voxel.
+
+    Args:
+        input_folder: Folder of scans to copy
+        output_folder: Where the padded copies go
+        margin_mm: Room to add on every side, in millimetres
+
+    Returns:
+        str: output_folder, so the caller can feed it straight to ALI
+    """
+    import SimpleITK as sitk
+
+    os.makedirs(output_folder, exist_ok=True)
+    scans = GetListFiles(input_folder, [".nii", ".nii.gz", ".nrrd", ".gipl", ".gipl.gz"])
+    if not scans:
+        logger.warning(f"No scan to pad in {input_folder}; landmarks will run on it as it is")
+        return input_folder
+
+    for path in scans:
+        target = os.path.join(output_folder, os.path.basename(path))
+        try:
+            image = sitk.ReadImage(path)
+            pad = [max(1, int(round(margin_mm / sp))) for sp in image.GetSpacing()]
+            # The scan's own minimum, not zero: an air value that already exists
+            # in the volume keeps the intensity rescaling ALI applies unchanged.
+            background = float(sitk.GetArrayViewFromImage(image).min())
+            sitk.WriteImage(sitk.ConstantPad(image, pad, pad, background), target)
+        except Exception as e:
+            # A scan that cannot be padded is still worth landmarking as it is.
+            logger.warning(f"Could not pad {os.path.basename(path)}, using it unpadded: {e}")
+            shutil.copy(path, target)
+
+    logger.info(f"{len(scans)} scan(s) given {margin_mm} mm of room for the landmark search")
+    return output_folder
+
+
 def create_list_landmark(df_path):
 
     df = pd.read_excel(df_path)
@@ -1781,6 +2199,9 @@ def GetPatients(folder_path, time_point="T1", segmentationType=None, folder_mask
     
     patients = {}
 
+    # TIMEPOINT-SUFFIX: only _T1/_T2 are stripped here, so _T3/_T4 inputs break
+    # patient pairing. See the full note above GetPatients in
+    # AREG_CBCT/AREG_CBCT_utils/utils.py before changing this.
     for file in all_files:
         basename = os.path.basename(file)
         patient = (
@@ -1966,6 +2387,9 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
                     return True
         return False
 
+    # TIMEPOINT-SUFFIX: only _T1/_T2 are stripped here, so _T3/_T4 inputs break
+    # patient pairing. See the full note above GetPatients in
+    # AREG_CBCT/AREG_CBCT_utils/utils.py before changing this.
     def clean_patient_id(patient_id):
         return (
             patient_id.split("_Scan")[0]
@@ -2208,6 +2632,34 @@ def _landmark_label(dic_features, composant, i):
     return (first+" / "+second).replace("_","-")
 
 
+def _measurement(by_landmark, dic_features, composant, i, feature, patient):
+    """One measurement for a feature column, or None if the run never made it.
+
+    A column can name a landmark the pipeline does not produce - the reference
+    sheet asks for "Me", which ALI's mandible model does not predict - and
+    indexing that blind ends the whole post-processing on a KeyError. The Excel
+    is then never written, and every later step fails looking for it: that is how
+    one missing landmark turned into a failed classification.
+
+    A column left empty is visible and recoverable; a run stopped halfway is not.
+    """
+    label = _landmark_label(dic_features, composant, i)
+    row = by_landmark.get(label)
+    if row is None:
+        logger.warning(
+            f"{patient}: no '{label}' measurement, leaving '{feature}' empty"
+        )
+        return None
+    try:
+        return float(row[composant])
+    except (KeyError, TypeError, ValueError):
+        logger.warning(
+            f"{patient}: '{label}' carries no usable {composant}, "
+            f"leaving '{feature}' empty"
+        )
+        return None
+
+
 def _index_measurements(df):
     """{patient: {landmark: row}}, keeping the first row of a repeated landmark."""
     index = {}
@@ -2301,12 +2753,23 @@ def postprocess (cb_path,mand_path,max_path,exemple_path,outputfolder):
 
             composant = dic_features.get("Composant")
             if dic_features.get("Average") == "No":
-                record[feature] = float(by_landmark[_landmark_label(dic_features, composant, 0)][composant])
+                value = _measurement(by_landmark, dic_features, composant, 0, feature, val)
+                if value is None:
+                    continue
+                record[feature] = value
             else:
                 nbr = dic_features.get("Nbr_Landmarks")//2
                 average = 0
                 for i in range(nbr):
-                    average += float(by_landmark[_landmark_label(dic_features, composant, i)][composant])
+                    value = _measurement(by_landmark, dic_features, composant, i, feature, val)
+                    if value is None:
+                        # Averaging what is left would quietly report a different
+                        # measurement than the column claims to be.
+                        average = None
+                        break
+                    average += value
+                if average is None:
+                    continue
                 record[feature] = average / nbr
 
         records.append(record)
