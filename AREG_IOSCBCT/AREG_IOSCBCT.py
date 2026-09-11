@@ -13,6 +13,9 @@ import numpy as np
 import json
 import vtk
 
+from scipy.spatial import cKDTree
+from scipy.spatial.transform import Rotation
+
 # --- LOGGING CONFIGURATION ---
 logger = logging.getLogger("AREG_IOSCBCT")
 logger.setLevel(logging.INFO)
@@ -38,6 +41,27 @@ logger.addHandler(console_handler)
 MIN_LANDMARK_PAIRS = 3
 MAX_LANDMARK_RESIDUAL_MM = float(os.environ.get("AREG_MAX_LANDMARK_RESIDUAL", 10.0))
 
+# How flat a landmark set is allowed to be, as the ratio of its second spread to
+# its first. Landmarks strung out along a line leave the rotation about that
+# line to be decided by nothing but their noise, and the residual does not show
+# it: three points always fit three points exactly, whichever way the arch ends
+# up facing. A full arch measures about 0.32 here, half an arch 0.15, and three
+# anterior landmarks 0.05 to 0.09.
+MIN_LANDMARK_SPREAD_RATIO = 0.10
+
+# An ICP correspondence is kept when the two surfaces face the same way there.
+# In a closed bite the opposing crowns sit 1 to 3 mm apart, well inside the
+# capture radius, but they face each other: the maxillary occlusal surface
+# points down and the mandibular one points up. Without this test a maxillary
+# IOS that starts a little low locks onto the mandible and reports a perfect
+# fitness while sitting millimetres from the truth.
+MIN_NORMAL_AGREEMENT = float(os.environ.get("AREG_MIN_NORMAL_AGREEMENT", 0.5))
+
+# A registration that found next to nothing to match is not a registration. The
+# floor is deliberately low: an IOS carries gingiva that no CBCT surface answers
+# to, so a healthy run does not match all of its points either.
+MIN_ICP_FITNESS = float(os.environ.get("AREG_MIN_ICP_FITNESS", 0.05))
+
 
 def _labeled_landmarks(json_path):
     with open(json_path, "r") as f:
@@ -62,6 +86,16 @@ def _pair_landmarks(cbct_json, ios_json, jaw, patient_id):
     return (common,
             np.array([cbct[l] for l in common], dtype=float).reshape(-1, 3),
             np.array([ios[l] for l in common], dtype=float).reshape(-1, 3))
+
+
+def _landmark_spread_ratio(landmarks):
+    """Second spread over first: 1 is a disc, 0 is a straight line."""
+    if len(landmarks) < 3:
+        return 0.0
+    centred = np.asarray(landmarks, dtype=float)
+    centred = centred - centred.mean(axis=0)
+    singular = np.linalg.svd(centred, compute_uv=False)
+    return float(singular[1] / singular[0]) if singular[0] > 0 else 0.0
 
 
 def _alignment_residual(moving_lms, fixed_lms, matrix):
@@ -148,6 +182,20 @@ def align_by_landmarks(moving_mesh, moving_lms, fixed_lms, jaw="", patient_id=""
         else:
             logger.info("%s / %s: pre-alignment accepted, %.1f mm residual over %d pairs"
                         % (patient_id, jaw, rms, n))
+            # Kept rather than refused: being under-determined is not being
+            # wrong, and the identity would start the ICP from the raw pose,
+            # which is further still. If the free rotation has in fact turned
+            # the arch away, the ICP finds nothing to match and the run says so.
+            spread = _landmark_spread_ratio(moving_lms)
+            if spread < MIN_LANDMARK_SPREAD_RATIO:
+                logger.warning(
+                    "%s / %s: the %d landmarks are nearly in a straight line "
+                    "(spread %.2f, under the %.2f floor; a full arch measures "
+                    "about 0.32). The rotation about that line rests on their "
+                    "noise alone, and the %.1f mm residual cannot show it. "
+                    "Landmarks further apart on both sides of the arch would "
+                    "pin it down."
+                    % (patient_id, jaw, n, spread, MIN_LANDMARK_SPREAD_RATIO, rms))
     # Apply it with PyVista
     aligned_mesh = moving_mesh.transform(matrix,inplace=False)
     
@@ -160,114 +208,224 @@ def align_by_landmarks(moving_mesh, moving_lms, fixed_lms, jaw="", patient_id=""
     
     return aligned_mesh, matrix, aligned_lms
 
-def run_icp_point_to_plane(moving_mesh, fixed_mesh, max_dist=1.5):
+def _point_normals(mesh, name):
+    """Per-point outward normals, in the order of `mesh.points`.
+
+    Cell normals were taken first here and never used, which was as well: they
+    are one per triangle, so indexing them with a point index read the normal of
+    an unrelated part of the surface.
     """
-    ICP Point-to-Plane
+    if "Normals" in mesh.point_data:
+        return np.asarray(mesh.point_data["Normals"], dtype=float)
+    try:
+        with_normals = mesh.compute_normals(
+            point_normals=True, cell_normals=False,
+            auto_orient_normals=False, inplace=False)
+        return np.asarray(with_normals.point_data["Normals"], dtype=float)
+    except Exception as e:
+        logger.warning("%s: no surface normals could be computed (%s). The "
+                       "opposing arch cannot be told apart by orientation."
+                       % (name, e))
+        return None
+
+
+def _point_to_plane_step(source, target, normals):
+    """Rigid step minimising the distance to the target's tangent plane.
+
+    Point-to-point pulls a surface towards particular neighbours, which on the
+    smooth, near-flat occlusal surfaces here means it slides along them and
+    stalls. Measuring along the target normal lets the surface slide freely and
+    only resists what actually separates it from the other one.
+
+    Linearised in the rotation: for a correspondence (p, q, n) the residual is
+    (p - q).n + w.(p x n) + t.n, which is linear in the six unknowns [w, t].
     """
-    from scipy.spatial import cKDTree
-    from scipy.spatial.transform import Rotation
-    
-    # 1. Extract points
-    moving_pts = np.asarray(moving_mesh.points)
-    fixed_pts = np.asarray(fixed_mesh.points)
-    
-    fixed_mesh_copy = fixed_mesh.copy()
-    fixed_mesh_copy.compute_normals(inplace=True)
-    fixed_normals = np.asarray(fixed_mesh_copy.cell_data['Normals'] 
-                               if 'Normals' in fixed_mesh_copy.cell_data 
-                               else fixed_mesh_copy.point_data['Normals'])
-    
+    A = np.hstack([np.cross(source, normals), normals])
+    b = np.einsum("ij,ij->i", target - source, normals)
+
+    solution, _, rank, _ = np.linalg.lstsq(A, b, rcond=None)
+    if rank < 6 or not np.all(np.isfinite(solution)):
+        return None
+
+    omega, translation = solution[:3], solution[3:]
+    # A linearised step is only meaningful while it stays small; a large one
+    # means the system is being driven by outliers rather than by the surface.
+    if np.linalg.norm(omega) > 0.5:
+        return None
+
+    delta = np.eye(4)
+    delta[:3, :3] = Rotation.from_rotvec(omega).as_matrix()
+    delta[:3, 3] = translation
+    return delta
+
+
+def _point_to_point_step(source, target):
+    """Procrustes fit, the fallback when the point-to-plane system is degenerate."""
+    source_center = np.mean(source, axis=0)
+    target_center = np.mean(target, axis=0)
+
+    H = (source - source_center).T @ (target - target_center)
+    U, _, Vt = np.linalg.svd(H)
+    R = Vt.T @ U.T
+    if np.linalg.det(R) < 0:
+        Vt[-1, :] *= -1
+        R = Vt.T @ U.T
+
+    delta = np.eye(4)
+    delta[:3, :3] = R
+    delta[:3, 3] = target_center - R @ source_center
+    return delta
+
+
+def _icp_run(moving_pts, moving_normals, fixed_pts, fixed_normals, kdtree,
+             sign, max_dist, max_iterations, label):
+    """One ICP, under one reading of which way the two meshes wind their faces.
+
+    `sign` is +1 when a normal means the same thing on both meshes and -1 when
+    one of them is wound the other way; it multiplies the CBCT normals before
+    they are compared and before they are used as tangent planes.
+    """
+    use_normals = moving_normals is not None and fixed_normals is not None
+
     transformation = np.eye(4)
     moving_pts_transformed = moving_pts.copy()
-    
-    print("Optimisation Point-to-Plane on going...")
-    
-    max_iterations = 2000
-    prev_rmse = np.inf
-    rmse_threshold = 1e-8
-    fitness_threshold = 1e-8
-    prev_fitness = 0
+    moving_normals_transformed = moving_normals.copy() if use_normals else None
 
+    prev_rmse = np.inf
+    prev_fitness = 0
+    inlier_rmse = float("inf")
+    fitness = 0.0
+    n_pairs = 0
+    rejected_by_normal = 0
+
+    for iteration in range(max_iterations):
+        # workers=-1 spreads the query over every core: it is the dominant cost
+        # of the loop (one lookup per moving point, per iteration) and the
+        # default of a single worker left the other cores idle.
+        distances, indices = kdtree.query(moving_pts_transformed, k=1, workers=-1)
+
+        near = distances < max_dist
+        valid_mask = near
+        if use_normals:
+            agreement = np.einsum("ij,ij->i", moving_normals_transformed,
+                                  sign * fixed_normals[indices])
+            valid_mask = near & (agreement > MIN_NORMAL_AGREEMENT)
+            # The peak, not the last iteration: once the arch has settled on
+            # its own side nothing nearby faces the wrong way any more, so the
+            # final count says nothing about how ambiguous the start was.
+            rejected_by_normal = max(
+                rejected_by_normal, int(np.sum(near & ~valid_mask)))
+
+        valid_indices = indices[valid_mask]
+        valid_moving = moving_pts_transformed[valid_mask]
+        valid_distances = distances[valid_mask]
+
+        inlier_rmse = (float(np.sqrt(np.mean(valid_distances ** 2)))
+                       if len(valid_distances) > 0 else float("inf"))
+        fitness = float(np.sum(valid_mask)) / len(moving_pts)
+        n_pairs = int(np.sum(valid_mask))
+
+        if (abs(prev_rmse - inlier_rmse) < 1e-8
+                and abs(prev_fitness - fitness) < 1e-8):
+            logger.debug("%s: converged at iteration %d" % (label, iteration))
+            break
+
+        prev_rmse = inlier_rmse
+        prev_fitness = fitness
+
+        if n_pairs < 3:
+            logger.debug("%s: iteration %d has %d usable correspondence(s), "
+                         "the ICP stops here" % (label, iteration, n_pairs))
+            break
+
+        target = fixed_pts[valid_indices]
+        delta = None
+        if use_normals:
+            delta = _point_to_plane_step(
+                valid_moving, target, sign * fixed_normals[valid_indices])
+        if delta is None:
+            delta = _point_to_point_step(valid_moving, target)
+
+        transformation = delta @ transformation
+
+        moving_pts_homogeneous = np.hstack(
+            [moving_pts, np.ones((moving_pts.shape[0], 1))])
+        moving_pts_transformed = (moving_pts_homogeneous @ transformation.T)[:, :3]
+        if use_normals:
+            moving_normals_transformed = moving_normals @ transformation[:3, :3].T
+
+    return transformation, {
+        "fitness": fitness,
+        "inlier_rmse": inlier_rmse,
+        "pairs": n_pairs,
+        "rejected_by_normal": rejected_by_normal,
+        "used_normals": use_normals,
+        "sign": sign,
+    }
+
+
+def run_icp_point_to_plane(moving_mesh, fixed_mesh, max_dist=1.5, label=""):
+    """Register `moving_mesh` onto `fixed_mesh`.
+
+    Returns the registered mesh, the 4x4 matrix, and what the run is worth:
+    fitness (the share of moving points that found a match), the inlier RMSE,
+    and how many correspondences the answer stands on.
+
+    Whether a normal points out of the tooth or into it is a property of how
+    each file was written, and the two modalities do not have to agree. It
+    cannot be read off the starting pose either: that is precisely where an
+    IOS sitting between the two arches has most of its nearest neighbours on
+    the wrong one, and averaging over them reads the bite as an inversion and
+    then locks the registration onto the opposing arch. So both readings are
+    registered and the one that actually fits the CBCT better is kept -- the
+    IOS crowns are the same anatomy as their own arch in the CBCT and nothing
+    else, so the right reading wins on the merits.
+    """
+    label = label or "IOS"
+    moving_pts = np.asarray(moving_mesh.points)
+    fixed_pts = np.asarray(fixed_mesh.points)
+
+    fixed_normals = _point_normals(fixed_mesh, "CBCT surface")
+    moving_normals = _point_normals(moving_mesh, label)
+    use_normals = fixed_normals is not None and moving_normals is not None
+
+    max_iterations = 2000
     # Only the moving points change from one iteration to the next, so the tree
     # over the fixed points is built once instead of being rebuilt up to
     # max_iterations times over the very same coordinates.
     kdtree = cKDTree(fixed_pts)
 
-    for iteration in range(max_iterations):
-        # 2. Find correspondances (nearest neighbors)
-        # workers=-1 spreads the query over every core: it is the dominant cost
-        # of the loop (one lookup per moving point, per iteration) and the
-        # default of a single worker left the other cores idle.
-        distances, indices = kdtree.query(moving_pts_transformed, k=1, workers=-1)
-        
-        # Filter the points too far
-        valid_mask = distances < max_dist
-        valid_indices = indices[valid_mask]
-        valid_moving = moving_pts_transformed[valid_mask]
-        valid_distances = distances[valid_mask]
-        
-        # Calcul fitness and RMSE
-        inlier_rmse = np.sqrt(np.mean(valid_distances**2)) if len(valid_distances) > 0 else np.inf
-        fitness = np.sum(valid_mask) / len(moving_pts)
-        
-        # check convergence
-        rmse_change = abs(prev_rmse - inlier_rmse)
-        fitness_change = abs(prev_fitness - fitness)
-        
-        if rmse_change < rmse_threshold and fitness_change < fitness_threshold:
-            print(f"Convergence reached at iteration {iteration}")
-            break
-        
-        prev_rmse = inlier_rmse
-        prev_fitness = fitness
-        
-        # 3. Calcul of the transformation (Point-to-Plane with SVD)
-        if len(valid_indices) < 3:
-            print(f"Iteration {iteration}: Not enough correspondances")
-            break
-        
-        # corresponding Points 
-        source = valid_moving
-        target = fixed_pts[valid_indices]
-        
-        # Center points
-        source_center = np.mean(source, axis=0)
-        target_center = np.mean(target, axis=0)
-        source_centered = source - source_center
-        target_centered = target - target_center
-        
-        # covariance Matrix 
-        H = source_centered.T @ target_centered
-        U, S, Vt = np.linalg.svd(H)
-        R = Vt.T @ U.T
-        
-        # Assure a clean rotation (det(R) = 1)
-        if np.linalg.det(R) < 0:
-            Vt[-1, :] *= -1
-            R = Vt.T @ U.T
-        
-        t = target_center - R @ source_center
-        
-        # 4. Apply the transformation
-        delta_transform = np.eye(4)
-        delta_transform[:3, :3] = R
-        delta_transform[:3, 3] = t
-        
-        transformation = delta_transform @ transformation
-        
-        # Transform points
-        moving_pts_homogeneous = np.hstack([moving_pts, np.ones((moving_pts.shape[0], 1))])
-        moving_pts_transformed = (moving_pts_homogeneous @ transformation.T)[:, :3]
-        
-        if (iteration + 1) % 100 == 0 or iteration < 10:
-            print(f"  Iteration {iteration + 1}: RMSE = {inlier_rmse:.6f}, Fitness = {fitness:.4f}")
-    
-    # 5. Apply final transformation
+    attempts = []
+    for sign in ((1.0, -1.0) if use_normals else (1.0,)):
+        transformation, quality = _icp_run(
+            moving_pts, moving_normals, fixed_pts, fixed_normals, kdtree,
+            sign, max_dist, max_iterations, label)
+        attempts.append((transformation, quality))
+        if use_normals:
+            logger.debug("%s: normals read as %s gives %.1f%% matched at %.3f mm"
+                         % (label, "aligned" if sign > 0 else "opposed",
+                            100 * quality["fitness"], quality["inlier_rmse"]))
+
+    # More of the IOS matched is the first thing that matters; a tie on that is
+    # broken by how closely it matched.
+    transformation, quality = max(
+        attempts, key=lambda a: (round(a[1]["fitness"], 3), -a[1]["inlier_rmse"]))
+
+    if use_normals and quality["sign"] < 0:
+        logger.info("%s: the IOS and the CBCT surface wind their faces the "
+                    "opposite way; the IOS normals were flipped to compare them"
+                    % label)
+
     final_mesh = moving_mesh.transform(transformation, inplace=False)
-    
-    print(f"ICP Finished. Fitness: {fitness:.4f}, Inlier RMSE: {inlier_rmse:.4f}")
-    
-    return final_mesh, transformation
+
+    logger.info(
+        "%s: ICP done, %.1f%% of the IOS matched (%d points) at %.2f mm RMSE%s"
+        % (label, 100 * quality["fitness"], quality["pairs"],
+           quality["inlier_rmse"],
+           ", up to %d nearby points dropped as the opposing surface"
+           % quality["rejected_by_normal"] if quality["rejected_by_normal"] else ""))
+
+    return final_mesh, transformation, quality
 
 def save_registered_ios(registered_vtk_upper,registered_vtk_lower,output_path,num_patient):
     file_path_U = os.path.join(output_path,f"{num_patient}_Reg_U.vtk")
@@ -528,16 +686,34 @@ def main(args):
             
             # 3. RUN ICP REGISTRATION
             logger.debug(f"Running ICP for upper jaw")
-            registered_ios_upper, mat_icp_upper = run_icp_point_to_plane(
-                aligned_ios_upper, cbct_surface, max_dist=1.0
+            registered_ios_upper, mat_icp_upper, quality_upper = run_icp_point_to_plane(
+                aligned_ios_upper, cbct_surface, max_dist=1.0,
+                label=f"{patient_id} / Upper"
             )
             
             logger.debug(f"Running ICP for lower jaw")
-            registered_ios_lower, mat_icp_lower = run_icp_point_to_plane(
-                aligned_ios_lower, cbct_surface, max_dist=1.0
+            registered_ios_lower, mat_icp_lower, quality_lower = run_icp_point_to_plane(
+                aligned_ios_lower, cbct_surface, max_dist=1.0,
+                label=f"{patient_id} / Lower"
             )
             logger.info(f"ICP registration completed for patient {patient_id}")
-            
+
+            # An ICP that matched nothing still returns a matrix, and writing it
+            # out put an untouched IOS in the results folder under the name of a
+            # registered one. It happens whenever the pre-alignment is skipped
+            # and the raw pose is nowhere near the CBCT.
+            starved = [jaw for jaw, quality in (("Upper", quality_upper),
+                                                ("Lower", quality_lower))
+                       if quality["fitness"] < MIN_ICP_FITNESS]
+            if starved:
+                raise RuntimeError(
+                    "the %s arch matched under %.0f%% of its points to the CBCT "
+                    "surface (upper %.1f%%, lower %.1f%%). Nothing was written "
+                    "for this patient: check its landmarks, the pre-alignment "
+                    "above says whether it was accepted."
+                    % (" and ".join(starved), 100 * MIN_ICP_FITNESS,
+                       100 * quality_upper["fitness"], 100 * quality_lower["fitness"]))
+
             # 4. SAVE RESULTS
             logger.info(f"Saving registered meshes and landmarks")
             
