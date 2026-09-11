@@ -165,6 +165,60 @@ class RegistrationTest(unittest.TestCase):
 
         self.assertLess(quality["fitness"], areg.MIN_ICP_FITNESS)
 
+    # ------------------------------------------------- stopping, and the crop
+
+    def test_the_icp_stops_once_the_arch_has_settled(self):
+        """It used to circle the answer until the iteration cap.
+
+        Converging and stopping are not the same thing: the RMSE and the
+        fitness settle within tens of iterations, then flicker by a point or
+        two forever, which a threshold on their change never calls done.
+        """
+        maxilla = Sheet(0.0, 0.0, facing_down=True)
+        perturbation = Rigid([1, 0.3, 0.1], 1.2, [0.35, -0.4, -0.4])
+        moving = maxilla.transform(perturbation, inplace=False)
+
+        _, _, quality = areg.run_icp_point_to_plane(
+            moving, maxilla, max_dist=1.0, label="settling")
+
+        self.assertTrue(quality["settled"])
+        self.assertLess(quality["iterations"], areg.ICP_MAX_ITERATIONS)
+
+    def test_the_crop_keeps_what_is_near_the_landmarks(self):
+        _, cbct, _ = BiteScene()
+        target = areg._Target.FromMesh(cbct, "cbct")
+        # A landmark box over the middle of the sheets only.
+        anchor = np.array([[-5, -5, 0], [5, 5, 0]], dtype=float)
+
+        cropped = target.Around(anchor, 10.0, "crop")
+
+        self.assertLess(len(cropped), len(target))
+        self.assertTrue(np.all(cropped.points[:, 0] >= -15.001))
+        self.assertTrue(np.all(cropped.points[:, 0] <= 15.001))
+        self.assertEqual(len(cropped.normals), len(cropped.points))
+
+    def test_the_crop_does_not_move_the_answer(self):
+        """Cropping bounds the search; it must not change where it lands."""
+        moving, cbct, truth = BiteScene()
+        target = areg._Target.FromMesh(cbct, "cbct")
+        anchor = np.asarray(moving.points)[::500]
+
+        _, whole, _ = areg.run_icp_point_to_plane(
+            moving, target, max_dist=1.0, label="whole")
+        _, cropped, _ = areg.run_icp_point_to_plane(
+            moving, target.Around(anchor, 15.0, "crop"), max_dist=1.0, label="cropped")
+
+        points = np.asarray(moving.points)
+        self.assertLess(float(np.max(np.linalg.norm(
+            Apply(whole, points) - Apply(cropped, points), axis=1))), 0.01)
+
+    def test_a_crop_with_no_landmark_keeps_the_whole_target(self):
+        _, cbct, _ = BiteScene()
+        target = areg._Target.FromMesh(cbct, "cbct")
+
+        self.assertIs(target.Around(np.empty((0, 3)), 25.0, "none"), target)
+        self.assertIs(target.Around(np.array([[1e6, 1e6, 1e6]]), 1.0, "far"), target)
+
     # --------------------------------------------------- the pre-alignment fit
 
     def test_a_full_arch_of_landmarks_is_well_spread(self):

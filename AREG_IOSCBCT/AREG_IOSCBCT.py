@@ -62,6 +62,35 @@ MIN_NORMAL_AGREEMENT = float(os.environ.get("AREG_MIN_NORMAL_AGREEMENT", 0.5))
 # to, so a healthy run does not match all of its points either.
 MIN_ICP_FITNESS = float(os.environ.get("AREG_MIN_ICP_FITNESS", 0.05))
 
+# How far around an arch's own CBCT landmarks the CBCT surface is kept as a
+# registration target, in mm. The isosurface of a head at 0.3 mm spacing is
+# millions of points, nearly all of them cranial base, vertebrae and jaw body
+# that no intraoral scan can ever match; every ICP iteration was querying the
+# lot. The margin has to clear the crowns, the gingiva the IOS carries, and
+# whatever the landmark pre-alignment left on the table -- its residual runs to
+# a few mm on real patients -- so it is set well past all three.
+CBCT_CROP_MARGIN_MM = float(os.environ.get("AREG_CBCT_CROP_MARGIN", 25.0))
+
+# When the arch has stopped moving, in mm of the furthest-travelling point over
+# one iteration, and for how many iterations in a row.
+#
+# The ICP used to stop on the RMSE and the fitness both changing by less than
+# 1e-8, which on a real patient never happens: it settles within about sixty
+# iterations and then circles the answer forever, each turn moving the scan by
+# some 3e-5 to 1e-4 mm. It spent the remaining 1900-odd iterations of its cap
+# doing that, around a hundred seconds per arch per reading of the normals. A
+# micron is three orders of magnitude below the 0.3 mm voxels this is
+# registered against, so stopping there costs nothing anyone could measure.
+ICP_SETTLED_SHIFT_MM = float(os.environ.get("AREG_ICP_SETTLED_SHIFT", 1e-3))
+ICP_SETTLED_ITERATIONS = 3
+
+# The cap, for the case where it never settles. Real arches settle in twenty to
+# sixty iterations from a pre-alignment several mm out; what is still moving
+# after three hundred is circling the answer, not approaching it, and stopping
+# it there costs nothing but the circling. The reading of the normals that
+# loses used to spend the whole of a 2000 cap doing exactly that.
+ICP_MAX_ITERATIONS = int(os.environ.get("AREG_ICP_MAX_ITERATIONS", 300))
+
 
 def _labeled_landmarks(json_path):
     with open(json_path, "r") as f:
@@ -208,6 +237,68 @@ def align_by_landmarks(moving_mesh, moving_lms, fixed_lms, jaw="", patient_id=""
     
     return aligned_mesh, matrix, aligned_lms
 
+class _Target:
+    """The CBCT surface as the ICP actually consumes it: points and normals.
+
+    Cropping is then index selection on two arrays. Cutting the mesh itself
+    instead, with extract_points, costs more than the ICP saves: on one patient
+    it removed three quarters of the points and still added nearly two minutes,
+    because rebuilding a 2.8 million point surface is dearer than querying it.
+
+    Normals are taken from the whole surface before any crop, so a point keeps
+    the normal its neighbourhood gives it rather than one bent by the cut.
+    """
+
+    def __init__(self, points, normals):
+        self.points = points
+        self.normals = normals
+
+    @classmethod
+    def FromMesh(cls, mesh, name):
+        return cls(np.asarray(mesh.points), _point_normals(mesh, name))
+
+    def __len__(self):
+        return len(self.points)
+
+    def Around(self, anchor_points, margin, label):
+        """The part of the surface an arch can plausibly be registered to.
+
+        Anchored on that arch's own CBCT landmarks rather than on the
+        pre-aligned IOS: the landmarks are in CBCT coordinates whatever the
+        pre-alignment did, while an IOS whose pre-alignment was skipped is
+        still in the frame ASO left it in and would drag the box across the
+        whole head.
+
+        The opposing arch stays in the box -- at this margin it cannot be
+        excluded by position, and it does not need to be, the normals tell it
+        apart. What goes is everything that was never a candidate: cranial
+        base, vertebrae, the far side of the jaw.
+        """
+        if anchor_points is None or len(anchor_points) == 0:
+            logger.warning("%s: no CBCT landmark to crop around, the whole "
+                           "surface is kept as the target" % label)
+            return self
+
+        anchor_points = np.asarray(anchor_points, dtype=float)
+        low = anchor_points.min(axis=0) - margin
+        high = anchor_points.max(axis=0) + margin
+        inside = np.all((self.points >= low) & (self.points <= high), axis=1)
+
+        kept = int(np.sum(inside))
+        if kept < 3:
+            logger.warning("%s: nothing of the CBCT surface lies within %.0f mm "
+                           "of its landmarks, the whole surface is kept as the "
+                           "target" % (label, margin))
+            return self
+
+        logger.info("%s: CBCT target cropped to %d of %d points (%.1f%%) within "
+                    "%.0f mm of the arch's landmarks"
+                    % (label, kept, len(self), 100.0 * kept / max(len(self), 1),
+                       margin))
+        return _Target(self.points[inside],
+                       self.normals[inside] if self.normals is not None else None)
+
+
 def _point_normals(mesh, name):
     """Per-point outward normals, in the order of `mesh.points`.
 
@@ -291,12 +382,12 @@ def _icp_run(moving_pts, moving_normals, fixed_pts, fixed_normals, kdtree,
     moving_pts_transformed = moving_pts.copy()
     moving_normals_transformed = moving_normals.copy() if use_normals else None
 
-    prev_rmse = np.inf
-    prev_fitness = 0
     inlier_rmse = float("inf")
     fitness = 0.0
     n_pairs = 0
     rejected_by_normal = 0
+    settled = 0
+    iteration = 0
 
     for iteration in range(max_iterations):
         # workers=-1 spreads the query over every core: it is the dominant cost
@@ -325,13 +416,11 @@ def _icp_run(moving_pts, moving_normals, fixed_pts, fixed_normals, kdtree,
         fitness = float(np.sum(valid_mask)) / len(moving_pts)
         n_pairs = int(np.sum(valid_mask))
 
-        if (abs(prev_rmse - inlier_rmse) < 1e-8
-                and abs(prev_fitness - fitness) < 1e-8):
-            logger.debug("%s: converged at iteration %d" % (label, iteration))
+        # Checked here rather than after the update, so the numbers reported
+        # are the ones that describe the transform actually returned.
+        if settled >= ICP_SETTLED_ITERATIONS:
+            logger.debug("%s: settled at iteration %d" % (label, iteration))
             break
-
-        prev_rmse = inlier_rmse
-        prev_fitness = fitness
 
         if n_pairs < 3:
             logger.debug("%s: iteration %d has %d usable correspondence(s), "
@@ -350,11 +439,18 @@ def _icp_run(moving_pts, moving_normals, fixed_pts, fixed_normals, kdtree,
 
         moving_pts_homogeneous = np.hstack(
             [moving_pts, np.ones((moving_pts.shape[0], 1))])
+        previous_pts = moving_pts_transformed
         moving_pts_transformed = (moving_pts_homogeneous @ transformation.T)[:, :3]
         if use_normals:
             moving_normals_transformed = moving_normals @ transformation[:3, :3].T
 
+        shift = float(np.max(np.linalg.norm(
+            moving_pts_transformed - previous_pts, axis=1)))
+        settled = settled + 1 if shift < ICP_SETTLED_SHIFT_MM else 0
+
     return transformation, {
+        "iterations": iteration,
+        "settled": settled >= ICP_SETTLED_ITERATIONS,
         "fitness": fitness,
         "inlier_rmse": inlier_rmse,
         "pairs": n_pairs,
@@ -382,14 +478,16 @@ def run_icp_point_to_plane(moving_mesh, fixed_mesh, max_dist=1.5, label=""):
     else, so the right reading wins on the merits.
     """
     label = label or "IOS"
-    moving_pts = np.asarray(moving_mesh.points)
-    fixed_pts = np.asarray(fixed_mesh.points)
+    target = (fixed_mesh if isinstance(fixed_mesh, _Target)
+              else _Target.FromMesh(fixed_mesh, "CBCT surface"))
 
-    fixed_normals = _point_normals(fixed_mesh, "CBCT surface")
+    moving_pts = np.asarray(moving_mesh.points)
+    fixed_pts = target.points
+    fixed_normals = target.normals
     moving_normals = _point_normals(moving_mesh, label)
     use_normals = fixed_normals is not None and moving_normals is not None
 
-    max_iterations = 2000
+    max_iterations = ICP_MAX_ITERATIONS
     # Only the moving points change from one iteration to the next, so the tree
     # over the fixed points is built once instead of being rebuilt up to
     # max_iterations times over the very same coordinates.
@@ -411,6 +509,15 @@ def run_icp_point_to_plane(moving_mesh, fixed_mesh, max_dist=1.5, label=""):
     transformation, quality = max(
         attempts, key=lambda a: (round(a[1]["fitness"], 3), -a[1]["inlier_rmse"]))
 
+    # Only of the attempt that was kept: the reading of the normals that loses
+    # is expected to wander, and saying so about it reads as a doubt over the
+    # answer that was actually returned.
+    if not quality["settled"]:
+        logger.warning(
+            "%s: the ICP used all %d iterations without settling to within "
+            "%g mm. Its answer is wherever it had got to."
+            % (label, max_iterations, ICP_SETTLED_SHIFT_MM))
+
     if use_normals and quality["sign"] < 0:
         logger.info("%s: the IOS and the CBCT surface wind their faces the "
                     "opposite way; the IOS normals were flipped to compare them"
@@ -419,9 +526,10 @@ def run_icp_point_to_plane(moving_mesh, fixed_mesh, max_dist=1.5, label=""):
     final_mesh = moving_mesh.transform(transformation, inplace=False)
 
     logger.info(
-        "%s: ICP done, %.1f%% of the IOS matched (%d points) at %.2f mm RMSE%s"
-        % (label, 100 * quality["fitness"], quality["pairs"],
-           quality["inlier_rmse"],
+        "%s: ICP done in %d iterations, %.1f%% of the IOS matched (%d points) "
+        "at %.2f mm RMSE%s"
+        % (label, quality["iterations"], 100 * quality["fitness"],
+           quality["pairs"], quality["inlier_rmse"],
            ", up to %d nearby points dropped as the opposing surface"
            % quality["rejected_by_normal"] if quality["rejected_by_normal"] else ""))
 
@@ -689,15 +797,27 @@ def main(args):
             logger.debug(f"IOS Lower landmarks after alignment:\n{aligned_lms_ios_lower}")
             
             # 3. RUN ICP REGISTRATION
+            # Each arch gets its own slice of the CBCT surface. The two ICPs
+            # each built a tree over the whole head before, and then queried it
+            # once per moving point per iteration, for structures an intraoral
+            # scan has no counterpart to.
+            # Normals over the whole surface once, rather than once per arch
+            # inside each ICP, and the crop is then a slice of those arrays.
+            cbct_target = _Target.FromMesh(cbct_surface, f"{patient_id} / CBCT")
+            cbct_upper = cbct_target.Around(lm_cbct_U, CBCT_CROP_MARGIN_MM,
+                                            f"{patient_id} / Upper")
+            cbct_lower = cbct_target.Around(lm_cbct_L, CBCT_CROP_MARGIN_MM,
+                                            f"{patient_id} / Lower")
+
             logger.debug(f"Running ICP for upper jaw")
             registered_ios_upper, mat_icp_upper, quality_upper = run_icp_point_to_plane(
-                aligned_ios_upper, cbct_surface, max_dist=1.0,
+                aligned_ios_upper, cbct_upper, max_dist=1.0,
                 label=f"{patient_id} / Upper"
             )
             
             logger.debug(f"Running ICP for lower jaw")
             registered_ios_lower, mat_icp_lower, quality_lower = run_icp_point_to_plane(
-                aligned_ios_lower, cbct_surface, max_dist=1.0,
+                aligned_ios_lower, cbct_lower, max_dist=1.0,
                 label=f"{patient_id} / Lower"
             )
             logger.info(f"ICP registration completed for patient {patient_id}")
