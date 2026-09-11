@@ -79,8 +79,10 @@ def install_function():
     libs = [
         ('itk', None),
         ('einops', None),
-        ('dicom2nifti', '==2.3.0'),
-        ('pydicom', '==2.2.2'),
+        ('dicom2nifti', '==2.6.2'),
+        # pydicom is kept on the version Slicer ships: downgrading it to 2.x breaks
+        # dicomweb-client and highdicom, hence every DICOM module of Slicer.
+        ('pydicom', '==3.0.2'),
         ('nibabel', None),
         ('itk-elastix', None),
         ('pandas', None),

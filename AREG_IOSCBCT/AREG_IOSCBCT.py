@@ -29,7 +29,83 @@ formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
-def align_by_landmarks(moving_mesh, moving_lms, fixed_lms):
+# vtkLandmarkTransform needs as many source points as target points: given
+# anything else it logs an error on stderr and returns the identity, so the
+# mesh is never pre-aligned and nothing says so in the log. ALI_CBCT regularly
+# finds only part of the landmarks, so the IOS and CBCT lists match neither in
+# size nor in content, and pairing them by position would align landmarks that
+# have nothing to do with each other. Only keep what exists on both sides.
+MIN_LANDMARK_PAIRS = 3
+MAX_LANDMARK_RESIDUAL_MM = float(os.environ.get("AREG_MAX_LANDMARK_RESIDUAL", 10.0))
+
+
+def _labeled_landmarks(json_path):
+    with open(json_path, "r") as f:
+        data = json.load(f)
+    out = {}
+    if data.get("markups"):
+        for cp in data["markups"][0].get("controlPoints", []):
+            label = cp.get("label")
+            if label:
+                out[label] = list(cp["position"])
+    return out
+
+
+def _pair_landmarks(cbct_json, ios_json, jaw, patient_id):
+    cbct = _labeled_landmarks(cbct_json)
+    ios = _labeled_landmarks(ios_json)
+    common = [l for l in ios if l in cbct]
+    missing = [l for l in ios if l not in cbct]
+    logger.info("%s / %s: %d common landmark pair(s) %s%s" % (
+        patient_id, jaw, len(common), common,
+        "  |  missing from the CBCT: %s" % missing if missing else ""))
+    return (common,
+            np.array([cbct[l] for l in common], dtype=float).reshape(-1, 3),
+            np.array([ios[l] for l in common], dtype=float).reshape(-1, 3))
+
+
+def _alignment_residual(moving_lms, fixed_lms, matrix):
+    """How far each moved landmark still sits from its counterpart, as an RMS.
+
+    A rigid transform preserves distances, so a large residual proves the two
+    sets do not describe the same anatomy and the transform fitted to them is a
+    meaningless compromise.
+    """
+    res = []
+    for src, dst in zip(moving_lms, fixed_lms):
+        moved = matrix.MultiplyPoint([src[0], src[1], src[2], 1])[:3]
+        res.append(np.linalg.norm(np.array(moved) - np.array(dst)))
+    return float(np.sqrt(np.mean(np.square(res)))) if res else float("inf")
+
+
+def _write_positions(cbct_json, positions, labels):
+    """Store the registered positions in the CBCT json, matched by label.
+
+    This used to walk the CBCT control points and index the IOS array by
+    position, so a CBCT holding one landmark against six on the IOS side saved
+    the IOS UL1O coordinates under the UR6O label.
+    """
+    if not cbct_json.get("markups"):
+        return
+    control_points = cbct_json["markups"][0].get("controlPoints", [])
+    if labels is None:
+        for i, cp in enumerate(control_points):
+            if i < len(positions):
+                cp["position"] = list(positions[i])
+        return
+    by_label = dict(zip(labels, positions))
+    kept = []
+    for cp in control_points:
+        label = cp.get("label")
+        if label in by_label:
+            cp["position"] = list(by_label[label])
+            kept.append(cp)
+        else:
+            logger.warning("CBCT landmark %s has no IOS counterpart: dropped from the output" % label)
+    cbct_json["markups"][0]["controlPoints"] = kept
+
+
+def align_by_landmarks(moving_mesh, moving_lms, fixed_lms, jaw="", patient_id=""):
     # 1. Create VTK transformation object
     landmark_transform = vtk.vtkLandmarkTransform()
     
@@ -48,6 +124,30 @@ def align_by_landmarks(moving_mesh, moving_lms, fixed_lms):
     # 3. Apply matrix to moving mesh
     # Get the 4x4 matrix
     matrix = landmark_transform.GetMatrix()
+
+    # Falling back to the identity leaves the ICP to start from the raw pose,
+    # which is what already happened whenever the two lists had different
+    # sizes -- only now it is a decision, and it is written down.
+    n = len(moving_lms)
+    if n < MIN_LANDMARK_PAIRS:
+        logger.warning(
+            "%s / %s: %d landmark pair(s), %d needed. A rigid fit is "
+            "underdetermined below that (one point is a plain translation, two "
+            "leave a free rotation about the axis). Skipping the pre-alignment."
+            % (patient_id, jaw, n, MIN_LANDMARK_PAIRS))
+        matrix = vtk.vtkMatrix4x4()
+    else:
+        rms = _alignment_residual(moving_lms, fixed_lms, matrix)
+        if rms > MAX_LANDMARK_RESIDUAL_MM:
+            logger.warning(
+                "%s / %s: %.1f mm residual over %d pairs (threshold %.1f). The "
+                "IOS and CBCT landmarks do not describe the same points. "
+                "Skipping the pre-alignment."
+                % (patient_id, jaw, rms, n, MAX_LANDMARK_RESIDUAL_MM))
+            matrix = vtk.vtkMatrix4x4()
+        else:
+            logger.info("%s / %s: pre-alignment accepted, %.1f mm residual over %d pairs"
+                        % (patient_id, jaw, rms, n))
     # Apply it with PyVista
     aligned_mesh = moving_mesh.transform(matrix,inplace=False)
     
@@ -95,7 +195,10 @@ def run_icp_point_to_plane(moving_mesh, fixed_mesh, max_dist=1.5):
 
     for iteration in range(max_iterations):
         # 2. Find correspondances (nearest neighbors)
-        distances, indices = kdtree.query(moving_pts_transformed, k=1)
+        # workers=-1 spreads the query over every core: it is the dominant cost
+        # of the loop (one lookup per moving point, per iteration) and the
+        # default of a single worker left the other cores idle.
+        distances, indices = kdtree.query(moving_pts_transformed, k=1, workers=-1)
         
         # Filter the points too far
         valid_mask = distances < max_dist
@@ -172,7 +275,7 @@ def save_registered_ios(registered_vtk_upper,registered_vtk_lower,output_path,nu
     file_path_L = os.path.join(output_path,f"{num_patient}_Reg_L.vtk")
     registered_vtk_lower.save(file_path_L)
 
-def apply_matrix_and_save_landmarks(aligned_upper_lm,aligned_lower_lm,mat_u,mat_l,json_output_path,num_patient,landmarks_json_cbct_U,landmarks_json_cbct_L):
+def apply_matrix_and_save_landmarks(aligned_upper_lm,aligned_lower_lm,mat_u,mat_l,json_output_path,num_patient,landmarks_json_cbct_U,landmarks_json_cbct_L,labels_u=None,labels_l=None):
     # Apply transformations using NumPy (no Open3D dependency)
     # Convert landmarks to homogeneous coordinates, apply transformation, convert back
     
@@ -187,20 +290,12 @@ def apply_matrix_and_save_landmarks(aligned_upper_lm,aligned_lower_lm,mat_u,mat_
     json_output_path_IOS_U = os.path.join(json_output_path,f"{num_patient}_lm_Reg_U.mrk.json")
     json_output_path_IOS_L = os.path.join(json_output_path,f"{num_patient}_lm_Reg_L.mrk.json")
 
-    if 'markups' in landmarks_json_cbct_U:
-        i=0
-        for markup in landmarks_json_cbct_U['markups'][0]['controlPoints']:
-            markup['position'] = list(aligned_icp_lm_upper[i])
-            i+=1
+    _write_positions(landmarks_json_cbct_U, aligned_icp_lm_upper, labels_u)
 
     with open(json_output_path_IOS_U, "w") as file:
         json.dump(landmarks_json_cbct_U, file,indent=4, ensure_ascii=False)
 
-    if 'markups' in landmarks_json_cbct_L:
-        i=0
-        for markup in landmarks_json_cbct_L['markups'][0]['controlPoints']:
-            markup['position'] = list(aligned_icp_lm_lower[i])
-            i+=1
+    _write_positions(landmarks_json_cbct_L, aligned_icp_lm_lower, labels_l)
 
     with open(json_output_path_IOS_L, "w") as file:
         json.dump(landmarks_json_cbct_L, file,indent=4, ensure_ascii=False)
@@ -404,6 +499,12 @@ def main(args):
                 patient_data["ios_lm_lower"]
             )
             
+            # Keep only the landmarks present on both sides, in the same order
+            labels_U, lm_cbct_U, lm_ios_U = _pair_landmarks(
+                patient_data["cbct_lm_upper"], patient_data["ios_lm_upper"], "Upper", patient_id)
+            labels_L, lm_cbct_L, lm_ios_L = _pair_landmarks(
+                patient_data["cbct_lm_lower"], patient_data["ios_lm_lower"], "Lower", patient_id)
+
             # Load IOS meshes (VTK files)
             ios_upper_mesh = pv.read(patient_data["ios_upper"])
             ios_lower_mesh = pv.read(patient_data["ios_lower"])
@@ -414,13 +515,13 @@ def main(args):
             # 2. ALIGN BY LANDMARKS
             logger.debug(f"Aligning IOS upper jaw by landmarks")
             aligned_ios_upper, mat_ios_upper, aligned_lms_ios_upper = align_by_landmarks(
-                ios_upper_mesh, lm_ios_U, lm_cbct_U
+                ios_upper_mesh, lm_ios_U, lm_cbct_U, "Upper", patient_id
             )
             logger.info(f"IOS Upper landmarks after alignment:\n{aligned_lms_ios_upper}")
             
             logger.debug(f"Aligning IOS lower jaw by landmarks")
             aligned_ios_lower, mat_ios_lower, aligned_lms_ios_lower = align_by_landmarks(
-                ios_lower_mesh, lm_ios_L, lm_cbct_L
+                ios_lower_mesh, lm_ios_L, lm_cbct_L, "Lower", patient_id
             )
             logger.debug(f"IOS Lower landmarks after alignment shape: {aligned_lms_ios_lower.shape}")
             logger.debug(f"IOS Lower landmarks after alignment:\n{aligned_lms_ios_lower}")
@@ -454,7 +555,8 @@ def main(args):
                 aligned_lms_ios_upper, aligned_lms_ios_lower,
                 mat_icp_upper, mat_icp_lower,
                 output_dir, patient_id,
-                landmarks_json_cbct_U, landmarks_json_cbct_L
+                landmarks_json_cbct_U, landmarks_json_cbct_L,
+                labels_U, labels_L
             )
             registered += 1
             logger.info(f"Patient {patient_id} processed successfully")

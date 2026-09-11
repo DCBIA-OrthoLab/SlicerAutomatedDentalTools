@@ -168,6 +168,18 @@ class Method(ABC):
         """
         pass
 
+    def getReviewSteps(self, **kwargs) -> list:
+        """Pauses this mode can offer, in the order the run reaches them.
+
+        Declared without running Process(): the widget needs the list to build
+        its checkboxes long before anything is computed, and Process() creates
+        folders on the way.
+
+        Returns:
+            list: catalogue entries, each carrying its id
+        """
+        return []
+
     def getcheckbox(self):
         return self.diccheckbox
 

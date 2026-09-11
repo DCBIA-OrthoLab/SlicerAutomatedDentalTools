@@ -1,4 +1,5 @@
 from AREG_Method.Method import Method
+from AREG_Method import Review
 from AREG_Method.Progress import DisplayAREGIOS, DisplayCrownSeg, DisplayASOIOS, DisplayALIIOS
 import slicer
 import webbrowser
@@ -77,6 +78,9 @@ def MGLProcess(method, numberscan, areg_mode, **kwargs):
                 "Process": slicer.modules.ali_ios,
                 "Parameter": parameter_ali,
                 "Module": f"ALI_IOS {time}",
+                "ReviewId": f"ios_landmarks_{time.lower()}",
+                "ReviewFolder": landmarks_folder,
+                "ReviewReferenceFolder": kwargs[f"input_{time.lower()}_folder"],
                 "Display": DisplayALIIOS(13, numberscan),
             })
 
@@ -99,6 +103,9 @@ def MGLProcess(method, numberscan, areg_mode, **kwargs):
         "Process": slicer.modules.areg_ios,
         "Parameter": parameter_reg,
         "Module": "AREG_IOS",
+        "ReviewId": "ios_registration",
+        "ReviewFolder": kwargs["folder_output"],
+        "ReviewReferenceFolder": kwargs["input_t1_folder"],
         "Display": DisplayAREGIOS(numberscan, kwargs["logPath"]),
     })
 
@@ -560,10 +567,29 @@ class Auto_IOS(Method):
             "Process": SegProcess,
             "Parameter": parameter,
             "Module": f"CrownSegmentationcli {timepoint}",
+            "ReviewId": "ios_segmented",
+            "ReviewFolder": parameter["out"],
             "Display": DisplayCrownSeg(number, kwargs["logPath"], f"{timepoint} Scan"),
         } for timepoint, number, parameter in to_segment]
 
         return processes, path_tmp, path_seg_T1, path_seg_T2
+
+    def getReviewSteps(self, **kwargs) -> list:
+        """Pauses this mode can offer, in the order the run reaches them."""
+        if kwargs.get("reg_type") == "MGL":
+            # MGL places landmarks instead of orienting the palate
+            return Review.stepsFor([
+                "ios_segmented",
+                "ios_landmarks_t1",
+                "ios_landmarks_t2",
+                "ios_registration",
+            ])
+        return Review.stepsFor([
+            "ios_segmented",
+            "ios_oriented_t1",
+            "ios_oriented_t2",
+            "ios_registration",
+        ])
 
     def Process(self, **kwargs):
 
@@ -641,18 +667,25 @@ class Auto_IOS(Method):
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso_T1,
                 "Module": "PRE_ASO_IOS T1",
+                "ReviewId": "ios_oriented_t1",
+                "ReviewFolder": path_or_T1,
                 "Display": DisplayASOIOS(numberscan, kwargs["logPath"], "T1 Patient"),
             },
             {
                 "Process": PreOrientProcess,
                 "Parameter": parameter_pre_aso_T2,
                 "Module": "PRE_ASO_IOS T2",
+                "ReviewId": "ios_oriented_t2",
+                "ReviewFolder": path_or_T2,
                 "Display": DisplayASOIOS(numberscan, kwargs["logPath"], "T2 Patient"),
             },
             {
                 "Process": RegProcess,
                 "Parameter": parameter_reg,
                 "Module": "AREG_IOS",
+                "ReviewId": "ios_registration",
+                "ReviewFolder": kwargs["folder_output"],
+                "ReviewReferenceFolder": path_or_T1,
                 "Display": DisplayAREGIOS(numberscan, kwargs["logPath"]),
             },
         ]
@@ -697,6 +730,16 @@ class Semi_IOS(Auto_IOS):
 
         return out
 
+    def getReviewSteps(self, **kwargs) -> list:
+        """Pauses this mode can offer, in the order the run reaches them."""
+        if kwargs.get("reg_type") == "MGL":
+            return Review.stepsFor([
+                "ios_landmarks_t1",
+                "ios_landmarks_t2",
+                "ios_registration",
+            ])
+        return Review.stepsFor(["ios_registration"])
+
     def Process(self, **kwargs):
 
         numberscan = self.NumberScan(
@@ -735,6 +778,9 @@ class Semi_IOS(Auto_IOS):
                 "Process": RegProcess,
                 "Parameter": parameter_reg,
                 "Module": "AREG_IOS",
+                "ReviewId": "ios_registration",
+                "ReviewFolder": kwargs["folder_output"],
+                "ReviewReferenceFolder": kwargs["input_t1_folder"],
                 "Display": DisplayAREGIOS(numberscan, kwargs["logPath"]),
             }
         ]
