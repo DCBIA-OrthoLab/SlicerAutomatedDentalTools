@@ -10,12 +10,17 @@ set(FOLDER_LIBRARY ALI_IOS_utils)
 set(MODULE_PYTHON_SCRIPTS
   ${FOLDER_LIBRARY}/__init__.py
   ${FOLDER_LIBRARY}/agent.py
+  ${FOLDER_LIBRARY}/complete_line.py
+  ${FOLDER_LIBRARY}/fill_gaps.py
   ${FOLDER_LIBRARY}/io.py
   ${FOLDER_LIBRARY}/mask_renderer.py
   ${FOLDER_LIBRARY}/model.py
   ${FOLDER_LIBRARY}/orientation.py
+  ${FOLDER_LIBRARY}/paint_scan.py
+  ${FOLDER_LIBRARY}/pick_patch.py
   ${FOLDER_LIBRARY}/render.py
   ${FOLDER_LIBRARY}/segmentation.py
+  ${FOLDER_LIBRARY}/smooth.py
   ${FOLDER_LIBRARY}/surface.py
 )
 
@@ -23,4 +28,9 @@ slicerMacroBuildScriptedModule(
   NAME ${FOLDER_LIBRARY}
   SCRIPTS ${MODULE_PYTHON_SCRIPTS}
 )
+
+#-----------------------------------------------------------------------------
+if(BUILD_TESTING)
+  add_subdirectory(Testing)
+endif()
 # #-----------------------------------------------------------------------------

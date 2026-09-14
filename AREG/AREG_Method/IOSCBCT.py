@@ -1,4 +1,4 @@
-from AREG_Method.Method import Method
+from AREG_Method.Method import Method, FindDentalModelSeg
 from AREG_Method import Review
 from AREG_Method.Progress import DisplayAREGIOSCBCT, DisplayALICBCT,DisplayASOIOS,DisplayASOCBCT,DisplayCrownSeg,DisplayALIIOS
 import webbrowser
@@ -246,8 +246,7 @@ class Semi_IOSCBCT(IOSCBCT):
 
         nb_scan = self.NumberScan(kwargs["input_t1_folder"],kwargs["input_t2_folder"])
         
-        slicer_path = slicer.app.applicationDirPath()
-        dentalmodelseg_path = os.path.join(slicer_path,"..","lib","Python","bin","dentalmodelseg")
+        dentalmodelseg_path = FindDentalModelSeg()
 
         surf = "None"
         input_csv = "None"
@@ -703,8 +702,7 @@ class Auto_IOSCBCT(IOSCBCT):
                 ),
             })
         
-        slicer_path = slicer.app.applicationDirPath()
-        dentalmodelseg_path = os.path.join(slicer_path,"..","lib","Python","bin","dentalmodelseg")
+        dentalmodelseg_path = FindDentalModelSeg()
 
         surf = "None"
         input_csv = "None"

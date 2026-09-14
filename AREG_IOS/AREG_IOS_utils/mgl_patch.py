@@ -17,6 +17,7 @@
 import heapq
 import json
 import logging
+import re
 import sys
 
 import numpy as np
@@ -55,7 +56,44 @@ DEFAULT_SAMPLES = 300       # samples along the spline
 # Universal_ID labels of the lower teeth. The gingiva carries its own label, so
 # the patch can be kept off the crowns, which are the structures that move
 # between the two timepoints and must not drive the registration.
-LOWER_TOOTH_LABELS = range(18, 32)
+#
+# 17 (LL8) and 32 (LR8) are the third molars, and they belong here like the
+# rest: a wisdom tooth still erupting is the LEAST stable thing on the arch,
+# and it sits exactly where the band runs out. They were outside the range,
+# so wherever one was segmented its crown drove the registration.
+LOWER_TOOTH_LABELS = range(17, 33)
+
+
+# What ALI writes in a markup description when the point is not a plain
+# prediction. A description may also carry the confidence of a point that was
+# won outright, which says nothing against it.
+# "off the aim": ALI marked a mucogingival point in that tooth's picture,
+# but not one near where its cameras were aimed -- its neighbour's. Two
+# landmarks then sit on one spot, so the band gets two seeds in the same
+# place and none where the missing one should have been.
+DOUBTFUL_MARKS = ("forced", "fallback", "arch fit", "off the aim", "extrapolated")
+
+
+# Below this the network was, on the corpus it was trained on, wrong by 3.8 mm
+# where a confident point is wrong by 1.0 mm. It is that corpus's 5th
+# percentile: a point the model is less sure of than 95% of what it was taught
+# on. A quarter of the points of another dataset fall under it, which is what
+# a model working outside its domain looks like.
+MIN_CONFIDENCE = 0.785
+
+
+def IsDoubtful(description):
+    """True when a description says the point is not to be trusted.
+
+    Either it was not predicted outright -- forced, fallen back on, aimed at a
+    guessed tooth -- or it was predicted with less confidence than the model
+    ever showed on the scans it was trained on.
+    """
+    text = (description or "").lower()
+    if any(mark in text for mark in DOUBTFUL_MARKS):
+        return True
+    found = re.search(r"confidence ([0-9.]+)", text)
+    return bool(found) and float(found.group(1)) < MIN_CONFIDENCE
 
 
 def DropDoubtfulLandmarks(landmarks, path):
@@ -80,7 +118,7 @@ def DropDoubtfulLandmarks(landmarks, path):
         return landmarks
 
     doubtful = {point["label"]: point["description"] for point in markups
-                if point.get("description")}
+                if IsDoubtful(point.get("description"))}
     if not doubtful:
         return landmarks
 
@@ -94,6 +132,80 @@ def DropDoubtfulLandmarks(landmarks, path):
     logger.info(f"Leaving out {len(doubtful)} landmark(s) ALI was unsure of: "
                 + ", ".join(f"{name} ({reason})" for name, reason in sorted(doubtful.items())))
     return kept
+
+
+def SharedLandmarks(per_timepoint):
+    """Restrict every timepoint to the landmarks all of them carry.
+
+    A registration compares two surfaces, so the region compared has to be the
+    same anatomy on both. Each timepoint loses its own landmarks -- a tooth
+    absent at T1, a point ALI doubted at T2 -- and a band built from whatever
+    its own scan kept runs a tooth further at one timepoint than the other.
+    An ICP handed two bands of different length slides the short one along the
+    long one, and the loss lands where it hurts most: what goes missing is
+    almost always a terminal molar, the end of the band that pins the rotation
+    about the vertical axis.
+
+    Returns the trimmed dictionaries and the names left out. Below three
+    common landmarks nothing is trimmed -- no curve could be built -- and the
+    caller is told, since each band is then on its own.
+    """
+    shared = set.intersection(*(set(landmarks) for landmarks in per_timepoint.values()))
+    dropped = set().union(*(set(landmarks) for landmarks in per_timepoint.values())) - shared
+
+    if len(shared) < 3:
+        return dict(per_timepoint), set()
+
+    trimmed = {time: {name: position for name, position in landmarks.items()
+                      if name in shared}
+               for time, landmarks in per_timepoint.items()}
+    return trimmed, dropped
+
+
+def AlignOnLandmarks(source, target):
+    """Rigid transform taking the `source` landmarks onto the `target` ones.
+
+    Where the ICP starts matters more here than the usual "any sensible pose
+    will do". The band is a narrow strip following a curve, so sliding it a
+    few millimetres ALONG that curve barely changes the distance between the
+    two point clouds while moving the anatomy by as much: the residual the ICP
+    minimises is nearly flat in the one direction that matters, and it settles
+    wherever it was put down. Starting by matching the centroids of two clouds
+    that do not cover quite the same surface puts it down several millimetres
+    off.
+
+    The correspondence the ICP throws away is right there: both bands carry
+    the same named landmarks, one to one. Measured on 14 pairs, starting from
+    them instead leaves the residual on the band unchanged -- the two answers
+    fit the band equally well -- while the tissue around it lands 0.45 mm
+    closer at the median, and up to 2 mm closer on the pairs whose scans
+    started furthest apart. That gap is the sliding, and nothing in the band
+    residual reveals it.
+
+    Both dictionaries must hold the same names; `SharedLandmarks` is what
+    guarantees it.
+    """
+    names = sorted(set(source) & set(target))
+    if len(names) < 3:
+        logger.warning(f"Only {len(names)} paired landmark(s), the ICP starts on the centroids")
+        return np.identity(4)
+
+    a = np.array([np.asarray(source[name], dtype=float) for name in names])
+    b = np.array([np.asarray(target[name], dtype=float) for name in names])
+
+    centre_a, centre_b = a.mean(0), b.mean(0)
+    u, _, vt = np.linalg.svd((a - centre_a).T @ (b - centre_b))
+    # the reflection svd is free to return is not a pose a jaw can be in
+    mirrored = np.sign(np.linalg.det(vt.T @ u.T))
+    rotation = vt.T @ np.diag([1.0, 1.0, mirrored]) @ u.T
+
+    matrix = np.identity(4)
+    matrix[:3, :3] = rotation
+    matrix[:3, 3] = centre_b - rotation @ centre_a
+    residual = np.linalg.norm((a @ rotation.T + matrix[:3, 3]) - b, axis=1)
+    logger.info(f"Starting the ICP on {len(names)} paired landmark(s), "
+                f"which fit to {residual.mean():.2f} mm on average")
+    return matrix
 
 
 def OrderedMGLandmarks(landmarks):

@@ -1,4 +1,4 @@
-from AREG_Method.Method import Method
+from AREG_Method.Method import Method, FindDentalModelSeg
 from AREG_Method import Review
 from AREG_Method.Progress import DisplayAREGIOS, DisplayCrownSeg, DisplayASOIOS, DisplayALIIOS
 import slicer
@@ -490,8 +490,7 @@ class Auto_IOS(Method):
         number_scan_toseg_T2 = self.__BypassCrownseg__(
             kwargs["input_t2_folder"], path_input_T2, path_seg_T2
         )
-        slicer_path = slicer.app.applicationDirPath()
-        dentalmodelseg_path = os.path.join(slicer_path,"..","lib","Python","bin","dentalmodelseg")
+        dentalmodelseg_path = FindDentalModelSeg()
 
         surf_T1 = "None"
         input_csv_T1 = "None"

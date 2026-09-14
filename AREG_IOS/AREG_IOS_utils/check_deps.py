@@ -69,15 +69,24 @@ def parse_version(version_str):
 
 
 def get_compatible_torchvision(torch_version):
-    """Get compatible torchvision version for given torch version"""
-    # Map of PyTorch version to available torchvision versions
-    # Use versions available on pytorch.org wheels
+    """The torchvision release that ships alongside a given torch release.
+
+    These are the pairings pytorch.org publishes together: torchvision 0.x is
+    built against torch 2.(x-15). Naming a LATER torchvision here does not
+    merely fail -- pip installs it, and it brings its own torch with it, so a
+    repair meant to align torchvision quietly replaces the interpreter's
+    torch. Measured: the table read 0.22.1 for torch 2.5, and one run turned
+    a working 2.5.1+cu121 into 2.7.1+cu128, after which every compiled
+    extension built against the old ABI -- pytorch3d, which ALI_IOS needs --
+    failed to load.
+    """
     compatibility_map = {
-        (2, 7): "0.23.0",  # PyTorch 2.7 -> TorchVision 0.23.0+cu128
-        (2, 6): "0.23.0", 
-        (2, 5): "0.22.1",
-        (2, 4): "0.22.0",
-        (2, 3): "0.22.0",
+        (2, 8): "0.23.0",
+        (2, 7): "0.22.0",
+        (2, 6): "0.21.0",
+        (2, 5): "0.20.0",
+        (2, 4): "0.19.0",
+        (2, 3): "0.18.0",
         (2, 2): "0.17.0",
         (2, 1): "0.16.0",
     }
@@ -85,6 +94,21 @@ def get_compatible_torchvision(torch_version):
     torch_ver = parse_version(torch_version)
     if torch_ver and torch_ver in compatibility_map:
         return compatibility_map[torch_ver]
+    return None
+
+
+def get_cuda_channel():
+    """The pytorch.org wheel channel matching the installed torch.
+
+    torch reports its build as `2.5.1+cu121`; the torchvision that goes with
+    it lives in the channel of the same name. Hardcoding one meant a cu121
+    install was handed cu128 wheels.
+    """
+    version = get_torch_version() or ""
+    if "+" in version:
+        local = version.split("+", 1)[1]
+        if local.startswith("cu"):
+            return local
     return None
 
 
@@ -120,28 +144,32 @@ def fix_torchvision_auto():
     if is_compatible:
         return True
     
+    logger.info("torchvision {} does not match torch {}, expected {}"
+                .format(tv_ver, torch_ver, expected_tv))
+
     try:
-        # Try with +cu128 format (available on pytorch.org)
-        torchvision_pkg = "torchvision=={}+cu128".format(expected_tv)
-        
-        cmd = [
-            sys.executable, "-m", "pip", "install", 
-            "--upgrade", "--force-reinstall", "--no-cache-dir",
-            torchvision_pkg,
-            "--index-url", "https://download.pytorch.org/whl/cu128"
+        # --no-deps is what keeps this a repair rather than an upgrade. The
+        # job here is to bring torchvision to the torch that is installed;
+        # without it pip is free to satisfy torchvision by replacing torch,
+        # which breaks every extension compiled against the old one.
+        base = [
+            sys.executable, "-m", "pip", "install",
+            "--upgrade", "--force-reinstall", "--no-cache-dir", "--no-deps",
         ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            return True
-        
-        # Try without +cu128 suffix as fallback
-        cmd[3] = "torchvision=={}".format(expected_tv)
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            return True
+        channel = get_cuda_channel()
+
+        attempts = []
+        if channel:
+            attempts.append((["torchvision=={}+{}".format(expected_tv, channel)],
+                             ["--index-url",
+                              "https://download.pytorch.org/whl/{}".format(channel)]))
+        attempts.append((["torchvision=={}".format(expected_tv)], []))
+
+        for package, index in attempts:
+            result = subprocess.run(base + package + index,
+                                    capture_output=True, text=True)
+            if result.returncode == 0:
+                return True
         
         # Try conda as another fallback
         try:
