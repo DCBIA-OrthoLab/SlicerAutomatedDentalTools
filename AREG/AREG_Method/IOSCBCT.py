@@ -535,22 +535,6 @@ class Auto_IOSCBCT(IOSCBCT):
             "Frankfurt Horizontal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Frankfurt_Horizontal_Midsagittal_Plane.zip",
         }
 
-    def IsLower(self, folder_path_or_file_list):
-        words_lower = ["lower", "_l", "l_", "mandibule", "md"]
-
-        if isinstance(folder_path_or_file_list, str) and os.path.isdir(folder_path_or_file_list):
-            list_files = self.search(folder_path_or_file_list, ".vtk", ".stl")
-            all_files = list_files[".vtk"] + list_files[".stl"]
-        else:
-            all_files = folder_path_or_file_list
-
-        for file in all_files:
-            name = os.path.basename(file).lower()
-            if any(word in name for word in words_lower):
-                return True
-
-        return False
-    
     def ReferenceLandmarks(self, name_reference):
         correspondance = {
             "Occlusal and Midsagittal Plane": ("IF ANS PNS UR1O UR6O UL6O", 6),
@@ -756,14 +740,36 @@ class Auto_IOSCBCT(IOSCBCT):
         
         path_error = os.path.join(pre_aso_ios_folder_path, "Error")
 
+        # Giving the teeth of both jaws and leaving the occlusion option off
+        # orients each arch on the gold standard of its own jaw.
+        #
+        # Orienting "in occlusion" fits the upper alone and applies its matrix
+        # to the lower unchanged, so where the lower ends up depends on the two
+        # arches having been scanned in occlusion -- an assumption nothing here
+        # checks. Measured over three patients, the lower lands 4.1 mm from the
+        # reference of its own jaw that way against 2.3 mm fitted on its own,
+        # which is where its upper lands; and on a pair taken 20 degrees apart
+        # it lands 22 mm away against the same 2.3 mm.
+        #
+        # What that buys downstream is smaller than it looks: ALI_IOS renders
+        # each arch from fixed world-axis viewpoints (+Z lower, -Z upper) and
+        # does not re-orient for the O model, but it takes a 20 degree rotation
+        # with only 0.6 to 0.8 mm of movement in the landmarks it places. So
+        # this is robustness, not accuracy: the result stops depending on an
+        # unchecked assumption, rather than becoming measurably more precise.
+        #
+        # Nothing is lost by dropping the link here: AREG_IOSCBCT registers the
+        # two arches to the CBCT independently, as it must, since the mandible
+        # is not in the same place in the CBCT as in the IOS. The occlusal
+        # relationship the link preserves is discarded two steps later anyway.
         parameter_pre_aso_ios = {
             "input": seg_ios_folder_path,
             "gold_folder": os.path.join(kwargs["model_folder_1"],"IOS"),
             "output_folder": pre_aso_ios_folder_path,
             "add_inname": "Or",
-            "list_teeth": "UR6,UR4,UL4,UL6",
-            "occlusion": "true" if self.IsLower(kwargs["input_t1_folder"]) else "false",
-            "jaw": "Upper",
+            "list_teeth": "UR6,UR4,UL4,UL6,LL6,LL4,LR4,LR6",
+            "occlusion": "false",
+            "jaw": "Upper/Lower",
             "folder_error": path_error,
             "log_path": kwargs["logPath"],
         }
@@ -793,8 +799,11 @@ class Auto_IOSCBCT(IOSCBCT):
                 "Module": "PRE_ASO_IOS",
                 "ReviewId": "ios_oriented",
                 "ReviewFolder": pre_aso_ios_folder_path,
+                # Two arches per patient are oriented one by one, and the bar is
+                # driven by one log line per arch: counting mouths made it read
+                # 200% by the end of the step.
                 "Display": DisplayASOIOS(
-                    nb_scan, kwargs["logPath"],"Orient IOS Patient"
+                    2 * nb_scan, kwargs["logPath"],"Orient IOS Patient"
                 ),
             })
         

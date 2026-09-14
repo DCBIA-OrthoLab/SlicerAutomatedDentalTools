@@ -315,6 +315,9 @@ def main(args):
                 if args.areg_mode == "Auto_IOS":
                     try:
                         logger.debug(f"Processing transformation files for Auto_IOS mode")
+                        # TIMEPOINT-SUFFIX: this assumes the T2 scan is named _T2; a _T4 input keeps
+                        # the suffix in patient_id and stops matching its T1. See the full note above
+                        # GetPatients in AREG_CBCT/AREG_CBCT_utils/utils.py.
                         patient_id = name_t2.split("_T2")[0]
                         patient_id_short = patient_id.split("_")[0] if "_" in patient_id else patient_id
                         

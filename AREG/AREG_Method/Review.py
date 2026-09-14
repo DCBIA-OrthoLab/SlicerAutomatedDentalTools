@@ -25,6 +25,11 @@ LANDMARKS = "landmarks"      # drag the points, saved back to their file
 REGISTRATION = "registration"  # drag the scan, folded into its matrix
 
 
+def _isVolume(node) -> bool:
+    """True for a node the slice views and the volume rendering can both take."""
+    return node is not None and node.IsA("vtkMRMLScalarVolumeNode")
+
+
 def patientIdFromFileName(basename: str) -> str:
     """Patient id shared by a scan, its landmarks and its matrix.
 
@@ -32,6 +37,10 @@ def patientIdFromFileName(basename: str) -> str:
     the id is what is left once those are stripped. The order matters: the
     longest markers have to go first or a shorter one cuts inside them.
     """
+    # TIMEPOINT-SUFFIX: this list mirrors the split chains used across the
+    # pipeline and carries the same limit - only _T1/_T2 are stripped, so _T3/_T4
+    # inputs break pairing. See the full note above GetPatients in
+    # AREG_CBCT/AREG_CBCT_utils/utils.py.
     for token in ["_SegOr", "_Scan", "_scan", "_Or", "_OR", "_MAND", "_MD",
                   "_MAX", "_MX", "_CB", "_lm", "_Pred", "_T1", "_T2", "_Cl",
                   "_Center", "_left", "_Left", "_right", "_Right", "_U", "_L",
@@ -311,8 +320,53 @@ class ReviewSession:
         else:
             self._showTogether(reference, moving)
 
+        # One volume, on every kind of pause. Rendering both scans of a
+        # registration would put two opaque blocks inside each other and show
+        # nothing; rendering one costs nothing, because the rendering lives in
+        # the 3D view while the overlap is judged on the slices.
+        #
+        # The reference is the one to take when there is one - the pause is
+        # about what the result sits on. Steps such as the resampled or the
+        # oriented CBCT carry no reference folder at all: there the scan under
+        # review is itself the volume, and asking the catalogue for permission
+        # left exactly those pauses with an empty 3D view.
+        onScreen = reference if _isVolume(reference) else moving
+        self._showVolumeRendering(onScreen)
+
         self._layout(item)
         return True
+
+    def _showVolumeRendering(self, volume):
+        """Render `volume` in the 3D view, if it is one and if this build can.
+
+        Best effort throughout: a machine without the Volume Rendering module,
+        or one that refuses the GPU, still gets a usable review on the slices.
+        Failing a pause over a convenience would be the wrong trade.
+        """
+        if volume is None or not volume.IsA("vtkMRMLScalarVolumeNode"):
+            return
+        if not hasattr(slicer.modules, "volumerendering"):
+            logger.warning("No Volume Rendering module here: the CBCT is shown "
+                           "on the slices only")
+            return
+        try:
+            rendering = slicer.modules.volumerendering.logic()
+            display = rendering.CreateDefaultVolumeRenderingNodes(volume)
+            if display is None:
+                return
+            # CT-Bone reads the skeleton, which is what the arches are being
+            # judged against. Where a build does not ship it, the default
+            # transfer function still shows something rather than nothing.
+            preset = (rendering.GetPresetByName("CT-Bone")
+                      or rendering.GetPresetByName("CT-AAA"))
+            if preset is not None and display.GetVolumePropertyNode() is not None:
+                display.GetVolumePropertyNode().Copy(preset)
+            display.SetVisibility(True)
+            # Tracked with the rest so leaving the patient takes it away too.
+            self.nodes.append(display)
+            logger.info(f"Volume rendering on for {volume.GetName()}")
+        except Exception as e:
+            logger.warning(f"Could not turn on volume rendering: {e}")
 
     def _load(self, path):
         """Load one file, dispatching on what it is."""
@@ -619,7 +673,13 @@ CATALOGUE = {
         "label": "Oriented IOS",
         "group": IOS,
         "kind": VIEW,
-        "hint": "Check the scan is oriented before registration. " + LOOK,
+        # The two arches are oriented one by one here, each on the reference of
+        # its own jaw, so they land in the same place and overlap on screen.
+        # That is expected, and it is not what the registration will look like:
+        # each arch is taken to the CBCT on its own from here.
+        "hint": "Check each arch is oriented before registration. The upper and "
+                "the lower are oriented separately, so they overlap here instead "
+                "of sitting in occlusion. " + LOOK,
     },
     "ios_oriented_t1": {
         "label": "Oriented IOS - T1",
@@ -677,8 +737,13 @@ CATALOGUE = {
         "label": "Registered IOS on CBCT",
         "group": REG,
         "kind": VIEW,
-        "hint": "Check the IOS sits correctly in the CBCT. This step writes no "
-                "matrix, so the result cannot be moved here. " + LOOK,
+        # The one pause where two modalities have to be judged against each
+        # other. On the slices an IOS is a thin contour; rendered, the CBCT
+        # gives the crowns the arches are supposed to be sitting on.
+        "hint": "Check the IOS sits correctly in the CBCT. The CBCT is rendered "
+                "in the 3D view so the arches can be seen on the crowns they "
+                "were registered to. This step writes no matrix, so the result "
+                "cannot be moved here. " + LOOK,
     },
 }
 
@@ -766,6 +831,13 @@ def restrictStepToPatients(step, patients, tempdir_factory=None):
                 relative = os.path.relpath(source, folder)
                 target = os.path.join(linked, relative)
                 os.makedirs(os.path.dirname(target), exist_ok=True)
+                # slicer.util.tempDirectory() names its folder to the millisecond,
+                # so two narrowings close together can be handed the same one. The
+                # file is then already linked, and copying onto a link that points
+                # at its own source raises SameFileError.
+                if os.path.lexists(target):
+                    kept += 1
+                    continue
                 try:
                     os.symlink(source, target)
                     kept += 1

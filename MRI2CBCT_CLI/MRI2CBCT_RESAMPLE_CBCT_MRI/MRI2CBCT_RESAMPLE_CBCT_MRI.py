@@ -18,7 +18,11 @@ console_handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
-fpath = os.path.join(os.path.dirname(__file__), "..")
+# realpath, not __file__: registering the CLI through a symlink (a flat dev
+# folder of links into the source tree) leaves __file__ on the link, whose
+# parent holds no MRI2CBCT_CLI_utils. Resolving first lands in MRI2CBCT_CLI
+# either way. In a built install the package is already on sys.path.
+fpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")
 sys.path.append(fpath)
 
 from MRI2CBCT_CLI_utils import create_csv, resample_images

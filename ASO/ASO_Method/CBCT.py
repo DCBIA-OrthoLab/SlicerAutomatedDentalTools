@@ -39,6 +39,9 @@ class CBCT(Method):
         for extension, files in dic.items():
             for file in files:
                 file_name = os.path.basename(file).split(".")[0]
+                # TIMEPOINT-SUFFIX: only _T1/_T2 are stripped here, so _T3/_T4 inputs break
+                # patient pairing. See the full note above GetPatients in
+                # AREG_CBCT/AREG_CBCT_utils/utils.py before changing this.
                 patient = (
                     file_name.split("_scan")[0]
                     .split("_Scanreg")[0]

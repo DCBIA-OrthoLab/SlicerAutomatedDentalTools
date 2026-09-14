@@ -65,6 +65,29 @@ def GetListFiles(folder_path, file_extension):
     return file_list
 
 
+# TIMEPOINT-SUFFIX (not implemented on purpose - read before touching)
+#
+# The patient id is whatever is left once a fixed list of markers is cut off
+# the file name, and the only timepoints in that list are _T1 and _T2. That id
+# is what pairs a scan with its follow-up, so an input named P001_T3.nii.gz
+# keeps the id "P001_T3" and never matches the P001_T4.nii.gz sitting in the
+# T2 folder: the pair is silently dropped instead of raising. _T0 breaks the
+# same way.
+#
+# The timepoint itself does NOT come from the name - it is the time_point
+# argument, i.e. the folder the file was found in. Only the id extraction is
+# in the way.
+#
+# Accepting any _T<digit> means replacing the split chain with
+# re.sub(r"_[Tt]\d+$", "", ...) here AND in every other copy of it: grep for
+# TIMEPOINT-SUFFIX to get the 10 sites, spread over AREG, AREG_CBCT, AREG_IOS,
+# AREG_IOSCBCT, ASO, MRI2CBCT and VFACE. Watch the order of the splits while
+# doing it - several chains rely on a longer marker being cut before a shorter
+# one that would otherwise match inside it.
+#
+# Left as is deliberately: the supported answer today is to rename the inputs
+# to _T1/_T2, and a rewrite touches two modules (ASO, MRI2CBCT) that nothing
+# in the current test set covers.
 def GetPatients(folder_path, time_point="T1", segmentationType=None, mask_folder=None):
     """Return a dictionary with patient id as key"""
     file_extension = [".nii.gz", ".nii", ".nrrd", ".nrrd.gz", ".gipl", ".gipl.gz"]
@@ -113,6 +136,9 @@ def GetPatients(folder_path, time_point="T1", segmentationType=None, mask_folder
         search_folder = mask_folder if mask_folder else folder_path
         mask_files = GetListFiles(search_folder, file_extension)
 
+        # TIMEPOINT-SUFFIX: only _T1/_T2 are stripped here, so _T3/_T4 inputs break
+        # patient pairing. See the full note above GetPatients in
+        # AREG_CBCT/AREG_CBCT_utils/utils.py before changing this.
         for file in mask_files:
             basename = os.path.basename(file)
             patient = (

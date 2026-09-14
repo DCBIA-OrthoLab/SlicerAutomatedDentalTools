@@ -21,7 +21,11 @@ formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
-fpath = os.path.join(os.path.dirname(__file__), "..")
+# realpath, not __file__: registering the CLI through a symlink (a flat dev
+# folder of links into the source tree) leaves __file__ on the link, whose
+# parent holds no ASO_CBCT_utils. Resolving first lands in ASO_CBCT
+# either way. In a built install the package is already on sys.path.
+fpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")
 sys.path.append(fpath)
 
 from ASO_CBCT_utils import (
