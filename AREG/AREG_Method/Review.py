@@ -25,6 +25,11 @@ LANDMARKS = "landmarks"      # drag the points, saved back to their file
 REGISTRATION = "registration"  # drag the scan, folded into its matrix
 
 
+def _isVolume(node) -> bool:
+    """True for a node the slice views and the volume rendering can both take."""
+    return node is not None and node.IsA("vtkMRMLScalarVolumeNode")
+
+
 def patientIdFromFileName(basename: str) -> str:
     """Patient id shared by a scan, its landmarks and its matrix.
 
@@ -315,10 +320,18 @@ class ReviewSession:
         else:
             self._showTogether(reference, moving)
 
-        # The session is handed the run's step, which carries the folders; what
-        # the pause is meant to do with them lives in the catalogue.
-        if describe(self.step.get("ReviewId", "")).get("render"):
-            self._showVolumeRendering(reference)
+        # One volume, on every kind of pause. Rendering both scans of a
+        # registration would put two opaque blocks inside each other and show
+        # nothing; rendering one costs nothing, because the rendering lives in
+        # the 3D view while the overlap is judged on the slices.
+        #
+        # The reference is the one to take when there is one - the pause is
+        # about what the result sits on. Steps such as the resampled or the
+        # oriented CBCT carry no reference folder at all: there the scan under
+        # review is itself the volume, and asking the catalogue for permission
+        # left exactly those pauses with an empty 3D view.
+        onScreen = reference if _isVolume(reference) else moving
+        self._showVolumeRendering(onScreen)
 
         self._layout(item)
         return True
@@ -727,7 +740,6 @@ CATALOGUE = {
         # The one pause where two modalities have to be judged against each
         # other. On the slices an IOS is a thin contour; rendered, the CBCT
         # gives the crowns the arches are supposed to be sitting on.
-        "render": True,
         "hint": "Check the IOS sits correctly in the CBCT. The CBCT is rendered "
                 "in the 3D view so the arches can be seen on the crowns they "
                 "were registered to. This step writes no matrix, so the result "
