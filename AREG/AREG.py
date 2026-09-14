@@ -27,6 +27,22 @@ formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
+# Slicer captures its own stdout through a pipe that it drains from the Qt event
+# loop, so whatever writes to the log needs that loop to keep running. A conda
+# tool's output used to be logged straight from the worker thread reading it,
+# while the main thread span on processEvents: the tool fills the pipe faster
+# than the loop empties it, the main thread then writes one line of its own,
+# blocks in the write, and stops draining -- after which nothing can ever drain
+# it again. The run freezes with the panel up and no error, and the tool it was
+# waiting on is left as a zombie.
+#
+# The worker now only queues lines; the main thread logs them, a slice at a
+# time, so a single write stays far below what the pipe holds and the loop gets
+# to drain between slices.
+CONDA_OUTPUT_MAX_LINES = 200000   # what the queue holds before dropping oldest
+CONDA_OUTPUT_CHARS_PER_UPDATE = 4000   # a pipe holds 64 kB; stay well under it
+
+
 # Height of the MGL patch on each side of the mucogingival line, in mm. At 0
 # nothing is left of the patch but the landmarks, and the registration runs on
 # those points alone; above 20 mm it runs past the scanned mucosa.
@@ -54,6 +70,7 @@ except ImportError:
 import platform
 import signal
 import threading
+import collections
 import subprocess
 import re
 
@@ -1677,7 +1694,32 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           if line != '':
               return line
   
+    def drainCondaOutput(self):
+        """Show a slice of what the conda tool has printed.
+
+        This runs on the main thread, the one whose event loop drains the pipe
+        the log is written into. Writing a bounded slice and returning lets that
+        loop empty the pipe before the next slice goes in, which is what keeps a
+        noisy tool -- a crown segmentation, ALI_IOS -- from wedging the run.
+        """
+        logic = getattr(self, "logic", None)
+        if logic is None or not hasattr(logic, "takeCondaOutput"):
+            return
+        try:
+            text, dropped = logic.takeCondaOutput()
+        except Exception as e:
+            logger.warning(f"Could not read the tool's output: {e}")
+            return
+        if dropped:
+            logger.warning(
+                f"{dropped} line(s) of the tool's output were dropped: it "
+                "printed faster than the panel could show them")
+        if text:
+            logger.info(text)
+
     def onCondaProcessUpdate(self):
+        self.drainCondaOutput()
+
         if os.path.isfile(self.log_path):
             self.ui.LabelNameExtension.setText(self.module_name)
             
@@ -2699,6 +2741,10 @@ qMRMLNodeComboBox:focus {
                         
                         self.ui.LabelTimer.setText(timer)
 
+                # The worker has stopped; whatever it queued last is still
+                # waiting, and nothing else would ever show it.
+                self.drainCondaOutput()
+                
                 del self.list_Processes_Parameters[0]
                 
         elif type=="areg":
@@ -2741,6 +2787,10 @@ qMRMLNodeComboBox:focus {
                     
                     self.ui.LabelTimer.setText(timer)
 
+            # The worker has stopped; whatever it queued last is still
+            # waiting, and nothing else would ever show it.
+            self.drainCondaOutput()
+            
             del self.list_Processes_Parameters[0]
         elif type == "ali":
             self.startStep(self.list_Processes_Parameters[0])
@@ -2781,6 +2831,10 @@ qMRMLNodeComboBox:focus {
 
                     self.ui.LabelTimer.setText(timer)
 
+            # The worker has stopped; whatever it queued last is still
+            # waiting, and nothing else would ever show it.
+            self.drainCondaOutput()
+            
             del self.list_Processes_Parameters[0]
             
 
@@ -3142,6 +3196,14 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         self.cliNode = None
         self.python_version = "3.12"
 
+        # What a conda tool has printed and the main thread has not shown yet.
+        # It is filled by the worker thread that reads the tool's output and
+        # emptied by the main thread, which is the only one allowed to log it:
+        # see condaRunCommand for why logging from the worker deadlocks Slicer.
+        self.conda_output = collections.deque(maxlen=CONDA_OUTPUT_MAX_LINES)
+        self.conda_output_lock = threading.Lock()
+        self.conda_output_dropped = 0
+
     def init_conda(self):
         # check if CondaSetUp exists
         try:
@@ -3340,35 +3402,51 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         # used to do to a whole AREG run.
         try:
             stdout = self.subpro.stdout
-            pending = []
-            last_flush = time.time()
-
-            def flush_output():
-                if pending:
-                    logger.info("\n".join(pending))
-                    pending.clear()
-
             for line in iter(stdout.readline, '') if stdout is not None else []:
                 # Progress bars rewrite one line with \r: keep the last state
                 # only, which is all that means anything once it is logged.
                 line = line.rsplit("\r", 1)[-1].rstrip()
                 if not line:
                     continue
-                pending.append(line)
-                if len(pending) >= 100 or time.time() - last_flush > 0.5:
-                    flush_output()
-                    last_flush = time.time()
+                self.queueCondaOutput(line)
 
-            flush_output()
             self.subpro.wait()
 
         except Exception:
-            # Fallback: block until end and then print collected output
+            # Fallback: block until end, then queue what was collected.
             try:
                 self.stdout, self.stderr = self.subpro.communicate()
-                if self.stdout:
-                    logger.info(self.stdout)
-                if self.stderr:
-                    logger.error(self.stderr)
+                for stream in (self.stdout, self.stderr):
+                    for line in (stream or "").splitlines():
+                        self.queueCondaOutput(line)
             except Exception:
                 pass
+
+    def queueCondaOutput(self, line):
+        """Hand one line of a conda tool's output to the main thread.
+
+        Called from the thread reading the tool, which must never log: see the
+        note next to CONDA_OUTPUT_MAX_LINES.
+        """
+        with self.conda_output_lock:
+            if len(self.conda_output) == self.conda_output.maxlen:
+                self.conda_output_dropped += 1
+            self.conda_output.append(line)
+
+    def takeCondaOutput(self, budget=CONDA_OUTPUT_CHARS_PER_UPDATE):
+        """Up to `budget` characters of queued output, oldest first.
+
+        Returns (text, dropped) where `dropped` counts the lines lost to the
+        queue's cap since the last call, so a flood is reported rather than
+        silently truncated.
+        """
+        taken = []
+        size = 0
+        with self.conda_output_lock:
+            while self.conda_output and size < budget:
+                line = self.conda_output.popleft()
+                taken.append(line)
+                size += len(line) + 1
+            dropped = self.conda_output_dropped
+            self.conda_output_dropped = 0
+        return "\n".join(taken), dropped

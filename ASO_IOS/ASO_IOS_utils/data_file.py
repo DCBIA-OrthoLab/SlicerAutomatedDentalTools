@@ -1,8 +1,10 @@
-from dataclasses import dataclass, field, astuple, asdict
+from dataclasses import dataclass, field, asdict
 from typing import Tuple, Union, List
 import os
 import glob
 from itertools import chain
+
+from ASO_IOS_utils.utils import JawFromFileName, StripJawFromFileName
 
 import logging
 import sys
@@ -132,32 +134,26 @@ class Files:
 
         return jaw, name_file
 
-    def __remove_jaw__(self, name_file: str, jaw: Union[Upper, Lower]):
-        work = False
-        for st in astuple(jaw):
-            if st.lower() in name_file.lower():
-                index = name_file.lower().find(st.lower())
-                name_file = name_file[:index] + name_file[index + len(st) :]
-                work = True
+    def __remove_jaw__(self, name_file: str, jaw: Union[Upper, Lower] = None):
+        """The pairing key: the name with every jaw marker taken out.
 
-        if work:
-            self.__remove_jaw__(name_file, jaw)
-
-        return name_file
+        Both arches have to reduce to the same string, so the marker of either
+        jaw is removed and not just the one this file carries. The recursive
+        call this used to make threw its own result away, so a name holding the
+        marker twice kept one of them.
+        """
+        return StripJawFromFileName(name_file)
 
     @staticmethod
     def TypeOfJaw(name_file: str):
-        out = None
+        jaw = JawFromFileName(name_file)
 
-        if True in [upper.lower() in name_file.lower() for upper in astuple(Upper())]:
-            out = Upper()
-
-        elif True in [upper.lower() in name_file.lower() for upper in astuple(Lower())]:
-            out = Lower()
-
-        if out is None:
-            raise ValueError(f"dont found the jaw's type to {name_file}")
-        return out
+        if jaw is None:
+            raise ValueError(
+                f"dont found the jaw's type to {name_file}. Name the arch in the "
+                "file name, as U / L or Upper / Lower set off by an underscore "
+                "(P1_T1_U.vtk, P1_T1_Lower_Seg.vtk)")
+        return Upper() if jaw == "Upper" else Lower()
 
     def __len__(self):
         return len(self.list_file)
@@ -232,23 +228,39 @@ class Files_vtk_link(Files):
             chain.from_iterable(self.search(folder, self.extension).values())
         )
 
+        # A mouth is one upper and one lower, and it is the jaw read from each
+        # name that says which is which. Counting the files instead only checked
+        # that a patient had two of them, then took the first as the upper: a
+        # patient with two uppers and no lower (a leftover scan, the same arch
+        # in two formats) was paired as a mouth whose lower arch is a maxilla,
+        # and nothing said so.
         dic = {}
         for vtk in list_vtk:
             jaw, name = self.__name_file__(vtk)
-            if name in dic:
-                dic[name].append(vtk)
+            dic.setdefault(name, {"Upper": [], "Lower": []})[str(jaw)].append(vtk)
+
+        def names(paths):
+            return ", ".join(sorted(os.path.basename(p) for p in paths)) or "none"
+
+        for name, by_jaw in dic.items():
+            upper, lower = by_jaw["Upper"], by_jaw["Lower"]
+
+            if len(upper) == 1 and len(lower) == 1:
+                self.list_file.append(Mouth_File(upper[0], lower[0], name))
+                continue
+
+            # Say what is wrong with the patient rather than dropping it in
+            # silence: the run that follows will simply not mention it.
+            if not upper or not lower:
+                missing = "upper" if not upper else "lower"
+                logger.warning(
+                    f"{name}: no {missing} arch, the pair is skipped. "
+                    f"Upper: {names(upper)} | Lower: {names(lower)}")
             else:
-                dic[name] = [vtk]
-
-        for key, value in dic.items():
-            if len(value) == 2:
-                vtk1 = value[0]
-                vtk2 = value[1]
-                jaw1, name1 = self.__name_file__(vtk1)
-                if isinstance(jaw1, Lower):
-                    vtk1, vtk2 = vtk2, vtk1
-
-                self.list_file.append(Mouth_File(vtk1, vtk2, name1))
+                logger.warning(
+                    f"{name}: {len(upper)} upper and {len(lower)} lower files, "
+                    "cannot tell which two are the mouth, the pair is skipped. "
+                    f"Upper: {names(upper)} | Lower: {names(lower)}")
 
         return self.list_file
 
