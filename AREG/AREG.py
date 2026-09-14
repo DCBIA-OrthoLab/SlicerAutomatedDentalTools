@@ -183,10 +183,24 @@ class AREG(ScriptedLoadableModule):
 
         # Additional initialization step after application startup is complete
         slicer.app.connect("startupCompleted()", self.registerSampleData)
+        # The environment every IOS pipeline runs on is looked for here, once,
+        # rather than at the first Run of a module. See ADTEnvSetup.
+        slicer.app.connect("startupCompleted()", self.checkSharedEnvironment)
 
         #
         # Register sample data sets in Sample Data module
         #
+
+    def checkSharedEnvironment(self):
+        """Look once, at startup, for the Conda environment the IOS pipelines share."""
+        try:
+            from AREG_Method import ADTEnvSetup
+
+            ADTEnvSetup.checkAtStartup()
+        except Exception:
+            # A missing environment is a nuisance; it must never be the thing
+            # that keeps Slicer from starting.
+            logger.exception("The startup check of the shapeaxi environment failed")
 
     def registerSampleData(self):
         """

@@ -5,6 +5,7 @@ set(MODULE_NAME AREG)
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   AREG_Method/__init__.py
+  AREG_Method/ADTEnvSetup.py
   AREG_Method/CBCT.py
   AREG_Method/install_pytorch.py
   AREG_Method/IOS.py
