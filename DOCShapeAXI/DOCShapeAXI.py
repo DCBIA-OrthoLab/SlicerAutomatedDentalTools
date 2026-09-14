@@ -31,6 +31,32 @@ logger.addHandler(console_handler)
 
 
 
+def condaQuote(conda, value):
+    """Quote `value` only if this SlicerConda joins the command into a shell line.
+
+    Two SlicerConda versions are in circulation and they want the opposite of
+    each other. The older one builds a bash line, where a path holding a space -
+    and the ';' inside a `python -c` body - has to be quoted or the line falls
+    apart. The newer one hands conda an argv list, where nothing ever strips
+    those quotes: they reach PYTHONPATH and argv literally and break exactly what
+    they were meant to protect. Reading the installed source tests the property
+    that decides it, rather than guessing from a version number.
+
+    Only commands going to SlicerConda come through here. The copies of
+    condaRunCommand this extension carries of its own always build a shell line,
+    so what they are given keeps its quotes unconditionally.
+    """
+    try:
+        import inspect
+
+        shell = "shell=True" in inspect.getsource(conda.condaRunCommand)
+    except Exception:
+        # Source unreadable: assume the argv contract, which is the one shipping
+        # now, rather than emitting quotes that would land literally.
+        shell = False
+    return f'"{value}"' if shell else str(value)
+
+
 class DOCShapeAXI(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
@@ -891,7 +917,7 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
       return : bool
       '''
       conda_exe = self.conda.getCondaExecutable()
-      command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
+      command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", condaQuote(self.conda, f"import {file} as check;import os; print(os.path.isfile(check.__file__))")]
       result = self.conda.condaRunCommand(command)
       logger.info(f"output CHECK python path: {result}")
       if "True" in result :
@@ -905,11 +931,11 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
       paths = slicer.app.moduleManager().factoryManager().searchPaths
       mnt_paths = []
       for path in paths :
-          # No quotes: this value is handed to conda through an argv list, so no
-          # shell ever strips them. They survived into PYTHONPATH, Python read
-          # each entry as a relative path and prefixed the cwd, and every
-          # sys.path entry pointed nowhere - 'No module named CrownSegmentationcli'.
-          mnt_paths.append(self.windows_to_linux_path(path))
+          # Quoted only where a shell will strip the quotes again. They used to be
+          # unconditional: under the argv-passing SlicerConda they survived into
+          # PYTHONPATH, Python read each entry as a relative path and prefixed the
+          # cwd, and every sys.path entry pointed nowhere.
+          mnt_paths.append(condaQuote(self.conda, self.windows_to_linux_path(path)))
       pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
       conda_exe = self.conda.getCondaExecutable()
       argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
