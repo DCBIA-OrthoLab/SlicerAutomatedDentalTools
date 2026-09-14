@@ -55,7 +55,6 @@ def check_platform():
 
 if check_platform()=="WSL":
     from AREG_IOS_utils.dataset import DatasetPatch, SortLower
-    from AREG_IOS_utils.PredPatch import PredPatch
     from AREG_IOS_utils.vtkSegTeeth import vtkMeshTeeth
     from AREG_IOS_utils.ICP import vtkICP
     from AREG_IOS_utils.ICP import ICP
@@ -63,13 +62,13 @@ if check_platform()=="WSL":
     from AREG_IOS_utils.transformation import TransformSurf
     from AREG_IOS.AREG_IOS_utils.transformation import saveMatrixAsTfm
     from AREG_IOS_utils.mgl_patch import (
-        MGLPatch, DropDoubtfulLandmarks, DEFAULT_RADIUS, MGL_ARRAY_NAME)
+        MGLPatch, DropDoubtfulLandmarks, SharedLandmarks, AlignOnLandmarks,
+        DEFAULT_RADIUS, MGL_ARRAY_NAME)
 
 else :
     from AREG_IOS_utils import (
         DatasetPatch,
         SortLower,
-        PredPatch,
         vtkMeshTeeth,
         vtkICP,
         ICP,
@@ -80,6 +79,8 @@ else :
         saveMatrixAsTfm,
         MGLPatch,
         DropDoubtfulLandmarks,
+        SharedLandmarks,
+        AlignOnLandmarks,
         DEFAULT_RADIUS,
         MGL_ARRAY_NAME,
     )
@@ -125,16 +126,32 @@ def RunMGL(args, icp):
     for idx, pair in enumerate(pairs):
         context = f"sample {idx + 1}/{len(pairs)}"
         try:
+            landmarks, paths = {}, {}
+            for time in ("T1", "T2"):
+                folder = args.lm_T1 if time == "T1" else args.lm_T2
+                paths[time] = FindLandmarkFile(folder, pair[time])
+                landmarks[time] = DropDoubtfulLandmarks(
+                    LoadJsonLandmarks(paths[time]), paths[time])
+
+            # Both bands must span the same stretch of arch, or the ICP
+            # slides the shorter one along the longer.
+            landmarks, dropped = SharedLandmarks(landmarks)
+            if dropped:
+                logger.info(f"{context}: leaving out {sorted(dropped)}, "
+                            "present at one timepoint only")
+
             surfaces = {}
             for time in ("T1", "T2"):
-                surf = ReadSurf(pair[time])
-                folder = args.lm_T1 if time == "T1" else args.lm_T2
-                landmark_path = FindLandmarkFile(folder, pair[time])
-                landmarks = DropDoubtfulLandmarks(
-                    LoadJsonLandmarks(landmark_path), landmark_path)
-                surfaces[time] = MGLPatch(surf, landmarks, radius=args.patch_radius)
+                surfaces[time] = MGLPatch(ReadSurf(pair[time]), landmarks[time],
+                                          radius=args.patch_radius)
 
-            output_icp = icp.run(surfaces["T2"], surfaces["T1"])
+            # Put T2 down on the paired landmarks before the ICP refines it.
+            # A band is a strip along a curve: sliding it lengthwise costs the
+            # ICP almost nothing and moves the jaw by millimetres, so where it
+            # starts is where it stays.
+            start = AlignOnLandmarks(landmarks["T2"], landmarks["T1"])
+            output_icp = icp.run(TransformSurf(surfaces["T2"], start),
+                                 surfaces["T1"])
 
             WriteSurf(surfaces["T1"], args.output, os.path.basename(pair["T1"]), args.suffix)
             WriteSurf(output_icp["source_Or"], args.output,
@@ -220,6 +237,10 @@ def main(args):
         # ===== MODEL INITIALIZATION =====
         try:
             logger.debug(f"Loading prediction model: {args.model}")
+            # Imported here rather than at the top: it drags torch and
+            # pytorch_lightning behind it, and the MGL branch above has
+            # already returned without ever needing them.
+            from AREG_IOS_utils import PredPatch
             Patched = PredPatch(args.model)
             logger.debug("Prediction model loaded")
         except Exception as e:

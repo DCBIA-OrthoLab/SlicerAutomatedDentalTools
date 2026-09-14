@@ -128,14 +128,21 @@ MAX_HEIGHT = 5.0
 SAMPLES_PER_SEGMENT = 25    # spline samples between two consecutive landmarks
 
 # Universal_ID labels of the lower teeth. The crowns move between the two
-# timepoints, so they must never end up inside the patch.
-LOWER_TOOTH_LABELS = range(18, 32)
+# timepoints, so they must never end up inside the patch. 17 (LL8) and 32
+# (LR8) are the third molars and count: an erupting wisdom tooth is the least
+# stable structure on the arch, and it sits where the band runs out.
+LOWER_TOOTH_LABELS = range(17, 33)
 
 
 # What ALI writes in a markup description when the point is not a plain
 # prediction. The description may also hold the confidence of a point won
 # outright, which is not a reason to leave it out.
-DOUBTFUL_MARKS = ("forced", "fallback", "arch fit")
+# "off the aim": ALI marked a mucogingival point in that tooth's picture,
+# but not one near where its cameras were aimed -- its neighbour's.
+# "extrapolated": nothing was measured near it at all. Neither is evidence
+# a patch should be grown from.
+DOUBTFUL_MARKS = ("forced", "fallback", "arch fit", "off the aim",
+                  "extrapolated")
 
 
 # Below this the network was, on the corpus it was trained on, wrong by 3.8 mm
