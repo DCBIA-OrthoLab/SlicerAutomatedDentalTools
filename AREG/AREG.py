@@ -1468,10 +1468,18 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         if "IOSCBCT" in self.type:
             is_installed = False
-            # libraries and versions compatibility to use AREG_IOSCBCT
-            list_libs_IOSCBCT = [('pyvista','==0.47.3',None),('scipy',None,None),('numpy',None,None),('SimpleITK',None,None)]
-            
-            is_installed = install_function(self,list_libs_IOSCBCT)
+            # The IOSCBCT pipeline segments the crowns through the shared conda
+            # environment, exactly as IOS does. Without this check run_conda_tool
+            # finds no dentalmodelseg, logs an error and returns, and the run
+            # carries on with its segmentation step silently skipped.
+            check_env = self.onCheckRequirements()
+            logger.debug(f"Segmentation environment: {check_env}")
+
+            if check_env:
+                # libraries and versions compatibility to use AREG_IOSCBCT
+                list_libs_IOSCBCT = [('pyvista','==0.47.3',None),('scipy',None,None),('numpy',None,None),('SimpleITK',None,None)]
+
+                is_installed = install_function(self,list_libs_IOSCBCT)
 
         # If the user didn't accept the installation, the module doesn't run
         if not is_installed:
