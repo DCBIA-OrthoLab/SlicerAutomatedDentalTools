@@ -2039,9 +2039,24 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             action = "Review only"
 
+        # Name the modules. A clinician who does not already know Slicer has no
+        # way to guess that the points are editable in Markups, that the numbers
+        # behind a displacement are in Transforms, or that the 3D view they are
+        # looking at is driven by Volume Rendering.
+        if item["editable"]:
+            tools = ("Open <b>Markups</b> to pick a point from the list, and "
+                     "<b>Volume Rendering</b> to change how the bone is shown.")
+        elif item["adjustable"]:
+            tools = ("Drag the scan in a slice view. <b>Transforms</b> shows the "
+                     "displacement you are applying, in numbers; "
+                     "<b>Volume Rendering</b> changes how the bone is shown.")
+        else:
+            tools = "<b>Models</b> and <b>Volume Rendering</b> change how this is shown."
+
         self.ui.ReviewMessageLabel.setText(
             f"<b>Paused: {title}</b><br/>"
             f"{item['patient']}{position} &nbsp;·&nbsp; <i>{action}</i><br/>{hint}"
+            f"<br/><span style='color:#7f8c8d'>{tools}</span>"
         )
         self.ui.ReviewMessageLabel.setVisible(True)
 
