@@ -41,7 +41,17 @@ MIN_CONFIDENCE = 0.785
 # Fewest trusted points a curve may be drawn through.
 MIN_SUPPORT = 4
 
+# How far along the arch a trusted point may be and still be an anchor for a
+# hole. The 1.53 mm above was measured by hiding ONE point at a time, so it
+# says what the curve is worth across a hole its neighbours border -- nothing
+# about a longer one. Left unbounded, a run of consecutive holes is rebuilt
+# from a spline with no support inside it: measured on a scan where six
+# landmarks in a row went missing, the rebuilt points landed 4 to 32 mm away,
+# which is far worse than the hole they filled.
+MAX_SUPPORT_DISTANCE = 2
+
 REBUILT_NOTE = "rebuilt from its neighbours"
+
 
 
 def _confidence(description):
@@ -52,7 +62,8 @@ def _confidence(description):
 def _trusted(name, entry):
     """A point worth drawing the curve through: predicted outright, and sure."""
     description = (entry.get("desc") or "").lower()
-    if any(mark in description for mark in ("forced", "fallback", "arch fit", REBUILT_NOTE)):
+    if any(mark in description for mark in ("forced", "fallback", "arch fit",
+                                            "off the aim", REBUILT_NOTE)):
         return False
     return _confidence(description) >= MIN_CONFIDENCE
 
@@ -84,6 +95,15 @@ def FillGaps(group_data, minimum_confidence=MIN_CONFIDENCE):
         if not (indices.min() < index < indices.max()):
             # an end of the arch: nothing to follow on one side
             continue
+        before = index - indices[indices < index].max()
+        after = indices[indices > index].min() - index
+        if max(before, after) > MAX_SUPPORT_DISTANCE:
+            # the nearest trusted point is too far along the arch for the
+            # curve between them to mean anything here
+            logger.info(f"{name}: the nearest trusted landmark is "
+                        f"{int(max(before, after))} places away, too far to "
+                        "rebuild from; the hole is left")
+            continue
         position = curve(float(index))
         group_data[name] = {"x": float(position[0]), "y": float(position[1]),
                             "z": float(position[2]), "desc": REBUILT_NOTE}
@@ -93,3 +113,4 @@ def FillGaps(group_data, minimum_confidence=MIN_CONFIDENCE):
         logger.info(f"Rebuilt {len(filled)} landmark(s) from the curve through the "
                     f"{len(support)} trusted ones: {', '.join(filled)}")
     return filled
+

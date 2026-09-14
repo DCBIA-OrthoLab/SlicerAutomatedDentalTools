@@ -17,6 +17,7 @@ import sys
 import tempfile
 import shutil
 import vtk
+from vtk.util.numpy_support import vtk_to_numpy
 import platform
 import argparse
 import numpy as np
@@ -68,7 +69,11 @@ if check_platform()=="WSL":
         LowerArchMatrix, TransformSurf, TransformPoint, ArchScale)
     from ALI_IOS_utils.segmentation import IsSegmented, SegmentSurface
     from ALI_IOS_utils.fill_gaps import FillGaps
+    from ALI_IOS_utils.complete_line import CompleteLine, SnapAll
     from ALI_IOS_utils.smooth import SmoothAlongArch, DEFAULT_STRENGTH as SMOOTH_STRENGTH
+    from ALI_IOS_utils.pick_patch import (
+        PickNearAim, ToothPitch, ResolveCollisions, OFF_AIM_NOTE)
+    from ALI_IOS_utils.paint_scan import PaintScan
     from ALI_IOS_utils.agent import Agent
 
 else :
@@ -78,8 +83,12 @@ else :
         dic_cam, dic_label, MODELS_DICT,
         GenControlPoint, WriteJson, TradLabel, TradLabelMG, Agent,
         LowerArchMatrix, TransformSurf, TransformPoint, ArchScale,
-        IsSegmented, SegmentSurface, FillGaps, SmoothAlongArch
+        IsSegmented, SegmentSurface, FillGaps, CompleteLine, SnapAll,
+        SmoothAlongArch,
+        PickNearAim, ToothPitch
     )
+    from ALI_IOS_utils.pick_patch import ResolveCollisions, OFF_AIM_NOTE
+    from ALI_IOS_utils.paint_scan import PaintScan
     from ALI_IOS_utils.smooth import DEFAULT_STRENGTH as SMOOTH_STRENGTH
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -342,6 +351,7 @@ def main(args):
                         # The segmentation leaves the points where they are, so
                         # the landmarks stay valid in the file the user gave.
                         segmented_folder = None
+                        segmented_path = None
                         if not IsSegmented(path_vtk):
                             segmented_folder = tempfile.mkdtemp(prefix="ALI_IOS_segmented_")
                             segmented = SegmentSurface(path_vtk, folder=segmented_folder)
@@ -351,6 +361,7 @@ def main(args):
                                              "can be placed on it")
                                 continue
                             path_vtk = segmented
+                            segmented_path = segmented
 
                         model = models_to_use[models_type]['Lower'] if jaw == 'Lower' else models_to_use[models_type]['Upper']
                         camera_position = dic_cam[models_type]['L'] if jaw == 'Lower' else dic_cam[models_type]['U']
@@ -410,6 +421,9 @@ def main(args):
                         # network was taught on images where it is centred.
                         refine = models_type == "MG" and args.refine
                         first_aim, first_point = {}, {}
+                        mg_pitch = {}      # tooth spacing, measured once per scan
+                        mg_aims = {}       # where each landmark's cameras were aimed
+                        mg_scale_factor = None
                         rounds = ([(0, label) for label in lst_teeth]
                                   + ([(1, label) for label in lst_teeth] if refine else []))
 
@@ -539,11 +553,28 @@ def main(args):
                                         num_faces_r = collect_faces(index_label_land_r)
 
                                         dico_rgb = {}
+                                        off_aim = False
                                         if models_type == "MG":
                                             # The MG landmark lies on the gingiva, not on the tooth
                                             # crown: keep every rendered face instead of filtering by
                                             # the tooth region id (RemoveExtraFaces would drop them all)
                                             last_num_faces_r = [face for face in num_faces_r if int(face.item()) >= 0]
+                                            # Which is why MG needs its own filter: with none at all,
+                                            # a neighbour's mucogingival point marked in the same
+                                            # picture is averaged into this tooth's answer.
+                                            if args.pick_patch and getattr(agent, "aim_points", None) is not None:
+                                                vertices_np = V[0].detach().cpu().numpy()
+                                                if patient_id not in mg_pitch:
+                                                    mg_pitch[patient_id] = ToothPitch(
+                                                        RI.squeeze(0).detach().cpu().numpy(), vertices_np)
+                                                pitch = mg_pitch[patient_id]
+                                                last_num_faces_r, off_aim = PickNearAim(
+                                                    last_num_faces_r,
+                                                    F[0].detach().cpu().numpy(),
+                                                    vertices_np,
+                                                    agent.aim_points[0].detach().cpu().numpy(),
+                                                    radius=pitch / 2 if pitch else None,
+                                                    name=f"label {label}")
                                             dico_rgb[LABEL[str(label)][MODELS_DICT['MG']['MG']]] = last_num_faces_r
                                         else:
                                             index_label_land_g = (pred_data == 2.).nonzero(as_tuple=False)
@@ -606,6 +637,21 @@ def main(args):
                                                     if refine and pass_index == 0:
                                                         first_point[int(label)] = final
 
+                                                    if models_type == "MG" and getattr(agent, "aim_points", None) is not None:
+                                                        # Where this tooth's cameras were aimed, in the same
+                                                        # frame as the point, for deciding later which of two
+                                                        # landmarks on one spot is really this one's. Recorded
+                                                        # after the point is settled and guarded on its own:
+                                                        # this is a note about the answer, and failing to take
+                                                        # it must never cost the answer.
+                                                        try:
+                                                            aim = Upscale(agent.aim_points[0].detach().cpu(),
+                                                                          mean_arr, scale_factor)
+                                                            mg_aims[land_name] = np.asarray(aim, dtype=float)
+                                                            mg_scale_factor = scale_factor
+                                                        except Exception as error:
+                                                            logger.warning(f"Could not record the aim of {land_name}: {error}")
+
                                                     entry = {"x": final[0], "y": final[1], "z": final[2]}
                                                     # Flag degraded points in the json: they need a clinical review
                                                     notes = []
@@ -615,6 +661,13 @@ def main(args):
                                                         notes.append(f"forced (confidence {forced_conf:.3f})")
                                                     elif won_conf is not None:
                                                         notes.append(f"confidence {won_conf:.3f}")
+                                                    if off_aim:
+                                                        # The network marked a mucogingival point, but
+                                                        # not one this tooth's cameras were aimed at:
+                                                        # its neighbour's, in the same picture. Said
+                                                        # here so nothing downstream reads it as a
+                                                        # measurement of this tooth.
+                                                        notes.append(OFF_AIM_NOTE)
                                                     if notes:
                                                         entry["desc"] = "; ".join(notes)
                                                     group_data[land_name] = entry
@@ -667,11 +720,58 @@ def main(args):
                                     "--estimate_missing to place a point there anyway, 4 to 21 mm "
                                     "off in the scans this was measured on")
 
+                        if models_type == "MG" and args.pick_patch:
+                            # Two landmarks on one spot: the network found the
+                            # same mucogingival point twice. Decide which tooth
+                            # it belongs to and record the other as doubtful,
+                            # so the hole-filling below rebuilds it instead of
+                            # leaving a duplicate.
+                            pitch = next(iter(mg_pitch.values()), None)
+                            ResolveCollisions(group_data, mg_aims,
+                                              pitch / mg_scale_factor
+                                              if pitch and mg_scale_factor else None,
+                                              note=OFF_AIM_NOTE)
+
                         # A hole in the line is awkward to work with, and the
                         # curve through the points that are trusted goes as
                         # close to a missing one as the network itself does.
                         if models_type == "MG" and args.fill_gaps:
                             FillGaps(group_data)
+
+                        if models_type == "MG" and args.pick_patch:
+                            # A point that is on its neighbour's spot and could
+                            # not be rebuilt is left out rather than written
+                            # where it is: it is a duplicate of the landmark
+                            # beside it, and the same rule already applies to
+                            # the tooth a scan does not have -- a point nobody
+                            # can stand behind is worse than a hole, which the
+                            # curve spans.
+                            stranded = [name for name, entry in group_data.items()
+                                        if OFF_AIM_NOTE in (entry.get("desc") or "")]
+                            for name in stranded:
+                                del group_data[name]
+                            if stranded:
+                                logger.info(
+                                    f"{patient_id}: leaving out {len(stranded)} landmark(s) "
+                                    f"found on a neighbouring tooth's point and impossible to "
+                                    f"rebuild: {', '.join(sorted(stranded))}")
+
+                        if models_type == "MG" and args.complete_line:
+                            # Whatever is still missing gets a position, marked
+                            # as extrapolated. It is there so the line always
+                            # has its 13 points; the note keeps it out of the
+                            # band AREG registers on.
+                            #
+                            # The scan goes with it: an end of the arch is then
+                            # placed off its own tooth's gingival collar rather
+                            # than by running the spline past its support, and
+                            # every answer is put back on the mesh. Measured on
+                            # scans held back from the choosing, that is 1.44 mm
+                            # instead of 5.11, and 70% within 2 mm instead of 6%.
+                            # It is `path_vtk`, not the file the user gave: the
+                            # landmarks are still in the oriented frame here,
+                            # and the back-transform below is what moves them.
+                            CompleteLine(group_data, surf=ReadSurf(path_vtk))
 
                         # last, once every point is there: the line as a whole
                         # knows more about any one point than that point does
@@ -679,6 +779,13 @@ def main(args):
                             SmoothAlongArch(group_data, args.smooth_strength
                                             if args.smooth_strength is not None
                                             else SMOOTH_STRENGTH)
+
+                        if models_type == "MG" and args.snap_to_surface:
+                            # Last of all, and after the smoothing: a
+                            # mucogingival point is on the mucosa, and the
+                            # spline through a hole's neighbours and the pull
+                            # toward the line both leave the surface.
+                            SnapAll(group_data, ReadSurf(path_vtk))
 
                         if back_to_file is not None:
                             # The prediction ran on the oriented copy; what is
@@ -688,6 +795,28 @@ def main(args):
                                 x, y, z = TransformPoint(
                                     (entry["x"], entry["y"], entry["z"]), back_to_file)
                                 entry["x"], entry["y"], entry["z"] = x, y, z
+
+                        if models_type == "MG" and args.paint_scan and group_data:
+                            # On the file the user gave, in its own coordinates:
+                            # the landmarks have just been transformed back into
+                            # them. Only two arrays are added, so the scan stays
+                            # the scan -- and a failure here costs the drawing,
+                            # never the landmarks.
+                            labels = None
+                            if segmented_path is not None:
+                                try:
+                                    labelled = ReadSurf(segmented_path)
+                                    array = labelled.GetPointData().GetArray("Universal_ID")
+                                    if array is not None:
+                                        labels = vtk_to_numpy(array)
+                                except Exception as error:
+                                    logger.warning(f"Could not read the segmentation back: {error}")
+                            positions = {name: (entry["x"], entry["y"], entry["z"])
+                                         for name, entry in group_data.items()}
+                            descriptions = {name: entry.get("desc")
+                                            for name, entry in group_data.items()}
+                            PaintScan(patient_path, positions, labels=labels,
+                                      descriptions=descriptions)
 
                         if len(group_data.keys()) > 0:
                             try:
@@ -778,6 +907,37 @@ if __name__ == "__main__":
                             help="with --arch_scale, how wide the framing is: the scan extent the "
                                  "normalisation pretends to see, as a multiple of the distance "
                                  "between the first molars. Defaults to the training corpus value")
+        parser.add_argument("--snap_to_surface", dest="snap_to_surface", action="store_true",
+                            default=True,
+                            help="put every mucogingival landmark back on the mesh once the "
+                                 "line is finished. The network's own points are already on it; "
+                                 "a point rebuilt from its neighbours sits a median 0.60 mm above "
+                                 "it and up to 4.89 mm, because a spline does not follow a surface")
+        parser.add_argument("--no-snap_to_surface", dest="snap_to_surface",
+                            action="store_false",
+                            help="leave the landmarks where the curve put them")
+        parser.add_argument("--complete_line", dest="complete_line", action="store_true", default=True,
+                            help="always write the 13 landmarks: whatever the prediction could not "
+                                 "give is extrapolated from the curve through the rest and marked "
+                                 "'extrapolated'. Measured at an end of the arch, such a point is "
+                                 "9.7 mm from the annotation, so it is a position to look at rather "
+                                 "than a measurement -- AREG leaves it out of the band it builds")
+        parser.add_argument("--no-complete_line", dest="complete_line", action="store_false",
+                            help="leave the line short where nothing could be measured")
+        parser.add_argument("--paint_scan", dest="paint_scan", action="store_true", default=True,
+                            help="add the mucogingival band (Bottom_MGL) and the landmarks "
+                                 "(MG_landmarks) to the scan itself, as two 0/1 point arrays, "
+                                 "so the line can be looked at by opening that file. Nothing "
+                                 "else in it is touched, and only .vtk and .vtp can carry them")
+        parser.add_argument("--no-paint_scan", dest="paint_scan", action="store_false",
+                            help="leave the scan exactly as it was given")
+        parser.add_argument("--pick_patch", dest="pick_patch", action="store_true", default=True,
+                            help="when the network marks several separate spots in one picture -- "
+                                 "this tooth's mucogingival point and a neighbour's -- keep only the "
+                                 "one the cameras were aimed at, instead of averaging them into a "
+                                 "position that belongs to neither")
+        parser.add_argument("--no-pick_patch", dest="pick_patch", action="store_false",
+                            help="average every marked spot into one landmark, as before")
         parser.add_argument("--fill_gaps", dest="fill_gaps", action="store_true", default=True,
                             help="rebuild an MG landmark the prediction could not give -- its tooth "
                                  "absent, or the network unsure of it -- by following the curve "
