@@ -743,16 +743,20 @@ class Auto_IOSCBCT(IOSCBCT):
         # Giving the teeth of both jaws and leaving the occlusion option off
         # orients each arch on the gold standard of its own jaw.
         #
-        # Orienting "in occlusion" fits the upper alone and applies its matrix to
-        # the lower unchanged, which only lands the lower in the frame ALI_IOS
-        # expects if the two arches were scanned in occlusion. ALI_IOS renders
-        # each arch from fixed world-axis viewpoints (+Z for the lower, -Z for
-        # the upper), so a lower arch carried along from an open bite, or from
-        # two arches scanned without a bite registration, is rendered from the
-        # wrong side and its landmarks come out wrong or not at all. Those
-        # landmarks are what AREG_IOSCBCT pre-aligns on, and when too few of
-        # them match the CBCT it falls back to the identity and leaves the ICP
-        # to start from the raw pose against the whole skull.
+        # Orienting "in occlusion" fits the upper alone and applies its matrix
+        # to the lower unchanged, so where the lower ends up depends on the two
+        # arches having been scanned in occlusion -- an assumption nothing here
+        # checks. Measured over three patients, the lower lands 4.1 mm from the
+        # reference of its own jaw that way against 2.3 mm fitted on its own,
+        # which is where its upper lands; and on a pair taken 20 degrees apart
+        # it lands 22 mm away against the same 2.3 mm.
+        #
+        # What that buys downstream is smaller than it looks: ALI_IOS renders
+        # each arch from fixed world-axis viewpoints (+Z lower, -Z upper) and
+        # does not re-orient for the O model, but it takes a 20 degree rotation
+        # with only 0.6 to 0.8 mm of movement in the landmarks it places. So
+        # this is robustness, not accuracy: the result stops depending on an
+        # unchecked assumption, rather than becoming measurably more precise.
         #
         # Nothing is lost by dropping the link here: AREG_IOSCBCT registers the
         # two arches to the CBCT independently, as it must, since the mandible

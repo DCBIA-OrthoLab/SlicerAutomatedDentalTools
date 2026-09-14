@@ -626,10 +626,26 @@ def getPatients(ios_folder, cbct_folder, ios_lm_folder, cbct_lm_folder):
         read "Dupont_003_T1_L.vtk" or "P001_T1_L_Surface.vtk" as upper, which
         registers the lower arch against the upper CBCT landmarks without any
         error being raised.
+
+        A name carrying both jaws is refused rather than read as the first one
+        found. ALI_IOS runs the model of each jaw over every scan and names what
+        it writes after both the scan and the model, so a lower arch whose
+        segmentation holds a few upper tooth numbers comes back as
+        "P09_T1_L_SegOr_Upper_O_Pred.json": upper landmarks sitting on a lower
+        arch, which belongs to neither and would have taken the place of that
+        patient's real upper landmarks. Two markers that agree are the ordinary
+        case ("..._U_SegOr_Upper_...") and are read normally.
         """
-        if re.search(r'(?:^|_)(?:u|upper)(?=_|\.|$)', filename, re.IGNORECASE):
+        upper = re.search(r'(?:^|_)(?:u|upper)(?=_|\.|$)', filename, re.IGNORECASE)
+        lower = re.search(r'(?:^|_)(?:l|lower)(?=_|\.|$)', filename, re.IGNORECASE)
+        if upper and lower:
+            logger.warning(
+                "%s names both an upper and a lower arch, so which one it "
+                "describes cannot be told from it: ignored" % filename)
+            return None
+        if upper:
             return 'upper'
-        elif re.search(r'(?:^|_)(?:l|lower)(?=_|\.|$)', filename, re.IGNORECASE):
+        if lower:
             return 'lower'
         return None
     

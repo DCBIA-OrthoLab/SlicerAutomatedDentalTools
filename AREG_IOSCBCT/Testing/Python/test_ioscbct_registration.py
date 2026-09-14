@@ -219,6 +219,44 @@ class RegistrationTest(unittest.TestCase):
         self.assertIs(target.Around(np.empty((0, 3)), 25.0, "none"), target)
         self.assertIs(target.Around(np.array([[1e6, 1e6, 1e6]]), 1.0, "far"), target)
 
+    # ------------------------------------------------------- reading the names
+
+    def test_a_name_claiming_both_arches_is_refused(self):
+        """ALI_IOS names its output after the scan and the model it ran.
+
+        Observed on a real scan: a lower arch whose segmentation held a few
+        upper tooth numbers came back as "P09_T1_L_SegOr_Upper_O_Pred.json".
+        Read as upper, it takes the place of that patient's real upper
+        landmarks.
+        """
+        import tempfile
+        folder = tempfile.mkdtemp()
+        for name in ("P09_T1_U_SegOr_Upper_O_Pred.json",
+                     "P09_T1_L_SegOr_Lower_O_Pred.json",
+                     "P09_T1_L_SegOr_Upper_O_Pred.json"):
+            with open(os.path.join(folder, name), "w") as handle:
+                handle.write("{}")
+
+        found = areg.getPatients(folder, folder, folder, folder)
+
+        upper = found["P9_T1"]["ios_lm_upper"]
+        lower = found["P9_T1"]["ios_lm_lower"]
+        self.assertEqual(os.path.basename(upper), "P09_T1_U_SegOr_Upper_O_Pred.json")
+        self.assertEqual(os.path.basename(lower), "P09_T1_L_SegOr_Lower_O_Pred.json")
+
+    def test_two_markers_that_agree_are_read_normally(self):
+        import tempfile
+        folder = tempfile.mkdtemp()
+        for name in ("P09_T1_U_SegOr_Upper_O_Pred.json",
+                     "P09_T1_L_SegOr_Lower_O_Pred.json"):
+            with open(os.path.join(folder, name), "w") as handle:
+                handle.write("{}")
+
+        found = areg.getPatients(folder, folder, folder, folder)
+
+        self.assertIn("ios_lm_upper", found["P9_T1"])
+        self.assertIn("ios_lm_lower", found["P9_T1"])
+
     # --------------------------------------------------- the pre-alignment fit
 
     def test_a_full_arch_of_landmarks_is_well_spread(self):
