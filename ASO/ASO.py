@@ -2470,7 +2470,10 @@ class ASOLogic(ScriptedLoadableModuleLogic):
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
-        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import pytorch3d;import pytorch3d.renderer;import shapeaxi.dental_model_seg as d;d.saxi_nets_lightning.DentalModelSeg\""]
+        # Unquoted where nothing strips the quotes: kept, they turn the body
+        # into a single string literal that Python evaluates and exits 0 on,
+        # so the check reported pytorch3d present in an env without it.
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", condaQuote(self.conda, "import pytorch3d;import pytorch3d.renderer;import shapeaxi.dental_model_seg as d;d.saxi_nets_lightning.DentalModelSeg")]
         return self.conda.condaRunCommand(command)
     
     def install_pytorch3d(self):

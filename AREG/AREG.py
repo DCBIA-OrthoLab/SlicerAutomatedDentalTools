@@ -60,6 +60,7 @@ from AREG_Method.IOSCBCT import Auto_IOSCBCT,Semi_IOSCBCT,Reg_IOSCBCT
 from AREG_Method.Method import Method
 from AREG_Method.Progress import Display
 from AREG_Method import Review
+from AREG_Method.pip_install_window import PipInstallWindow
 
 from pathlib import Path
 import textwrap
@@ -139,21 +140,34 @@ def install_function(self,list_libs:list):
 
           if user_choice:
             self.ui.label_LibsInstallation.setVisible(True)
+            lib = None
+            # In its own window rather than through slicer.util.pip_install:
+            # that one prints every line pip produces from the timer slot that
+            # drains its queue, and such a burst fills the pipe Slicer captures
+            # its own output into - the main thread then blocks in write() and
+            # the session is gone. See AREG_Method.pip_install_window.
             try:
-                for lib, version_constraint in libs_to_install + libs_to_update:
-                    if not version_constraint:
-                        pip_install(lib)
+                with PipInstallWindow(requester="AREG") as window:
+                    for lib, version_constraint in libs_to_install + libs_to_update:
+                        if not version_constraint:
+                            requirement = lib
 
-                    elif "https:/" in version_constraint:
-                        logger.debug(f"Version constraint: {version_constraint}")
-                        # download the library from the url
-                        pip_install(version_constraint)
-                    else:
-                        logger.debug(f"Version constraint else: {version_constraint}")
-                        lib_version = f'{lib}{version_constraint}' if version_constraint else lib
-                        pip_install(lib_version)
+                        elif "https:/" in version_constraint:
+                            logger.debug(f"Version constraint: {version_constraint}")
+                            # download the library from the url
+                            requirement = version_constraint
+                        else:
+                            logger.debug(f"Version constraint else: {version_constraint}")
+                            requirement = f'{lib}{version_constraint}' if version_constraint else lib
 
-                return True
+                        if not window.install(requirement):
+                            # Stop at the first failure: what follows would be
+                            # installed against an environment already known to
+                            # be half-way through a change.
+                            installation_errors.append(
+                                (lib, "pip failed, see the installation window")
+                            )
+                            break
             except Exception as e:
                     installation_errors.append((lib, str(e)))
 
@@ -162,6 +176,8 @@ def install_function(self,list_libs:list):
                 error_message += "\n".join([f"{lib}: {error}" for lib, error in installation_errors])
                 slicer.util.errorDisplay(error_message)
                 return False
+
+            return True
           else :
             return False
 
@@ -3258,7 +3274,10 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
-        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import pytorch3d;import pytorch3d.renderer;import shapeaxi.dental_model_seg as d;d.saxi_nets_lightning.DentalModelSeg\""]
+        # Unquoted where nothing strips the quotes: kept, they turn the body
+        # into a single string literal that Python evaluates and exits 0 on,
+        # so the check reported pytorch3d present in an env without it.
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", condaQuote(self.conda, "import pytorch3d;import pytorch3d.renderer;import shapeaxi.dental_model_seg as d;d.saxi_nets_lightning.DentalModelSeg")]
         return self.conda.condaRunCommand(command)
     
     def install_pytorch3d(self):
