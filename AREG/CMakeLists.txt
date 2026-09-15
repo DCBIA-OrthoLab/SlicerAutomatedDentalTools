@@ -10,6 +10,8 @@ set(MODULE_PYTHON_SCRIPTS
   AREG_Method/IOS.py
   AREG_Method/IOSCBCT.py
   AREG_Method/Method.py
+  AREG_Method/pip_install_window.py
+  AREG_Method/Review.py
   AREG_Method/Progress.py
   AREG_Method/install_pytorch.py
 )
