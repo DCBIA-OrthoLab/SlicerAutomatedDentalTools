@@ -30,8 +30,11 @@ logger.addHandler(console_handler)
 
 # --- DYNAMIC IMPORTS ---
 try:
-    # Add parent directory to sys.path for local imports
-    sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+    # Add the script's own directory to sys.path for local imports.
+    # realpath, not __file__: a CLI registered through a symlink - the flat
+    # dev folder of links into the source tree - leaves __file__ on the link,
+    # whose directory holds no ALI_CBCT_utils. Resolving first lands beside it.
+    sys.path.append(os.path.dirname(os.path.realpath(__file__)))
     
     from ALI_CBCT_utils import (
         Agent, GetAgentLst, Brain, DNet, Environment, GenEnvironmentLst,

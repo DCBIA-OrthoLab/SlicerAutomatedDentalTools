@@ -60,6 +60,7 @@ from AREG_Method.IOSCBCT import Auto_IOSCBCT,Semi_IOSCBCT,Reg_IOSCBCT
 from AREG_Method.Method import Method
 from AREG_Method.Progress import Display
 from AREG_Method import Review
+from AREG_Method.pip_install_window import PipInstallWindow
 
 from pathlib import Path
 import textwrap
@@ -139,21 +140,34 @@ def install_function(self,list_libs:list):
 
           if user_choice:
             self.ui.label_LibsInstallation.setVisible(True)
+            lib = None
+            # In its own window rather than through slicer.util.pip_install:
+            # that one prints every line pip produces from the timer slot that
+            # drains its queue, and such a burst fills the pipe Slicer captures
+            # its own output into - the main thread then blocks in write() and
+            # the session is gone. See AREG_Method.pip_install_window.
             try:
-                for lib, version_constraint in libs_to_install + libs_to_update:
-                    if not version_constraint:
-                        pip_install(lib)
+                with PipInstallWindow(requester="AREG") as window:
+                    for lib, version_constraint in libs_to_install + libs_to_update:
+                        if not version_constraint:
+                            requirement = lib
 
-                    elif "https:/" in version_constraint:
-                        logger.debug(f"Version constraint: {version_constraint}")
-                        # download the library from the url
-                        pip_install(version_constraint)
-                    else:
-                        logger.debug(f"Version constraint else: {version_constraint}")
-                        lib_version = f'{lib}{version_constraint}' if version_constraint else lib
-                        pip_install(lib_version)
+                        elif "https:/" in version_constraint:
+                            logger.debug(f"Version constraint: {version_constraint}")
+                            # download the library from the url
+                            requirement = version_constraint
+                        else:
+                            logger.debug(f"Version constraint else: {version_constraint}")
+                            requirement = f'{lib}{version_constraint}' if version_constraint else lib
 
-                return True
+                        if not window.install(requirement):
+                            # Stop at the first failure: what follows would be
+                            # installed against an environment already known to
+                            # be half-way through a change.
+                            installation_errors.append(
+                                (lib, "pip failed, see the installation window")
+                            )
+                            break
             except Exception as e:
                     installation_errors.append((lib, str(e)))
 
@@ -162,11 +176,39 @@ def install_function(self,list_libs:list):
                 error_message += "\n".join([f"{lib}: {error}" for lib, error in installation_errors])
                 slicer.util.errorDisplay(error_message)
                 return False
+
+            return True
           else :
             return False
 
     else:
         return True
+
+def condaQuote(conda, value):
+    """Quote `value` only if this SlicerConda joins the command into a shell line.
+
+    Two SlicerConda versions are in circulation and they want the opposite of
+    each other. The older one builds a bash line, where a path holding a space -
+    and the ';' inside a `python -c` body - has to be quoted or the line falls
+    apart. The newer one hands conda an argv list, where nothing ever strips
+    those quotes: they reach PYTHONPATH and argv literally and break exactly what
+    they were meant to protect. Reading the installed source tests the property
+    that decides it, rather than guessing from a version number.
+
+    Only commands going to SlicerConda come through here. The copies of
+    condaRunCommand this extension carries of its own always build a shell line,
+    so what they are given keeps its quotes unconditionally.
+    """
+    try:
+        import inspect
+
+        shell = "shell=True" in inspect.getsource(conda.condaRunCommand)
+    except Exception:
+        # Source unreadable: assume the argv contract, which is the one shipping
+        # now, rather than emitting quotes that would land literally.
+        shell = False
+    return f'"{value}"' if shell else str(value)
+
 
 class AREG(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -200,10 +242,24 @@ class AREG(ScriptedLoadableModule):
 
         # Additional initialization step after application startup is complete
         slicer.app.connect("startupCompleted()", self.registerSampleData)
+        # The environment every IOS pipeline runs on is looked for here, once,
+        # rather than at the first Run of a module. See ADTEnvSetup.
+        slicer.app.connect("startupCompleted()", self.checkSharedEnvironment)
 
         #
         # Register sample data sets in Sample Data module
         #
+
+    def checkSharedEnvironment(self):
+        """Look once, at startup, for the Conda environment the IOS pipelines share."""
+        try:
+            from AREG_Method import ADTEnvSetup
+
+            ADTEnvSetup.checkAtStartup()
+        except Exception:
+            # A missing environment is a nuisance; it must never be the thing
+            # that keeps Slicer from starting.
+            logger.exception("The startup check of the shapeaxi environment failed")
 
     def registerSampleData(self):
         """
@@ -1471,10 +1527,18 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         if "IOSCBCT" in self.type:
             is_installed = False
-            # libraries and versions compatibility to use AREG_IOSCBCT
-            list_libs_IOSCBCT = [('pyvista','==0.47.3',None),('scipy',None,None),('numpy',None,None),('SimpleITK',None,None)]
-            
-            is_installed = install_function(self,list_libs_IOSCBCT)
+            # The IOSCBCT pipeline segments the crowns through the shared conda
+            # environment, exactly as IOS does. Without this check run_conda_tool
+            # finds no dentalmodelseg, logs an error and returns, and the run
+            # carries on with its segmentation step silently skipped.
+            check_env = self.onCheckRequirements()
+            logger.debug(f"Segmentation environment: {check_env}")
+
+            if check_env:
+                # libraries and versions compatibility to use AREG_IOSCBCT
+                list_libs_IOSCBCT = [('pyvista','==0.47.3',None),('scipy',None,None),('numpy',None,None),('SimpleITK',None,None)]
+
+                is_installed = install_function(self,list_libs_IOSCBCT)
 
         # If the user didn't accept the installation, the module doesn't run
         if not is_installed:
@@ -2059,9 +2123,24 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             action = "Review only"
 
+        # Name the modules. A clinician who does not already know Slicer has no
+        # way to guess that the points are editable in Markups, that the numbers
+        # behind a displacement are in Transforms, or that the 3D view they are
+        # looking at is driven by Volume Rendering.
+        if item["editable"]:
+            tools = ("Open <b>Markups</b> to pick a point from the list, and "
+                     "<b>Volume Rendering</b> to change how the bone is shown.")
+        elif item["adjustable"]:
+            tools = ("Drag the scan in a slice view. <b>Transforms</b> shows the "
+                     "displacement you are applying, in numbers; "
+                     "<b>Volume Rendering</b> changes how the bone is shown.")
+        else:
+            tools = "<b>Models</b> and <b>Volume Rendering</b> change how this is shown."
+
         self.ui.ReviewMessageLabel.setText(
             f"<b>Paused: {title}</b><br/>"
             f"{item['patient']}{position} &nbsp;·&nbsp; <i>{action}</i><br/>{hint}"
+            f"<br/><span style='color:#7f8c8d'>{tools}</span>"
         )
         self.ui.ReviewMessageLabel.setVisible(True)
 
@@ -3195,7 +3274,10 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
-        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import pytorch3d;import pytorch3d.renderer;import shapeaxi.dental_model_seg as d;d.saxi_nets_lightning.DentalModelSeg\""]
+        # Unquoted where nothing strips the quotes: kept, they turn the body
+        # into a single string literal that Python evaluates and exits 0 on,
+        # so the check reported pytorch3d present in an env without it.
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", condaQuote(self.conda, "import pytorch3d;import pytorch3d.renderer;import shapeaxi.dental_model_seg as d;d.saxi_nets_lightning.DentalModelSeg")]
         return self.conda.condaRunCommand(command)
     
     def install_pytorch3d(self):
@@ -3242,7 +3324,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         return : bool
         '''
         conda_exe = self.conda.getCondaExecutable()
-        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", f"\"import {file} as check;import os; print(os.path.isfile(check.__file__))\""]
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", condaQuote(self.conda, f"import {file} as check;import os; print(os.path.isfile(check.__file__))")]
         result = self.conda.condaRunCommand(command)
         if "True" in result :
             return True
@@ -3255,7 +3337,11 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         paths = slicer.app.moduleManager().factoryManager().searchPaths
         mnt_paths = []
         for path in paths :
-            mnt_paths.append(f"\"{self.windows_to_linux_path(path)}\"")
+            # Quoted only where a shell will strip the quotes again. They used to be
+            # unconditional: under the argv-passing SlicerConda they survived into
+            # PYTHONPATH, Python read each entry as a relative path and prefixed the
+            # cwd, and every sys.path entry pointed nowhere.
+            mnt_paths.append(condaQuote(self.conda, self.windows_to_linux_path(path)))
         pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
         conda_exe = self.conda.getCondaExecutable()
         argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]

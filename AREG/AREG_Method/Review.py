@@ -24,6 +24,23 @@ VIEW = "view"                # look only
 LANDMARKS = "landmarks"      # drag the points, saved back to their file
 REGISTRATION = "registration"  # drag the scan, folded into its matrix
 
+# A surface loaded into Slicer shows in the 3D view and nowhere else: its
+# display node starts with the slice representation off. At a registration
+# pause that is the whole review gone -- the arches are inside the skull, so
+# the volume rendering hides them in 3D, and with no contour on the slices the
+# step looked like it had failed to load its IOS at all. The overlap is judged
+# on the slices, so that is where the surfaces have to be drawn.
+#
+# Colours rather than the default beige, which is nearly the grey of bone on a
+# CBCT slice, and one per surface so the two arches can be told apart.
+MODEL_SLICE_COLOURS = (
+    (0.20, 0.85, 0.45),   # green
+    (1.00, 0.55, 0.10),   # orange
+    (0.35, 0.65, 1.00),   # blue
+    (0.95, 0.35, 0.75),   # pink
+)
+MODEL_SLICE_THICKNESS = 2
+
 
 def _isVolume(node) -> bool:
     """True for a node the slice views and the volume rendering can both take."""
@@ -65,6 +82,7 @@ class ReviewSession:
         self.pending = False
         self.step = {}
         self.flagged = set()
+        self._model_colour = 0
 
     def clearNodes(self):
         """Take the previous patient's nodes back out of the scene."""
@@ -290,6 +308,7 @@ class ReviewSession:
 
         self.clearNodes()
         loaded = False
+        self._model_colour = 0
 
         loaded_references = []
         for path in item.get("references", []):
@@ -375,6 +394,7 @@ class ReviewSession:
                 node = self._loadEditableMarkups(path)
             elif path.endswith(MODEL_EXT):
                 node = slicer.util.loadModel(path)
+                self._drawModelOnSlices(node)
             else:
                 node = slicer.util.loadVolume(path)
         except Exception as e:
@@ -387,6 +407,34 @@ class ReviewSession:
 
         self.nodes.append(node)
         return node
+
+    def _drawModelOnSlices(self, node):
+        """Give a surface a visible contour on the slice views.
+
+        Without this a model is a 3D-only object, and at a registration pause
+        the 3D view is the one place it cannot be seen: it sits inside the
+        volume rendering of the scan it was registered to.
+        """
+        if node is None:
+            return
+        display = node.GetDisplayNode()
+        if display is None:
+            node.CreateDefaultDisplayNodes()
+            display = node.GetDisplayNode()
+        if display is None:
+            logger.warning(f"No display node for {node.GetName()}, it cannot be "
+                           "drawn on the slices")
+            return
+        try:
+            display.SetVisibility(True)
+            display.SetVisibility2D(True)
+            display.SetSliceIntersectionThickness(MODEL_SLICE_THICKNESS)
+            colour = MODEL_SLICE_COLOURS[self._model_colour % len(MODEL_SLICE_COLOURS)]
+            display.SetColor(*colour)
+            self._model_colour += 1
+        except Exception as e:
+            logger.warning(f"Could not set up {node.GetName()} for the slice "
+                           f"views: {e}")
 
     def _loadEditableMarkups(self, path):
         """Load landmarks so their points can actually be dragged.

@@ -20,7 +20,10 @@ formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
-fpath = os.path.join(os.path.dirname(__file__), "..")
+# realpath, not __file__: a CLI registered through a symlink - the flat dev
+# folder of links into the source tree - leaves __file__ on the link, whose
+# parent holds no MedX_CLI_utils. Resolving first lands beside the package.
+fpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")
 sys.path.append(fpath)
 
 from MedX_CLI_utils import create_chunks_from_paragraphs, extract_text_from_pdf, extract_text_from_word, clean_text, load_model_and_tokenizer
