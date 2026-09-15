@@ -276,10 +276,13 @@ def Upscale(landmark_pos, mean_arr, scale_factor):
 # sides of the mouth: naming a lower arch in the upper numbering therefore comes
 # out left-right mirrored, and that is what the split below looks like.
 ARCH_OFFSET = 16
-# Two labels whose points share a centre this closely are one tooth, not two. A
-# genuine both-arch scan puts t and t+16 on opposite sides AND opposite jaws,
-# tens of millimetres apart, so it never trips this.
-SAME_TOOTH_MM = 8.0
+# Two labels whose points share a centre this closely are one tooth, not two.
+# Measured on the scan this was written for, the two families sit 2.8 to 8.0 mm
+# apart while every other pairing of the same labels starts at 18.9 mm, so the
+# threshold is put in the middle of that gap rather than at the edge of either
+# side. A genuine both-arch scan puts t and t+16 on opposite sides AND opposite
+# jaws, tens of millimetres apart, so it never trips this.
+SAME_TOOTH_MM = 12.0
 # One coincidence is a stray patch. A numbering that has split shows on the arch.
 MIN_SPLIT_TEETH = 3
 
