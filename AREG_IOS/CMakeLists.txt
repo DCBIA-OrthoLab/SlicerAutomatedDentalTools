@@ -27,3 +27,8 @@ slicerMacroBuildScriptedModule(
   NAME ${FOLDER_LIBRARY}
   SCRIPTS ${MODULE_PYTHON_SCRIPTS}
 )
+
+#-----------------------------------------------------------------------------
+if(BUILD_TESTING)
+  add_subdirectory(Testing)
+endif()
