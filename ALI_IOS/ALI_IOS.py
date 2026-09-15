@@ -44,7 +44,10 @@ from monai.transforms import AsDiscrete
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import TexturesVertex
 
-fpath = os.path.join(os.path.dirname(__file__), "..")
+# realpath, not __file__: a CLI registered through a symlink - the flat dev
+# folder of links into the source tree - leaves __file__ on the link, whose
+# parent holds no ALI_IOS_utils. Resolving first lands beside the package.
+fpath = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(fpath)
 
 def check_platform():

@@ -22,7 +22,10 @@ formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
-fpath = os.path.join(os.path.dirname(__file__), "..")
+# realpath, not __file__: a CLI registered through a symlink - the flat dev
+# folder of links into the source tree - leaves __file__ on the link, whose
+# parent holds no AREG_CBCT_utils. Resolving first lands beside the package.
+fpath = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(fpath)
 
 from AREG_CBCT_utils import (

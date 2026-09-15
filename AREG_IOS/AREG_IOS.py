@@ -28,7 +28,8 @@ logger.addHandler(console_handler)
 # Check and fix torch/torchvision compatibility before any imports
 try:
     # Add parent for deps check
-    areg_ios_path = os.path.dirname(__file__)
+    # realpath, not __file__: see the note below.
+    areg_ios_path = os.path.dirname(os.path.realpath(__file__))
     if areg_ios_path not in sys.path:
         sys.path.insert(0, areg_ios_path)
     
@@ -39,7 +40,10 @@ except ImportError as e:
     logger.warning("[WARNING] Could not import dependency checker: {}".format(e))
 # ===== END DEPENDENCY CHECK =====
 
-fpath = os.path.join(os.path.dirname(__file__), "..")
+# realpath, not __file__: a CLI registered through a symlink - the flat dev
+# folder of links into the source tree - leaves __file__ on the link, whose
+# parent holds no AREG_IOS_utils. Resolving first lands beside the package.
+fpath = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(fpath)
 
 def check_platform():
