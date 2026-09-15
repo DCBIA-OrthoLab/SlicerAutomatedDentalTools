@@ -71,6 +71,84 @@ MIN_ICP_FITNESS = float(os.environ.get("AREG_MIN_ICP_FITNESS", 0.05))
 # a few mm on real patients -- so it is set well past all three.
 CBCT_CROP_MARGIN_MM = float(os.environ.get("AREG_CBCT_CROP_MARGIN", 25.0))
 
+# The isosurface the IOS is registered onto used to be taken at a fixed 400,
+# which is not the enamel: at that level the contour runs through the
+# partial-volume halo around the crowns and on into the alveolar bone, so the
+# ICP matched the IOS against a surface some way outside the teeth and slid the
+# arch along it. Measured on a patient whose landmarks agree to 1.4 mm, a
+# threshold of 400 moved the arch 2.2 mm away from them while improving the
+# median surface distance by 0.09 mm; nearer the enamel edge it moves it 0.7 mm
+# and keeps the landmark agreement it started with.
+#
+# So the level is read off the scan instead, by the half-maximum rule: the
+# boundary of a structure lies halfway between its own plateau and that of what
+# surrounds it, which is where a contour localises the edge best. The plateau is
+# measured at the CBCT landmarks, which sit on the crowns by construction, and
+# the surround from the soft tissue around the arch.
+#
+# Measuring both ends on the image is what makes this work on a scan that is not
+# calibrated: plenty of CBCTs come in arbitrary grey values rather than HU, and
+# any fixed number -- 400 or 1200 -- is meaningless on those. A ratio of two
+# levels taken from the same image is not.
+SURFACE_THRESHOLD = os.environ.get("AREG_CBCT_SURFACE_THRESHOLD")
+
+# The window, in voxels either side, over which the enamel plateau is read at
+# each landmark. Wide enough to survive a landmark a voxel or two off the crown,
+# narrow enough not to reach the next tooth.
+ENAMEL_PROBE_RADIUS_VOXELS = 2
+
+# What counts as soft tissue when the surround is measured. Water sits at 0 and
+# cancellous bone starts well above 300, so this band holds mucosa, gingiva and
+# muscle without letting bone into the median.
+SOFT_TISSUE_BAND = (-300.0, 300.0)
+
+# The Universal_ID value CrownSegmentation gives a point that belongs to no
+# tooth. Teeth are 1 to 32, so 33 is the gingiva and 0 is unlabelled.
+GINGIVA_LABELS = (0, 33)
+
+# Below this share of the arch left as crowns, the labels are not to be trusted
+# and the whole surface is registered instead. A healthy segmentation leaves
+# about 40% of an arch as crowns.
+MIN_CROWN_SHARE = 0.10
+
+# How much further from its CBCT landmarks the ICP may leave an arch than the
+# pre-alignment did, in mm of RMS, before the run says so. The landmarks are the
+# only check on the ICP that the ICP does not grade itself: its own fitness and
+# RMSE are computed over the correspondences it chose to keep, so a fit that has
+# slid along a smooth occlusal surface reports the same healthy numbers as one
+# that has not. Drifting away from twelve independently placed points while
+# claiming to improve is the signature of that slide, and it is what a 400
+# threshold did on every patient without anything noticing.
+MAX_ICP_LANDMARK_DRIFT_MM = float(os.environ.get("AREG_MAX_ICP_LANDMARK_DRIFT", 1.0))
+
+# A rigid fit spreads one bad landmark over all the others: least squares cannot
+# tell "this point is wrong" from "everything is a little off", so it splits the
+# difference and tilts the whole arch. On a real patient ALI_CBCT put UR3O about
+# 10 mm from where the IOS has it, and that single point took the upper arch
+# from 2.8 mm to 4.8 mm -- the ICP then started from 2 mm further out than it
+# needed to.
+#
+# So a pair the fit is measurably better without is dropped, and the fit redone.
+#
+# The test is what removing the pair does to the fit, not how far out the pair
+# looks: the least squares that produced the residuals has already spread the
+# bad point over the good ones, so on this patient UR3O came out at 8.3 mm
+# against a median of 3.5 -- under any sane multiple of it, while being the
+# whole problem. Its removal, on the other hand, takes the arch from 4.8 mm to
+# 2.8 mm, which nothing else comes near.
+#
+# Both conditions are needed. A pair must be far enough out to be wrong rather
+# than noisy, and its removal must actually buy something; either alone strips
+# points off a fit that was never in trouble.
+LANDMARK_OUTLIER_IMPROVEMENT = float(os.environ.get("AREG_LANDMARK_OUTLIER_IMPROVEMENT", 0.75))
+LANDMARK_OUTLIER_FLOOR_MM = float(os.environ.get("AREG_LANDMARK_OUTLIER_FLOOR", 3.0))
+
+# Never trimmed below this many pairs. Three is what a rigid fit needs, so
+# stopping at four leaves it one pair of redundancy rather than none: at three
+# the fit is exact whatever the points are, and a bad one can no longer show up
+# as a residual at all.
+MIN_LANDMARK_PAIRS_AFTER_TRIM = 4
+
 # When the arch has stopped moving, in mm of the furthest-travelling point over
 # one iteration, and for how many iterations in a row.
 #
@@ -141,6 +219,48 @@ def _alignment_residual(moving_lms, fixed_lms, matrix):
     return float(np.sqrt(np.mean(np.square(res)))) if res else float("inf")
 
 
+def _report_landmark_drift(aligned_lms, fixed_lms, matrix, jaw, patient_id, kept=None):
+    """Say whether the ICP moved the arch towards its landmarks or away.
+
+    Measured over the pairs the pre-alignment was fitted on, so the two numbers
+    are the same measurement taken twice. Including a pair the pre-alignment
+    rejected would compare the ICP against a residual nothing tried to minimise,
+    and report a drift on an arch that had not moved.
+
+    Returns the two residuals so a caller can act on them; the judgement itself
+    is only logged, because a registration can legitimately trade a little
+    landmark agreement for a much better surface fit. What it must not do is
+    trade it silently.
+    """
+    if aligned_lms is None or len(aligned_lms) == 0:
+        return None, None
+
+    if kept is not None and len(kept):
+        aligned_lms = np.asarray(aligned_lms)[kept]
+        fixed_lms = np.asarray(fixed_lms)[kept]
+
+    before = float(np.sqrt(np.mean(np.square(
+        np.linalg.norm(np.asarray(aligned_lms) - np.asarray(fixed_lms), axis=1)))))
+    moved = (np.hstack([aligned_lms, np.ones((len(aligned_lms), 1))]) @ np.asarray(matrix).T)[:, :3]
+    after = float(np.sqrt(np.mean(np.square(
+        np.linalg.norm(moved - np.asarray(fixed_lms), axis=1)))))
+
+    drift = after - before
+    if drift > MAX_ICP_LANDMARK_DRIFT_MM:
+        logger.warning(
+            "%s / %s: the ICP left the arch %.1f mm from its landmarks where the "
+            "pre-alignment had it at %.1f mm, a drift of %.1f mm. The surface it "
+            "settled on is not where the landmarks say the teeth are; on a smooth "
+            "occlusal surface that is the fit sliding along the arch, and its own "
+            "fitness cannot see it. Check the registration before using it."
+            % (patient_id, jaw, after, before, drift))
+    else:
+        logger.info("%s / %s: landmarks %.1f mm from their CBCT counterparts after "
+                    "the ICP, against %.1f mm before it"
+                    % (patient_id, jaw, after, before))
+    return before, after
+
+
 def _write_positions(cbct_json, positions, labels):
     """Store the registered positions in the CBCT json, matched by label.
 
@@ -168,39 +288,97 @@ def _write_positions(cbct_json, positions, labels):
     cbct_json["markups"][0]["controlPoints"] = kept
 
 
-def align_by_landmarks(moving_mesh, moving_lms, fixed_lms, jaw="", patient_id=""):
-    # 1. Create VTK transformation object
+def _fit_rigid(moving_lms, fixed_lms):
+    """The rigid transform taking the moving landmarks onto the fixed ones."""
     landmark_transform = vtk.vtkLandmarkTransform()
-    
-    # 2. Assign points (convert landmarks to vtkPoints)
+
     points_moving = vtk.vtkPoints()
     points_fixed = vtk.vtkPoints()
-    
+
     for p in moving_lms: points_moving.InsertNextPoint(p)
     for p in fixed_lms: points_fixed.InsertNextPoint(p)
-    
+
     landmark_transform.SetSourceLandmarks(points_moving)
     landmark_transform.SetTargetLandmarks(points_fixed)
-    landmark_transform.SetModeToRigidBody() # Important: preserve shape (no deformation)
+    landmark_transform.SetModeToRigidBody()  # preserve shape (no deformation)
     landmark_transform.Update()
-    
-    # 3. Apply matrix to moving mesh
-    # Get the 4x4 matrix
-    matrix = landmark_transform.GetMatrix()
+
+    # The filter owns the matrix it returns and overwrites it on the next
+    # Update(); a copy outlives this call.
+    matrix = vtk.vtkMatrix4x4()
+    matrix.DeepCopy(landmark_transform.GetMatrix())
+    return matrix
+
+
+def _fit_rigid_without_outliers(moving_lms, fixed_lms, labels, jaw, patient_id):
+    """Fit, then drop any pair the fit cannot account for, and fit again.
+
+    Only one pair goes per round, and only while enough remain to hold a rigid
+    transform down: each drop changes every other residual, so deciding them all
+    from one fit would throw away points that were never the problem.
+
+    Returns the matrix and the labels it was fitted on.
+    """
+    keep = list(range(len(moving_lms)))
+    while True:
+        matrix = _fit_rigid(moving_lms[keep], fixed_lms[keep])
+        rms = _alignment_residual(moving_lms[keep], fixed_lms[keep], matrix)
+        residuals = np.array([
+            np.linalg.norm(np.array(matrix.MultiplyPoint([p[0], p[1], p[2], 1])[:3]) - q)
+            for p, q in zip(moving_lms[keep], fixed_lms[keep])])
+
+        if len(keep) <= MIN_LANDMARK_PAIRS_AFTER_TRIM:
+            break
+
+        # What the fit would be without each pair in turn.
+        without = []
+        for position in range(len(keep)):
+            subset = [k for j, k in enumerate(keep) if j != position]
+            trial = _fit_rigid(moving_lms[subset], fixed_lms[subset])
+            without.append((_alignment_residual(
+                moving_lms[subset], fixed_lms[subset], trial), position))
+
+        best, position = min(without)
+        if not (residuals[position] > LANDMARK_OUTLIER_FLOOR_MM
+                and best <= LANDMARK_OUTLIER_IMPROVEMENT * rms):
+            break
+
+        dropped = labels[keep[position]] if labels else "#%d" % keep[position]
+        logger.warning(
+            "%s / %s: %s sits %.1f mm from where the rest of the arch puts it, and "
+            "the fit over the other %d landmarks is %.1f mm against %.1f mm with "
+            "it. It is not the same point on both scans, so the pre-alignment is "
+            "fitted without it -- worth correcting that landmark on the CBCT."
+            % (patient_id, jaw, dropped, residuals[position], len(keep) - 1, best, rms))
+        keep.pop(position)
+
+    return matrix, [labels[i] for i in keep] if labels else None, keep
+
+
+def align_by_landmarks(moving_mesh, moving_lms, fixed_lms, jaw="", patient_id="", labels=None):
+    moving_lms = np.asarray(moving_lms, dtype=float)
+    fixed_lms = np.asarray(fixed_lms, dtype=float)
+
+    matrix, kept_labels, kept = _fit_rigid_without_outliers(
+        moving_lms, fixed_lms, labels, jaw, patient_id)
 
     # Falling back to the identity leaves the ICP to start from the raw pose,
     # which is what already happened whenever the two lists had different
     # sizes -- only now it is a decision, and it is written down.
-    n = len(moving_lms)
-    if n < MIN_LANDMARK_PAIRS:
+    # Everything below judges the fit on the pairs it was actually fitted to: a
+    # pair dropped as an outlier would otherwise be counted twice, once in
+    # having it removed and again in the residual that decides whether to keep
+    # the result at all.
+    n = len(kept)
+    if len(moving_lms) < MIN_LANDMARK_PAIRS:
         logger.warning(
             "%s / %s: %d landmark pair(s), %d needed. A rigid fit is "
             "underdetermined below that (one point is a plain translation, two "
             "leave a free rotation about the axis). Skipping the pre-alignment."
-            % (patient_id, jaw, n, MIN_LANDMARK_PAIRS))
+            % (patient_id, jaw, len(moving_lms), MIN_LANDMARK_PAIRS))
         matrix = vtk.vtkMatrix4x4()
     else:
-        rms = _alignment_residual(moving_lms, fixed_lms, matrix)
+        rms = _alignment_residual(moving_lms[kept], fixed_lms[kept], matrix)
         if rms > MAX_LANDMARK_RESIDUAL_MM:
             logger.warning(
                 "%s / %s: %.1f mm residual over %d pairs (threshold %.1f). The "
@@ -209,13 +387,15 @@ def align_by_landmarks(moving_mesh, moving_lms, fixed_lms, jaw="", patient_id=""
                 % (patient_id, jaw, rms, n, MAX_LANDMARK_RESIDUAL_MM))
             matrix = vtk.vtkMatrix4x4()
         else:
-            logger.info("%s / %s: pre-alignment accepted, %.1f mm residual over %d pairs"
-                        % (patient_id, jaw, rms, n))
+            logger.info("%s / %s: pre-alignment accepted, %.1f mm residual over %d "
+                        "pair(s)%s"
+                        % (patient_id, jaw, rms, n,
+                           " (%s)" % ", ".join(kept_labels) if kept_labels else ""))
             # Kept rather than refused: being under-determined is not being
             # wrong, and the identity would start the ICP from the raw pose,
             # which is further still. If the free rotation has in fact turned
             # the arch away, the ICP finds nothing to match and the run says so.
-            spread = _landmark_spread_ratio(moving_lms)
+            spread = _landmark_spread_ratio(moving_lms[kept])
             if spread < MIN_LANDMARK_SPREAD_RATIO:
                 logger.warning(
                     "%s / %s: the %d landmarks are nearly in a straight line "
@@ -235,7 +415,7 @@ def align_by_landmarks(moving_mesh, moving_lms, fixed_lms, jaw="", patient_id=""
     
     aligned_lms = np.array(aligned_lms)
     
-    return aligned_mesh, matrix, aligned_lms
+    return aligned_mesh, matrix, aligned_lms, kept
 
 class _Target:
     """The CBCT surface as the ICP actually consumes it: points and normals.
@@ -318,6 +498,40 @@ def _point_normals(mesh, name):
                        "opposing arch cannot be told apart by orientation."
                        % (name, e))
         return None
+
+
+def _crown_points(mesh, label):
+    """The part of an IOS the CBCT has anything to answer with.
+
+    An intraoral scan is about 60% gingiva, and gingiva has no counterpart in a
+    CBCT surface: the nearest thing under it is the alveolar bone, a millimetre
+    or two further in. Those points are not matched so much as dragged, and they
+    outnumber the crowns. Registering on the crowns alone does not move the
+    answer much -- it is the same anatomy either way -- but it roughly doubles
+    the share of the moving surface that finds a real match, which is what the
+    run is judged on.
+
+    Returns None when the mesh carries no usable labels, and the caller then
+    registers the whole thing, as it always did.
+    """
+    if "Universal_ID" not in mesh.point_data:
+        logger.info("%s: no Universal_ID on the IOS, the whole arch is registered "
+                    "including its gingiva" % label)
+        return None
+
+    labels = np.asarray(mesh.point_data["Universal_ID"])
+    crowns = ~np.isin(labels, GINGIVA_LABELS)
+    share = float(np.mean(crowns)) if crowns.size else 0.0
+    if share < MIN_CROWN_SHARE:
+        logger.warning("%s: only %.0f%% of the IOS is labelled as crowns, which is "
+                       "too little to trust. The whole arch is registered instead."
+                       % (label, 100 * share))
+        return None
+
+    logger.info("%s: registering on the %d crown point(s) of %d (%.0f%%); the "
+                "gingiva has no counterpart in the CBCT"
+                % (label, int(np.sum(crowns)), len(crowns), 100 * share))
+    return crowns
 
 
 def _point_to_plane_step(source, target, normals):
@@ -487,6 +701,16 @@ def run_icp_point_to_plane(moving_mesh, fixed_mesh, max_dist=1.5, label=""):
     moving_normals = _point_normals(moving_mesh, label)
     use_normals = fixed_normals is not None and moving_normals is not None
 
+    # Only the crowns drive the fit; the whole arch still moves by the matrix
+    # they settle on, gingiva included, so nothing is lost from the output.
+    # Taken here rather than by cutting the mesh, which would have to be rebuilt
+    # and would leave the normals to be recomputed at the cut.
+    crowns = _crown_points(moving_mesh, label)
+    if crowns is not None:
+        moving_pts = moving_pts[crowns]
+        if moving_normals is not None:
+            moving_normals = moving_normals[crowns]
+
     max_iterations = ICP_MAX_ITERATIONS
     # Only the moving points change from one iteration to the next, so the tree
     # over the fixed points is built once instead of being rebuilt up to
@@ -578,7 +802,85 @@ def get_landmarks (json_path):
     
     return np.array(landmarks)
 
-def load_data(scan_path,json_path_CBCT_U,json_path_CBCT_L,json_path_IOS_U,json_path_IOS_L):
+def _enamel_and_soft_levels(image_array, ijk_to_lps, landmarks, patient_id):
+    """The two intensities the crown boundary lies between.
+
+    The enamel plateau is read at the landmarks, which sit on the occlusal
+    surfaces, as the brightest voxel in a small window around each -- brightest
+    rather than nearest, so a landmark a voxel off the crown still reads the
+    tooth and not the gap beside it. The median over the landmarks then carries
+    no single bad one.
+
+    The surround is the median of everything in the soft-tissue band across the
+    arch, which is the mucosa and gingiva the crowns actually emerge through.
+
+    Returns (None, None) when the scan cannot be probed, and the caller falls
+    back rather than guessing.
+    """
+    if landmarks is None or len(landmarks) == 0:
+        return None, None
+
+    depth, height, width = image_array.shape
+    lps_to_ijk = np.linalg.inv(ijk_to_lps)
+    homogeneous = np.hstack([landmarks, np.ones((len(landmarks), 1))])
+    ijk = np.rint((homogeneous @ lps_to_ijk.T)[:, :3]).astype(int)
+
+    radius = ENAMEL_PROBE_RADIUS_VOXELS
+    peaks = []
+    for i, j, k in ijk:
+        if not (0 <= i < width and 0 <= j < height and 0 <= k < depth):
+            continue
+        window = image_array[max(k - radius, 0):k + radius + 1,
+                             max(j - radius, 0):j + radius + 1,
+                             max(i - radius, 0):i + radius + 1]
+        if window.size:
+            peaks.append(float(window.max()))
+
+    if not peaks:
+        logger.warning("%s: no CBCT landmark falls inside the scan, the surface "
+                       "level cannot be read from the crowns" % patient_id)
+        return None, None
+
+    low = np.clip(ijk.min(axis=0) - radius, 0, None)
+    high = ijk.max(axis=0) + radius + 1
+    region = image_array[low[2]:high[2], low[1]:high[1], low[0]:high[0]]
+    in_band = region[(region > SOFT_TISSUE_BAND[0]) & (region < SOFT_TISSUE_BAND[1])]
+
+    enamel = float(np.median(peaks))
+    soft = float(np.median(in_band)) if in_band.size else float(region.min())
+    return enamel, soft
+
+
+def surface_threshold(image_array, ijk_to_lps, landmarks, patient_id=""):
+    """The level to contour the CBCT at, halfway between enamel and its surround.
+
+    An explicit AREG_CBCT_SURFACE_THRESHOLD wins, for the scan this rule cannot
+    read.
+    """
+    if SURFACE_THRESHOLD is not None:
+        level = float(SURFACE_THRESHOLD)
+        logger.info("%s: CBCT contoured at %.0f, set by AREG_CBCT_SURFACE_THRESHOLD"
+                    % (patient_id, level))
+        return level
+
+    enamel, soft = _enamel_and_soft_levels(image_array, ijk_to_lps, landmarks, patient_id)
+    if enamel is None or not (enamel > soft):
+        logger.warning(
+            "%s: the crowns are no brighter than what surrounds them in this "
+            "scan, so the surface level cannot be read from it. Falling back to "
+            "400, which is what every run used before this was measured; if the "
+            "registration comes out poor, set AREG_CBCT_SURFACE_THRESHOLD."
+            % patient_id)
+        return 400.0
+
+    level = 0.5 * (enamel + soft)
+    logger.info("%s: CBCT contoured at %.0f -- enamel reads %.0f at the landmarks, "
+                "the soft tissue around the arch %.0f"
+                % (patient_id, level, enamel, soft))
+    return level
+
+
+def load_data(scan_path,json_path_CBCT_U,json_path_CBCT_L,json_path_IOS_U,json_path_IOS_L,patient_id=""):
     
     lm_cbct_U = get_landmarks(json_path_CBCT_U)
     lm_cbct_L = get_landmarks(json_path_CBCT_L)
@@ -595,8 +897,14 @@ def load_data(scan_path,json_path_CBCT_U,json_path_CBCT_L,json_path_IOS_U,json_p
     ijk_to_lps[:3, :3] = direction @ np.diag(spacing)
     ijk_to_lps[:3, 3] = origin
 
+    # Both arches: the level describes the scan, not one jaw, and reading it off
+    # twelve landmarks rather than six makes the median that much steadier.
+    arch_landmarks = [a for a in (lm_cbct_U, lm_cbct_L) if a is not None and len(a)]
+    all_landmarks = np.vstack(arch_landmarks) if arch_landmarks else np.empty((0, 3))
+    level = surface_threshold(image_array, ijk_to_lps, all_landmarks, patient_id)
+
     vol = pv.wrap(image_array.transpose(2, 1, 0))
-    cbct_raw_mesh = vol.contour(isosurfaces=[400])
+    cbct_raw_mesh = vol.contour(isosurfaces=[level])
 
     cbct_surface = cbct_raw_mesh.transform(ijk_to_lps, inplace=False)
 
@@ -782,7 +1090,8 @@ def main(args):
                 patient_data["cbct_lm_upper"],
                 patient_data["cbct_lm_lower"],
                 patient_data["ios_lm_upper"],
-                patient_data["ios_lm_lower"]
+                patient_data["ios_lm_lower"],
+                patient_id
             )
             
             # Keep only the landmarks present on both sides, in the same order
@@ -800,14 +1109,14 @@ def main(args):
             
             # 2. ALIGN BY LANDMARKS
             logger.debug(f"Aligning IOS upper jaw by landmarks")
-            aligned_ios_upper, mat_ios_upper, aligned_lms_ios_upper = align_by_landmarks(
-                ios_upper_mesh, lm_ios_U, lm_cbct_U, "Upper", patient_id
+            aligned_ios_upper, mat_ios_upper, aligned_lms_ios_upper, kept_U = align_by_landmarks(
+                ios_upper_mesh, lm_ios_U, lm_cbct_U, "Upper", patient_id, labels_U
             )
             logger.info(f"IOS Upper landmarks after alignment:\n{aligned_lms_ios_upper}")
             
             logger.debug(f"Aligning IOS lower jaw by landmarks")
-            aligned_ios_lower, mat_ios_lower, aligned_lms_ios_lower = align_by_landmarks(
-                ios_lower_mesh, lm_ios_L, lm_cbct_L, "Lower", patient_id
+            aligned_ios_lower, mat_ios_lower, aligned_lms_ios_lower, kept_L = align_by_landmarks(
+                ios_lower_mesh, lm_ios_L, lm_cbct_L, "Lower", patient_id, labels_L
             )
             logger.debug(f"IOS Lower landmarks after alignment shape: {aligned_lms_ios_lower.shape}")
             logger.debug(f"IOS Lower landmarks after alignment:\n{aligned_lms_ios_lower}")
@@ -837,6 +1146,12 @@ def main(args):
                 label=f"{patient_id} / Lower"
             )
             logger.info(f"ICP registration completed for patient {patient_id}")
+
+            # The one check on the ICP that the ICP does not grade itself.
+            _report_landmark_drift(aligned_lms_ios_upper, lm_cbct_U,
+                                   mat_icp_upper, "Upper", patient_id, kept_U)
+            _report_landmark_drift(aligned_lms_ios_lower, lm_cbct_L,
+                                   mat_icp_lower, "Lower", patient_id, kept_L)
 
             # An ICP that matched nothing still returns a matrix, and writing it
             # out put an untouched IOS in the results folder under the name of a
