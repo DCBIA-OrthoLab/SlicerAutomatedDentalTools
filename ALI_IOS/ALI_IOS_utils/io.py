@@ -199,3 +199,26 @@ def TradLabel(teeth_list):
     except Exception as e:
         logger.error(f"Error in TradLabel: {e}")
         raise
+
+
+def JawFromFileName(path):
+    """'Upper', 'Lower' or None, read from the tokens of a scan's name.
+
+    The letter has to be a token of its own so that "Dupont_003_T1_L.vtk" is not
+    read as upper on the u of Dupont, and a name claiming both jaws is refused
+    rather than resolved to whichever came first. Same rule as the one
+    AREG_IOSCBCT applies to landmark files, kept in step with it on purpose.
+    """
+    import re
+
+    name = os.path.basename(path)
+    upper = re.search(r'(?:^|_)(?:u|upper|max|mx)(?=_|\.|$)', name, re.IGNORECASE)
+    lower = re.search(r'(?:^|_)(?:l|lower|mand|md)(?=_|\.|$)', name, re.IGNORECASE)
+    if upper and lower:
+        logger.warning(f"{name} names both jaws, so it cannot say which one it is")
+        return None
+    if upper:
+        return "Upper"
+    if lower:
+        return "Lower"
+    return None
