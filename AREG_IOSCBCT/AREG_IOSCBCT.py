@@ -149,6 +149,25 @@ LANDMARK_OUTLIER_FLOOR_MM = float(os.environ.get("AREG_LANDMARK_OUTLIER_FLOOR", 
 # as a residual at all.
 MIN_LANDMARK_PAIRS_AFTER_TRIM = 4
 
+# A CBCT landmark is meant to sit on an occlusal surface, so the scan around it
+# has to hold a tooth. Where the neighbourhood never reaches the level the scan
+# is contoured at, there is no enamel there at all and the point is not on a
+# tooth -- the ICP has no surface to match there either, so the pre-alignment is
+# fitted without it.
+#
+# This catches a failure the residual cannot. ALI_CBCT places occlusal points,
+# and in a closed bite the two occlusal surfaces sit 1 to 3 mm apart and look
+# alike; nothing in it tells them apart, so one arch's points can land on the
+# other jaw. Measured on one patient: UR3O came back in soft tissue at 316 and
+# UL3O on bone at 1050, against a contour level of 1072, both of them below the
+# whole of the opposing arch. Dropping the two took the upper from 4.8 mm to
+# 2.7 mm, while the lower -- whose six points were all on enamel -- was left
+# exactly as it was.
+#
+# Read from the image rather than from the landmark set, so a set that is
+# largely wrong cannot vouch for itself the way a median-based test lets it.
+CHECK_LANDMARKS_ON_ENAMEL = os.environ.get("AREG_CHECK_LANDMARKS_ON_ENAMEL", "1") != "0"
+
 # When the arch has stopped moving, in mm of the furthest-travelling point over
 # one iteration, and for how many iterations in a row.
 #
@@ -310,16 +329,39 @@ def _fit_rigid(moving_lms, fixed_lms):
     return matrix
 
 
-def _fit_rigid_without_outliers(moving_lms, fixed_lms, labels, jaw, patient_id):
+def _fit_rigid_without_outliers(moving_lms, fixed_lms, labels, jaw, patient_id,
+                                on_enamel=None):
     """Fit, then drop any pair the fit cannot account for, and fit again.
 
-    Only one pair goes per round, and only while enough remain to hold a rigid
-    transform down: each drop changes every other residual, so deciding them all
-    from one fit would throw away points that were never the problem.
+    Two different tests, in the order their evidence is worth. A landmark the
+    scan says is not on a tooth goes first and unconditionally: that verdict
+    comes from the image, so it holds however the other landmarks look. What is
+    left is then trimmed on the fit, one pair per round, and only while enough
+    remain to hold a rigid transform down: each drop changes every other
+    residual, so deciding them all from one fit would throw away points that
+    were never the problem.
 
     Returns the matrix and the labels it was fitted on.
     """
     keep = list(range(len(moving_lms)))
+
+    if on_enamel and labels:
+        off = [i for i in keep if on_enamel.get(labels[i]) is False]
+        if off and len(keep) - len(off) >= MIN_LANDMARK_PAIRS:
+            logger.warning(
+                "%s / %s: %s %s not on a tooth in the CBCT, so the pre-alignment "
+                "is fitted on the remaining %d. Worth correcting %s at the CBCT "
+                "landmark pause."
+                % (patient_id, jaw, ", ".join(labels[i] for i in off),
+                   "is" if len(off) == 1 else "are", len(keep) - len(off),
+                   "it" if len(off) == 1 else "them"))
+            keep = [i for i in keep if i not in off]
+        elif off:
+            logger.warning(
+                "%s / %s: %d of %d CBCT landmarks are not on a tooth, which "
+                "leaves too few to fit with. They are all kept, but this arch's "
+                "landmarks should be corrected before its registration is used."
+                % (patient_id, jaw, len(off), len(keep)))
     while True:
         matrix = _fit_rigid(moving_lms[keep], fixed_lms[keep])
         rms = _alignment_residual(moving_lms[keep], fixed_lms[keep], matrix)
@@ -355,12 +397,13 @@ def _fit_rigid_without_outliers(moving_lms, fixed_lms, labels, jaw, patient_id):
     return matrix, [labels[i] for i in keep] if labels else None, keep
 
 
-def align_by_landmarks(moving_mesh, moving_lms, fixed_lms, jaw="", patient_id="", labels=None):
+def align_by_landmarks(moving_mesh, moving_lms, fixed_lms, jaw="", patient_id="",
+                       labels=None, on_enamel=None):
     moving_lms = np.asarray(moving_lms, dtype=float)
     fixed_lms = np.asarray(fixed_lms, dtype=float)
 
     matrix, kept_labels, kept = _fit_rigid_without_outliers(
-        moving_lms, fixed_lms, labels, jaw, patient_id)
+        moving_lms, fixed_lms, labels, jaw, patient_id, on_enamel)
 
     # Falling back to the identity leaves the ICP to start from the raw pose,
     # which is what already happened whenever the two lists had different
@@ -851,6 +894,50 @@ def _enamel_and_soft_levels(image_array, ijk_to_lps, landmarks, patient_id):
     return enamel, soft
 
 
+def _landmarks_on_enamel(image_array, ijk_to_lps, json_path, level, jaw, patient_id):
+    """Which of a CBCT landmark file's points actually sit on a tooth.
+
+    Returns {label: bool}, empty when the check is switched off or the file
+    cannot be read -- an empty verdict lets every landmark through.
+    """
+    if not CHECK_LANDMARKS_ON_ENAMEL:
+        return {}
+    try:
+        labelled = _labeled_landmarks(json_path)
+    except Exception as e:
+        logger.warning("%s / %s: could not read %s to check its landmarks sit on "
+                       "teeth (%s)" % (patient_id, jaw, os.path.basename(json_path), e))
+        return {}
+    if not labelled:
+        return {}
+
+    depth, height, width = image_array.shape
+    lps_to_ijk = np.linalg.inv(ijk_to_lps)
+    radius = ENAMEL_PROBE_RADIUS_VOXELS
+
+    verdict = {}
+    for label, position in labelled.items():
+        i, j, k = np.rint((np.append(np.asarray(position, dtype=float), 1.0)
+                           @ lps_to_ijk.T)[:3]).astype(int)
+        if not (0 <= i < width and 0 <= j < height and 0 <= k < depth):
+            logger.warning("%s / %s: %s falls outside the scan entirely"
+                           % (patient_id, jaw, label))
+            verdict[label] = False
+            continue
+        window = image_array[max(k - radius, 0):k + radius + 1,
+                             max(j - radius, 0):j + radius + 1,
+                             max(i - radius, 0):i + radius + 1]
+        peak = float(window.max()) if window.size else float("-inf")
+        verdict[label] = peak >= level
+        if not verdict[label]:
+            logger.warning(
+                "%s / %s: %s reads %.0f at its brightest, under the %.0f the scan "
+                "is contoured at, so it is not on a tooth. In a closed bite that "
+                "is usually a point that landed on the opposing arch."
+                % (patient_id, jaw, label, peak, level))
+    return verdict
+
+
 def surface_threshold(image_array, ijk_to_lps, landmarks, patient_id=""):
     """The level to contour the CBCT at, halfway between enamel and its surround.
 
@@ -903,12 +990,21 @@ def load_data(scan_path,json_path_CBCT_U,json_path_CBCT_L,json_path_IOS_U,json_p
     all_landmarks = np.vstack(arch_landmarks) if arch_landmarks else np.empty((0, 3))
     level = surface_threshold(image_array, ijk_to_lps, all_landmarks, patient_id)
 
+    # Judged here, where the voxels are already in hand: the array is gigabytes
+    # and is dropped on the way out of this function.
+    on_enamel = {
+        "Upper": _landmarks_on_enamel(image_array, ijk_to_lps, json_path_CBCT_U,
+                                      level, "Upper", patient_id),
+        "Lower": _landmarks_on_enamel(image_array, ijk_to_lps, json_path_CBCT_L,
+                                      level, "Lower", patient_id),
+    }
+
     vol = pv.wrap(image_array.transpose(2, 1, 0))
     cbct_raw_mesh = vol.contour(isosurfaces=[level])
 
     cbct_surface = cbct_raw_mesh.transform(ijk_to_lps, inplace=False)
 
-    return lm_cbct_U,lm_cbct_L,lm_ios_U,lm_ios_L,cbct_surface
+    return lm_cbct_U,lm_cbct_L,lm_ios_U,lm_ios_L,cbct_surface,on_enamel
 
 def getPatients(ios_folder, cbct_folder, ios_lm_folder, cbct_lm_folder):
     """
@@ -1085,7 +1181,7 @@ def main(args):
         try:
             # 1. LOAD DATA
             logger.debug(f"Loading data for patient {patient_id}")
-            lm_cbct_U, lm_cbct_L, lm_ios_U, lm_ios_L, cbct_surface = load_data(
+            lm_cbct_U, lm_cbct_L, lm_ios_U, lm_ios_L, cbct_surface, on_enamel = load_data(
                 patient_data["cbct"],
                 patient_data["cbct_lm_upper"],
                 patient_data["cbct_lm_lower"],
@@ -1110,13 +1206,15 @@ def main(args):
             # 2. ALIGN BY LANDMARKS
             logger.debug(f"Aligning IOS upper jaw by landmarks")
             aligned_ios_upper, mat_ios_upper, aligned_lms_ios_upper, kept_U = align_by_landmarks(
-                ios_upper_mesh, lm_ios_U, lm_cbct_U, "Upper", patient_id, labels_U
+                ios_upper_mesh, lm_ios_U, lm_cbct_U, "Upper", patient_id, labels_U,
+                on_enamel.get("Upper")
             )
             logger.info(f"IOS Upper landmarks after alignment:\n{aligned_lms_ios_upper}")
             
             logger.debug(f"Aligning IOS lower jaw by landmarks")
             aligned_ios_lower, mat_ios_lower, aligned_lms_ios_lower, kept_L = align_by_landmarks(
-                ios_lower_mesh, lm_ios_L, lm_cbct_L, "Lower", patient_id, labels_L
+                ios_lower_mesh, lm_ios_L, lm_cbct_L, "Lower", patient_id, labels_L,
+                on_enamel.get("Lower")
             )
             logger.debug(f"IOS Lower landmarks after alignment shape: {aligned_lms_ios_lower.shape}")
             logger.debug(f"IOS Lower landmarks after alignment:\n{aligned_lms_ios_lower}")
