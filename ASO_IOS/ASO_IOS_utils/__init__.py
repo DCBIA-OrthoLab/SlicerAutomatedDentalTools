@@ -10,6 +10,7 @@ from .utils import (
     WritefileError,
     saveMatrixAsTfm, PatientNumber
 )
+from .arch_labels import UnifyArchLabels, ArchLabelSplit
 from .icp import (
     vtkICP,
     vtkMeanTeeth,
