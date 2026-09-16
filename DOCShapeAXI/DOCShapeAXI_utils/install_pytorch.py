@@ -61,6 +61,16 @@ TORCH_PINS = {
     "macosx": ("2.8.0", "0.23.0", None),
 }
 
+# The torch range shapeaxi itself accepts - `torch>=2.8,<2.13` as of 2.0.3.
+#
+# A torch outside it is not worth keeping even when the index does publish a
+# wheel for it, which is the case for 2.14.0+cu132. Keeping it would install the
+# matching pytorch3d, and then `pip install shapeaxi` would move torch back
+# under 2.13 to satisfy its own requirement - taking PyPI's default variant on
+# the way - leaving the wheel installed one step earlier built against a torch
+# that is no longer there. Bump this whenever SHAPEAXI_REQUIREMENT moves.
+SHAPEAXI_TORCH_RANGE = ((2, 8), (2, 13))
+
 # Declared by shapeaxi anyway, but installed here so it resolves against the
 # pinned torch. Listed in condaCreateEnv it did the opposite: it declares an
 # unbounded `torch` dependency, so it dragged PyPI's default build in first.
@@ -152,6 +162,22 @@ def run_pip(pip_path, args):
     return result.returncode == 0
 
 
+def torch_in_shapeaxi_range(torch_tag):
+    """Does this build tag name a torch shapeaxi will accept as it stands?
+
+    'pt2120cu126' -> 2.12 -> True; 'pt2140cu132' -> 2.14 -> False. The tag packs
+    major, minor and micro with no separator, so it is read back from the ends:
+    first digit major, last digit micro, the rest minor.
+    """
+    match = re.match(r"pt(\d+)(?:cu\d+|cpu)$", torch_tag)
+    if not match:
+        return False
+    digits = match.group(1)
+    version = (int(digits[0]), int(digits[1:-1] or 0))
+    low, high = SHAPEAXI_TORCH_RANGE
+    return low <= version < high
+
+
 def install_torch(pip_path):
     """Put torch on a build the index publishes a pytorch3d wheel for.
 
@@ -188,13 +214,19 @@ def install_torch(pip_path):
     except Exception:
         current = None  # no torch in this environment yet
 
-    if current and select_wheel(wheels, py_tag, plat_tag, current):
+    if current and torch_in_shapeaxi_range(current) \
+            and select_wheel(wheels, py_tag, plat_tag, current):
         logger.info(
-            "torch is at {}, which has a published pytorch3d wheel - keeping "
-            "it rather than moving to the {} pin.".format(current, pin[0]))
+            "torch is at {}, which has a published pytorch3d wheel and suits "
+            "shapeaxi - keeping it rather than moving to the {} pin.".format(
+                current, pin[0]))
         return True
 
-    if current:
+    if current and not torch_in_shapeaxi_range(current):
+        logger.info(
+            "torch {} is outside the range shapeaxi accepts ({}).".format(
+                current, SHAPEAXI_REQUIREMENT))
+    elif current:
         logger.info("torch {} has no published pytorch3d wheel.".format(current))
 
     torch_version, vision_version, index = pin
