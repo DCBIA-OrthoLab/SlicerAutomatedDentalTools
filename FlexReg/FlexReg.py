@@ -1011,10 +1011,14 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         self.process.start()
         
     def install_shapeaxi(self):
-        # shapeaxi is installed later, by install_pytorch: it declares pytorch3d,
-        # which PyPI does not carry, so pip fails here and the env is never created.
-        # torch has to come first, install_pytorch reads its version to pick a wheel.
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["torch>=2.8,<2.13","ocnn==2.2.1","SimpleITK"],)) #run in parallel to not block slicer
+        # Only SimpleITK here. Everything that depends on torch - torch itself,
+        # torchvision, ocnn, pytorch3d, shapeaxi - is installed afterwards by
+        # install_pytorch, which is the only place that can pass the
+        # --index-url selecting a CUDA build. Asked for here, pip took PyPI's
+        # default variant (2.12.1+cu130) and no pytorch3d wheel is published
+        # for it; shapeaxi on top of that fails outright, since it declares
+        # pytorch3d and PyPI carries no distribution for it at all.
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["SimpleITK"],)) #run in parallel to not block slicer
         
     def check_if_pytorch3d(self):
         conda_exe = self.conda.getCondaExecutable()
