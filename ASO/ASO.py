@@ -1599,6 +1599,31 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.LabelTimer.setVisible(run)
 
+    def format_time(self, seconds):
+        """Convert seconds to H:M:S format."""
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        return f"{hours:02}:{minutes:02}:{secs:02}"
+
+    def update_ui_time(self, start_time, previous_time):
+        """Elapsed time since start_time, for the installation label.
+
+        onCheckRequirements has always called this and format_time, but neither
+        was ever defined on this widget - every other module has them, ASO was
+        missed. The call sites sit inside the two installation wait loops, so
+        the AttributeError only fires on a machine that actually has something
+        to install, and Run silently does nothing from there on.
+
+        `previous_time` is kept for signature parity with the other modules.
+        They use it to throttle to one update every 0.3s and return None in
+        between, which is what writes "time: None" into the label; the caller
+        never updates its own previous_time either, so the throttle never
+        fires. Formatting unconditionally is both simpler and correct.
+        """
+        self.elapsed_time = time.time() - start_time
+        return self.format_time(self.elapsed_time)
+
     def initCheckboxIOS(
         self,
         Method: Auto_IOS,
