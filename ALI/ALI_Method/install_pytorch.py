@@ -140,11 +140,19 @@ def _read_index():
     return wheels
 
 
+def wheels_for(wheels, py_tag, plat_tag):
+    """Everything published for this interpreter and platform, any torch."""
+    return [
+        (name, url) for name, url in wheels
+        if "-{}-".format(py_tag) in name and plat_tag in name
+    ]
+
+
 def select_wheel(wheels, py_tag, plat_tag, torch_tag):
     """Highest-version wheel matching this interpreter, platform and torch."""
     matches = [
-        (name, url) for name, url in wheels
-        if "-{}-".format(py_tag) in name and plat_tag in name and "+{}-".format(torch_tag) in name
+        (name, url) for name, url in wheels_for(wheels, py_tag, plat_tag)
+        if "+{}-".format(torch_tag) in name
     ]
     if not matches:
         return None
@@ -207,6 +215,22 @@ def install_torch(pip_path):
         logger.error(
             "The pytorch3d wheel index is unreachable, so which torch builds "
             "are supported cannot be established. Leaving torch alone.")
+        return False
+
+    if not wheels_for(wheels, py_tag, plat_tag):
+        # An interpreter the index does not build for at all, rather than one
+        # whose torch is wrong: a Python 3.9 environment left from before the
+        # move to 3.12, say. Nothing below could succeed either - the pinned
+        # torch has no cp39 wheel on the PyTorch index - so pip would fail on
+        # resolution with a message about torch that says nothing about the
+        # actual problem, which is the interpreter.
+        logger.error(
+            "The wheel index publishes no pytorch3d for {} / {}; it starts at "
+            "cp310. This environment runs Python {}.{}.".format(
+                py_tag, plat_tag, sys.version_info.major, sys.version_info.minor))
+        logger.error(
+            "Delete the environment and let the module rebuild it - it is "
+            "created at a supported Python now. Nothing was installed.")
         return False
 
     try:
