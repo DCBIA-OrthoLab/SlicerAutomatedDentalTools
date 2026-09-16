@@ -46,17 +46,29 @@ WHEEL_LISTING = WHEEL_INDEX + "pytorch3d/"
 # that second one only surfaces from inside shapeaxi.dental_model_seg, long
 # after pytorch3d itself imports and runs CUDA kernels fine.
 #
-# 2.12.0+cu126 is chosen because WHEEL_INDEX publishes pt2120cu126 for cp310 to
-# cp313 on both manylinux and win_amd64, and because shapeaxi requires
-# torch<2.13. To move to a newer torch, change the three values together and
-# check that WHEEL_INDEX has the matching pt<ver>cu<minor> for every
-# interpreter: cp312 currently also has pt2120cu132 and pt2140cu132, which
-# carry kernels for more recent GPUs but no longer satisfy shapeaxi.
+# 2.11.0+cu128 is chosen on the CUDA minor, not on the torch version. The
+# wheels carry no PTX, so a GPU whose architecture was not compiled in cannot
+# fall back to JIT - it fails on the first kernel with "no kernel image is
+# available". Read out of the published cp312 wheels with cuobjdump:
+#
+#     cu126 (pt2110, pt2120)  sm_70 75 80 86 89 90
+#     cu128 (pt2110)          sm_70 75 80 86 89 90 120
+#     cu132 (pt2120, pt2140)  sm_75 80 86 89 90 120
+#
+# cu128 is a strict superset of cu126, so it costs nothing and adds Blackwell
+# (sm_120, the RTX 50 series). cu132 would drop Volta and needs an r580+ driver
+# for the CUDA 13 runtime - a machine reporting "CUDA Version: 12.9" in
+# nvidia-smi cannot run it. None of the three has Maxwell or Pascal.
+#
+# 2.11.0 is then the newest torch cu128 carries, and shapeaxi wants torch<2.13.
+# To move: change the three values together, check WHEEL_INDEX has the matching
+# pt<ver>cu<minor> for cp310-cp313 on manylinux and win_amd64, and re-read the
+# architectures rather than assuming a newer CUDA covers more.
 TORCH_PINS = {
-    "manylinux": ("2.12.0+cu126", "0.27.0+cu126",
-                  "https://download.pytorch.org/whl/cu126"),
-    "win_amd64": ("2.12.0+cu126", "0.27.0+cu126",
-                  "https://download.pytorch.org/whl/cu126"),
+    "manylinux": ("2.11.0+cu128", "0.26.0+cu128",
+                  "https://download.pytorch.org/whl/cu128"),
+    "win_amd64": ("2.11.0+cu128", "0.26.0+cu128",
+                  "https://download.pytorch.org/whl/cu128"),
     # No CUDA wheel is published for macOS; the index only carries pt280cpu.
     "macosx": ("2.8.0", "0.23.0", None),
 }
