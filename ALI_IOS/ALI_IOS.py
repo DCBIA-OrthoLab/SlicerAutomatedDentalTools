@@ -65,9 +65,11 @@ def check_platform():
 # Import from utils
 if check_platform()=="WSL":
     from ALI_IOS_utils.render import GenPhongRenderer
-    from ALI_IOS_utils.surface import ReadSurf, ScaleSurf, GetSurfProp, RemoveExtraFaces, Upscale
+    from ALI_IOS_utils.surface import (
+        ReadSurf, ScaleSurf, GetSurfProp, RemoveExtraFaces, Upscale, UnifyArchLabels)
     from ALI_IOS_utils.model import dic_cam, dic_label, MODELS_DICT
-    from ALI_IOS_utils.io import GenControlPoint, WriteJson, TradLabel, TradLabelMG
+    from ALI_IOS_utils.io import (
+        GenControlPoint, WriteJson, TradLabel, TradLabelMG, ScanJawFromName)
     from ALI_IOS_utils.orientation import (
         LowerArchMatrix, TransformSurf, TransformPoint, ArchScale)
     from ALI_IOS_utils.segmentation import IsSegmented, SegmentSurface
@@ -82,9 +84,9 @@ if check_platform()=="WSL":
 else :
     from ALI_IOS_utils import (
         GenPhongRenderer, ReadSurf, ScaleSurf,
-        GetSurfProp, RemoveExtraFaces, Upscale,
+        GetSurfProp, RemoveExtraFaces, Upscale, UnifyArchLabels,
         dic_cam, dic_label, MODELS_DICT,
-        GenControlPoint, WriteJson, TradLabel, TradLabelMG, Agent,
+        GenControlPoint, WriteJson, TradLabel, TradLabelMG, ScanJawFromName, Agent,
         LowerArchMatrix, TransformSurf, TransformPoint, ArchScale,
         IsSegmented, SegmentSurface, FillGaps, CompleteLine, SnapAll,
         SmoothAlongArch,
@@ -355,6 +357,7 @@ def main(args):
                         # the landmarks stay valid in the file the user gave.
                         segmented_folder = None
                         segmented_path = None
+                        unified_folder = None
                         if not IsSegmented(path_vtk):
                             segmented_folder = tempfile.mkdtemp(prefix="ALI_IOS_segmented_")
                             segmented = SegmentSurface(path_vtk, folder=segmented_folder)
@@ -365,6 +368,31 @@ def main(args):
                                 continue
                             path_vtk = segmented
                             segmented_path = segmented
+
+                        # The segmentation names each point on its own, and
+                        # nothing in a neighbourhood says which jaw the scan is:
+                        # a maxilla and a mirrored mandible have the same shape,
+                        # only the palate tells them apart. On an arch it cannot
+                        # place, it splits every tooth between its own number and
+                        # the same rank in the other arch -- and the occlusal cap,
+                        # which is exactly where the occlusal landmark sits, tends
+                        # to take the upper number. RemoveExtraFaces then finds no
+                        # face carrying the label it was asked for and the landmark
+                        # is never written, while the wrong model answers on the
+                        # same scan and names its file after both.
+                        unified_folder = None
+                        scan_jaw = ScanJawFromName(patient_path)
+                        surf_labels = ReadSurf(path_vtk)
+                        if UnifyArchLabels(surf_labels, scan_jaw):
+                            unified_folder = tempfile.mkdtemp(prefix="ALI_IOS_unified_")
+                            unified = os.path.join(unified_folder, os.path.basename(path_vtk))
+                            writer = vtk.vtkPolyDataWriter()
+                            writer.SetFileName(unified)
+                            writer.SetInputData(surf_labels)
+                            writer.SetFileTypeToBinary()
+                            writer.Write()
+                            path_vtk = unified
+                        del surf_labels
 
                         model = models_to_use[models_type]['Lower'] if jaw == 'Lower' else models_to_use[models_type]['Upper']
                         camera_position = dic_cam[models_type]['L'] if jaw == 'Lower' else dic_cam[models_type]['U']
@@ -833,6 +861,8 @@ def main(args):
                         if back_to_file is not None:
                             # The oriented copy has served its purpose.
                             shutil.rmtree(os.path.dirname(path_vtk), ignore_errors=True)
+                        if unified_folder is not None:
+                            shutil.rmtree(unified_folder, ignore_errors=True)
                         if segmented_folder is not None:
                             shutil.rmtree(segmented_folder, ignore_errors=True)
                                 

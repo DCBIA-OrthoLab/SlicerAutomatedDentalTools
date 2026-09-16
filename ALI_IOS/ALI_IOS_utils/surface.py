@@ -268,3 +268,94 @@ def Upscale(landmark_pos, mean_arr, scale_factor):
     except Exception as e:
         logger.error(f"Error upscaling landmark: {e}")
         raise
+
+
+# Universal numbering runs 1-16 over the upper arch starting on the patient's
+# right, then 17-32 over the lower starting on the patient's left. Tooth t and
+# tooth t+16 hold the same rank in their own arch, which puts them on opposite
+# sides of the mouth: naming a lower arch in the upper numbering therefore comes
+# out left-right mirrored, and that is what the split below looks like.
+ARCH_OFFSET = 16
+# Two labels whose points share a centre this closely are one tooth, not two.
+# Measured on the scan this was written for, the two families sit 2.8 to 8.0 mm
+# apart while every other pairing of the same labels starts at 18.9 mm, so the
+# threshold is put in the middle of that gap rather than at the edge of either
+# side. A genuine both-arch scan puts t and t+16 on opposite sides AND opposite
+# jaws, tens of millimetres apart, so it never trips this.
+SAME_TOOTH_MM = 12.0
+# One coincidence is a stray patch. A numbering that has split shows on the arch.
+MIN_SPLIT_TEETH = 3
+
+
+def ArchLabelSplit(labels, points, max_distance=SAME_TOOTH_MM):
+    """Teeth carrying both an upper and a lower number, as [(upper, mm), ...].
+
+    The segmentation classifies point by point, with nothing in a local
+    neighbourhood to say which jaw the scan is. On an arch it cannot place it
+    splits each tooth between its own number and the same rank in the other
+    arch, and the occlusal cap -- the part every occlusal landmark sits on --
+    tends to go to the upper number. Empty when the two families describe
+    different teeth, which is the ordinary case of a scan holding both arches.
+    """
+    labels = np.asarray(labels).ravel()
+    points = np.asarray(points)
+    split = []
+    for upper in range(1, ARCH_OFFSET + 1):
+        lower = upper + ARCH_OFFSET
+        here, there = labels == upper, labels == lower
+        if not here.any() or not there.any():
+            continue
+        gap = float(np.linalg.norm(points[here].mean(axis=0) - points[there].mean(axis=0)))
+        if gap <= max_distance:
+            split.append((upper, gap))
+    return split
+
+
+def UnifyArchLabels(surf, jaw, property_name="Universal_ID"):
+    """Renumber a doubly-numbered arch into `jaw`'s numbering, in place.
+
+    Returns the number of points moved, 0 when there was nothing to repair.
+    `jaw` is the arbiter and has to come from outside the geometry: an isolated
+    arch does not determine its own left and right until the jaw is known, since
+    a maxilla and a mirrored mandible have the same shape. The file name is what
+    the rest of the pipeline already trusts for that.
+
+    Every point of the losing family is moved, not only those on the teeth that
+    were caught carrying both numbers: where a tooth was labelled in the wrong
+    numbering alone -- which is what happened to the incisors of the scan this
+    was written for -- it is missing from the split and would stay lost.
+    """
+    if jaw not in ("Upper", "Lower"):
+        return 0
+    array = surf.GetPointData().GetScalars(property_name)
+    if array is None:
+        array = surf.GetPointData().GetArray(property_name)
+    if array is None:
+        return 0
+
+    labels = vtk_to_numpy(array)
+    points = vtk_to_numpy(surf.GetPoints().GetData())
+    split = ArchLabelSplit(labels, points)
+    if len(split) < MIN_SPLIT_TEETH:
+        return 0
+
+    if jaw == "Lower":
+        wrong = (labels >= 1) & (labels <= ARCH_OFFSET)
+        shift = ARCH_OFFSET
+    else:
+        wrong = (labels > ARCH_OFFSET) & (labels <= 2 * ARCH_OFFSET)
+        shift = -ARCH_OFFSET
+
+    moved = int(wrong.sum())
+    if not moved:
+        return 0
+
+    labels[wrong] += shift
+    array.Modified()
+    logger.warning(
+        "%d teeth are numbered twice, once in each arch (%s), so the segmentation "
+        "could not tell which jaw this scan is. Reading it as %s from its name and "
+        "moving %d point(s) onto that numbering."
+        % (len(split), ", ".join("%d/%d at %.1f mm" % (t, t + ARCH_OFFSET, d)
+                                 for t, d in split[:4]), jaw.lower(), moved))
+    return moved

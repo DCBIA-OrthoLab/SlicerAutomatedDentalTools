@@ -50,6 +50,7 @@ def check_platform():
 if check_platform()=="WSL":
     from ASO_IOS_utils.utils import UpperOrLower, search, ReadSurf, WriteSurf, WritefileError, saveMatrixAsTfm, PatientNumber
     from ASO_IOS_utils.icp import vtkICP, vtkMeanTeeth, InitIcp, ICP, ToothNoExist, NoSegmentationSurf
+    from ASO_IOS_utils.arch_labels import UnifyArchLabels
     from ASO_IOS_utils.data_file import Files_vtk_link, Jaw, Lower, Upper
     from ASO_IOS_utils.transformation import TransformSurf
     from ASO_IOS_utils.pre_icp import PrePreAso
@@ -58,6 +59,7 @@ else:
     from ASO_IOS_utils import (
         UpperOrLower, search, ReadSurf, WriteSurf, WritefileError, saveMatrixAsTfm, PatientNumber,
         vtkICP, vtkMeanTeeth, InitIcp, ICP, ToothNoExist, NoSegmentationSurf,
+        UnifyArchLabels,
         Files_vtk_link, Jaw, Lower, Upper,
         TransformSurf,
         PrePreAso,
@@ -358,6 +360,12 @@ def main(args):
                 # ===== Stage 8.1: Surface Loading =====
                 try:
                     surf = ReadSurf(file_vtk)
+                    # An arch the segmentation numbered in both jaws loses the
+                    # teeth this module fits on: their points went to the other
+                    # jaw's number, so vtkMeanTeeth finds nothing and the arch is
+                    # dropped. Repaired here, before the teeth are looked up, and
+                    # carried into what WriteSurf saves for the rest of the run.
+                    UnifyArchLabels(surf, jaw())
                     logger.debug(f"Surface loaded for {os.path.basename(file_vtk)}")
                 except Exception as sl_err:
                     error_msg = f"Failed to load surface: {str(sl_err)}"

@@ -1,13 +1,15 @@
 from .render import GenPhongRenderer
 from .surface import (
     ReadSurf, ScaleSurf, ComputeNormals, GetColorArray,
-    GetSurfProp, RemoveExtraFaces, Upscale
+    GetSurfProp, RemoveExtraFaces, Upscale,
+    UnifyArchLabels, ArchLabelSplit
 )
 from .model import (
     dic_cam, dic_label, LANDMARKS, LOWER_DENTAL,
     UPPER_DENTAL, TYPE_LM, MODELS_DICT, LABEL_L, LABEL_U
 )
-from .io import GenControlPoint, WriteJson, TradLabel, TradLabelMG
+from .io import (GenControlPoint, WriteJson, TradLabel, TradLabelMG,
+                 ScanJawFromName)
 from .orientation import LowerArchMatrix, TransformSurf, TransformPoint, ArchScale
 from .segmentation import IsSegmented, SegmentSurface
 from .fill_gaps import FillGaps

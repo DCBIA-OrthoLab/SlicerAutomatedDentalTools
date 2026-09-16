@@ -199,3 +199,34 @@ def TradLabel(teeth_list):
     except Exception as e:
         logger.error(f"Error in TradLabel: {e}")
         raise
+
+
+def ScanJawFromName(path):
+    """'Upper', 'Lower' or None, read from the tokens of an input scan's name.
+
+    The letter has to be a token of its own so that "Dupont_003_T1_L.vtk" is not
+    read as upper on the u of Dupont, and a name claiming both jaws is refused
+    rather than resolved to one of them.
+
+    Deliberately not ASO_IOS_utils.JawFromFileName, which answers a different
+    question on the same input. That one reads names ALI_IOS has already
+    written, where the jaw of the model is appended after the jaw of the scan,
+    so a name holding both markers means "this model, on that scan" and its
+    last marker is the answer. This one reads the scan before anything is
+    appended: a second marker there is a name nobody can interpret, and
+    renumbering an arch on a guess is worse than leaving it alone. Same refusal
+    as AREG_IOSCBCT.extract_jaw, which reads the same files further down.
+    """
+    import re
+
+    name = os.path.basename(path)
+    upper = re.search(r'(?:^|_)(?:u|upper|max|mx)(?=_|\.|$)', name, re.IGNORECASE)
+    lower = re.search(r'(?:^|_)(?:l|lower|mand|md)(?=_|\.|$)', name, re.IGNORECASE)
+    if upper and lower:
+        logger.warning(f"{name} names both jaws, so it cannot say which one it is")
+        return None
+    if upper:
+        return "Upper"
+    if lower:
+        return "Lower"
+    return None
