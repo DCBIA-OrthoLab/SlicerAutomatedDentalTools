@@ -14,13 +14,17 @@ Wheels there carry a local version tag describing what they were built against
 not match the installed torch produces an ``undefined symbol`` crash on import,
 so the tag is computed from torch rather than left to pip's resolver.
 
-torch itself is installed here too, at a pinned build, because computing the tag
-from whatever torch happens to be present only works if that torch has a wheel.
-It used to be pulled in beforehand by ``condaCreateEnv(["torch>=2.8,<2.13", ...])``,
-which cannot pass an index URL and so took PyPI's default CUDA variant - on
+torch itself is installed here too, because computing the tag from whatever
+torch happens to be present only works if that torch has a wheel. It used to be
+pulled in beforehand by ``condaCreateEnv(["torch>=2.8,<2.13", ...])``, which
+cannot pass an index URL and so took PyPI's default CUDA variant - on
 2026-09-16 that was ``2.12.1+cu130``, a combination this index does not publish
 and never will, since it builds against release torch versions and other CUDA
 minors.
+
+The pin in ``TORCH_PINS`` is what a *new* environment gets. An existing torch is
+only replaced when the index publishes no wheel for it; one that is supported is
+kept, whatever the pin says. See ``install_torch``.
 """
 import logging
 import re
@@ -94,8 +98,23 @@ def platform_tag():
     return "manylinux"
 
 
+_wheel_cache = None
+
+
 def list_wheels():
-    """Return [(filename, url)] published on the index, or [] if unreachable."""
+    """Return [(filename, url)] published on the index, or [] if unreachable.
+
+    Read once per run: install_torch and install_pytorch3d both need it, and
+    one listing is one fewer thing that can fail between them.
+    """
+    global _wheel_cache
+    if _wheel_cache is not None:
+        return _wheel_cache
+    _wheel_cache = _read_index()
+    return _wheel_cache
+
+
+def _read_index():
     try:
         with urllib.request.urlopen(WHEEL_LISTING, timeout=60) as response:
             html = response.read().decode("utf-8", "replace")
@@ -134,18 +153,49 @@ def run_pip(pip_path, args):
 
 
 def install_torch(pip_path):
-    """Install the exact torch build the pytorch3d wheels were compiled against.
+    """Put torch on a build the index publishes a pytorch3d wheel for.
 
-    Run before anything that depends on torch, and idempotent: pip reports the
-    pin as already satisfied on later launches. On an environment that has
-    drifted - one where a module installed a plain `torch` and got 2.14.0+cu130
-    - this is what pulls it back onto a build pytorch3d is published for.
+    Only when it is not on one already. Any torch with a published wheel is
+    left exactly as it is, even though it is not the pin: replacing it can only
+    lose ground. It would mean a 3 GB download, and it would swap whatever GPU
+    coverage that build has for the pin's - an environment on 2.11.0+cu128
+    moved to cu126 loses the Blackwell kernels CUDA 12.8 added.
+
+    This has to hold on every launch, not just the first: FlexReg calls
+    install_pytorch3d unconditionally (it defines check_if_pytorch3d and never
+    calls it), so this module runs on each of its boots. ASO, AREG, ALI and
+    DOCShapeAXI only reach it when check_if_pytorch3d has already failed.
     """
     plat_tag = platform_tag()
+    py_tag = "cp3{}".format(sys.version_info.minor)
     pin = TORCH_PINS.get(plat_tag)
     if pin is None:
         logger.error("No torch pin for platform '{}'.".format(plat_tag))
         return False
+
+    wheels = list_wheels()
+    if not wheels:
+        # Without the listing there is no way to tell a supported torch from an
+        # unsupported one. Reinstalling on a guess is the expensive, damaging
+        # direction, so stop here and leave the environment untouched.
+        logger.error(
+            "The pytorch3d wheel index is unreachable, so which torch builds "
+            "are supported cannot be established. Leaving torch alone.")
+        return False
+
+    try:
+        current = torch_build_tag()
+    except Exception:
+        current = None  # no torch in this environment yet
+
+    if current and select_wheel(wheels, py_tag, plat_tag, current):
+        logger.info(
+            "torch is at {}, which has a published pytorch3d wheel - keeping "
+            "it rather than moving to the {} pin.".format(current, pin[0]))
+        return True
+
+    if current:
+        logger.info("torch {} has no published pytorch3d wheel.".format(current))
 
     torch_version, vision_version, index = pin
     args = ["torch=={}".format(torch_version), "torchvision=={}".format(vision_version)]
