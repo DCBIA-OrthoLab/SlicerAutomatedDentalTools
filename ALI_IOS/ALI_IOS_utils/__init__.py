@@ -9,7 +9,7 @@ from .model import (
     UPPER_DENTAL, TYPE_LM, MODELS_DICT, LABEL_L, LABEL_U
 )
 from .io import (GenControlPoint, WriteJson, TradLabel, TradLabelMG,
-                 JawFromFileName)
+                 ScanJawFromName)
 from .orientation import LowerArchMatrix, TransformSurf, TransformPoint, ArchScale
 from .segmentation import IsSegmented, SegmentSurface
 from .fill_gaps import FillGaps

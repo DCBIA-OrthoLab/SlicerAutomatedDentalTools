@@ -69,7 +69,7 @@ if check_platform()=="WSL":
         ReadSurf, ScaleSurf, GetSurfProp, RemoveExtraFaces, Upscale, UnifyArchLabels)
     from ALI_IOS_utils.model import dic_cam, dic_label, MODELS_DICT
     from ALI_IOS_utils.io import (
-        GenControlPoint, WriteJson, TradLabel, TradLabelMG, JawFromFileName)
+        GenControlPoint, WriteJson, TradLabel, TradLabelMG, ScanJawFromName)
     from ALI_IOS_utils.orientation import (
         LowerArchMatrix, TransformSurf, TransformPoint, ArchScale)
     from ALI_IOS_utils.segmentation import IsSegmented, SegmentSurface
@@ -86,7 +86,7 @@ else :
         GenPhongRenderer, ReadSurf, ScaleSurf,
         GetSurfProp, RemoveExtraFaces, Upscale, UnifyArchLabels,
         dic_cam, dic_label, MODELS_DICT,
-        GenControlPoint, WriteJson, TradLabel, TradLabelMG, JawFromFileName, Agent,
+        GenControlPoint, WriteJson, TradLabel, TradLabelMG, ScanJawFromName, Agent,
         LowerArchMatrix, TransformSurf, TransformPoint, ArchScale,
         IsSegmented, SegmentSurface, FillGaps, CompleteLine, SnapAll,
         SmoothAlongArch,
@@ -381,7 +381,7 @@ def main(args):
                         # is never written, while the wrong model answers on the
                         # same scan and names its file after both.
                         unified_folder = None
-                        scan_jaw = JawFromFileName(patient_path)
+                        scan_jaw = ScanJawFromName(patient_path)
                         surf_labels = ReadSurf(path_vtk)
                         if UnifyArchLabels(surf_labels, scan_jaw):
                             unified_folder = tempfile.mkdtemp(prefix="ALI_IOS_unified_")
