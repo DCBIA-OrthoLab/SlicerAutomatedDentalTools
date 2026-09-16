@@ -13,6 +13,14 @@ Wheels there carry a local version tag describing what they were built against
 (``0.7.9+pt2110cu128`` = torch 2.11.0, CUDA 12.8). Installing one whose tag does
 not match the installed torch produces an ``undefined symbol`` crash on import,
 so the tag is computed from torch rather than left to pip's resolver.
+
+torch itself is installed here too, at a pinned build, because computing the tag
+from whatever torch happens to be present only works if that torch has a wheel.
+It used to be pulled in beforehand by ``condaCreateEnv(["torch>=2.8,<2.13", ...])``,
+which cannot pass an index URL and so took PyPI's default CUDA variant - on
+2026-09-16 that was ``2.12.1+cu130``, a combination this index does not publish
+and never will, since it builds against release torch versions and other CUDA
+minors.
 """
 import logging
 import re
@@ -23,6 +31,36 @@ import urllib.request
 
 WHEEL_INDEX = "https://ImageMindAnalytics.github.io/pytorch3d-wheels/simple/"
 WHEEL_LISTING = WHEEL_INDEX + "pytorch3d/"
+
+# The torch build every other package in this environment has to agree with.
+#
+# pytorch3d and torchvision both link against libtorch, so version *and* CUDA
+# minor have to match the wheel exactly. Each mismatch fails differently and
+# none of them says "wrong version": pytorch3d built for another torch raises
+# `undefined symbol: _ZN3c104cuda...` on import, torchvision built for another
+# torch raises `RuntimeError: operator torchvision::nms does not exist`, and
+# that second one only surfaces from inside shapeaxi.dental_model_seg, long
+# after pytorch3d itself imports and runs CUDA kernels fine.
+#
+# 2.12.0+cu126 is chosen because WHEEL_INDEX publishes pt2120cu126 for cp310 to
+# cp313 on both manylinux and win_amd64, and because shapeaxi requires
+# torch<2.13. To move to a newer torch, change the three values together and
+# check that WHEEL_INDEX has the matching pt<ver>cu<minor> for every
+# interpreter: cp312 currently also has pt2120cu132 and pt2140cu132, which
+# carry kernels for more recent GPUs but no longer satisfy shapeaxi.
+TORCH_PINS = {
+    "manylinux": ("2.12.0+cu126", "0.27.0+cu126",
+                  "https://download.pytorch.org/whl/cu126"),
+    "win_amd64": ("2.12.0+cu126", "0.27.0+cu126",
+                  "https://download.pytorch.org/whl/cu126"),
+    # No CUDA wheel is published for macOS; the index only carries pt280cpu.
+    "macosx": ("2.8.0", "0.23.0", None),
+}
+
+# Declared by shapeaxi anyway, but installed here so it resolves against the
+# pinned torch. Listed in condaCreateEnv it did the opposite: it declares an
+# unbounded `torch` dependency, so it dragged PyPI's default build in first.
+EXTRA_REQUIREMENTS = ["ocnn==2.2.1"]
 
 # ===== Logging Configuration =====
 logger = logging.getLogger("AREG_install_pytorch")
@@ -95,6 +133,45 @@ def run_pip(pip_path, args):
     return result.returncode == 0
 
 
+def install_torch(pip_path):
+    """Install the exact torch build the pytorch3d wheels were compiled against.
+
+    Run before anything that depends on torch, and idempotent: pip reports the
+    pin as already satisfied on later launches. On an environment that has
+    drifted - one where a module installed a plain `torch` and got 2.14.0+cu130
+    - this is what pulls it back onto a build pytorch3d is published for.
+    """
+    plat_tag = platform_tag()
+    pin = TORCH_PINS.get(plat_tag)
+    if pin is None:
+        logger.error("No torch pin for platform '{}'.".format(plat_tag))
+        return False
+
+    torch_version, vision_version, index = pin
+    args = ["torch=={}".format(torch_version), "torchvision=={}".format(vision_version)]
+    if index:
+        # --index-url replaces PyPI, so the +cuXXX local versions resolve from
+        # the pytorch index; --extra-index-url puts PyPI back for everything
+        # else these two pull in.
+        args += ["--index-url", index, "--extra-index-url", "https://pypi.org/simple"]
+
+    logger.info("Pinning torch {} / torchvision {}".format(torch_version, vision_version))
+    if run_pip(pip_path, args):
+        return True
+    logger.error("Could not install the pinned torch build.")
+    return False
+
+
+def install_extras(pip_path):
+    """Install the torch-dependent packages that used to sit in condaCreateEnv."""
+    if not EXTRA_REQUIREMENTS:
+        return True
+    if run_pip(pip_path, list(EXTRA_REQUIREMENTS)):
+        return True
+    logger.error("Could not install {}.".format(", ".join(EXTRA_REQUIREMENTS)))
+    return False
+
+
 def verify_gpu():
     """
     Run a real pytorch3d CUDA kernel.
@@ -161,19 +238,31 @@ def install_pytorch3d(pip_path):
     plat_tag = platform_tag()
     logger.info("Looking for pytorch3d matching {} / {} / {}".format(py_tag, plat_tag, torch_tag))
 
-    installed = False
     selected = select_wheel(list_wheels(), py_tag, plat_tag, torch_tag)
-    if selected:
-        name, url = selected
-        logger.info("Selected wheel: {}".format(name))
-        installed = run_pip(pip_path, [url])
-    else:
-        logger.warning(
-            "No prebuilt wheel for {} / {} / {}. Letting pip resolve from the "
-            "index; if it picks a build tagged for another torch, pytorch3d "
-            "will fail to import.".format(py_tag, plat_tag, torch_tag)
-        )
-        installed = run_pip(pip_path, ["pytorch3d", "--extra-index-url", WHEEL_INDEX])
+    if not selected:
+        # Deliberately not falling back to `pip install pytorch3d
+        # --extra-index-url`. pip has no way to know which build matches this
+        # torch, so it takes the highest local version on the index - that is
+        # how an environment on torch 2.12.1 ended up with 0.7.9+pt2140cu132
+        # and an `undefined symbol` on every import. Worse, that install
+        # reports success and sticks: check_if_pytorch3d then fails on every
+        # launch, and the module reinstalls the same broken wheel each time.
+        expected = TORCH_PINS.get(plat_tag)
+        logger.error("No pytorch3d wheel published for {} / {} / {}.".format(
+            py_tag, plat_tag, torch_tag))
+        if expected:
+            logger.error(
+                "This environment is not on the pinned torch build. Expected "
+                "torch {}; install_torch should have put it there.".format(expected[0]))
+        logger.error(
+            "Refusing to let pip pick another build: it would install one "
+            "tagged for a different torch, which imports as 'undefined symbol' "
+            "and has to be uninstalled by hand.")
+        return False
+
+    name, url = selected
+    logger.info("Selected wheel: {}".format(name))
+    installed = run_pip(pip_path, [url])
 
     if not installed:
         logger.error("pytorch3d installation failed.")
@@ -247,10 +336,19 @@ def patch_dentalmodelseg():
 
 
 def main(pip_path):
+    # Order matters: every step below resolves against the torch installed by
+    # the one before it.
+    if not install_torch(pip_path):
+        logger.error(
+            "Not installing pytorch3d: it has to be built against the torch in "
+            "this environment, and that torch is not the pinned one.")
+        return
     if not install_pytorch3d(pip_path):
         logger.error(
             "Not installing shapeaxi: it requires a working pytorch3d, and pip "
             "cannot resolve pytorch3d from PyPI on its own.")
+        return
+    if not install_extras(pip_path):
         return
     if install_shapeaxi(pip_path):
         patch_dentalmodelseg()
