@@ -826,14 +826,16 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     urls = listmodel[name]
     if isinstance(urls, str):
       url = urls
-      _ = self.DownloadUnzip(
+      # Keep the release tag in the folder name: DownloadUnzip skips a
+      # destination that already exists, so a model added to a later release
+      # would otherwise stay hidden behind the folder an earlier one left.
+      model_folder = self.DownloadUnzip(
           url=url,
           directory=os.path.join(self.SlicerDownloadPath),
-          folder_name=os.path.join("Models", name),
+          folder_name=os.path.join("Models", name, url.rsplit("/", 2)[-2]),
           num_downl=1,
           total_downloads=1,
       )
-      model_folder = os.path.join(self.SlicerDownloadPath, "Models", name)
 
     elif isinstance(urls, dict):
       for i, (name_bis, url) in enumerate(urls.items()):
