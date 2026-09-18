@@ -1132,38 +1132,75 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not os.path.exists(self.SlicerDownloadPath):
             os.makedirs(self.SlicerDownloadPath)
 
+        # Flattened first so the progress dialog can say which archive of how many
+        # is running. The ALI landmarks alone are 8 archives and 13 GB: shown as
+        # "File 1/1" each, they read as one download restarting for ever.
+        archives = []
         for name, url_or_dict in dic_url.items():
             if isinstance(url_or_dict, str):
-                self.DownloadUnzip(
-                    url=url_or_dict,
-                    directory=self.SlicerDownloadPath,
-                    folder_name=name,
-                    check_file=check_files.get(name),
-                )
+                archives.append((name, url_or_dict, check_files.get(name)))
             elif isinstance(url_or_dict, dict):
                 for subfolder_name, url in url_or_dict.items():
-                    self.DownloadUnzip(
-                        url=url,
-                        directory=self.SlicerDownloadPath,
-                        folder_name=os.path.join(name, subfolder_name),
+                    archives.append(
+                        (os.path.join(name, subfolder_name), url, check_files.get(subfolder_name))
                     )
             else:
                 logger.warning(f"Warning: Unknown type for {name}: {type(url_or_dict)}")
+
+        for i, (folder_name, url, check_file) in enumerate(archives):
+            self.DownloadUnzip(
+                url=url,
+                directory=self.SlicerDownloadPath,
+                folder_name=folder_name,
+                num_downl=i + 1,
+                total_downloads=len(archives),
+                check_file=check_file,
+            )
             
+    # Written inside the folder once the archive is fully extracted. The folder
+    # alone cannot answer "is this installed": it is created before the download
+    # starts, so a Slicer killed mid-download (or a failed request) leaves it
+    # behind empty and the model is then skipped for ever.
+    DOWNLOAD_MARKER = ".adt_download_complete"
+
+    def IsDownloaded(self, out_path, check_file=None):
+        """True if the archive already lies fully extracted in out_path."""
+        if os.path.exists(os.path.join(out_path, self.DOWNLOAD_MARKER)):
+            return True
+
+        # Folders downloaded before the marker existed: accept them, on the same
+        # evidence as before (non-empty, and containing check_file when given),
+        # and stamp them so the test is cheap from now on.
+        if not os.path.isdir(out_path) or not os.listdir(out_path):
+            return False
+        if check_file and not os.path.exists(os.path.join(out_path, check_file)):
+            return False
+        self.MarkDownloaded(out_path)
+        return True
+
+    def MarkDownloaded(self, out_path):
+        try:
+            with open(os.path.join(out_path, self.DOWNLOAD_MARKER), "w") as marker:
+                marker.write("")
+        except OSError as e:
+            logger.warning(f"Could not write the download marker in {out_path}: {e}")
+
     def DownloadUnzip(self, url, directory, folder_name=None, num_downl=1, total_downloads=1, check_file=None):
 
         out_path = os.path.join(directory, folder_name)
-        # The folder alone is a poor "already installed" test: another feature may
-        # have created it (Default List creates V_FACE/DefaultList, hence V_FACE),
-        # and a download that fails leaves it behind empty. Either way this skipped
-        # the download for ever. check_file names something the archive contains.
-        installed = os.path.join(out_path, check_file) if check_file else out_path
-        if not os.path.exists(installed):
-            logger.info("Downloading {}...".format(folder_name.split(os.sep)[-1]))
-            os.makedirs(out_path, exist_ok=True)
+        if self.IsDownloaded(out_path, check_file):
+            return
 
-            temp_path = os.path.join(directory, "temp.zip")
+        label = folder_name.split(os.sep)[-1]
+        logger.info(f"Downloading {label} ({num_downl}/{total_downloads})...")
+        # V_FACE is created by the Default List button before its models exist, so
+        # a failure there must not take the folder down with it.
+        created_here = not os.path.isdir(out_path)
+        os.makedirs(out_path, exist_ok=True)
 
+        temp_path = os.path.join(directory, "temp.zip")
+
+        try:
             # Download the zip file from the url
             with urllib.request.urlopen(url) as response, open(
                 temp_path, "wb"
@@ -1171,7 +1208,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 # Pop up a progress bar with a QProgressDialog
                 progress = qt.QProgressDialog(
                     "Downloading {} (File {}/{})".format(
-                        folder_name.split(os.sep)[0], num_downl, total_downloads
+                        label, num_downl, total_downloads
                     ),
                     "Cancel",
                     0,
@@ -1181,7 +1218,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 progress.setCancelButton(None)
                 progress.setWindowModality(qt.Qt.WindowModal)
                 progress.setWindowTitle(
-                    "Downloading {}...".format(folder_name.split(os.sep)[0])
+                    "Downloading {} ({}/{})...".format(label, num_downl, total_downloads)
                 )
                 # progress.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
                 progress.show()
@@ -1203,11 +1240,17 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # Unzip the file
             with zipfile.ZipFile(temp_path, "r") as zip:
                 zip.extractall(out_path)
+        except BaseException:
+            # Leave nothing that could pass for an installed model on the next run.
+            if created_here:
+                shutil.rmtree(out_path, ignore_errors=True)
+            raise
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
-            # Delete the zip file
-            os.remove(temp_path)
-
-            logger.info(f"{folder_name} has been successfully installed")
+        self.MarkDownloaded(out_path)
+        logger.info(f"{folder_name} has been successfully installed")
 
     def CheckDependency(self) -> None:
         """
