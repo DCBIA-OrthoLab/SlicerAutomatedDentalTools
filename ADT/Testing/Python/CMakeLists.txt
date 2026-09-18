@@ -83,3 +83,7 @@ slicer_add_python_unittest(SCRIPT test_areg_review_skips_the_report.py)
 # ASO: it used to be cleared in silence, and a prod run wrote 2.5 GB into the
 # test set's own tree while its author watched the folder they had chosen.
 slicer_add_python_unittest(SCRIPT test_output_folder_survives_mode_switch.py)
+
+# Where ALI CBCT's agent is allowed to stand: the line that decided accepted
+# negative coordinates and refused the padded margin.
+slicer_add_python_unittest(SCRIPT test_ali_cbct_bounds.py)

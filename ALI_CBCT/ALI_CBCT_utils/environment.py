@@ -243,6 +243,34 @@ class Environment :
     def GetSize(self,scale):
         return self.data[scale]["size"]
 
+    def GetSamplableBounds(self,scale,crop_size):
+        """The positions GetZone can still centre a whole crop on, both ends
+        included.
+
+        LoadImages pads the volume by `self.padding` voxels on every side and
+        GetZone crops the PADDED tensor at `position + self.padding`. So the
+        zone a whole crop fits in is not `0 .. GetSize(scale) - 1` but
+
+            crop_size // 2 - padding  ..  size + padding - (crop_size - crop_size // 2)
+
+        that is, one voxel past each face of the scan with the padding ALI
+        uses, `agent_FOV / 2 + 1`. Measured on a (120, 130, 140) volume with
+        FOV 64 and padding 33: -1 through 121 all give a full 64^3 crop, 122
+        gives 63^3.
+
+        Outside those bounds SpatialCrop gives no sign. Above the high bound
+        it silently returns a SMALLER crop; below the low bound it clamps the
+        crop start at zero instead, so EVERY position out that side reads the
+        very same zone -- the network then keeps answering the same move and
+        the agent walks away from the volume for as long as it is allowed to.
+        """
+        crop_size = np.asarray(crop_size, dtype=np.int32)
+        padding = np.asarray(self.padding, dtype=np.int32)
+        size = np.asarray(self.GetSize(scale), dtype=np.int32)
+        low = crop_size // 2 - padding
+        high = size + padding - (crop_size - crop_size // 2)
+        return low, high
+
     def AddPredictedLandmark(self,lm_id,lm_pos):
         self.predicted_landmarks[lm_id] = lm_pos
 

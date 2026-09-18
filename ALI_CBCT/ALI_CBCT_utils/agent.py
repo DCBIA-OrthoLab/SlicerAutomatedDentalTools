@@ -109,7 +109,43 @@ def GetAgentLst(agents_param):
     
 def OUT_WARNING():
     logger.warning("WARNING: Agent trying to move to a non-existing space")
-    
+
+
+def InsideSamplableZone(position, low, high):
+    """May the agent stand here -- can GetZone read a whole field of view?
+
+    `low` and `high` come from Environment.GetSamplableBounds, which derives
+    them from the padding GetZone crops inside. One rule, both ends: the
+    agent may stand wherever the state it is about to read is the real one.
+
+    This replaces `new_pos.all() > 0 and (new_pos < GetSize(scale)).all()`,
+    wrong on both sides, and the two sides have to be repaired together.
+
+    The floor. `new_pos.all()` reduces the array to ONE boolean before the
+    comparison: `True > 0` is True and `False > 0` is False, so the test read
+    "no coordinate is exactly zero", never "every coordinate is positive".
+    Two opposite faults at once. Coordinates far out on the negative side
+    went through, and they are the expensive ones -- SpatialCrop clamps a
+    negative crop start at zero, so they all read the SAME zone, the network
+    keeps answering the same move, and the agent walks out of the volume for
+    as long as its budget lasts. Meanwhile a step onto a coordinate of
+    exactly ZERO -- a real voxel, which GetZone reads perfectly -- was
+    refused, and cost one of the three attempts a search is allowed. That
+    second fault is what kept `Me` out of reach on a scan whose chin sits on
+    the bottom slice: measured on MG_test_scan, the search was refused the
+    step from voxel 1 to voxel 0 three times and gave up.
+
+    The ceiling. It was `GetSize`, the size of the volume BEFORE padding,
+    while GetZone crops the padded tensor. The agent forbade itself a zone it
+    can read, and paid an attempt for each step into it.
+
+    Repairing the floor without widening the ceiling would make the agent
+    give up EARLIER near a face, which is why neither half travels alone.
+    """
+    position = np.asarray(position)
+    return bool((position >= low).all() and (position <= high).all())
+
+
 class Agent :
     """Agent class for landmark search with error handling."""
     
@@ -242,7 +278,9 @@ class Agent :
 
     def Move(self, movement_idx):
         new_pos = self.position + self.movement_matrix[movement_idx]*self.speed
-        if new_pos.all() > 0 and (new_pos < self.environement.GetSize(self.scale_keys[self.scale_state])).all():
+        low, high = self.environement.GetSamplableBounds(
+            self.scale_keys[self.scale_state], self.FOV)
+        if InsideSamplableZone(new_pos, low, high):
             self.position = new_pos
         else:
             OUT_WARNING()
