@@ -10,6 +10,7 @@ import urllib.request
 import shutil
 import zipfile
 import sys
+import importlib.metadata as importlib_metadata
 
 # ===== Logging Configuration =====
 logger = logging.getLogger("VFACE")
@@ -56,6 +57,95 @@ from slicer.parameterNodeWrapper import (
 
 from slicer import vtkMRMLScalarVolumeNode
 import qt
+
+
+# VFACE drives the CLIs of the other modules (PRE_ASO_CBCT, ALI_CBCT, AMASSS_CLI,
+# AREG_CBCT, AUTOMATRIX_CLI, VFACE_CLI). Each of them imports its own third-party
+# stack at module level, so a missing package is not a degraded run: the CLI dies
+# on the import line and VFACE reports the step as failed. Until now this module
+# only installed its own joblib and lightgbm and relied on the user having opened
+# AMASSS, ASO or AREG first; on a fresh Slicer the first CLI step always failed
+# with ModuleNotFoundError.
+# The versions mirror the lists those modules install themselves.
+CLI_LIBRARIES = [
+    # (distribution name, pip requirement)
+    ("joblib", "joblib"),
+    ("lightgbm", "lightgbm"),
+    ("psutil", "psutil"),
+    ("itk", "itk==5.4.0"),
+    ("itk-elastix", "itk-elastix==0.19.2"),
+    ("dicom2nifti", "dicom2nifti==2.6.2"),
+    ("einops", "einops"),
+    ("nibabel", "nibabel"),
+    ("connected-components-3d", "connected-components-3d>=3.13.0"),
+    ("pandas", "pandas"),
+    ("blosc2", "blosc2"),
+    ("monai", "monai==1.3.2"),
+    ("pytorch_lightning", "pytorch_lightning"),
+    ("nnunetv2", "nnunetv2==2.8.0"),
+]
+
+# torch, torchvision and torchaudio have to be resolved together against the same
+# CUDA build, hence a single pip call, exactly like AMASSS does.
+TORCH_REQUIREMENT = (
+    "torch>=2.2.0 torchvision torchaudio "
+    "--extra-index-url https://download.pytorch.org/whl/cu118"
+)
+
+# torch 2.2.0 is compiled against numpy 1.x: numpy>=2 breaks every torch import
+# with "_ARRAY_API not found", including in the nnUNet subprocesses.
+NUMPY_PINNED_VERSION = "1.26.4"
+
+
+def is_lib_installed(distribution_name):
+    """
+    True if the distribution is installed in Slicer's Python.
+
+    The distribution name is used rather than an import: itk-elastix has no
+    module of its own (it grafts itself onto itk), and importing torch or monai
+    just to test their presence costs seconds every time the button is pressed.
+    """
+    try:
+        importlib_metadata.version(distribution_name)
+        return True
+    except importlib_metadata.PackageNotFoundError:
+        return False
+
+
+def fix_numpy_version():
+    """
+    Restore the numpy version torch was built against.
+    pip resolves each install independently, so a package installed afterwards
+    (nnunetv2 requires numpy>=1.24) can silently pull numpy 2.x and break torch.
+    Has to be re-checked once every package is installed.
+    """
+    from packaging.version import Version
+
+    try:
+        import numpy
+
+        installed_version = numpy.__version__
+    except ImportError:
+        installed_version = None
+
+    try:
+        import torch
+
+        torch_needs_numpy1 = Version(torch.__version__.split("+")[0]) < Version("2.3.0")
+    except ImportError:
+        torch_needs_numpy1 = True
+
+    if not torch_needs_numpy1:
+        return False
+
+    if installed_version is None or Version(installed_version) >= Version("2.0.0"):
+        logger.info(
+            f"numpy {installed_version} is incompatible with torch: "
+            f"reinstalling numpy=={NUMPY_PINNED_VERSION}"
+        )
+        slicer.util.pip_install(f"numpy=={NUMPY_PINNED_VERSION}")
+        return True
+    return False
 
 
 #
@@ -1121,49 +1211,73 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def CheckDependency(self) -> None:
         """
-        Check and install required Python dependencies for VFACE module.
-        
-        Verifies installation of joblib and lightgbm, installs if missing,
-        and downloads required model files.
+        Check and install the Python dependencies the VFACE pipeline needs.
+
+        VFACE runs its steps through the CLIs of the other modules, and those
+        import their third-party stack at module level: anything missing kills
+        the CLI on its import line. The whole set is therefore installed here,
+        not only the joblib and lightgbm VFACE itself imports.
         """
         try:
             logger.info("=== Checking and installing Python dependencies ===")
-            
-            # Check and install joblib
-            try:
-                import joblib
-                logger.info(f"joblib is already installed (version: {joblib.__version__})")
-            except ImportError:
-                logger.warning("joblib not found, installing...")
+
+            missing = [
+                (distribution, requirement)
+                for distribution, requirement in CLI_LIBRARIES
+                if not is_lib_installed(distribution)
+            ]
+            torch_missing = not is_lib_installed("torch")
+
+            total = len(missing) + (1 if torch_missing else 0)
+            if total == 0:
+                logger.info("All required libraries are already installed")
+            else:
+                logger.info(f"{total} librarie(s) to install")
+
+            installed = 0
+            if torch_missing:
+                installed += 1
+                logger.warning("torch not found, installing...")
+                logger.info(
+                    f"Installing torch, torchvision and torchaudio "
+                    f"({installed}/{total})... (this may take a while)"
+                )
                 try:
-                    logger.info("Installing joblib...")
-                    slicer.util.pip_install('joblib')
-                    import joblib
-                    logger.info(f"joblib successfully installed (version: {joblib.__version__})")
+                    slicer.util.pip_install(TORCH_REQUIREMENT)
                 except Exception as e:
-                    logger.error(f"Failed to install joblib: {str(e)}")
+                    logger.error(f"Failed to install torch: {str(e)}")
                     raise
-            
-            # Check and install lightgbm
-            try:
-                import lightgbm
-                logger.info(f"lightgbm is already installed (version: {lightgbm.__version__})")
-            except ImportError:
-                logger.warning("lightgbm not found, installing...")
+
+            for distribution, requirement in missing:
+                installed += 1
+                logger.warning(f"{distribution} not found, installing...")
+                logger.info(f"Installing {requirement} ({installed}/{total})...")
                 try:
-                    logger.info("Installing lightgbm... (this may take a while)")
-                    slicer.util.pip_install('lightgbm')
-                    import lightgbm
-                    logger.info(f"lightgbm successfully installed (version: {lightgbm.__version__})")
+                    slicer.util.pip_install(requirement)
                 except Exception as e:
-                    logger.error(f"Failed to install lightgbm: {str(e)}")
+                    logger.error(f"Failed to install {requirement}: {str(e)}")
                     raise
-            
+
+            # Has to come last: any install above can have pulled numpy 2.x back in.
+            fix_numpy_version()
+
+            still_missing = [
+                distribution
+                for distribution, _ in CLI_LIBRARIES + [("torch", "torch")]
+                if not is_lib_installed(distribution)
+            ]
+            if still_missing:
+                raise RuntimeError(
+                    "These libraries are still missing after installation: "
+                    + ", ".join(still_missing)
+                    + ".\nRestart Slicer and run the check again."
+                )
+
             logger.info("=== Python dependencies check completed ===")
             logger.info("--- Downloading model files ---")
             self.DownloadAllFiles()
             logger.info("All dependencies have been successfully installed")
-            
+
         except Exception as e:
             logger.error(f"Error during dependency check: {e}")
             raise
