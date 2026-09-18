@@ -1513,11 +1513,24 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 ]
                 is_installed = install_function(self, list_libs_CBCT) and is_installed
 
-                import numpy as np
+                # Read numpy from the distribution metadata, not from the
+                # imported module. numpy is already imported when Slicer starts,
+                # so np.__version__ still reports what was there before pip ran -
+                # and pip has just run, two lines up. nnunetv2 pulls numpy 2.x
+                # back in, and the check above it was blind to exactly that: the
+                # run then reached ALI_CBCT and failed inside monai with
+                # "Failed to initialize NumPy: _ARRAY_API not found".
                 from packaging.version import Version
 
-                numpy_version = Version(np.__version__)
-                if numpy_version > Version("2.0"):
+                try:
+                    numpy_version = Version(importlib_metadata.version("numpy"))
+                except importlib_metadata.PackageNotFoundError:
+                    numpy_version = None
+
+                if numpy_version is None or numpy_version > Version("2.0"):
+                    logger.info(
+                        f"numpy {numpy_version} is incompatible with torch: pinning it below 2.0"
+                    )
                     pip_install("numpy<2.0.0")
                 
         if self.type == "IOS":
