@@ -121,24 +121,26 @@ def fix_numpy_version():
     """
     from packaging.version import Version
 
-    try:
-        import numpy
+    # Both versions are read from the distribution metadata on disk, never from
+    # an imported module: numpy is already imported when Slicer starts, so
+    # numpy.__version__ still reports whatever was there before pip replaced it,
+    # and this check runs precisely after pip has been at work. Importing torch
+    # is no better - with a mismatched numpy it imports fine and merely warns,
+    # so nothing raises for an except clause to catch.
+    def version_on_disk(distribution):
+        try:
+            return Version(importlib_metadata.version(distribution).split("+")[0])
+        except importlib_metadata.PackageNotFoundError:
+            return None
 
-        installed_version = numpy.__version__
-    except ImportError:
-        installed_version = None
-
-    try:
-        import torch
-
-        torch_needs_numpy1 = Version(torch.__version__.split("+")[0]) < Version("2.3.0")
-    except ImportError:
-        torch_needs_numpy1 = True
+    installed_version = version_on_disk("numpy")
+    torch_version = version_on_disk("torch")
+    torch_needs_numpy1 = torch_version is None or torch_version < Version("2.3.0")
 
     if not torch_needs_numpy1:
         return False
 
-    if installed_version is None or Version(installed_version) >= Version("2.0.0"):
+    if installed_version is None or installed_version >= Version("2.0.0"):
         logger.info(
             f"numpy {installed_version} is incompatible with torch: "
             f"reinstalling numpy=={NUMPY_PINNED_VERSION}"

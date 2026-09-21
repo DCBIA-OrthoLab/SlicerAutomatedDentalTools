@@ -1461,6 +1461,14 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
 
     def onPredictButton(self):
+        # IOSCBCT matches both the "CBCT" and the "IOSCBCT" test below, and each
+        # branch used to assign is_installed outright: a torch install that failed
+        # in the first was overwritten by the second, whose four libraries are
+        # small and usually already there. The run then started without torch and
+        # died several steps later on a bare ModuleNotFoundError from ALI_CBCT,
+        # instead of the warning right below. Every branch now has to agree.
+        is_installed = True
+
         if "CBCT" in self.type:
             # 1. Coordinate MONAI and PyTorch versions based on Python version
             if sys.version_info >= (3, 10):
@@ -1482,7 +1490,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     ('torch', torch_version, "https://download.pytorch.org/whl/cu118")
                 ]
                 list_libs_CBCT_windows.append(('monai', monai_version, None))
-                is_installed = install_function(self, list_libs_CBCT_windows)
+                is_installed = install_function(self, list_libs_CBCT_windows) and is_installed
                 
             else:
                 # macOS / Linux
@@ -1503,17 +1511,29 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     ('torchaudio',torch_version,None),('nnunetv2','>=2.8.0',None),
                     ('monai', monai_version, None)
                 ]
-                is_installed = install_function(self, list_libs_CBCT)
+                is_installed = install_function(self, list_libs_CBCT) and is_installed
 
-                import numpy as np
+                # Read numpy from the distribution metadata, not from the
+                # imported module. numpy is already imported when Slicer starts,
+                # so np.__version__ still reports what was there before pip ran -
+                # and pip has just run, two lines up. nnunetv2 pulls numpy 2.x
+                # back in, and the check above it was blind to exactly that: the
+                # run then reached ALI_CBCT and failed inside monai with
+                # "Failed to initialize NumPy: _ARRAY_API not found".
                 from packaging.version import Version
 
-                numpy_version = Version(np.__version__)
-                if numpy_version > Version("2.0"):
+                try:
+                    numpy_version = Version(importlib_metadata.version("numpy"))
+                except importlib_metadata.PackageNotFoundError:
+                    numpy_version = None
+
+                if numpy_version is None or numpy_version > Version("2.0"):
+                    logger.info(
+                        f"numpy {numpy_version} is incompatible with torch: pinning it below 2.0"
+                    )
                     pip_install("numpy<2.0.0")
                 
         if self.type == "IOS":
-            is_installed = False
             check_env = self.onCheckRequirements()
             logger.debug(f"Segmentation environment: {check_env}")
             
@@ -1523,10 +1543,11 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 monai_version = '==1.3.2' if sys.version_info >= (3, 10) else '==0.7.0'
                 list_libs_IOS.append(('monai', monai_version, None))
 
-                is_installed = install_function(self,list_libs_IOS)
+                is_installed = install_function(self,list_libs_IOS) and is_installed
+            else:
+                is_installed = False
 
         if "IOSCBCT" in self.type:
-            is_installed = False
             # The IOSCBCT pipeline segments the crowns through the shared conda
             # environment, exactly as IOS does. Without this check run_conda_tool
             # finds no dentalmodelseg, logs an error and returns, and the run
@@ -1536,9 +1557,13 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             if check_env:
                 # libraries and versions compatibility to use AREG_IOSCBCT
-                list_libs_IOSCBCT = [('pyvista','==0.47.3',None),('scipy',None,None),('numpy',None,None),('SimpleITK',None,None)]
+                # tqdm is what PRE_ASO_IOS and SEMI_ASO_IOS import at module
+                # level; the CBCT list this mode also installs does not name it.
+                list_libs_IOSCBCT = [('pyvista','==0.47.3',None),('scipy',None,None),('numpy',None,None),('SimpleITK',None,None),('tqdm',None,None)]
 
-                is_installed = install_function(self,list_libs_IOSCBCT)
+                is_installed = install_function(self,list_libs_IOSCBCT) and is_installed
+            else:
+                is_installed = False
 
         # If the user didn't accept the installation, the module doesn't run
         if not is_installed:
