@@ -276,6 +276,13 @@ class Method(ABC):
                 arguments.extend(arg)
             else:
                 arguments.append(arg)
+        # An empty path makes the pattern "/**/*", which walks the WHOLE
+        # filesystem recursively: minutes at 100% of a core, silent, with
+        # the panel frozen. Measured on AREG IOS, where the field-is-empty
+        # message is only produced after this call -- so the user waited a
+        # quarter of an hour to be told to pick a folder.
+        if not isinstance(path, str) or not path.strip():
+            return {key: [] for key in arguments}
         return {
             key: [
                 i
