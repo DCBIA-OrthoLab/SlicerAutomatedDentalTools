@@ -1175,16 +1175,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       ),
     )
     s.exec_()
-    
-    file_path = os.path.abspath(__file__)
-    folder_path = os.path.dirname(file_path)
-    csv_file = os.path.join(folder_path,"ALI_Method","liste_csv_file.csv")
-    logger.debug(f"CSV file path: {csv_file}")
-    if os.path.exists(csv_file):
-      try:
-        os.remove(csv_file)
-      except Exception as e:
-        logger.error(f"Error removing CSV file: {str(e)}")
 
   def onCancel(self):
     try:
