@@ -1,8 +1,3 @@
-import shutil, os
-_moduleDir = os.path.dirname(os.path.abspath(__file__))
-_pycache = os.path.join(_moduleDir, "__pycache__")
-if os.path.exists(_pycache):
-    shutil.rmtree(_pycache)
 import os
 import sys
 import math
