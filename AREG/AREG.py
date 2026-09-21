@@ -2420,18 +2420,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
         qt.QTimer.singleShot(0, lambda: self.showDoneMessage(done_message))
 
-        file_path = os.path.abspath(__file__)
-        folder_path = os.path.dirname(file_path)
-        csv_file = os.path.join(folder_path,"AREG_Method","liste_csv_file_T1.csv")
-        logger.debug(f"CSV file path T1: {csv_file}")
-        if os.path.exists(csv_file):
-          os.remove(csv_file)
-
-        csv_file = os.path.join(folder_path,"AREG_Method","liste_csv_file_T2.csv")
-        logger.debug(f"CSV file path T2: {csv_file}")
-        if os.path.exists(csv_file):
-          os.remove(csv_file)
-
     def applyDarkModeStyles(self):
       """
       Apply dark mode styles to the UI widgets if Slicer's dark mode is enabled.
