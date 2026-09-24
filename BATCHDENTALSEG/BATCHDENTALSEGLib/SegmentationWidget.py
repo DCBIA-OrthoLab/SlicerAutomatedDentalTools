@@ -205,8 +205,12 @@ class SegmentationWidget(qt.QWidget):
         # 3)  DEVICE & MODEL
         # ========================================================================
         self.deviceComboBox = qt.QComboBox(); self.deviceComboBox.addItems(["cuda","cpu","mps"])
+        # The order IS the default: nothing stores the last choice, so the
+        # combo opens on index 0 every time. The universal model is first
+        # because that is the one to hand somebody who has not been told
+        # which to pick -- not whichever happened to be typed first.
         self.modelComboBox  = qt.QComboBox(); self.modelComboBox.addItems([
-            "DentalSegmentator","PediatricDentalsegmentator","NasoMaxillaDentSeg","UniversalLabDentalsegmentator"])
+            "UniversalLabDentalsegmentator","DentalSegmentator","PediatricDentalsegmentator","NasoMaxillaDentSeg"])
 
         # Resolve-mirroring
         self.resolveMirroringButton = createButton(
