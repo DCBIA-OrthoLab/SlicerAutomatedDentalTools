@@ -1305,12 +1305,22 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Function to download the model files from the link in the getModelUrl function"""
 
         # To select the reference files (CBCT Orientation and Registration mode only)
+        #
+        # `not test` on BOTH branches. Test Files is the one path that runs
+        # with nobody to answer: an automated session opens it, and exec_()
+        # then blocks inside the click, in a dialog its parent never shows
+        # when there is no main window. Measured: the session sat 32 minutes
+        # in do_poll, no CPU, no syscall, until an outer timeout killed it -
+        # and --wait cannot help, the wait loop is never reached.
+        # Nothing is lost by skipping it here: onTestFiles has just called
+        # SearchModelALI(self.CBCTOrientRef), and CBCTOrientRef holds the
+        # default set in setup, which is one of getReferenceList's keys.
         if (
             self.type == "CBCT"
             and self.ui.CbModeType.currentIndex == 0
             and not test
             and name == "Orientation"
-        ) or (self.type == "IOSCBCT" and name == "Orientation"):
+        ) or (self.type == "IOSCBCT" and not test and name == "Orientation"):
             referenceList = self.ActualMeth.getReferenceList()
             refList = list(referenceList.keys())
 
