@@ -5,6 +5,7 @@ import os
 import re
 import stat
 import tempfile
+import traceback
 from typing import Annotated
 import urllib.request
 import shutil
@@ -3243,6 +3244,47 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
 
     def onCliUpdated(self, caller, event):
+        """Drive the run from the CLI node that just reported in.
+
+        Wrapped because an exception escaping a VTK observer callback is printed
+        by Python straight into the stdout pipe that Slicer only drains from the
+        Qt event loop - the very loop this callback is holding. The write blocks
+        with no reader left, and the application freezes with no error anywhere:
+        the traceback that would name the fault is exactly what cannot get out.
+        Report it once the loop turns instead, and stop the run rather than
+        leave it half advanced.
+        """
+        try:
+            self._onCliUpdated(caller, event)
+        except Exception:
+            details = traceback.format_exc()
+            qt.QTimer.singleShot(0, lambda: self._reportProcessFailure(details))
+
+    def _reportProcessFailure(self, details: str) -> None:
+        """Say what stopped the run, once the event loop is turning again.
+
+        Args:
+            details: The formatted traceback of the escaping exception
+        """
+        logger.error(f"The run was stopped by an unexpected error:\n{details}")
+        self.list_process = []
+        try:
+            self.resetUIAfterCancel()
+        except Exception as e:
+            logger.error(f"Could not reset the panel after the failure: {e}")
+
+        lines = [line for line in (details or "").strip().splitlines() if line.strip()]
+        summary = lines[-1] if lines else "No details available."
+        PopUpWindow(
+            title="Process failed",
+            text=(
+                "The run was stopped by an unexpected error.\n\n"
+                f"{summary}\n\n"
+                "The full traceback is in the Python console."
+            ),
+        ).exec_()
+
+    def _onCliUpdated(self, caller, event):
         import time
         import json
         import subprocess
