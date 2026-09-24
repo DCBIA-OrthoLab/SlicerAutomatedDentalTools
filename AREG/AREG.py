@@ -1919,8 +1919,37 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             f"full output in the Slicer log ...]\n{kept}"
         )
 
+    def prepareHeadStep(self):
+        """Narrow the step about to run, now that its input is final.
+
+        A rollback marks the steps it queues rather than narrowing them on the
+        spot, because the correction the user went back for is made after that
+        moment. Doing the walk here means the links - or the copies, where the
+        filesystem has no links - are taken from the corrected files.
+
+        The step is narrowed in place: this list is read from several places,
+        and every one of them has to see the same parameters.
+        """
+        if not self.list_Processes_Parameters:
+            return
+        step = self.list_Processes_Parameters[0]
+        patients = step.get("ReviewRestrictTo")
+        if not patients:
+            return
+        try:
+            restricted, folders = Review.restrictStepToPatients(step, patients)
+        except Exception as e:
+            logger.warning(
+                f"Could not narrow {step.get('Module')} to {sorted(patients)}, "
+                f"it runs on the whole batch: {e}"
+            )
+            return
+        self.review_temp_folders.extend(folders)
+        step["Parameter"] = restricted.get("Parameter", step.get("Parameter"))
+
     def advanceToNextProcess(self):
         """Launch the next step of the run, or finish if there is none left."""
+        self.prepareHeadStep()
         try:
             logger.info(f"Process name: {self.list_Processes_Parameters[0]['Process']}")
             # The conda tools run to completion right here rather than through
@@ -2113,7 +2142,15 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Output folders are reused between runs: without this the review walks
         # patients this run never processed. Coming back from a rollback, the
         # only patients worth showing are the ones being redone.
-        expected = self.review_flagged_carry or self.runPatientIds()
+        # A replayed step carries the patients it was narrowed to, so its own
+        # review shows those and no others. The carry covers the one step the
+        # rollback lands on, which is not replayed and so carries no mark; it is
+        # consumed here, and that is why it cannot serve the replayed steps too.
+        expected = (
+            step.get("ReviewRestrictTo")
+            or self.review_flagged_carry
+            or self.runPatientIds()
+        )
         self.review_flagged_carry = []
         self.review.build(step, expected=expected)
         if not self.review.total or not self.showReviewItem():
@@ -2316,17 +2353,31 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             f"{len(replay)} step(s) will run again for them"
         )
 
-        narrowed = []
+        # What the user changed on the patient in front of them counts, even
+        # though they are leaving by this button and not by Continue. These
+        # edits used to go in the bin without a word - review.reset() drops the
+        # markups nodes - which is the one way a correction can be lost with no
+        # trace at all, not even a line in the log.
+        self.review.saveEdits()
+
+        # Tagged here, narrowed later. Narrowing walks the output folder and
+        # links what it finds, and at this point the user has not yet made the
+        # correction they came back for. A symlink survives a later rewrite, but
+        # the copy the fallback makes on a filesystem without links does not:
+        # the replay would then run on the file as it stood before the edit,
+        # quietly. advanceToNextProcess narrows instead, once the corrected
+        # files are actually on disk.
+        pending = []
         for step in replay:
-            restricted, folders = Review.restrictStepToPatients(step, flagged)
-            self.review_temp_folders.extend(folders)
-            narrowed.append(restricted)
+            queued = dict(step)
+            queued["ReviewRestrictTo"] = list(flagged)
+            pending.append(queued)
 
         self.review.reset()
         self.resetReviewUi()
 
         # The steps between the two run again, ahead of whatever was left.
-        self.list_Processes_Parameters[0:0] = narrowed
+        self.list_Processes_Parameters[0:0] = pending
         self.review_step = target
         self.review_flagged_carry = list(flagged)
         # beginReview guards against a pause cancelled between the callback and

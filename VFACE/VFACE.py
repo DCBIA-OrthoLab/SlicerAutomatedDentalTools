@@ -1996,7 +1996,15 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # After a rollback only the marked patients were replayed, so they are
         # the only ones this step is about - the others still hold the results
         # they were accepted with.
-        expected = self.review_flagged_carry or self.runPatientIds()
+        # A replayed step carries the patients it was narrowed to, so its own
+        # review shows those and no others. The carry covers the one step the
+        # rollback lands on, which is not replayed and so carries no mark; it is
+        # consumed here, and that is why it cannot serve the replayed steps too.
+        expected = (
+            process_info.get("ReviewRestrictTo")
+            or self.review_flagged_carry
+            or self.runPatientIds()
+        )
         self.review_flagged_carry = []
         wanted_ids = set(expected) or None
 
@@ -2946,18 +2954,32 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             f"{len(replay)} step(s) will run again for them"
         )
 
-        narrowed = []
+        # What the user changed on the patient in front of them counts, even
+        # though they are leaving by this button and not by Continue. These
+        # edits used to go in the bin without a word - resetPauseState drops the
+        # markups nodes - which is the one way a correction can be lost with no
+        # trace at all, not even a line in the log.
+        self.savePauseEdits()
+
+        # Tagged here, narrowed later. Narrowing walks the output folder and
+        # links what it finds, and at this point the user has not yet made the
+        # correction they came back for. A symlink survives a later rewrite, but
+        # the copy the fallback makes on a filesystem without links does not:
+        # the replay would then run on the file as it stood before the edit,
+        # quietly. executeProcess narrows instead, once the corrected files are
+        # actually on disk.
+        pending = []
         for step in replay:
-            restricted, folders = review_steps.restrictStepToPatients(step, flagged)
-            self.review_temp_folders.extend(folders)
-            narrowed.append(restricted)
+            queued = dict(step)
+            queued["ReviewRestrictTo"] = list(flagged)
+            pending.append(queued)
 
         self.resetPauseState()
 
         # The steps between the two run again, ahead of whatever was left, and
         # the user lands back on the step they can actually fix.
-        self.list_process[0:0] = narrowed
-        self.NumberProcess += len(narrowed)
+        self.list_process[0:0] = pending
+        self.NumberProcess += len(pending)
         self.review_flagged_carry = list(flagged)
         self.current_process_info = target
         self.module_name = target.get("Module", self.module_name)
@@ -3012,8 +3034,37 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
             slicer.util.resetSliceViews()
 
+    def applyPendingRestriction(self, process_info: dict) -> dict:
+        """Narrow a replayed step to its patients, now that its input is final.
+
+        A rollback marks the steps it queues rather than narrowing them on the
+        spot, because the correction the user went back for is made after that
+        moment. Doing the walk here means the links - or the copies, where the
+        filesystem has no links - are taken from the corrected files.
+
+        Args:
+            process_info: The step about to run
+
+        Returns:
+            dict: The step to actually run, narrowed when it was marked
+        """
+        patients = process_info.get("ReviewRestrictTo")
+        if not patients:
+            return process_info
+
+        restricted, folders = review_steps.restrictStepToPatients(
+            process_info, patients
+        )
+        self.review_temp_folders.extend(folders)
+        # Kept on the step: its own review has to show the patients being
+        # redone, not the whole batch.
+        restricted = dict(restricted)
+        restricted["ReviewRestrictTo"] = list(patients)
+        return restricted
+
     def executeProcess(self, process_info):
         import time
+        process_info = self.applyPendingRestriction(process_info)
         self.CliStepTime = time.time()
         self.module_name = process_info["Module"]
         self.displayModule = process_info["Display"]
