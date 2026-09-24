@@ -83,7 +83,24 @@ class PythonDependencyChecker:
         return True
 
     def areWeightsMissing(self):
-        return self.getDatasetPath() is None
+        dataset = self.getDatasetPath()
+        if dataset is None:
+            return True
+
+        # The weights, not the manifest lying next to them. dataset.json,
+        # plans.json and download_info.json are committed to this
+        # repository, so every install ships the two markers of a finished
+        # download without a single .pth. Asking "is dataset.json there?"
+        # therefore answered False on a tree that had no weights at all:
+        # nothing was ever downloaded, and nnUNet refused with
+        #   Model folder is missing the following folds : ['fold_0']
+        # which reads as a broken installation rather than as a model that
+        # was never fetched. DentalSegmentator is the first entry of the
+        # model list, so this is what anybody gets by default.
+        #
+        # Same trap as the 0-byte checkpoint_final.pth that blocked AMASSS
+        # for good: look at the weight, never at the marker beside it.
+        return not any(dataset.parent.glob("fold_*/*.pth"))
 
     def getLatestReleaseUrl(self):
         g = Github()
