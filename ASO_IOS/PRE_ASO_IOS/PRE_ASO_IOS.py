@@ -365,7 +365,10 @@ def main(args):
                     # jaw's number, so vtkMeanTeeth finds nothing and the arch is
                     # dropped. Repaired here, before the teeth are looked up, and
                     # carried into what WriteSurf saves for the rest of the run.
-                    UnifyArchLabels(surf, jaw())
+                    # Les dents que PrePreAso va reclamer trois lignes plus
+                    # bas : la renumerotation ne s applique que si elle les
+                    # fait apparaitre.
+                    UnifyArchLabels(surf, jaw(), dic_teeth[jaw()])
                     logger.debug(f"Surface loaded for {os.path.basename(file_vtk)}")
                 except Exception as sl_err:
                     error_msg = f"Failed to load surface: {str(sl_err)}"

@@ -285,6 +285,22 @@ ARCH_OFFSET = 16
 SAME_TOOTH_MM = 12.0
 # One coincidence is a stray patch. A numbering that has split shows on the arch.
 MIN_SPLIT_TEETH = 3
+# Second motif, voisin mais distinct : l arcade entiere porte les numeros de
+# l autre machoire. Rien n est coupe en deux, donc ArchLabelSplit ne trouve
+# rien et le seuil ci-dessus n est jamais atteint -- pourtant chaque dent
+# nommee est introuvable et l arcade est abandonnee. Mesure du 2026-09-24,
+# patient pt_040 : l arcade BASSE porte 42 773 points en numeros hauts contre
+# 241 en numeros bas, LL6 (19) n existe pas et son homologue haut (3) porte
+# 7198 points.
+#
+# Le seuil est loin de tout ce qui a ete mesure : quatre arcades correctes
+# -- la reference du corpus, la meme sur prod, et l arcade haute de ce meme
+# patient -- portent 100,00 % de leur propre famille ; celle-ci en porte
+# 0,56 %. Aucun scan connu ne se situe entre les deux.
+MOSTLY_OTHER_ARCH = 0.05
+# En dessous, il n y a pas assez de dents segmentees pour conclure quoi que
+# ce soit : une arcade partielle n est pas une arcade mal numerotee.
+MIN_TOOTH_POINTS = 2000
 
 
 def ArchLabelSplit(labels, points, max_distance=SAME_TOOTH_MM):
@@ -311,7 +327,25 @@ def ArchLabelSplit(labels, points, max_distance=SAME_TOOTH_MM):
     return split
 
 
-def UnifyArchLabels(surf, jaw, property_name="Universal_ID"):
+def ArchNumberingFamilies(labels, jaw):
+    """(points portant la numerotation de `jaw`, points portant l autre)."""
+    labels = np.asarray(labels).ravel()
+    dents = labels[(labels >= 1) & (labels <= 2 * ARCH_OFFSET)]
+    bas = (dents > ARCH_OFFSET)
+    propre = bas if jaw == "Lower" else ~bas
+    return int(propre.sum()), int((~propre).sum())
+
+
+def ArchIsOtherJawNumbering(labels, jaw):
+    """L arcade est-elle numerotee, presque entierement, dans l autre famille ?"""
+    propre, autre = ArchNumberingFamilies(labels, jaw)
+    total = propre + autre
+    if total < MIN_TOOTH_POINTS:
+        return False
+    return propre <= MOSTLY_OTHER_ARCH * total
+
+
+def UnifyArchLabels(surf, jaw, required=(), property_name="Universal_ID"):
     """Renumber a doubly-numbered arch into `jaw`'s numbering, in place.
 
     Returns the number of points moved, 0 when there was nothing to repair.
@@ -336,7 +370,8 @@ def UnifyArchLabels(surf, jaw, property_name="Universal_ID"):
     labels = vtk_to_numpy(array)
     points = vtk_to_numpy(surf.GetPoints().GetData())
     split = ArchLabelSplit(labels, points)
-    if len(split) < MIN_SPLIT_TEETH:
+    basculee = ArchIsOtherJawNumbering(labels, jaw)
+    if len(split) < MIN_SPLIT_TEETH and not basculee:
         return 0
 
     if jaw == "Lower":
@@ -350,12 +385,45 @@ def UnifyArchLabels(surf, jaw, property_name="Universal_ID"):
     if not moved:
         return 0
 
+    # Ne pas deplacer un probleme faute de savoir le resoudre : on ne
+    # renumerote que si le decalage fait APPARAITRE les dents que l appelant
+    # reclame. Une reparation qui ne peut pas montrer qu elle repare ne
+    # s applique pas -- l echec reste alors celui d avant, lisible.
+    # `required` vide : l appelant n a pas de liste (ALI_IOS predit des
+    # reperes, il n exige aucune dent nommee), la preuve se limite aux
+    # etiquettes.
+    if required:
+        apres = np.where(wrong, labels + shift, labels)
+        manquantes = [t for t in required if not (apres == t).any()]
+        if manquantes:
+            logger.warning(
+                "Not renumbering this %s arch: even shifted, %s would still be "
+                "missing, so its numbering is not simply the other jaw's."
+                % (jaw.lower(), ", ".join(str(t) for t in manquantes)))
+            return 0
+
+    # Lus AVANT le decalage : apres, les deux familles ont fusionne et le
+    # message annoncerait « 0 contre 43 014 », ce qui ne decrit plus rien.
+    propre_avant, autre_avant = ArchNumberingFamilies(labels, jaw)
+
     labels[wrong] += shift
     array.Modified()
-    logger.warning(
-        "%d teeth are numbered twice, once in each arch (%s), so the segmentation "
-        "could not tell which jaw this scan is. Reading it as %s from its name and "
-        "moving %d point(s) onto that numbering."
-        % (len(split), ", ".join("%d/%d at %.1f mm" % (t, t + ARCH_OFFSET, d)
-                                 for t, d in split[:4]), jaw.lower(), moved))
+    # Dire QUEL motif a declenche la reparation. Les deux se soignent pareil
+    # mais ne se diagnostiquent pas pareil, et annoncer « une dent numerotee
+    # deux fois » sur une arcade entierement basculee envoie le lecteur
+    # chercher un decoupage qui n existe pas.
+    if len(split) >= MIN_SPLIT_TEETH:
+        logger.warning(
+            "%d teeth are numbered twice, once in each arch (%s), so the segmentation "
+            "could not tell which jaw this scan is. Reading it as %s from its name and "
+            "moving %d point(s) onto that numbering."
+            % (len(split), ", ".join("%d/%d at %.1f mm" % (t, t + ARCH_OFFSET, d)
+                                     for t, d in split[:4]), jaw.lower(), moved))
+    else:
+        logger.warning(
+            "This arch carries almost only the other jaw's numbers (%d point(s) "
+            "against %d), so the segmentation read it as the other arch entirely "
+            "rather than splitting it. Reading it as %s from its name and moving "
+            "%d point(s) onto that numbering."
+            % (autre_avant, propre_avant, jaw.lower(), moved))
     return moved
