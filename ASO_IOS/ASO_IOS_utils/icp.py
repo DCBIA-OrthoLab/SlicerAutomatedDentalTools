@@ -161,11 +161,6 @@ class InitIcp:
         source = {k: source[k] for k in sorted(source)}
         target = {k: target[k] for k in sorted(target)}
 
-        script_dir = os.path.dirname(__file__)
-        if not os.path.exists(os.path.join(script_dir, "cache")):
-            os.mkdir(os.path.join(script_dir, "cache"))
-        np.save(os.path.join(script_dir, "cache", "source.npy"), source)
-        np.save(os.path.join(script_dir, "cache", "target.npy"), target)
         best = self.FindOptimalLandmarks(source, target)
 
         (
@@ -280,14 +275,13 @@ class InitIcp:
 
         # remplacer 210 by n*(n-1)*(n-2)   (n)
         dist, LMlist, ii = [], [], 0
-        script_dir = os.path.dirname(__file__)
         n = len(source)
+        # source used to be reloaded from a .npy on every turn, guarding
+        # against a mutation that never happens: InitICP goes through
+        # TranslationDict and TransformDict, which copy before transforming.
         while len(dist) < n * (n - 1) * (n - 2) and ii < 2500:
             ii += 1
 
-            source = np.load(
-                os.path.join(script_dir, "cache", "source.npy"), allow_pickle=True
-            ).item()
             firstpick, secondpick, thirdpick, d = self.InitICP(
                 source, target, search=True
             )

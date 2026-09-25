@@ -834,7 +834,10 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
     self.conda = self.init_conda()
 
   def check_log_path(self):
-    self.log_path = os.path.normpath(os.path.join(os.path.dirname(__file__), 'process.log'))
+    # Written next to the module until now, which needs the extension install
+    # to be writable -- and this runs from the Logic's __init__, so on a
+    # packaged install the module failed before doing anything at all.
+    self.log_path = os.path.normpath(os.path.join(slicer.util.tempDirectory(), 'process.log'))
     
     if '\\' in self.log_path:
       self.log_path = self.log_path.replace('\\', '/')

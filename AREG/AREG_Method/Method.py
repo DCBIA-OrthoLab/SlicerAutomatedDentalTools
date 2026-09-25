@@ -276,16 +276,24 @@ class Method(ABC):
                 arguments.extend(arg)
             else:
                 arguments.append(arg)
-        return {
-            key: [
-                i
-                for i in glob.iglob(
-                    os.path.normpath("/".join([path, "**", "*"])), recursive=True
-                )
-                if i.endswith(key)
-            ]
-            for key in arguments
-        }
+        # An empty path makes the pattern "/**/*", which walks the WHOLE
+        # filesystem recursively: minutes at 100% of a core, silent, with
+        # the panel frozen. Measured on AREG IOS, where the field-is-empty
+        # message is only produced after this call -- so the user waited a
+        # quarter of an hour to be told to pick a folder.
+        if not isinstance(path, str) or not path.strip():
+            return {key: [] for key in arguments}
+        # Walk once, not once per extension. The comprehension below used
+        # to re-run the whole recursive scan for every key, so asking for
+        # ".vtk" and ".stl" together cost twice what it needed to.
+        found = {key: [] for key in arguments}
+        for i in glob.iglob(
+            os.path.normpath("/".join([path, "**", "*"])), recursive=True
+        ):
+            for key in arguments:
+                if i.endswith(key):
+                    found[key].append(i)
+        return found
 
     def ListLandmarksJson(self, json_file):
         with open(json_file) as f:

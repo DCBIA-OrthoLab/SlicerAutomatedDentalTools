@@ -397,20 +397,22 @@ class Auto_IOS(Method):
             if isinstance(reference, str):
                 out = out + f"{reference}\n"
 
+            # Ask whether the folder was given BEFORE looking inside it.
+            # The order used to be the other way round, and counting the
+            # checkpoints in a folder nobody chose is what sent the search
+            # across the whole disk.
             if kwargs["model_folder_1"] == "":
                 out = out + "Please select folder for the registration model\n"
-
-            if len(self.search(kwargs["model_folder_3"], ".ckpt")[".ckpt"]) != 1:
+            elif len(self.search(kwargs["model_folder_1"], ".pth")[".pth"]) != 1:
                 out = (
-                    out + "Please select folder with only one model for the registration\n"
+                    out + "Please select folder with only one model for the segmentation\n"
                 )
 
             if kwargs["model_folder_3"] == "":
                 out = out + "Please select folder for the segmentation model\n"
-
-            if len(self.search(kwargs["model_folder_1"], ".pth")[".pth"]) != 1:
+            elif len(self.search(kwargs["model_folder_3"], ".ckpt")[".ckpt"]) != 1:
                 out = (
-                    out + "Please select folder with only one model for the segmentation\n"
+                    out + "Please select folder with only one model for the registration\n"
                 )
 
         if out != "":

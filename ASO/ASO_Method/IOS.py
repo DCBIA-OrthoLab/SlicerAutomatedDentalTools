@@ -474,9 +474,10 @@ class Auto_IOS(Method):
         '''
         create a csv with the complete path of the files in the folder (used for segmentation only)
         '''
-        file_path = os.path.abspath(__file__)
-        folder_path = os.path.dirname(file_path)
-        csv_file = os.path.join(folder_path,f"{name_csv}.csv")
+        # Written next to the module until now, which needs the extension
+        # install to be writable. The basename is what CrownSegmentation names
+        # its output subfolder after, so only the folder changes here.
+        csv_file = os.path.join(slicer.util.tempDirectory(), f"{name_csv}.csv")
         with open(csv_file, 'w', newline='') as fichier:
             writer = csv.writer(fichier)
             writer.writerow(["surf"])
