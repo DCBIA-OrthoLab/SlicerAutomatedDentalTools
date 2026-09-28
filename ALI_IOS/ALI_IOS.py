@@ -706,6 +706,12 @@ def _run_network(agent, meshe, model, models_type):
     net.load_state_dict(torch.load(model, map_location=DEVICE))
     images_pred = net(inputs)
 
+    # Only the MG branch produces -- and only the MG branch reads -- the raw
+    # scores. Inline in one function this name simply stayed unused elsewhere;
+    # behind a return it has to exist, or every non-MG label dies on an
+    # UnboundLocalError before a single landmark is placed.
+    logits = None
+
     if models_type != "MG":
         post_pred = AsDiscrete(argmax=True, to_onehot=4)
 
