@@ -1723,6 +1723,25 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             except Exception:
                                 logger.exception("OnEndProcess failed after conda run")
                             return
+                else:
+                    # Every other step of the palatal flow is a Slicer CLI, and
+                    # the orientation is the one that gets here: `PRE_ASO_IOS T1`
+                    # matched neither name above, so the whole block was skipped
+                    # and nothing was launched. No error, no process, no file --
+                    # the run simply stopped, because nothing was left to
+                    # schedule the next step. Launched the way the IOSCBCT branch
+                    # below launches the same module.
+                    self.process = slicer.cli.run(
+                        self.list_Processes_Parameters[0]["Process"],
+                        None,
+                        self.list_Processes_Parameters[0]["Parameter"],
+                    )
+                    self.startStep(self.list_Processes_Parameters[0])
+                    self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                    self.processObserver = self.process.AddObserver(
+                        "ModifiedEvent", self.onProcessUpdate
+                    )
+                    del self.list_Processes_Parameters[0]
             elif self.type == "IOSCBCT":
                 if self.list_Processes_Parameters[0]["Module"]=="CrownSegmentationcli":
                     self.run_conda_tool("seg")
