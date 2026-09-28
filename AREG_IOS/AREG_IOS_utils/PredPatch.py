@@ -17,7 +17,14 @@ class PredPatch:
 
     def __init__(self, path_model) -> None:
         self.model = MonaiUNetHRes()
-        self.model.load_state_dict(torch.load(path_model)["state_dict"])
+        # `weights_only=False` because this is a Lightning checkpoint, not a
+        # bare state dict: it carries the training metadata Lightning pickles
+        # beside the weights. torch 2.6 flipped this default to True, and the
+        # load has refused ever since with "Weights only load failed" -- the
+        # file did not change, the default did. The path is the model this
+        # project ships, named by the deployment, not something a caller sends.
+        self.model.load_state_dict(
+            torch.load(path_model, weights_only=False)["state_dict"])
 
         self.device = torch.device("cuda")
         self.model.to(self.device)

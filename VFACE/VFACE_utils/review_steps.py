@@ -159,7 +159,22 @@ def availableSteps(mode, mode2, reg_type, visualization, quantification):
 # Parameters that name a folder of patient files. A replay narrowed to a few
 # patients has to point these somewhere smaller; everything else in a step -
 # models, spacings, output paths - is left alone.
-INPUT_KEYS = ("input", "input_patient", "input_matrix")
+#
+# Every module the pipeline calls spells its input differently, and a name
+# missing here is not an error that shows: the step simply runs on the whole
+# batch again, redoing - and overwriting - the patients the user had already
+# accepted, a manually corrected registration included. AMASSS ("inputVolume")
+# and AREG_CBCT ("t1_folder"/"t2_folder") were the two that mattered.
+INPUT_KEYS = (
+    "input",                              # ALI, PRE_ASO, SEMI_ASO
+    "input_patient", "input_matrix",      # AutoMatrix
+    "inputVolume",                        # AMASSS
+    "t1_folder", "t2_folder",             # AREG_CBCT
+    "input_folder",                       # padding step
+    "input_folder_CBCT", "input_folder_T2_CBCT",    # resampling
+    "input_folder_Seg", "input_folder_T2_Seg",
+    "input_folder_MRI", "input_folder_T2_MRI",
+)
 
 
 def restrictStepToPatients(step, patients, tempdir_factory=None, id_of=None):
