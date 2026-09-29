@@ -2141,7 +2141,16 @@ class ALILogic(ScriptedLoadableModuleLogic):
     
     logger.info("PROCESS Error")
     if self.stderr:
-      logger.error(self.stderr)
+      # A subprocess that SUCCEEDED still writes to stderr: torch, monai and
+      # the CUDA runtime all put their warnings there, and one of them -- "Creating
+      # a tensor from a list of numpy.ndarrays is extremely slow" -- came out of
+      # every healthy ALI IOS run. Logged at ERROR, it made a run that worked
+      # indistinguishable from one that did not, for anybody reading the log or
+      # counting error lines in it. The return code is what decides.
+      if self.subpro.returncode == 0:
+        logger.warning(self.stderr)
+      else:
+        logger.error(self.stderr)
     else:
       logger.info("(No error)")
     sys.stdout.flush()
