@@ -1117,6 +1117,18 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if checkbox.text in best and checkbox.isEnabled():
                 checkbox.setCheckState(True)
 
+    def onJawToggled(self, all_checkbox, jaw, boolean):
+        """One jaw was ticked: let the Logic enable its landmarks, then refresh.
+
+        The two steps sit on either side of the widget boundary. Enabling the
+        checkboxes needs nothing but the checkboxes, so it stays on the Logic;
+        deciding which of them the data actually allows needs this widget's
+        fields, so it stays here. Wiring the signal straight to the Logic put
+        both on the wrong side of it and the refresh raised on every toggle.
+        """
+        self.logic.UpperLowerCheckbox(all_checkbox, jaw, boolean)
+        self.enableCheckbox()
+
     def enableCheckbox(self):
         """Function to enable the checkbox depending on the presence of landmarks"""
         status = self.ActualMeth.existsLandmark(
@@ -1777,13 +1789,13 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         upper_checbox = QCheckBox()
         upper_checbox.setText("Upper")
         upper_checbox.toggled.connect(
-            partial(self.logic.UpperLowerCheckbox, {"Upper": upper, "Lower": lower}, "Upper")
+            partial(self.onJawToggled, {"Upper": upper, "Lower": lower}, "Upper")
         )
         layout.addWidget(upper_checbox, 3, 0)
         lower_checkbox = QCheckBox()
         lower_checkbox.setText("Lower")
         lower_checkbox.toggled.connect(
-            partial(self.logic.UpperLowerCheckbox, {"Upper": upper, "Lower": lower}, "Lower")
+            partial(self.onJawToggled, {"Upper": upper, "Lower": lower}, "Lower")
         )
         layout.addWidget(lower_checkbox, 4, 0)
 
@@ -2460,12 +2472,19 @@ class ASOLogic(ScriptedLoadableModuleLogic):
 
         return out
     def UpperLowerCheckbox(self, all_checkbox: dict, jaw, boolean):
+        """Enable one jaw's landmark checkboxes, and clear what it disables.
 
+        The refresh that used to follow -- `self.enableCheckbox()` -- belongs to
+        the widget: it reads ActualMeth, three line edits and self.type, none of
+        which exist here. Called on the Logic it raised
+        `AttributeError: 'ASOLogic' object has no attribute 'enableCheckbox'`
+        on every single toggle, so the refresh never happened. The widget calls
+        it now, in `onJawToggled`.
+        """
         for checkbox in all_checkbox[jaw]:
             checkbox.setEnabled(boolean)
             if (not boolean) and checkbox.isChecked():
                 checkbox.setChecked(False)
-        self.enableCheckbox()
 
     def OcclusionCheckbox(
         self, Upper: QCheckBox, Lower: QCheckBox, all_checkbox: dict, boolean: bool
