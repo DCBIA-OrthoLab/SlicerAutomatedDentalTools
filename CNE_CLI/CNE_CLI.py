@@ -248,8 +248,16 @@ def main(args):
         logger.error("ERROR: 'llama-cpp-python' library is not installed in Slicer.")
         sys.exit(1)
     except Exception as e:
-        logger.error("ERROR OCCURRED DURING INFERENCE:")
-        traceback.print_exc(file=sys.stderr)
+        # `e` was bound and never used, and the traceback went to sys.stderr
+        # alone -- which Slicer does not put in the log the operator reads. All
+        # that reached it was the header, so a CNE run that failed said
+        # "ERROR OCCURRED DURING INFERENCE:" and nothing else, on every machine
+        # and for every cause. Measured on 2026-09-29: the load of a 7B GGUF
+        # failed identically on main and on adt/integration, and neither run
+        # could say why.
+        logger.error("ERROR OCCURRED DURING INFERENCE: %s: %s",
+                     type(e).__name__, e)
+        logger.error("%s", traceback.format_exc())
         sys.exit(1)
 
     # ---------------------------------------------------------
