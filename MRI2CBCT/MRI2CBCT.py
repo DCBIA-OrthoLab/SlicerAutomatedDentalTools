@@ -18,6 +18,7 @@ if os.path.join(_adt_root, "ADT") not in sys.path:
 
 from ADTLib.logging_setup import get_logger
 from ADTLib.env.deps import check_lib_installed as lib_satisfies
+from ADTLib.env.cuda import torch_install_arguments
 
 from MRI2CBCT_utils.Preprocess_MRI import Process_MRI
 from MRI2CBCT_utils.Preprocess_CBCT_MRI import Preprocess_CBCT_MRI
@@ -164,8 +165,17 @@ def install_function():
             for lib, version_spec in libs_to_install:
                 try:
                     if lib == "torch":
-                        logger.info("Installing torch from official PyTorch wheel (cu118)")
-                        pip_install("torch==2.2.0 --index-url https://download.pytorch.org/whl/cu118")
+                        # cu118 was hardcoded here, and its kernels stop at
+                        # sm_90: on an RTX 50 series it installed cleanly and
+                        # then failed every launch with "no kernel image is
+                        # available". Which build this machine needs is a
+                        # question about its GPU, so it is asked of the GPU.
+                        arguments = torch_install_arguments()
+                        if arguments is None:
+                            logger.info("the installed torch already serves this GPU")
+                        else:
+                            logger.info("Installing torch: %s", arguments)
+                            pip_install(arguments)
                     else:
                         pip_target = f"{lib}{version_spec}" if version_spec else lib
                         pip_install(pip_target)

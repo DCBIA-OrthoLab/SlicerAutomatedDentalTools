@@ -23,6 +23,7 @@ if os.path.join(_adt_root, "ADT") not in sys.path:
     sys.path.append(os.path.join(_adt_root, "ADT"))
 
 from ADTLib.logging_setup import get_logger
+from ADTLib.env.cuda import torch_install_arguments
 
 logger = get_logger("VFACE")
 
@@ -94,10 +95,12 @@ CLI_LIBRARIES = [
 
 # torch, torchvision and torchaudio have to be resolved together against the same
 # CUDA build, hence a single pip call, exactly like AMASSS does.
-TORCH_REQUIREMENT = (
-    "torch>=2.2.0 torchvision torchaudio "
-    "--extra-index-url https://download.pytorch.org/whl/cu118"
-)
+#
+# Which build, though, is asked of the GPU rather than written here: cu118 was
+# hardcoded, its kernels stop at sm_90, and on an RTX 50 series it installed
+# cleanly and then failed every launch with "no kernel image is available".
+# Asked at the call site and not at import, so that nothing probes the GPU
+# merely because this module was loaded.
 
 # torch 2.2.0 is compiled against numpy 1.x: numpy>=2 breaks every torch import
 # with "_ARRAY_API not found", including in the nnUNet subprocesses.
@@ -1162,7 +1165,11 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     f"({installed}/{total})... (this may take a while)"
                 )
                 try:
-                    slicer.util.pip_install(TORCH_REQUIREMENT)
+                    requirement = torch_install_arguments()
+                    if requirement is None:
+                        logger.info("the installed torch already serves this GPU")
+                    else:
+                        slicer.util.pip_install(requirement)
                 except Exception as e:
                     logger.error(f"Failed to install torch: {str(e)}")
                     raise

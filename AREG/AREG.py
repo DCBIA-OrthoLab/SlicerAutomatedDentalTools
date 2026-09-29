@@ -83,6 +83,7 @@ import re
 from ADTLib.format import format_elapsed, elapsed_since
 from ADTLib.theming import update_line_edit_and_combo_box
 from ADTLib.env.deps import check_lib_installed as lib_satisfies, torch_cuda_conflict
+from ADTLib.env.cuda import torch_install_arguments, torch_needs_numpy1
 from ADTLib.env.conda import (
     check_pythonpath, conda_quote, give_pythonpath,
     init_conda as init_conda_call, check_lib_wsl as wsl_libraries_present,
@@ -105,6 +106,26 @@ def check_lib_installed(lib_name, required_version=None):
     return lib_satisfies(lib_name, required_version)
 
 # import csv
+
+def torch_requirements_for_this_gpu():
+    """The pip arguments for a torch this GPU can run, or None to change nothing.
+
+    This replaces a `torch==2.2.0` that every branch carried. That pin resolves
+    to a cu121 wheel whose kernels stop at sm_90, so on an RTX 50 series it
+    installed cleanly, answered `torch.cuda.is_available()` with True, and then
+    failed every single kernel launch with "no kernel image is available" - a
+    message that names neither torch nor the wheel, and sent the diagnosis
+    looking at the driver, the machine and the data instead.
+
+    None covers three cases that all mean "leave it alone": the installed stack
+    already serves this GPU, there is no GPU to serve, or no published wheel
+    covers it and the CPU is the only thing left to run on.
+    """
+    arguments = torch_install_arguments()
+    if arguments is None:
+        logger.info("the installed torch serves this GPU, or there is none to serve")
+    return arguments
+
 
 def warn_on_torch_cuda_conflict():
     """Say so when the torch family ended up on two different CUDA builds.
@@ -131,10 +152,17 @@ def warn_on_torch_cuda_conflict():
     )
 
 
-def install_function(self,list_libs:list):
+def install_function(self, list_libs:list, extra_requirements=()):
     '''
     Test the necessary libraries and install them with the specific version if needed
     User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
+
+    `extra_requirements` holds pip argument strings to install verbatim, each in
+    one call. The torch trio goes through here rather than through `list_libs`:
+    whether it has to be replaced is not a question about version numbers -- a
+    torch that satisfies the pin exactly can still have no kernels for this GPU
+    -- and the three wheels have to be resolved together, which one entry per
+    library cannot express.
     '''
     libs = list_libs
     libs_to_install = []
@@ -149,7 +177,9 @@ def install_function(self,list_libs:list):
             except Exception:
                 libs_to_install.append((lib, version_constraint))
 
-    if libs_to_install or libs_to_update:
+    extra_requirements = list(extra_requirements)
+
+    if libs_to_install or libs_to_update or extra_requirements:
           message = "The following changes are required for the libraries:\n"
 
           #Specify which libraries will be updated with a new version
@@ -162,6 +192,10 @@ def install_function(self,list_libs:list):
 
               message += "\n --- Libraries to install:  \n"
           message += "\n".join([f"{lib}{version_constraint}" if version_constraint else lib for lib, version_constraint in libs_to_install])
+
+          if extra_requirements:
+              message += "\n\n --- PyTorch build for this GPU: \n"
+              message += "\n".join(extra_requirements)
 
           message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
           message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
@@ -178,7 +212,21 @@ def install_function(self,list_libs:list):
             # the session is gone. See AREG_Method.pip_install_window.
             try:
                 with PipInstallWindow(requester="AREG") as window:
-                    for lib, version_constraint in libs_to_install + libs_to_update:
+                    # torch first, and on its own: monai and nnunetv2 declare an
+                    # unbounded dependency on it, so installing them beforehand
+                    # lets pip pull PyPI's default build in and the GPU-specific
+                    # one installed afterwards is the one that gets replaced.
+                    for requirement in extra_requirements:
+                        lib = requirement.split("==")[0]
+                        if not window.install(requirement):
+                            installation_errors.append(
+                                (lib, "pip failed, see the installation window")
+                            )
+                            break
+
+                    for lib, version_constraint in (
+                            [] if installation_errors
+                            else libs_to_install + libs_to_update):
                         if not version_constraint:
                             requirement = lib
 
@@ -1505,8 +1553,20 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # 1. Coordinate MONAI and PyTorch versions based on Python version
             if sys.version_info >= (3, 10):
                 monai_version = '==1.3.2'
-                torch_version = '==2.2.0'
-                
+
+            # torch is no longer one entry per library with a version beside it:
+            # which build this machine needs is a question about the GPU, not
+            # about version numbers, and the three wheels have to be resolved in
+            # one call. Empty when nothing has to change, which is every machine
+            # whose card the installed torch already covers.
+            torch_requirements = torch_requirements_for_this_gpu()
+            torch_requirements = [torch_requirements] if torch_requirements else []
+
+            # Only a torch older than 2.3 was built against numpy 1.x. Asked of
+            # the torch that will be there rather than the one being replaced,
+            # so a card moving to 2.7 is not also held on a numpy it left behind.
+            numpy_constraint = '<2.0.0' if torch_needs_numpy1() else None
+
             if platform.system() == "Windows":
                 list_libs_cbct_windows = [
                     ('itk', '>=5.4.0', None),
@@ -1519,10 +1579,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     ('nibabel', None, None),
                     ('connected-components-3d', '>=3.13.0', None),
                     ('pandas', None, None),
-                    ('torch', torch_version, "https://download.pytorch.org/whl/cu118")
                 ]
                 list_libs_cbct_windows.append(('monai', monai_version, None))
-                is_installed = install_function(self, list_libs_cbct_windows) and is_installed
+                is_installed = install_function(
+                    self, list_libs_cbct_windows, torch_requirements) and is_installed
                 
             else:
                 # macOS / Linux
@@ -1537,13 +1597,13 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     ('nibabel', None, None),
                     ('connected-components-3d', '>=3.13.0', None),
                     ('pandas', None, None),
-                    ('numpy', '<2.0.0', None),
-                    ('torch', torch_version, None),
-                    ('torchvision', "==0.17.0",None),('blosc2', None,None),
-                    ('torchaudio',torch_version,None),('nnunetv2','>=2.8.0',None),
+                    ('numpy', numpy_constraint, None),
+                    ('blosc2', None,None),
+                    ('nnunetv2','>=2.8.0',None),
                     ('monai', monai_version, None)
                 ]
-                is_installed = install_function(self, list_libs_cbct) and is_installed
+                is_installed = install_function(
+                    self, list_libs_cbct, torch_requirements) and is_installed
 
                 # Read numpy from the distribution metadata, not from the
                 # imported module. numpy is already imported when Slicer starts,
@@ -1559,9 +1619,14 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 except importlib_metadata.PackageNotFoundError:
                     numpy_version = None
 
-                if numpy_version is None or numpy_version > Version("2.0"):
+                # Asked again after pip rather than reusing the answer from
+                # before it: nnunetv2 is what pulls numpy 2.x back in, and it was
+                # installed in between.
+                if torch_needs_numpy1() and (
+                        numpy_version is None or numpy_version > Version("2.0")):
                     logger.info(
-                        f"numpy {numpy_version} is incompatible with torch: pinning it below 2.0"
+                        f"numpy {numpy_version} is incompatible with this torch:"
+                        " pinning it below 2.0"
                     )
                     pip_install("numpy<2.0.0")
                 

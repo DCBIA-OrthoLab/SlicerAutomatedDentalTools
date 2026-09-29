@@ -55,6 +55,7 @@ from ASO_Method.Progress import Display
 from ADTLib.format import format_elapsed, elapsed_since
 from ADTLib.theming import update_line_edit_and_combo_box
 from ADTLib.env.deps import check_lib_installed as lib_satisfies, requirement
+from ADTLib.env.cuda import torch_install_arguments
 from ADTLib.env.conda import (
     check_pythonpath, conda_quote, give_pythonpath,
     init_conda as init_conda_call, check_lib_wsl as wsl_libraries_present,
@@ -77,9 +78,18 @@ def install_function(self):
         
         # ===== BUILD LIBRARY LIST =====
         try:
-            libs = [('itk', None), ('torch','2.2.0'),('pytorch_lightning',None),('dicom2nifti', '>=2.6.2'),('pydicom', '3.0.2')]
+            # torch is not in this list any more, and that is the whole point.
+            # It was pinned to '2.2.0' and compared here like any other library,
+            # so a machine carrying the only build its GPU can run -- an RTX 50
+            # series needs cu128 -- was told torch was out of date and offered
+            # the downgrade that breaks it. Pressing Yes put back a wheel whose
+            # kernels stop at sm_90, and every landmark search failed again with
+            # "no kernel image is available". Which build belongs here is a
+            # question about the GPU, so it is asked of the GPU.
+            libs = [('itk', None), ('pytorch_lightning',None),('dicom2nifti', '>=2.6.2'),('pydicom', '3.0.2')]
             monai_version = '1.3.2' if sys.version_info >= (3, 10) else '0.7.0'
             libs.append(('monai', monai_version))
+            torch_requirement = torch_install_arguments()
             logger.debug(f"Library list created with {len(libs)} libraries")
         except Exception as e:
             logger.error(f"Error building library list: {e}")
@@ -105,10 +115,12 @@ def install_function(self):
             raise
 
         # ===== USER CONFIRMATION =====
-        if libs_to_install:
+        if libs_to_install or torch_requirement:
             try:
                 message = "The following libraries are not installed or need updating:\n"
                 message += "\n".join([requirement(lib, version) for lib, version in libs_to_install])
+                if torch_requirement:
+                    message += "\n\nPyTorch build for this GPU:\n" + torch_requirement
                 message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
                 
                 logger.debug("Showing user confirmation dialog")
@@ -124,6 +136,13 @@ def install_function(self):
                     self.ui.label_LibsInstallation.setVisible(True)
                     logger.info(f"Starting installation of {len(libs_to_install)} library/libraries")
                     
+                    # torch first and on its own: monai declares an unbounded
+                    # dependency on it, so installing it beforehand lets pip pull
+                    # PyPI's default build in and replace the one chosen here.
+                    if torch_requirement:
+                        logger.info(f"Installing torch: {torch_requirement}")
+                        pip_install(torch_requirement)
+
                     for lib, version in libs_to_install:
                         try:
                             lib_version = requirement(lib, version)

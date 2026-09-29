@@ -12,7 +12,15 @@ from ADTLib.logging_setup import get_logger
 
 logger = get_logger("ALI_IOS_agent")
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from ADTLib.env.cuda import preferred_device
+
+# preferred_device rather than `cuda if is_available()`: that test answers for
+# the driver and the runtime, not for the wheel. On a GPU the installed torch
+# carries no kernels for it says True, every launch afterwards fails, and the
+# agents reported the result as "landmark not found" -- seven times out of
+# seven, with nothing naming the cause. The probe runs one real kernel and
+# falls back to the CPU, slowly but visibly, when it cannot.
+DEVICE = preferred_device()
 
 class Agent:
     """Agent class for landmark localization using rendering with error handling."""

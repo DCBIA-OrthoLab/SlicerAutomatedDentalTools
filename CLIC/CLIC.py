@@ -32,6 +32,7 @@ if os.path.join(_adt_root, "ADT") not in sys.path:
     sys.path.append(os.path.join(_adt_root, "ADT"))
 
 from ADTLib.logging_setup import get_logger
+from ADTLib.env.cuda import select_channel
 
 from ADTLib.theming import apply_dark_mode, update_line_edit_and_combo_box
 import shutil
@@ -170,13 +171,27 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.sig.log.emit(f"env '{self.name_env}' exists")
             logger.debug(f"[DEBUG] env '{self.name_env}' already exists, skipping creation")
 
-        # 2) install torch/cu118 first
-        logger.debug("[DEBUG] about to install torch/cu118 via condaRunCommand")
+        # 2) install the torch build this GPU can run, first
+        #
+        # cu118 and torch 2.2.0 were hardcoded here. That wheel's kernels stop
+        # at sm_90, so on an RTX 50 series it installed cleanly, reported CUDA
+        # as available and then failed every launch with "no kernel image is
+        # available". The channel is chosen from the GPU's compute capability
+        # instead; the environment this installs into is a conda one, but the
+        # card it has to serve is the same.
+        channel = select_channel()
+        if channel is None:
+            logger.info("no GPU to serve, or none any published wheel covers")
+            torch_packages = ["torch", "torchvision", "torchaudio"]
+            index = []
+        else:
+            torch_packages = channel.requirements()
+            index = ["--index-url=" + channel.index_url,
+                     "--extra-index-url=https://pypi.org/simple"]
+        logger.debug("[DEBUG] about to install %s via condaRunCommand", torch_packages)
         rc = self.conda.condaRunCommand([
             "python", "-m", "pip", "install", "--no-cache-dir",
-            "--index-url=https://download.pytorch.org/whl/cu118",
-            "torch==2.2.0", "torchvision==0.17.0", "torchaudio==2.2.0"
-        ], self.name_env)
+        ] + index + torch_packages, self.name_env)
         self.sig.log.emit(f"[DEBUG] torch pip rc={rc!r}")
         logger.debug(f"[DEBUG] torch install returned → {rc!r}")
         if isinstance(rc, int) and rc != 0:

@@ -96,7 +96,15 @@ else :
     from ALI_IOS_utils.paint_scan import PaintScan
     from ALI_IOS_utils.smooth import DEFAULT_STRENGTH as SMOOTH_STRENGTH
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from ADTLib.env.cuda import preferred_device
+
+# preferred_device rather than `cuda if is_available()`: that test answers for
+# the driver and the runtime, not for the wheel. On a GPU the installed torch
+# carries no kernels for it says True, every launch afterwards fails, and the
+# agents reported the result as "landmark not found" -- seven times out of
+# seven, with nothing naming the cause. The probe runs one real kernel and
+# falls back to the CPU, slowly but visibly, when it cannot.
+DEVICE = preferred_device()
 
 # How far the second look at a tooth may move its landmark before the first
 # answer is kept instead, in millimetres. On scans like the ones the network

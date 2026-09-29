@@ -42,6 +42,7 @@ from ADTLib.theming import update_line_edit_and_combo_box
 from ADTLib.env.deps import (
     TORCH_FAMILY, check_lib_installed as lib_satisfies, requirement,
     torch_cuda_conflict)
+from ADTLib.env.cuda import torch_install_arguments
 import platform
 
 # --- LOGGING CONFIGURATION ---
@@ -159,28 +160,18 @@ def install_function(self,list_libs:list,system:str):
                 already_installed =False
                 for lib, version in libs_to_install:
                   if lib == "torch" or lib=="torchvision" or lib== "torchaudio":
-                    try:
-                      import torch
-                      if torch.cuda.is_available():
-                        cuda_version = torch.version.cuda
-                        if cuda_version =="11.8" or cuda_version=="12.1":
-                          cuda_version= f"cu{cuda_version.replace('.','')}"
-                        elif float(cuda_version) > 12.1:
-                          cuda_version = "cu121"
-                        elif 11.8 < float(cuda_version) < 12.1:
-                          cuda_version = "cu118"
-                        else:
-                          cuda_version = "cu118"
-                      else:
-                        raise RuntimeError("CUDA is not available")
-                    except ImportError:
-                      cuda_version = "cu121"
-                    except RuntimeError:
-                      cuda_version = "cu121"
-
+                    # The channel used to be read off the CUDA the *installed*
+                    # torch was built for, which answers what is there rather
+                    # than what this GPU needs, and mapped everything above 12.1
+                    # back down to cu121 - the one build an RTX 50 series cannot
+                    # run. It is read off the GPU now.
                     if not already_installed:
                       already_installed = True
-                      pip_install(f'torch>=2.2.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{cuda_version}')
+                      arguments = torch_install_arguments()
+                      if arguments is None:
+                        logger.info("the installed torch already serves this GPU")
+                      else:
+                        pip_install(arguments)
                       nb_installed += 3
 
                   else:
@@ -196,7 +187,12 @@ def install_function(self,list_libs:list,system:str):
                 libs_to_pip = libs_to_install + libs_to_update
 
                 if any(lib in torch_libs for lib, version in libs_to_pip):
-                  pip_install(f'torch>=2.2.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
+                  # cu118 was hardcoded here, and its kernels stop at sm_90.
+                  arguments = torch_install_arguments()
+                  if arguments is None:
+                    logger.info("the installed torch already serves this GPU")
+                  else:
+                    pip_install(arguments)
                   nb_installed += sum(1 for lib, version in libs_to_pip if lib in torch_libs)
                   self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
 
@@ -879,7 +875,11 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       # First, install the required libraries and their version
       try:
         list_libs = [
-          ('torch','2.2.0'),('torchvision', "0.17.0"),('torchaudio',"2.2.0"),
+          # No version against the torch family: which build this machine needs
+          # is decided by torch_install_arguments, from the GPU, and a version
+          # written here would only make the check flag torch on every press --
+          # a 2.2.0 pin flagged the cu128 build an RTX 50 series depends on.
+          ('torch',None),('torchvision', None),('torchaudio',None),
           ('itk', None),('blosc2', None),('dicom2nifti', '>=2.6.2'),
           # pydicom is kept on the version Slicer ships: downgrading it to 2.x breaks
           # dicomweb-client and highdicom, hence every DICOM module of Slicer.
