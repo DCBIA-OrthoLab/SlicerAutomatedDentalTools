@@ -653,7 +653,17 @@ def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark, i
 
     # Read input files
     input_image = sitk.ReadImage(input_file)
-    input_transform = sitk.ReadTransform(input_transform_file)
+    # No prior transform is a normal case, not a missing file. This one is
+    # composed at the END of the chain below, to carry the result back into the
+    # space the scan was already in; when the scan was never moved, the neutral
+    # value of that composition is the identity. Demanding the file made the
+    # Semi-Automated mode refuse the test set published for it, which has a scan
+    # and its landmarks and no .tfm -- the only .tfm in the release are OUTPUTS
+    # of the Fully-Automated mode.
+    if input_transform_file:
+        input_transform = sitk.ReadTransform(input_transform_file)
+    else:
+        input_transform = sitk.Euler3DTransform()
     gold_image = sitk.ReadImage(gold_file)
     source = LoadJsonLandmarks(input_json_file, list_landmark)
     nb_lmrk = len(source.keys())

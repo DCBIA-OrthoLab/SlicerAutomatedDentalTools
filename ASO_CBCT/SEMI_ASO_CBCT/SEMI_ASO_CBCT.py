@@ -48,7 +48,15 @@ def _register_one_patient(args, data, failed_patients, gold_file, gold_json_file
         # ===== EXTRACT PATIENT DATA =====
         try:
             logger.debug(f"Extracting patient data")
-            input_file, input_json_file, input_transform = data["scan"], data["json"], data["tfm"]
+            # The scan and its landmarks are required; a prior transform is not.
+            # `data["tfm"]` raised KeyError: 'tfm' on every patient without one,
+            # which is every patient of the published test set, and the whole run
+            # then ended on "No patient could be registered".
+            input_file, input_json_file = data["scan"], data["json"]
+            input_transform = data.get("tfm")
+            if input_transform is None:
+                logger.info(f"No prior transform for {patient}; "
+                            "registering from the landmarks alone")
             logger.debug(f"Patient data extracted")
         except KeyError as e:
             logger.warning(f"Patient {patient} missing required files: {e}")
