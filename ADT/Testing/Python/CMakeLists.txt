@@ -46,3 +46,7 @@ slicer_add_python_unittest(SCRIPT test_ali_cbct_budget.py)
 # A landmark ALI CBCT did not find is absent from the output file with
 # nothing to say so: the list now goes out beside the predictions.
 slicer_add_python_unittest(SCRIPT test_ali_cbct_missing.py)
+
+# A landmark whose name has no group: written out or not, it must not cost
+# the patient the thirty others that were found.
+slicer_add_python_unittest(SCRIPT test_ali_cbct_unknown_group.py)
