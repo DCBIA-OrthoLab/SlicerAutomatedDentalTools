@@ -6,6 +6,10 @@ slicer_add_python_unittest(SCRIPT test_naming.py)
 # check_lib_installed: version constraints, and the inherited spellings.
 slicer_add_python_unittest(SCRIPT test_deps.py)
 
+# A `with` that works: decorated and yielding, or neither. VFACE carried
+# both halves of the mistake, and neither raised until the step ran.
+slicer_add_python_unittest(SCRIPT test_context_managers.py)
+
 # ReadSurf, WriteSurf and OFFReader: the five copies had drifted apart, these
 # cases freeze what was kept and the four behaviours that change.
 slicer_add_python_unittest(SCRIPT test_surface.py)
