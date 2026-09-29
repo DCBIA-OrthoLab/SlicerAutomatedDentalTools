@@ -3088,8 +3088,6 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def _onCliUpdated(self, caller, event):
         import time
-        import json
-        import subprocess
 
         # Only the node the pipeline is currently waiting on may advance it.
         # Observers can outlive their step, so a stale callback would start the
