@@ -14,6 +14,10 @@ slicer_add_python_unittest(SCRIPT test_cuda_channel.py)
 # both halves of the mistake, and neither raised until the step ran.
 slicer_add_python_unittest(SCRIPT test_context_managers.py)
 
+# The Semi-Automated ASO CBCT mode needs no prior transform: the published
+# test set has none, and the identity is the neutral value of that step.
+slicer_add_python_unittest(SCRIPT test_aso_cbct_optional_transform.py)
+
 # ReadSurf, WriteSurf and OFFReader: the five copies had drifted apart, these
 # cases freeze what was kept and the four behaviours that change.
 slicer_add_python_unittest(SCRIPT test_surface.py)
