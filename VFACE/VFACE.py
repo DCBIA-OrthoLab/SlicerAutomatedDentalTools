@@ -2998,7 +2998,10 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         import qt
         qt.QTimer.singleShot(100, self.checkPythonProcessStatus)
 
-    @contextlib.contextmanager
+    # No decorator here: this one yields nothing and is called plainly, at line
+    # 2989. Decorated, the call returned a context manager object and the body
+    # never ran at all -- the step's last lines never reached the log, and the
+    # temporary file its `finally` removes was leaked once per step.
     def _reportStepOutput(self, log_path: str, keep_lines: int = 12) -> None:
         """
         Put the tail of a step's own output back in the log, and drop the file.
@@ -3463,6 +3466,12 @@ class VFACELogic(ScriptedLoadableModuleLogic):
         """
         return process_info.get("pause_for_visualization", False)
 
+    # Without it this is a plain generator, and `with self.logic.outputToFile()`
+    # raised "'generator' object does not support the context manager protocol"
+    # before the step it wraps ever ran -- every python step of every VFACE run.
+    # Worse, the redirection this function exists for never happened either, so
+    # the pipe-flood the docstring below describes was left unguarded.
+    @contextlib.contextmanager
     def outputToFile(self):
         """
         Send everything a step prints to a file instead of Slicer's own pipe.
