@@ -1107,14 +1107,22 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.module_name_before = self.module_name
     self.nb_change_bystep = 0
     total_time = time.time() - self.startTime
-    average_time = total_time / self.nb_patient
     logger.info("Processing completed successfully")
     logger.info(
       f"Processing completed in {int(total_time / 60)} min and {int(total_time % 60)} sec"
     )
-    logger.info(
-      f"Average time per patient: {int(average_time / 60)} min and {int(average_time % 60)} sec"
-    )
+    # A run that processed nobody has no average, and dividing by that zero
+    # raised ZeroDivisionError right here -- inside the end-of-process handler,
+    # so the module never signalled that it had stopped and the caller waited
+    # for its whole ceiling on a run that had failed in the first minute.
+    # AREG already guards the same line; ALI and ASO did not.
+    if self.nb_patient:
+      average_time = total_time / self.nb_patient
+      logger.info(
+        f"Average time per patient: {int(average_time / 60)} min and {int(average_time % 60)} sec"
+      )
+    else:
+      logger.warning("No patient was processed, so there is no average to report")
     self.RunningUI(False)
 
     stop_time = time.time()

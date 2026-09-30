@@ -1341,18 +1341,24 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.module_name_before = self.module_name
         self.nb_change_bystep = 0
         total_time = time.time() - self.startTime
-        average_time = total_time / self.nb_patient
         logger.info("PROCESS DONE.")
         logger.info(
             "Done in {} min and {} sec".format(
                 int(total_time / 60), int(total_time % 60)
             )
         )
-        logger.info(
-            "Average time per patient : {} min and {} sec".format(
-                int(average_time / 60), int(average_time % 60)
+        # Same guard as AREG: a run that processed nobody has no average, and
+        # the division raised inside the end-of-process handler, so the module
+        # never signalled that it had stopped.
+        if self.nb_patient:
+            average_time = total_time / self.nb_patient
+            logger.info(
+                "Average time per patient : {} min and {} sec".format(
+                    int(average_time / 60), int(average_time % 60)
+                )
             )
-        )
+        else:
+            logger.warning("No patient was processed, so there is no average to report")
         self.RunningUI(False)
         self.RunningUI(False)
 
