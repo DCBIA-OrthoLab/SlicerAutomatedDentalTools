@@ -2,6 +2,7 @@
 
 
 import glob
+import json
 import os
 
 import sys
@@ -54,6 +55,22 @@ from ASO_IOS_utils import (
     WritefileError,
 )
 
+def _landmark_in_file(json_path, label):
+    """Whether a .mrk.json carries a control point with this label.
+
+    Used only to word an error correctly, so it answers False on anything it
+    cannot read rather than raising inside an exception handler.
+    """
+    try:
+        with open(json_path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        return any(point.get("label") == label
+                   for markup in data.get("markups", [])
+                   for point in markup.get("controlPoints", []))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+
+
 def _register_one_file(args, dic_gold, error_details, failed_indices, file, icp, index, jaw, link, list_file, success_count):
     """Register one surface/landmark pair onto the reference, and write out
     what comes of it.
@@ -103,7 +120,22 @@ def _register_one_file(args, dic_gold, error_details, failed_indices, file, icp,
             output_icp = icp[jaw()].run(file_jaw["json"], dic_gold[jaw()])
             logger.debug(f"ICP registration completed, transformation matrix obtained")
         except KeyError as k:
-            error_msg = f"Landmark key not found in gold reference: {str(k)}"
+            # `run` reads BOTH files, so a missing key can come from either. This
+            # used to assert the gold reference every time, and sent the reader
+            # to check a file that had the landmark: on 2026-09-29 it blamed
+            # Upper_gold.json for 'UR6MB', which that file carries. Which side is
+            # missing it is cheap to establish, so it is established.
+            missing = str(k).strip("'\"")
+            gold_path = dic_gold.get(jaw(), "")
+            in_gold = _landmark_in_file(gold_path, missing)
+            in_patient = _landmark_in_file(file_jaw.get("json", ""), missing)
+            where = {
+                (True, False): "it is in the gold reference but not in the scan's landmarks",
+                (False, True): "it is in the scan's landmarks but not in the gold reference",
+                (False, False): "neither file carries it",
+                (True, True): "both files carry it, so the name is lost between them",
+            }[(bool(in_gold), bool(in_patient))]
+            error_msg = f"Landmark {missing} could not be matched: {where}"
             logger.error(f"[{index}] {error_msg}")
             failed_indices.append(index)
             error_details.append({
@@ -111,10 +143,11 @@ def _register_one_file(args, dic_gold, error_details, failed_indices, file, icp,
                 "file": os.path.basename(file_jaw.get('json', 'unknown')),
                 "stage": "icp_registration",
                 "error_type": "KeyError",
-                "message": f"Landmark {str(k)} not found in gold reference {os.path.basename(dic_gold.get(jaw(), 'unknown'))}"
+                "message": (f"Landmark {missing}: {where} "
+                            f"(gold: {os.path.basename(gold_path or 'unknown')})")
             })
             try:
-                error_detail = f'Please verify landmark file {file_jaw["json"]} or gold reference {dic_gold[jaw()]}, we dont find this landmark {k}'
+                error_detail = (f'Landmark {missing}: {where}. Scan landmarks: {file_jaw["json"]} -- gold reference: {gold_path}')
                 WritefileError(file_jaw["json"], args.folder_error[0], error_detail)
             except Exception as we:
                 logger.warning(f"Could not write error file: {str(we)}")
