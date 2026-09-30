@@ -26,6 +26,19 @@ def read_matrix(tfm_path):
 
 def saveMatrixAsTfm(areg_matrix, aso_tfm_path, output_folder, patient_id, suffix, areg_mode):
     if areg_mode == "Auto_IOS":
+        # The same situation as the T1 copy in AREG_IOS ten lines above this
+        # call, which treats it as a warning: ASO produced no orientation
+        # transform for this timepoint. Read without checking, it came out as a
+        # SimpleITK HDF5 stack five frames deep, logged at ERROR, on a run whose
+        # registration had in fact succeeded and written its surfaces. What
+        # cannot be written is the COMPOSED transform, there being nothing to
+        # compose with -- so that is what the line says now.
+        if not aso_tfm_path or not os.path.exists(aso_tfm_path):
+            logger.warning(
+                "No ASO transform for %s at %s: the registered surfaces are "
+                "written, but not the composed %s_T2_SegOr%s.tfm",
+                patient_id, aso_tfm_path, patient_id, suffix)
+            return
         try:
             matrix_aso = read_matrix(aso_tfm_path)
         except Exception as e:
