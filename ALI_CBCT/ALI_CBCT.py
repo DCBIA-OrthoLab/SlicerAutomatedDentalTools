@@ -173,7 +173,11 @@ def _predict_one_patient(agent_lst, args, brain_weights, env_idx, environment, e
 
     # Save results for this patient
     try:
-        environment.SavePredictedLandmarks(scale_keys[-1], args.output_dir)
+        unplaceable = environment.SavePredictedLandmarks(scale_keys[-1], args.output_dir)
+        for landmark in unplaceable or ():
+            missing[landmark] = (
+                "found, but no group is declared for this name, so it could not "
+                "be written to the output file")
     except Exception as e:
         logger.error(f"Failed to save predictions for patient {environment.patient_id}: {e}")
 
