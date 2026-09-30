@@ -181,7 +181,13 @@ def main(args):
                     writer.Execute(img)
 
             except Exception as e:
-                logger.error("Error during the resampling.")
+                # `e` was caught and dropped: a resampling that failed said
+                # "Error during the resampling." and nothing else -- not the
+                # file, not the cause -- and the loop carried on to the next
+                # scan. The name of the scan is what makes it actionable.
+                logger.error("Error during the resampling of %s: %s: %s",
+                             os.path.basename(str(fobj.get("img", "?"))),
+                             type(e).__name__, e)
 
 
 def PreASOResample(data_dir, out_dir, spacing):
