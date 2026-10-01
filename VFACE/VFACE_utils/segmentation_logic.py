@@ -272,10 +272,20 @@ class SegmentationLogic:
             self.currentVolumeNode = loaded_volume
             self.log_info(f"Loaded volume: {loaded_volume.GetName()}")
             
-            # Configuration of display
-            slicer.util.setSliceViewerLayers(background=loaded_volume)
-            slicer.util.resetSliceViews()
-            
+            # Showing the volume is a courtesy, not a step of the segmentation:
+            # it needs a main window, and `resetSliceViews` raised
+            # "'NoneType' object has no attribute 'resetSliceViews'" without one.
+            # The exception came out of processFile as a plain False, so the
+            # segmentation never ran -- five times in a row -- and VFACE's
+            # Heatmaps and VTK Files folders stayed empty with nothing said.
+            # Measured on 2026-09-29, VFACE at run level.
+            try:
+                slicer.util.setSliceViewerLayers(background=loaded_volume)
+                slicer.util.resetSliceViews()
+            except Exception as display_error:
+                self.log_info("Not showing the volume (%s); the segmentation "
+                              "does not depend on it" % display_error)
+
             # Run segmentation
             success = self._runSegmentationForVolume(loaded_volume)
             

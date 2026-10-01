@@ -2972,10 +2972,30 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if callable(self.python_process):
                 with self.logic.outputToFile() as log_path:
                     result = self.python_process(**self.python_parameters)
-                logger.info(
-                    f"Result of {self.module_name}: {result} "
-                    f"(in {self.logic.readableDuration(time.time() - started)})"
-                )
+                elapsed = self.logic.readableDuration(time.time() - started)
+                # A step that returns False says it failed. This was an INFO
+                # line and nothing else, so the chain carried on: the five BDS
+                # segmentations each returned False, the three ModelToModel
+                # distances then had nothing to measure and returned None, and
+                # the run ended with empty Heatmaps and VTK Files folders while
+                # every line read like success. Measured on 2026-09-29.
+                #
+                # `None` is NOT judged here: several steps legitimately return
+                # it -- AQ3DC, ModelToModel -- and calling that a failure would
+                # fire on a working run.
+                if result is False:
+                    # The ERROR level is what carries this: `python_process_error`
+                    # is set here like the exception branch below sets it, but
+                    # NOTHING in this module reads that field -- a step's failure
+                    # is recorded nowhere and stops nothing. Making it stop the
+                    # chain is a separate decision; being able to see it is not.
+                    logger.error(
+                        f"{self.module_name} reported failure (in {elapsed}); "
+                        "its own output above says why"
+                    )
+                    self.python_process_error = f"{self.module_name} returned False"
+                else:
+                    logger.info(f"Result of {self.module_name}: {result} (in {elapsed})")
                 self.python_process_completed = True
             else:
                 logger.error(f"Error: {self.python_process} is not a callable function")
