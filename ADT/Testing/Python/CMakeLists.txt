@@ -6,6 +6,10 @@ slicer_add_python_unittest(SCRIPT test_naming.py)
 # check_lib_installed: version constraints, and the inherited spellings.
 slicer_add_python_unittest(SCRIPT test_deps.py)
 
+# ASO IOS keeps the landmarks both files carry, and refuses below three --
+# which is what the CBCT path always did.
+slicer_add_python_unittest(SCRIPT test_aso_ios_landmark_intersection.py)
+
 # Which torch wheel channel a GPU gets: Blackwell needs cu128, and Maxwell,
 # Pascal and Volta must never be moved onto it.
 slicer_add_python_unittest(SCRIPT test_cuda_channel.py)
