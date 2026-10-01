@@ -23,7 +23,7 @@ if os.path.join(_adt_root, "ADT") not in sys.path:
 
 # --- LOGGING CONFIGURATION ---
 from ADTLib.logging_setup import get_logger
-from ADTLib.progress_protocol import emit
+from ADTLib.progress_protocol import PATIENT_DONE, STEP_DONE, emit_event
 
 logger = get_logger("ALI_CBCT")
 
@@ -45,27 +45,26 @@ except ImportError as e:
     logger.error(f"Failed to import required modules: {e}")
     sys.exit(1)
 
-def update_slicer_progress(value):
-    """Send a value on the progress channel.
+def report_landmark_done():
+    """One landmark has been placed.
 
-    WARNING -- what this CLI sends arrives nowhere. It passes percentages
-    (5, 20, then 20 to 100) while Slicer multiplies by a hundred what it
-    reads: the window therefore receives 500, 2000, up to 10000. But
-    `DisplayALICBCT.isProgress`, a l'autre bout, ne reagit qu'a 100 et a 200 --
-    that is, to the values 1 and 2. **ALI CBCT's progress bar and its landmark
-    counter therefore never move.**
+    This CLI used to print percentages (5, 20, then 20 up to 100). Slicer
+    multiplies what it reads by a hundred, so the widget received 500, 2000, up
+    to 10000, while `DisplayALICBCT.isProgress` only ever reacts to 100 and 200
+    -- the values 1 and 2. The bar and the landmark counter therefore never
+    moved, on any run.
 
-    Mesure a l'appui : un CLI qui imprime 0.42 donne `GetProgress() == 42`, 1
-    donne 100, 2 donne 200, 20 donne 2000. Voir
-    `DEBUG/adt-validation/probe_progress_scale/`.
-
-    Fixing it means deciding what the bar should show -- a fraction of
-    progress, or one event per patient as the four other CLIs do
-    (`emit_event(PATIENT_DONE)`). That is a decision, not a cleanup, so
-    nothing is changed here: the bytes emitted are the ones from before.
+    The widget's own message says what it wants: "Landmarks : x / N | Patient :
+    y / M". So that is what is sent -- one STEP_DONE per landmark, one
+    PATIENT_DONE per patient, which is what the four CLIs whose bar does advance
+    already send.
     """
-    emit(value)
-    time.sleep(0.05)
+    emit_event(STEP_DONE)
+
+
+def report_patient_done():
+    """One patient is finished."""
+    emit_event(PATIENT_DONE)
 
 def _report_missing_landmarks(patient_id, missing, out_dir):
     """Make visible what the output file does not say.
@@ -170,6 +169,11 @@ def _predict_one_patient(agent_lst, args, brain_weights, env_idx, environment, e
             agent.SetBrain(None)
             if 'brain' in locals(): del brain
             if torch.cuda.is_available(): torch.cuda.empty_cache()
+            # Placed or not, this landmark has been worked on, and the counter
+            # the widget shows -- "Landmarks : x / N" -- measures the work, not
+            # the successes: a run where one landmark cannot be found must still
+            # reach the end of its bar.
+            report_landmark_done()
 
     # Save results for this patient
     try:
@@ -183,9 +187,7 @@ def _predict_one_patient(agent_lst, args, brain_weights, env_idx, environment, e
 
     _report_missing_landmarks(environment.patient_id, missing, args.output_dir)
 
-    # Update Slicer Progress
-    progress = 20 + int((env_idx + 1) / len(environment_lst) * 80)
-    update_slicer_progress(progress)
+    report_patient_done()
     return tot_step
 
 def _prepare_one_patient(data, p_name, patients, scale_spacing, temp_fold):
@@ -278,11 +280,12 @@ def main(args):
         sys.exit(1)
 
     # 4. PRE-PROCESSING (HISTOGRAM & SPACING)
-    update_slicer_progress(5)
+    #
+    # Rien n est emis ici : ce canal ne porte que deux evenements, un landmark
+    # et un patient. Les 5 % et 20 % envoyes avant arrivaient en 500 et 2000,
+    # que le widget ne sait pas lire.
     for p_name, data in patients.items():
         _prepare_one_patient(data, p_name, patients, scale_spacing, temp_fold)
-
-    update_slicer_progress(20)
 
     # 5. ENVIRONMENT & AGENT INIT
     scale_keys = [str(s).replace('.', '-') for s in scale_spacing]
