@@ -66,9 +66,36 @@ class ICP:
         source_int = self.copy(source)
         target_int = self.copy(target)
 
-        if callable(self.option):
-            source_int = self.option(source_int)
-            target_int = self.option(target_int)
+        option = self.option
+        if isinstance(option, SelectKey) and isinstance(source, dict):
+            # Keep only the landmarks BOTH files carry, which is what the CBCT
+            # path has always done: it filters on what is present and then
+            # refuses below three. Here `SelectKey` indexed the requested names
+            # outright, so one absent name raised KeyError and the whole pair was
+            # abandoned -- twelve landmarks asked for, four in the file, nothing
+            # registered. Measured on 2026-09-30 on the published Semi-Automated
+            # test set.
+            wanted = list(option.list_key)
+            usable = [key for key in wanted if key in source and key in target]
+            dropped = [key for key in wanted if key not in usable]
+            if dropped:
+                logger.warning(
+                    "%d of the %d landmarks asked for are not in both files, so "
+                    "they are not used: %s",
+                    len(dropped), len(wanted), ", ".join(dropped))
+            # Three is not a convention, it is the minimum a 3D rigid
+            # registration is determined by: with two, a rotation around the
+            # line joining them stays free.
+            if len(usable) < 3:
+                raise ValueError(
+                    "only %d landmark(s) are in both the scan and the reference "
+                    "(%s); a registration needs at least 3"
+                    % (len(usable), ", ".join(usable) or "none"))
+            option = SelectKey(usable)
+
+        if callable(option):
+            source_int = option(source_int)
+            target_int = option(target_int)
 
         matrix_final = np.identity(4)
 
