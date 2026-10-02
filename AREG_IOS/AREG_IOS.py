@@ -6,26 +6,26 @@ import glob
 import shutil
 import argparse
 import platform
-import logging
-
-# --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("AREG_IOS")
-logger.setLevel(logging.INFO)
-
-logger.propagate = False
-
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
 
 # ===== DEPENDENCY CHECK =====
 # Check and fix torch/torchvision compatibility before any imports
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+# --- LOGGING CONFIGURATION ---
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("AREG_IOS")
+
+
 try:
     # Add parent for deps check
     # realpath, not __file__: see the note below.
@@ -186,6 +186,158 @@ def RunMGL(args, icp):
         )
 
 
+def _register_one_sample(Patched, args, dataset, failed_samples, icp, idx, lower, processed_samples):
+    """Register one T1/T2 pair and write the surfaces and the matrix.
+
+    An error here is logged and the next pair is handled: one unreadable
+    patient does not stop the batch."""
+    sample_context = f"sample {idx+1}/{len(dataset)}"
+    logger.info(f"Processing {sample_context}")
+
+    try:
+        # ===== UPPER SURFACE T1 =====
+        try:
+            logger.debug(f"Processing upper T1 surface")
+            name_t1 = os.path.basename(dataset.getUpperPath(idx, "T1"))
+            surf_t1 = dataset.getUpperSurf(idx, "T1")
+
+            if surf_t1 is None:
+                logger.warning(f"Upper T1 surface is None, skipping")
+                raise ValueError("Upper T1 surface not found")
+
+            surf_t1 = Patched(dataset[idx, "T1"], surf_t1)
+            WriteSurf(surf_t1, args.output, name_t1, args.suffix)
+            logger.debug(f"Saved upper T1 surface")
+        except Exception as e:
+            logger.error(f"Error processing upper T1 surface: {e}")
+            raise
+
+        # ===== UPDATE LOG =====
+        try:
+            with open(args.log_path, "w") as log_f:
+                log_f.write(str(1))
+        except Exception as e:
+            logger.warning(f"Error updating log file: {e}")
+
+        # ===== UPPER SURFACE T2 =====
+        try:
+            logger.debug(f"Processing upper T2 surface")
+            name_t2 = os.path.basename(dataset.getUpperPath(idx, "T2"))
+            surf_t2 = dataset.getUpperSurf(idx, "T2")
+
+            if surf_t2 is None:
+                logger.warning(f"Upper T2 surface is None, skipping")
+                raise ValueError("Upper T2 surface not found")
+
+            surf_t2 = Patched(dataset[idx, "T2"], surf_t2)
+            logger.debug(f"Predicted upper T2 surface")
+        except Exception as e:
+            logger.error(f"Error processing upper T2 surface: {e}")
+            raise
+
+        # ===== UPDATE LOG =====
+        try:
+            with open(args.log_path, "w") as log_f:
+                log_f.write(str(1))
+        except Exception as e:
+            logger.warning(f"Error updating log file: {e}")
+
+        # ===== RUN ICP REGISTRATION =====
+        try:
+            logger.debug(f"Running ICP registration")
+            output_icp = icp.run(surf_t2, surf_t1)
+            logger.info(f"ICP registration completed")
+        except Exception as e:
+            logger.error(f"Error running ICP registration: {e}")
+            raise
+
+        # ===== SAVE REGISTERED UPPER T2 =====
+        try:
+            logger.debug(f"Saving registered upper T2 surface")
+            WriteSurf(output_icp["source_Or"], args.output, name_t2, args.suffix)
+            logger.debug(f"Saved registered upper T2 surface")
+        except Exception as e:
+            logger.error(f"Error saving registered upper T2: {e}")
+            raise
+
+        # ===== HANDLE TFM FILES (FOR Auto_IOS MODE) =====
+        if args.areg_mode == "Auto_IOS":
+            try:
+                logger.debug(f"Processing transformation files for Auto_IOS mode")
+                # TIMEPOINT-SUFFIX: this assumes the T2 scan is named _T2; a _T4 input keeps
+                # the suffix in patient_id and stops matching its T1. See the full note above
+                # GetPatients in AREG_CBCT/AREG_CBCT_utils/utils.py.
+                patient_id = name_t2.split("_T2")[0]
+                patient_id_short = patient_id.split("_")[0] if "_" in patient_id else patient_id
+
+                aso_tfm_path_t1 = os.path.join(args.T1, f"{patient_id_short}_SegOr.tfm")
+                aso_tfm_path_t2 = os.path.join(args.T2, f"{patient_id_short}_SegOr.tfm")
+                out_tfm_t1 = os.path.join(args.output, f"{patient_id_short}_T1_SegOr.tfm")
+
+                # Copy T1 matrix
+                try:
+                    if os.path.exists(aso_tfm_path_t1):
+                        shutil.copy(aso_tfm_path_t1, out_tfm_t1)
+                        logger.debug(f"Saved T1 matrix: {out_tfm_t1}")
+                    else:
+                        logger.warning(f"T1 tfm file not found at {aso_tfm_path_t1}")
+                except Exception as e:
+                    logger.error(f"Error copying T1 matrix: {e}")
+
+                # Save T2 matrix
+                try:
+                    saveMatrixAsTfm(output_icp["matrix"], aso_tfm_path_t2, args.output, patient_id_short, args.suffix, args.areg_mode)
+                    logger.debug(f"Saved T2 transformation matrix")
+                except Exception as e:
+                    logger.error(f"Error saving T2 matrix: {e}")
+            except Exception as e:
+                logger.warning(f"Error handling TFM files: {e}")
+
+        # ===== LOWER SURFACES (IF PRESENT) =====
+        if lower:
+            try:
+                logger.debug(f"Processing lower surfaces")
+
+                # Lower T2
+                try:
+                    surf_lower_t2 = dataset.getLowerSurf(idx, "T2")
+                    if surf_lower_t2 is not None:
+                        surf_lower_t2 = TransformSurf(surf_lower_t2, output_icp["matrix"])
+                        name_lower_t2 = os.path.basename(dataset.getLowerPath(idx, "T2"))
+                        WriteSurf(surf_lower_t2, args.output, name_lower_t2, args.suffix)
+                        logger.debug(f"Saved registered lower T2 surface")
+                except Exception as e:
+                    logger.warning(f"Error processing lower T2: {e}")
+
+                # Lower T1
+                try:
+                    surf_lower_t1 = dataset.getLowerSurf(idx, "T1")
+                    if surf_lower_t1 is not None:
+                        name_lower_t1 = os.path.basename(dataset.getLowerPath(idx, "T1"))
+                        WriteSurf(surf_lower_t1, args.output, name_lower_t1, args.suffix)
+                        logger.debug(f"Saved lower T1 surface")
+                except Exception as e:
+                    logger.warning(f"Error processing lower T1: {e}")
+            except Exception as e:
+                logger.warning(f"Error processing lower surfaces: {e}")
+
+        # ===== UPDATE FINAL LOG =====
+        try:
+            with open(args.log_path, "w") as log_f:
+                log_f.write(str(idx + 1))
+            logger.debug(f"Log file updated")
+        except Exception as e:
+            logger.warning(f"Error updating final log: {e}")
+
+        processed_samples += 1
+        logger.info(f"Successfully processed {sample_context}")
+
+    except Exception as e:
+        logger.error(f"Failed to process {sample_context}: {e}")
+        failed_samples.append((idx, str(e)))
+        return processed_samples
+    return processed_samples
+
 def main(args):
     """Main function for IOS alignment registration with comprehensive error handling."""
     try:
@@ -208,9 +360,9 @@ def main(args):
         # ===== REGISTRATION SETUP =====
         try:
             logger.debug("Initializing registration method (vtkICP)")
-            Method = [vtkICP()]
+            method = [vtkICP()]
             option = vtkMeshTeeth(list_teeth=[1], property="Butterfly")
-            icp = ICP(Method, option=option)
+            icp = ICP(method, option=option)
             logger.debug("Registration method initialized")
         except Exception as e:
             logger.error(f"Error initializing registration method: {e}")
@@ -245,7 +397,7 @@ def main(args):
             # pytorch_lightning behind it, and the MGL branch above has
             # already returned without ever needing them.
             from AREG_IOS_utils import PredPatch
-            Patched = PredPatch(args.model)
+            patched = PredPatch(args.model)
             logger.debug("Prediction model loaded")
         except Exception as e:
             logger.error(f"Error loading prediction model: {e}")
@@ -267,151 +419,7 @@ def main(args):
         failed_samples = []
 
         for idx in range(len(dataset)):
-            sample_context = f"sample {idx+1}/{len(dataset)}"
-            logger.info(f"Processing {sample_context}")
-            
-            try:
-                # ===== UPPER SURFACE T1 =====
-                try:
-                    logger.debug(f"Processing upper T1 surface")
-                    name_t1 = os.path.basename(dataset.getUpperPath(idx, "T1"))
-                    surf_T1 = dataset.getUpperSurf(idx, "T1")
-                    
-                    if surf_T1 is None:
-                        logger.warning(f"Upper T1 surface is None, skipping")
-                        raise ValueError("Upper T1 surface not found")
-                    
-                    surf_T1 = Patched(dataset[idx, "T1"], surf_T1)
-                    WriteSurf(surf_T1, args.output, name_t1, args.suffix)
-                    logger.debug(f"Saved upper T1 surface")
-                except Exception as e:
-                    logger.error(f"Error processing upper T1 surface: {e}")
-                    raise
-
-                # ===== UPDATE LOG =====
-                try:
-                    with open(args.log_path, "w") as log_f:
-                        log_f.write(str(1))
-                except Exception as e:
-                    logger.warning(f"Error updating log file: {e}")
-
-                # ===== UPPER SURFACE T2 =====
-                try:
-                    logger.debug(f"Processing upper T2 surface")
-                    name_t2 = os.path.basename(dataset.getUpperPath(idx, "T2"))
-                    surf_T2 = dataset.getUpperSurf(idx, "T2")
-                    
-                    if surf_T2 is None:
-                        logger.warning(f"Upper T2 surface is None, skipping")
-                        raise ValueError("Upper T2 surface not found")
-                    
-                    surf_T2 = Patched(dataset[idx, "T2"], surf_T2)
-                    logger.debug(f"Predicted upper T2 surface")
-                except Exception as e:
-                    logger.error(f"Error processing upper T2 surface: {e}")
-                    raise
-
-                # ===== UPDATE LOG =====
-                try:
-                    with open(args.log_path, "w") as log_f:
-                        log_f.write(str(1))
-                except Exception as e:
-                    logger.warning(f"Error updating log file: {e}")
-
-                # ===== RUN ICP REGISTRATION =====
-                try:
-                    logger.debug(f"Running ICP registration")
-                    output_icp = icp.run(surf_T2, surf_T1)
-                    logger.info(f"ICP registration completed")
-                except Exception as e:
-                    logger.error(f"Error running ICP registration: {e}")
-                    raise
-
-                # ===== SAVE REGISTERED UPPER T2 =====
-                try:
-                    logger.debug(f"Saving registered upper T2 surface")
-                    WriteSurf(output_icp["source_Or"], args.output, name_t2, args.suffix)
-                    logger.debug(f"Saved registered upper T2 surface")
-                except Exception as e:
-                    logger.error(f"Error saving registered upper T2: {e}")
-                    raise
-
-                # ===== HANDLE TFM FILES (FOR Auto_IOS MODE) =====
-                if args.areg_mode == "Auto_IOS":
-                    try:
-                        logger.debug(f"Processing transformation files for Auto_IOS mode")
-                        # TIMEPOINT-SUFFIX: this assumes the T2 scan is named _T2; a _T4 input keeps
-                        # the suffix in patient_id and stops matching its T1. See the full note above
-                        # GetPatients in AREG_CBCT/AREG_CBCT_utils/utils.py.
-                        patient_id = name_t2.split("_T2")[0]
-                        patient_id_short = patient_id.split("_")[0] if "_" in patient_id else patient_id
-                        
-                        aso_tfm_path_T1 = os.path.join(args.T1, f"{patient_id_short}_SegOr.tfm")
-                        aso_tfm_path_T2 = os.path.join(args.T2, f"{patient_id_short}_SegOr.tfm")
-                        out_tfm_T1 = os.path.join(args.output, f"{patient_id_short}_T1_SegOr.tfm")
-                        
-                        # Copy T1 matrix
-                        try:
-                            if os.path.exists(aso_tfm_path_T1):
-                                shutil.copy(aso_tfm_path_T1, out_tfm_T1)
-                                logger.debug(f"Saved T1 matrix: {out_tfm_T1}")
-                            else:
-                                logger.warning(f"T1 tfm file not found at {aso_tfm_path_T1}")
-                        except Exception as e:
-                            logger.error(f"Error copying T1 matrix: {e}")
-                        
-                        # Save T2 matrix
-                        try:
-                            saveMatrixAsTfm(output_icp["matrix"], aso_tfm_path_T2, args.output, patient_id_short, args.suffix, args.areg_mode)
-                            logger.debug(f"Saved T2 transformation matrix")
-                        except Exception as e:
-                            logger.error(f"Error saving T2 matrix: {e}")
-                    except Exception as e:
-                        logger.warning(f"Error handling TFM files: {e}")
-
-                # ===== LOWER SURFACES (IF PRESENT) =====
-                if lower:
-                    try:
-                        logger.debug(f"Processing lower surfaces")
-                        
-                        # Lower T2
-                        try:
-                            surf_lower_t2 = dataset.getLowerSurf(idx, "T2")
-                            if surf_lower_t2 is not None:
-                                surf_lower_t2 = TransformSurf(surf_lower_t2, output_icp["matrix"])
-                                name_lower_t2 = os.path.basename(dataset.getLowerPath(idx, "T2"))
-                                WriteSurf(surf_lower_t2, args.output, name_lower_t2, args.suffix)
-                                logger.debug(f"Saved registered lower T2 surface")
-                        except Exception as e:
-                            logger.warning(f"Error processing lower T2: {e}")
-                        
-                        # Lower T1
-                        try:
-                            surf_lower_t1 = dataset.getLowerSurf(idx, "T1")
-                            if surf_lower_t1 is not None:
-                                name_lower_t1 = os.path.basename(dataset.getLowerPath(idx, "T1"))
-                                WriteSurf(surf_lower_t1, args.output, name_lower_t1, args.suffix)
-                                logger.debug(f"Saved lower T1 surface")
-                        except Exception as e:
-                            logger.warning(f"Error processing lower T1: {e}")
-                    except Exception as e:
-                        logger.warning(f"Error processing lower surfaces: {e}")
-
-                # ===== UPDATE FINAL LOG =====
-                try:
-                    with open(args.log_path, "w") as log_f:
-                        log_f.write(str(idx + 1))
-                    logger.debug(f"Log file updated")
-                except Exception as e:
-                    logger.warning(f"Error updating final log: {e}")
-
-                processed_samples += 1
-                logger.info(f"Successfully processed {sample_context}")
-            
-            except Exception as e:
-                logger.error(f"Failed to process {sample_context}: {e}")
-                failed_samples.append((idx, str(e)))
-                continue
+            processed_samples = _register_one_sample(patched, args, dataset, failed_samples, icp, idx, lower, processed_samples)
 
         # ===== FINAL REPORT =====
         try:

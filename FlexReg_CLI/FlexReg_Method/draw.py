@@ -4,36 +4,27 @@ import numpy as np
 
 from FlexReg_Method.propagation import Dilation
 
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("FlexReg_draw")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
 
-def drawPatch(outlinePoints: list,polydata,mid,index:int):
+logger = get_logger("FlexReg_draw")
+
+def drawPatch(outline_points: list,polydata,mid,index:int):
     step = 0.2
     radius = 0.5
     radius = 1.1
-    P0 = torch.tensor(np.array(outlinePoints)).unsqueeze(0).cuda()
-    P1 = torch.tensor(np.array(outlinePoints[1:] + [outlinePoints[0]])).unsqueeze(0).cuda()
+    P0 = torch.tensor(np.array(outline_points)).unsqueeze(0).cuda()
+    P1 = torch.tensor(np.array(outline_points[1:] + [outline_points[0]])).unsqueeze(0).cuda()
 
 
     T = torch.arange(0,1+step,step).unsqueeze(0).unsqueeze(0).permute(2,1,0).cuda()
 
     P = (1-T)*P0 + T*P1
 
-    Pshape= P.shape
+    pshape= P.shape
 
-    P = P.view(Pshape[0]*Pshape[1],3)
+    P = P.view(pshape[0]*pshape[1],3)
 
          
 
@@ -42,16 +33,16 @@ def drawPatch(outlinePoints: list,polydata,mid,index:int):
 
     dist = torch.cdist(P,V)
     arg_outline = torch.argwhere(dist < radius)[:,1]
-    V_label = torch.zeros((V.shape[0])).cuda()
-    V_label[arg_outline] = 1
+    v_label = torch.zeros((V.shape[0])).cuda()
+    v_label[arg_outline] = 1
 
     mid = torch.tensor(mid).unsqueeze(0).cuda()
     dist_mid_vertex = torch.cdist(mid,V)
     arg_midpoint_min = torch.argmin(dist_mid_vertex)
-    V_label = Dilation(arg_midpoint_min,F,V_label,polydata)
+    v_label = Dilation(arg_midpoint_min,F,v_label,polydata)
 
-    V_labels_prediction = numpy_to_vtk(V_label.cpu().numpy())
-    V_labels_prediction.SetName(f'Butterfly{index}')
+    v_labels_prediction = numpy_to_vtk(v_label.cpu().numpy())
+    v_labels_prediction.SetName(f'Butterfly{index}')
 
-    polydata.GetPointData().AddArray(V_labels_prediction)
+    polydata.GetPointData().AddArray(v_labels_prediction)
     

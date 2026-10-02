@@ -1,60 +1,33 @@
 #!/usr/bin/env python-real
 import argparse
 import json
-import glob
-import sys, os, time
+import sys, os
 import SimpleITK as sitk
 
-import logging
-import sys
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("AutoMatrix_CLI")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("AutoMatrix_CLI")
 
 from pathlib import Path
 
+from ADTLib.io.fs import search  # noqa: F401  (re-exporte)
+from ADTLib.progress_protocol import PATIENT_DONE, emit_event
+
 fpath = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(fpath)
-
-
-def search(path, *args):
-        """
-        Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
-
-        Example:
-        args = ('json',['.nii.gz','.nrrd'])
-        return:
-            {
-                'json' : ['path/a.json', 'path/b.json','path/c.json'],
-                '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
-                '.nrrd.gz' : ['path/c.nrrd']
-            }
-        """
-        arguments = []
-        for arg in args:
-            if type(arg) == list:
-                arguments.extend(arg)
-            else:
-                arguments.append(arg)
-        return {
-            key: [
-                i
-                for i in glob.iglob(
-                    os.path.normpath("/".join([path, "**", "*"])), recursive=True
-                )
-                if i.endswith(key)
-            ]
-            for key in arguments
-        }
 
 
 def GetPatients(file_path:str,matrix_path:str):
@@ -117,7 +90,7 @@ def GetPatients(file_path:str,matrix_path:str):
             try :
                 fname, extension2 = os.path.splitext(os.path.basename(fname))
                 extension = extension2+extension
-            except :
+            except Exception:
                 logger.warning("The file is not a .nii.gz")
 
             if extension ==".vtk" or extension ==".vtp" or extension ==".stl" or extension ==".off" or extension ==".obj" or extension==".nii" or extension==".nii.gz" or extension==".nrrd" or extension==".mrk.json":
@@ -311,15 +284,7 @@ def main(args):
                     logger.error(f"ERROR processing {scan} with matrix {matrix}: {e}")
                     continue
                             
-            print(f"""<filter-progress>{0}</filter-progress>""")
-            sys.stdout.flush()
-            time.sleep(0.2)
-            print(f"""<filter-progress>{2}</filter-progress>""")
-            sys.stdout.flush()
-            time.sleep(0.2)
-            print(f"""<filter-progress>{0}</filter-progress>""")
-            sys.stdout.flush()
-            time.sleep(0.2)
+            emit_event(PATIENT_DONE)
 
 
 if __name__ == "__main__":

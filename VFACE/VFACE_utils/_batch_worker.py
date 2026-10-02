@@ -11,19 +11,11 @@ Usage:
 import sys
 import argparse
 import traceback
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("VFACE_batchworker")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("VFACE_batchworker")
 
 
 def read_vtk(file_path):
@@ -131,7 +123,6 @@ def compute_distance(pd1, pd2, signed=True):
     Compute distance between two polydata meshes.
     Uses subsampling for large meshes to reduce memory usage.
     """
-    import vtk
 
     n1 = pd1.GetNumberOfPoints()
     n2 = pd2.GetNumberOfPoints()

@@ -1,95 +1,25 @@
 # Functions for surface loading, scaling, normal calculation, and mesh utilities
-import os
-import logging
 import numpy as np
-import sys
 import vtk
 from vtk.util.numpy_support import vtk_to_numpy
 import torch
 from monai.transforms import ToTensor
+from ADTLib.io.surface import ReadSurf  # noqa: F401  (re-exporte)
 
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("ALI_IOS_Surface")
-logger.setLevel(logging.INFO)
+from ADTLib.logging_setup import get_logger
 
-logger.propagate = False
+logger = get_logger("ALI_IOS_Surface")
 
-if logger.handlers:
-    logger.handlers.clear()
+from ADTLib.env.cuda import preferred_device
 
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
-
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-def ReadSurf(fileName):
-    """Read surface file with error handling."""
-    try:
-        if not os.path.exists(fileName):
-            logger.error(f"Surface file not found: {fileName}")
-            raise FileNotFoundError(f"File does not exist: {fileName}")
-        
-        fname, extension = os.path.splitext(fileName)
-        extension = extension.lower()
-        logger.debug(f"Reading surface file with extension: {extension}")
-        
-        if extension == ".vtk":
-            reader = vtk.vtkPolyDataReader()
-        elif extension == ".vtp":
-            reader = vtk.vtkXMLPolyDataReader()
-        elif extension == ".stl":
-            reader = vtk.vtkSTLReader()
-        elif extension == ".off":
-            reader = OFFReader()
-        elif extension == ".obj":
-            if os.path.exists(fname + ".mtl"):
-                obj_import = vtk.vtkOBJImporter()
-                obj_import.SetFileName(fileName)
-                obj_import.SetFileNameMTL(fname + ".mtl")
-                textures_path = os.path.normpath(os.path.dirname(fname) + "/../images")
-                if os.path.exists(textures_path):
-                    obj_import.SetTexturePath(textures_path)
-                try:
-                    obj_import.Read()
-                except Exception as e:
-                    logger.error(f"Error reading OBJ file: {e}")
-                    raise
-
-                actors = obj_import.GetRenderer().GetActors()
-                actors.InitTraversal()
-                append = vtk.vtkAppendPolyData()
-
-                for i in range(actors.GetNumberOfItems()):
-                    surfActor = actors.GetNextActor()
-                    append.AddInputData(surfActor.GetMapper().GetInputAsDataSet())
-
-                append.Update()
-                surf = append.GetOutput()
-                logger.info(f"Successfully loaded OBJ file with material: {fileName}")
-                return surf
-            else:
-                reader = vtk.vtkOBJReader()
-        else:
-            logger.error(f"Unsupported file format: {extension}")
-            raise ValueError(f"Unsupported file format: {extension}")
-        
-        reader.SetFileName(fileName)
-        reader.Update()
-        surf = reader.GetOutput()
-        
-        if surf.GetNumberOfPoints() == 0:
-            logger.error(f"Surface file is empty: {fileName}")
-            raise ValueError("Surface has no points")
-        
-        logger.info(f"Successfully loaded surface from {fileName} with {surf.GetNumberOfPoints()} points")
-        return surf
-    except Exception as e:
-        logger.error(f"Error reading surface file {fileName}: {e}")
-        raise
+# preferred_device rather than `cuda if is_available()`: that test answers for
+# the driver and the runtime, not for the wheel. On a GPU the installed torch
+# carries no kernels for it says True, every launch afterwards fails, and the
+# agents reported the result as "landmark not found" -- seven times out of
+# seven, with nothing naming the cause. The probe runs one real kernel and
+# falls back to the CPU, slowly but visibly, when it cannot.
+DEVICE = preferred_device()
 
 def ScaleSurf(surf, mean_arr=None, scale_factor=None):
     """Scale surface with error handling."""

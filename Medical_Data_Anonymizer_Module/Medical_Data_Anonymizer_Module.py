@@ -7,19 +7,23 @@ import uuid
 import warnings
 
 import sys
-import logging
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("Medical_Anonymizer")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+import csv
+
+logger = get_logger("Medical_Anonymizer")
 
 # Suppress Presidio multilingual warnings - we only use English
 os.environ['PRESIDIO_SUPPRESS_WARNINGS'] = '1'
@@ -49,15 +53,19 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
 
+        # The anonymisation itself lives in the Logic: it touches no widget
+        # and is tested without launching Slicer.
+        self.logic = Medical_Data_Anonymizer_ModuleLogic()
+
         # Detect dark mode
-        isDarkMode = self._isDarkMode()
+        is_dark_mode = self._isDarkMode()
         
         # Apply stylesheet to parent based on theme
-        styleSheet = self._getStyleSheet(isDarkMode)
-        self.parent.setStyleSheet(styleSheet)
+        style_sheet = self._getStyleSheet(is_dark_mode)
+        self.parent.setStyleSheet(style_sheet)
         
         # Store reference for potential theme changes
-        self.isDarkMode = isDarkMode
+        self.isDarkMode = is_dark_mode
         
         # Add margins to left and right
         self.layout.setContentsMargins(15, 0, 15, 0)
@@ -115,7 +123,7 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
         self.advancedCollapsible.collapsed = True
         self.layout.addWidget(self.advancedCollapsible)
         
-        advancedLayout = qt.QFormLayout(self.advancedCollapsible)
+        advanced_layout = qt.QFormLayout(self.advancedCollapsible)
 
         # Anonymization method dropdown
         self.anonymizationMethodCombo = qt.QComboBox()
@@ -124,7 +132,7 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
         self.anonymizationMethodCombo.addItem("Hash", "hash")
         self.anonymizationMethodCombo.addItem("Mask", "mask")
         self.anonymizationMethodCombo.setToolTip("Choose how to anonymize detected entities")
-        advancedLayout.addRow("Anonymization Method:", self.anonymizationMethodCombo)
+        advanced_layout.addRow("Anonymization Method:", self.anonymizationMethodCombo)
 
         # Score threshold slider
         self.scoreThresholdSlider = ctk.ctkSliderWidget()
@@ -133,7 +141,7 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
         self.scoreThresholdSlider.value = 0.5
         self.scoreThresholdSlider.singleStep = 0.05
         self.scoreThresholdSlider.setToolTip("Confidence threshold for entity detection (0.0-1.0). Higher = more strict.")
-        advancedLayout.addRow("Confidence Threshold:", self.scoreThresholdSlider)
+        advanced_layout.addRow("Confidence Threshold:", self.scoreThresholdSlider)
 
         # Install Dependencies Button
         self.installDependenciesButton = qt.QPushButton("Install Dependencies")
@@ -165,10 +173,10 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
             # Get the palette of the main application
             palette = slicer.app.palette()
             # Check if the background is dark by checking luminance
-            bgColor = palette.color(qt.QPalette.Window)
-            luminance = (0.299 * bgColor.red() + 0.587 * bgColor.green() + 0.114 * bgColor.blue()) / 255.0
+            bg_color = palette.color(qt.QPalette.Window)
+            luminance = (0.299 * bg_color.red() + 0.587 * bg_color.green() + 0.114 * bg_color.blue()) / 255.0
             return luminance < 0.5
-        except:
+        except Exception:
             return False
 
     def _getStyleSheet(self, isDarkMode):
@@ -417,12 +425,12 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
                     self.statusLabel.setText(f"Loading {lang_name} model...")
                     slicer.app.processEvents()
                     spacy.load(model_name)
-                except:
+                except Exception:
                     self.statusLabel.setText(f"Installing {lang_name} model...")
                     slicer.app.processEvents()
                     try:
                         spacy.cli.download(model_name)
-                    except:
+                    except Exception:
                         logger.warning(f"Could not download {model_name}")
 
             self.statusLabel.setText("Dependencies installed successfully!")
@@ -560,11 +568,12 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
                                         for table in tables:
                                             for row in table:
                                                 full_text += " ".join([str(cell) if cell else "" for cell in row]) + "\n"
-                        except:
-                            pass
+                        except Exception:
+                            # Second failure in a row: no text could be extracted from this
+                            # PDF, so the file comes out unanonymised. Worth saying.
+                            logger.warning(f"No text extracted from {file}, it comes out as is")
                 
                 elif file_ext == ".csv":
-                    import csv
                     full_text = ""
                     with open(input_file_path, 'r', encoding='utf-8') as f:
                         reader = csv.reader(f)
@@ -575,7 +584,7 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
                     from xml.etree import ElementTree as ET
                     tree = ET.parse(input_file_path)
                     root = tree.getroot()
-                    full_text = self.extract_text_from_xml(root)
+                    full_text = self.logic.extract_text_from_xml(root)
                 
                 elif file_ext == ".odt":
                     from odf import opendocument, text
@@ -591,10 +600,10 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
                     raise ValueError(f"Unsupported file type: {file_ext}")
                 
                 # Anonymize using Presidio
-                anonymized_text = self.anonymize_text_presidio(
-                    full_text, 
-                    analyzer, 
-                    anonymizer, 
+                anonymized_text = self.logic.anonymize_text_presidio(
+                    full_text,
+                    analyzer,
+                    anonymizer,
                     selected_entities,
                     anonymization_method,
                     score_threshold
@@ -619,10 +628,9 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
                 elif file_ext == ".pdf":
                     new_file_name = file.replace(".pdf", "_anonymized.pdf")
                     output_path = os.path.join(output_folder, new_file_name)
-                    self.save_str_pdf(anonymized_text, output_path)
+                    self.logic.save_str_pdf(anonymized_text, output_path)
                 
                 elif file_ext == ".csv":
-                    import csv
                     new_file_name = file.replace(".csv", "_anonymized.csv")
                     output_path = os.path.join(output_folder, new_file_name)
                     with open(output_path, 'w', encoding='utf-8', newline='') as f:
@@ -683,6 +691,7 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
 
         self.progressBar.setVisible(False)
 
+class Medical_Data_Anonymizer_ModuleLogic(ScriptedLoadableModuleLogic):
     def save_str_pdf(self, text, filename):
         from reportlab.platypus import SimpleDocTemplate, Preformatted
         from reportlab.lib.styles import getSampleStyleSheet
@@ -760,8 +769,6 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
                 text += child.tail + " "
         return text
 
-class Medical_Data_Anonymizer_ModuleLogic(ScriptedLoadableModuleLogic):
-    pass
 
 class Medical_Data_Anonymizer_ModuleTest(ScriptedLoadableModuleTest):
     pass

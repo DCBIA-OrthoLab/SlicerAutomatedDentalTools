@@ -6,19 +6,24 @@ import re
 import shutil
 
 import sys
-import logging
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_CLI_reg")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+from ADTLib.progress_protocol import emit_fraction
+
+logger = get_logger("MRI2CBCT_CLI_reg")
+
 
 # realpath, not __file__: this CLI sits in a sub-folder, so it is registered
 # through a flat folder of symlinks into the source tree. __file__ then names
@@ -172,34 +177,34 @@ def main():
     # MRI
     folder_mri_inverse = run_script_inverse_mri(args.mri_folder, args.folder_general)
     current_step += 1
-    print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
+    emit_fraction(current_step / total_steps)
     sys.stdout.flush()
     
     input_path_norm_mri = run_script_normalize_percentile("MRI",folder_mri_inverse, args.folder_general, upper_percentile=mri_upper_p, lower_percentile=mri_lower_p, max_norm=mri_max_norm, min_norm=mri_min_norm)
     current_step += 1
-    print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
+    emit_fraction(current_step / total_steps)
     sys.stdout.flush()
     
     input_path_mri_norm_mask = run_script_apply_mask(input_path_norm_mri, args.cbct_label2, args.folder_general, "mask", upper_percentile=mri_upper_p, lower_percentile=mri_lower_p, max_norm=mri_max_norm, min_norm=mri_min_norm, is_mri=True)
     current_step += 1
-    print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
+    emit_fraction(current_step / total_steps)
     sys.stdout.flush()
 
     # CBCT
     output_path_norm_cbct = run_script_normalize_percentile("CBCT",args.cbct_folder, args.folder_general, upper_percentile=cbct_upper_p, lower_percentile=cbct_lower_p, max_norm=cbct_max_norm, min_norm=cbct_min_norm)
     current_step += 1
-    print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
+    emit_fraction(current_step / total_steps)
     sys.stdout.flush()
     
     input_path_cbct_norm_mask = run_script_apply_mask(output_path_norm_cbct,args.cbct_label2,args.folder_general,"mask",upper_percentile=cbct_upper_p, lower_percentile=cbct_lower_p, max_norm=cbct_max_norm, min_norm=cbct_min_norm, is_mri=False)
     current_step += 1
-    print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
+    emit_fraction(current_step / total_steps)
     sys.stdout.flush()
     
     # REG
     run_script_AREG_MRI_folder(cbct_folder=args.cbct_folder,cbct_mask_folder=input_path_cbct_norm_mask,mri_folder=input_path_mri_norm_mask,mri_original_folder=args.mri_folder,folder_general=args.folder_general,mri_lower_p=mri_lower_p,mri_upper_p=mri_upper_p,mri_min_norm=mri_min_norm,mri_max_norm=mri_max_norm,cbct_lower_p=cbct_lower_p,cbct_upper_p=cbct_upper_p,cbct_min_norm=cbct_min_norm,cbct_max_norm=cbct_max_norm)
     current_step += 1
-    print(f"<filter-progress>{current_step/total_steps}</filter-progress>")
+    emit_fraction(current_step / total_steps)
     sys.stdout.flush()
     
     

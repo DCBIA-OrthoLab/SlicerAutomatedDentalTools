@@ -5,20 +5,11 @@ import os
 import glob
 import sys
 import csv
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_CLI_utils_resample")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("MRI2CBCT_CLI_utils_resample")
 
 def mirror_image_flip(img):
     # Flip along Z axis only
@@ -44,26 +35,26 @@ def resample_fn(img, args):
         - rightSide (bool): Flag to shift the image to the right side.
         - mri (bool): Flag to indicate if the image is an MRI.
     '''
-    output_size = args['size'] 
+    output_size = args['size']
     fit_spacing = args['fit_spacing']
     iso_spacing = args['iso_spacing']
     pixel_dimension = args['pixel_dimension']
     center = args['center']
-    rightSide = args['rightSide']
-    isMRI = args['mri']
-    logger.info(f"Right side:{rightSide}")
-    logger.info(f"Is MRI:{isMRI}")
+    right_side = args['rightSide']
+    is_mri = args['mri']
+    logger.info(f"Right side:{right_side}")
+    logger.info(f"Is MRI:{is_mri}")
     
-    if isMRI and rightSide and not center:
+    if is_mri and right_side and not center:
         logger.info("[INFO] Mirroring input image before resampling (index-space flip).")
         img = mirror_image_flip(img)
 
     if args['linear']:
-        InterpolatorType = sitk.sitkLinear
+        interpolator_type = sitk.sitkLinear
     else:
-        InterpolatorType = sitk.sitkNearestNeighbor
+        interpolator_type = sitk.sitkNearestNeighbor
 
-    spacing = img.GetSpacing()  
+    spacing = img.GetSpacing()
     size = img.GetSize()
 
     output_origin = img.GetOrigin()
@@ -91,7 +82,7 @@ def resample_fn(img, args):
     input_physical_size = np.array(size) * np.array(spacing)
 
     if center:
-        if isMRI:
+        if is_mri:
             direction = np.array(img.GetDirection()).reshape(3, 3)
             # Custom center logic for right-side (Z axis only, direction-aware)
             offset = (output_physical_size - input_physical_size) / 2.0
@@ -105,18 +96,18 @@ def resample_fn(img, args):
     img_array = sitk.GetArrayFromImage(img)
     min_pixel_value = float(np.min(img_array))
 
-    resampleImageFilter = sitk.ResampleImageFilter()
-    resampleImageFilter.SetInterpolator(InterpolatorType)   
-    resampleImageFilter.SetOutputSpacing(output_spacing)
-    resampleImageFilter.SetSize(output_size)
-    resampleImageFilter.SetOutputDirection(img.GetDirection())
-    resampleImageFilter.SetOutputOrigin(output_origin)
-    resampleImageFilter.SetDefaultPixelValue(min_pixel_value)
+    resample_image_filter = sitk.ResampleImageFilter()
+    resample_image_filter.SetInterpolator(interpolator_type)
+    resample_image_filter.SetOutputSpacing(output_spacing)
+    resample_image_filter.SetSize(output_size)
+    resample_image_filter.SetOutputDirection(img.GetDirection())
+    resample_image_filter.SetOutputOrigin(output_origin)
+    resample_image_filter.SetDefaultPixelValue(min_pixel_value)
     
 
-    resampled = resampleImageFilter.Execute(img)
+    resampled = resample_image_filter.Execute(img)
     
-    if isMRI and rightSide and not center:
+    if is_mri and right_side and not center:
         logger.info("[INFO] Mirroring resampled image back (index-space flip).")
         resampled = mirror_image_flip(resampled)
 

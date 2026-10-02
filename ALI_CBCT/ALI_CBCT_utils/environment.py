@@ -9,19 +9,10 @@ from monai.transforms import Compose, BorderPad, ScaleIntensity, SpatialCrop
 from ALI_CBCT_utils.constants import LABELS, LABEL_GROUPS, SCALE_KEYS, DEVICE, bcolors
 from ALI_CBCT_utils.io import WriteJson, GenControlPoint
 
-import logging
-import sys
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("ALI_CBCT_environment")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ALI_CBCT_environment")
 
 class Environment :
     def __init__(
@@ -124,13 +115,36 @@ class Environment :
         physical_origin = abs(ref_origin/ref_spacing)
 
         landmark_dic = {}
+        unplaceable = []
         for landmark,pos in self.predicted_landmarks.items():
+
+            # `LABEL_GROUPS[landmark]` used to be a plain lookup, and one name
+            # it did not know cost the patient every landmark it DID find: the
+            # KeyError left SavePredictedLandmarks before a single file was
+            # written, and the caller logged "Failed to save predictions ...:
+            # 'UL3OI'" with nothing saved. The published models carry folders
+            # named UL3OI and UL3RI while this table knows UL3OIP and UL3RIP,
+            # so an agent for a name absent here is a real situation, not a
+            # theoretical one. Skipping it and naming it keeps the other
+            # thirty-odd landmarks.
+            group = LABEL_GROUPS.get(landmark)
+            if group is None:
+                unplaceable.append(landmark)
+                continue
 
             real_label_pos = (pos-physical_origin)*ref_spacing
             real_label_pos = [real_label_pos[2],real_label_pos[1],real_label_pos[0]]
-            if LABEL_GROUPS[landmark] in landmark_dic.keys():
-                landmark_dic[LABEL_GROUPS[landmark]].append({"label": landmark, "coord":real_label_pos})
-            else:landmark_dic[LABEL_GROUPS[landmark]] = [{"label": landmark, "coord":real_label_pos}]
+            if group in landmark_dic.keys():
+                landmark_dic[group].append({"label": landmark, "coord":real_label_pos})
+            else:landmark_dic[group] = [{"label": landmark, "coord":real_label_pos}]
+
+        if unplaceable:
+            logger.warning(
+                "%d landmark(s) were found but belong to no known group, so they "
+                "are not in the output: %s. The group table in constants.py has "
+                "no entry for them -- check the name against the model folder "
+                "it came from.",
+                len(unplaceable), ", ".join(sorted(unplaceable)))
 
         for group,list in landmark_dic.items():
 
@@ -147,6 +161,11 @@ class Environment :
 
             lm_lst = GenControlPoint(groupe_data)
             WriteJson(lm_lst,file_path)
+
+        # Handed back so the caller can put these in the report it writes beside
+        # the predictions: a landmark absent from the output file needs a line
+        # somewhere saying why, whether the search missed it or its name did.
+        return unplaceable
 
     def ResetLandmarks(self):
         for scale in self.data.keys():
@@ -165,9 +184,9 @@ class Environment :
         return np.linalg.norm(position-label_pos)**2
 
     def GetZone(self,scale,center,crop_size):
-        cropTransform = SpatialCrop(center.tolist() + self.padding,crop_size)
+        crop_transform = SpatialCrop(center.tolist() + self.padding,crop_size)
         rescale = ScaleIntensity(minv = -1.0, maxv = 1.0, factor = None)
-        crop = cropTransform(self.data[scale]["image"])
+        crop = crop_transform(self.data[scale]["image"])
         crop = rescale(crop).type(torch.float32)
         return crop
 

@@ -1,38 +1,23 @@
 from .Method import Method
-from .utils_CBCT import GetDictPatients, GetPatients
-import os, sys
+from .utils_CBCT import GetDictPatients
 
-import SimpleITK as sitk
-import numpy as np
 
-from glob import iglob
 import slicer
-import time
 import qt
 import platform
-import re
 
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_LR_Crop")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("MRI2CBCT_LR_Crop")
 
 
 class LR_CROP_MRI2CBCT(Method):
     def __init__(self, widget):
         super().__init__(widget)
-        documentsLocation = qt.QStandardPaths.DocumentsLocation
-        documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        documents_location = qt.QStandardPaths.DocumentsLocation
+        documents = qt.QStandardPaths.writableLocation(documents_location)
 
     def getGPUUsage(self):
         if platform.system() == "Darwin":
@@ -54,7 +39,7 @@ class LR_CROP_MRI2CBCT(Method):
             if any(found_files[ext] for ext in extensions):
                 return True, ""
             else:
-                return False, "No files to run has been found in the "    
+                return False, "No files to run has been found in the "
         return True,""
         
     def TestProcess(self, **kwargs) -> str:

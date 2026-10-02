@@ -196,7 +196,7 @@ qMRMLNodeComboBox:focus {
              </widget>
             </item>
             <item>
-             <widget class="QLabel" name="label_7">
+             <widget class="QLabel" name="labelModelFolder">
               <property name="text">
                <string>Model Folder Seg/Or</string>
               </property>

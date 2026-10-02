@@ -14,7 +14,6 @@ set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   FlexReg_utils/__init__.py
   FlexReg_utils/butterfly_preview.py
-  FlexReg_utils/install_pytorch.py
   FlexReg_utils/mgl_patch.py
   FlexReg_utils/orientation.py
   FlexReg_utils/transform.py

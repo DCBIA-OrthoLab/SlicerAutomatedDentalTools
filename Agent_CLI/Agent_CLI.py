@@ -6,10 +6,11 @@ import os
 import argparse
 import logging
 from Agent_CLI_utils.utils import (load_manifest, build_tool_spec, extract_parameters, build_cli_args,
-                                   get_tool_def, complete_with_defaults, chat_with_auto_pull,
+                                   complete_with_defaults, chat_with_auto_pull,
                                    cross_encoder_retrieve_candidates, get_router_model)
 from Agent_CLI_utils.parameter_extraction_improved import ImprovedParameterExtractor
 from Agent_CLI_utils.parameter_validator import ParameterValidator
+import traceback
 
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,6 @@ def main(input):
         # while stdout always stays valid, parseable JSON - Agent_UI.py
         # relies on json.loads(output) and would otherwise crash on an
         # empty/non-JSON stdout.
-        import traceback
         traceback.print_exc()
         output = {
             "tool": None,

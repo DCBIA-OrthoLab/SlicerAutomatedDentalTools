@@ -2,26 +2,25 @@
 
 import sys
 import os
-import time
 import argparse
-import logging
 import SimpleITK as sitk
 
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("SEMI_ASO_CBCT")
-logger.setLevel(logging.INFO)
+from ADTLib.logging_setup import get_logger
+from ADTLib.progress_protocol import PATIENT_DONE, emit_event
 
-logger.propagate = False
-
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("SEMI_ASO_CBCT")
 
 # realpath, not __file__: registering the CLI through a symlink (a flat dev
 # folder of links into the source tree) leaves __file__ on the link, whose
@@ -29,6 +28,7 @@ logger.addHandler(console_handler)
 # either way. In a built install the package is already on sys.path.
 fpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")
 sys.path.append(fpath)
+
 
 from ASO_CBCT_utils import (
     ICP,
@@ -38,6 +38,111 @@ from ASO_CBCT_utils import (
     GetPatients,
 )
 
+
+def _register_one_patient(args, data, failed_patients, gold_file, gold_json_file, input_dir, list_landmark, out_dir, patient, processed_patients):
+    """Register one patient onto the reference from its landmarks."""
+    patient_context = f"patient: {patient}"
+    logger.info(f"Processing {patient_context}")
+
+    try:
+        # ===== EXTRACT PATIENT DATA =====
+        try:
+            logger.debug(f"Extracting patient data")
+            # The scan and its landmarks are required; a prior transform is not.
+            # `data["tfm"]` raised KeyError: 'tfm' on every patient without one,
+            # which is every patient of the published test set, and the whole run
+            # then ended on "No patient could be registered".
+            input_file, input_json_file = data["scan"], data["json"]
+            input_transform = data.get("tfm")
+            if input_transform is None:
+                logger.info(f"No prior transform for {patient}; "
+                            "registering from the landmarks alone")
+            logger.debug(f"Patient data extracted")
+        except KeyError as e:
+            logger.warning(f"Patient {patient} missing required files: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error extracting patient data: {e}")
+            raise
+
+        # ===== RUN ICP REGISTRATION =====
+        try:
+            logger.debug(f"Running ICP registration")
+            output, source_transformed, transform_sitk = ICP(
+                input_file, input_json_file, gold_file, gold_json_file, list_landmark, input_transform
+            )
+
+            if output is None:
+                logger.error(f"ICP registration failed")
+                raise RuntimeError("ICP registration returned None")
+
+            logger.info(f"ICP registration completed")
+        except Exception as e:
+            logger.error(f"Error during ICP registration: {e}")
+            raise
+
+        # ===== SAVE JSON =====
+        try:
+            logger.debug(f"Saving landmark JSON")
+            dir_json = os.path.dirname(input_json_file.replace(input_dir, out_dir))
+            if not os.path.exists(dir_json):
+                os.makedirs(dir_json)
+            json_path = os.path.join(
+                dir_json, patient + "_lm_" + args.add_inname[0] + ".mrk.json"
+            )
+
+            if not os.path.exists(json_path):
+                WriteJson(source_transformed, json_path)
+                logger.info(f"Saved landmark JSON")
+        except Exception as e:
+            logger.error(f"Error saving landmark JSON: {e}")
+            raise
+
+        # ===== SAVE SCAN =====
+        try:
+            logger.debug(f"Saving registered scan")
+            dir_scan = os.path.dirname(input_file.replace(input_dir, out_dir))
+            if not os.path.exists(dir_scan):
+                os.makedirs(dir_scan)
+
+            file_outpath = os.path.join(
+                dir_scan, patient + "_" + args.add_inname[0] + ".nii.gz"
+            )
+            if not os.path.exists(file_outpath):
+                sitk.WriteImage(output, file_outpath)
+                logger.info(f"Saved registered scan")
+        except Exception as e:
+            logger.error(f"Error saving registered scan: {e}")
+            raise
+
+        # ===== SAVE TRANSFORM =====
+        try:
+            logger.debug(f"Saving transformation")
+            transform_outpath = os.path.join(
+                dir_scan, patient + "_" + args.add_inname[0] + "_transform.tfm"
+            )
+            if not os.path.exists(transform_outpath):
+                sitk.WriteTransform(transform_sitk, transform_outpath)
+                logger.info(f"Saved transformation")
+        except Exception as e:
+            logger.error(f"Error saving transformation: {e}")
+            raise
+
+        # ===== PROGRESS REPORTING =====
+        try:
+            emit_event(PATIENT_DONE)
+            logger.debug("Progress reported")
+        except Exception as e:
+            logger.warning(f"Error reporting progress: {e}")
+
+        processed_patients += 1
+        logger.info(f"Successfully processed {patient_context}")
+
+    except Exception as e:
+        logger.error(f"Failed to process {patient_context}: {e}")
+        failed_patients.append((patient, str(e)))
+        return processed_patients
+    return processed_patients
 
 def main(args):
     """Main function for SEMI_ASO_CBCT registration with comprehensive error handling."""
@@ -103,107 +208,7 @@ def main(args):
         failed_patients = []
 
         for patient, data in patients.items():
-            patient_context = f"patient: {patient}"
-            logger.info(f"Processing {patient_context}")
-
-            try:
-                # ===== EXTRACT PATIENT DATA =====
-                try:
-                    logger.debug(f"Extracting patient data")
-                    input_file, input_json_file, input_transform = data["scan"], data["json"], data["tfm"]
-                    logger.debug(f"Patient data extracted")
-                except KeyError as e:
-                    logger.warning(f"Patient {patient} missing required files: {e}")
-                    raise
-                except Exception as e:
-                    logger.error(f"Error extracting patient data: {e}")
-                    raise
-
-                # ===== RUN ICP REGISTRATION =====
-                try:
-                    logger.debug(f"Running ICP registration")
-                    output, source_transformed, TransformSITK = ICP(
-                        input_file, input_json_file, gold_file, gold_json_file, list_landmark, input_transform
-                    )
-                    
-                    if output is None:
-                        logger.error(f"ICP registration failed")
-                        raise RuntimeError("ICP registration returned None")
-                    
-                    logger.info(f"ICP registration completed")
-                except Exception as e:
-                    logger.error(f"Error during ICP registration: {e}")
-                    raise
-
-                # ===== SAVE JSON =====
-                try:
-                    logger.debug(f"Saving landmark JSON")
-                    dir_json = os.path.dirname(input_json_file.replace(input_dir, out_dir))
-                    if not os.path.exists(dir_json):
-                        os.makedirs(dir_json)
-                    json_path = os.path.join(
-                        dir_json, patient + "_lm_" + args.add_inname[0] + ".mrk.json"
-                    )
-
-                    if not os.path.exists(json_path):
-                        WriteJson(source_transformed, json_path)
-                        logger.info(f"Saved landmark JSON")
-                except Exception as e:
-                    logger.error(f"Error saving landmark JSON: {e}")
-                    raise
-
-                # ===== SAVE SCAN =====
-                try:
-                    logger.debug(f"Saving registered scan")
-                    dir_scan = os.path.dirname(input_file.replace(input_dir, out_dir))
-                    if not os.path.exists(dir_scan):
-                        os.makedirs(dir_scan)
-
-                    file_outpath = os.path.join(
-                        dir_scan, patient + "_" + args.add_inname[0] + ".nii.gz"
-                    )
-                    if not os.path.exists(file_outpath):
-                        sitk.WriteImage(output, file_outpath)
-                        logger.info(f"Saved registered scan")
-                except Exception as e:
-                    logger.error(f"Error saving registered scan: {e}")
-                    raise
-
-                # ===== SAVE TRANSFORM =====
-                try:
-                    logger.debug(f"Saving transformation")
-                    transform_outpath = os.path.join(
-                        dir_scan, patient + "_" + args.add_inname[0] + "_transform.tfm"
-                    )
-                    if not os.path.exists(transform_outpath):
-                        sitk.WriteTransform(TransformSITK, transform_outpath)
-                        logger.info(f"Saved transformation")
-                except Exception as e:
-                    logger.error(f"Error saving transformation: {e}")
-                    raise
-
-                # ===== PROGRESS REPORTING =====
-                try:
-                    print(f"""<filter-progress>{0}</filter-progress>""")
-                    sys.stdout.flush()
-                    time.sleep(0.2)
-                    print(f"""<filter-progress>{2}</filter-progress>""")
-                    sys.stdout.flush()
-                    time.sleep(0.2)
-                    print(f"""<filter-progress>{0}</filter-progress>""")
-                    sys.stdout.flush()
-                    time.sleep(0.2)
-                    logger.debug("Progress reported")
-                except Exception as e:
-                    logger.warning(f"Error reporting progress: {e}")
-
-                processed_patients += 1
-                logger.info(f"Successfully processed {patient_context}")
-
-            except Exception as e:
-                logger.error(f"Failed to process {patient_context}: {e}")
-                failed_patients.append((patient, str(e)))
-                continue
+            processed_patients = _register_one_patient(args, data, failed_patients, gold_file, gold_json_file, input_dir, list_landmark, out_dir, patient, processed_patients)
 
         # ===== FINAL REPORT =====
         try:
@@ -214,6 +219,24 @@ def main(args):
                     logger.warning(f"  {patient}: {error}")
         except Exception as e:
             logger.error(f"Error generating final report: {e}")
+
+        # A run where NOT ONE patient came through is a failed run, and it has
+        # to be said with the exit code: the widget decides on
+        # `caller.GetStatus() & caller.ErrorsMask`, so a CLI that logs its
+        # failures and still exits 0 is announced as "Process Done" over an
+        # empty output folder. Observed with a landmark absent from the
+        # reference -- every patient raised a KeyError, the log said
+        # "Failed to process 1 patient(s)", and the window said success.
+        #
+        # A partial failure is not turned into an error: the patients that did
+        # come through are real results, and the warnings above name the ones
+        # that did not.
+        if patients and processed_patients == 0:
+            raise RuntimeError(
+                "No patient could be registered (%d failed): %s"
+                % (len(failed_patients),
+                   "; ".join(f"{patient}: {error}" for patient, error in failed_patients))
+            )
 
     except Exception as e:
         logger.error(f"Fatal error in main(): {e}")

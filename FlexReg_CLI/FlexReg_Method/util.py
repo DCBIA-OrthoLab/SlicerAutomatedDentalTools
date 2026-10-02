@@ -1,21 +1,13 @@
 import numpy as np
-from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
+from vtk.util.numpy_support import vtk_to_numpy
 import vtk
 
-import sys
-import logging
+from ADTLib.labels import has_label_array, label_array
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("FlexReg_CLI_util")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("FlexReg_CLI_util")
 
 class vtkTeeth:
     def __init__(self,list_teeth,property =None):
@@ -29,28 +21,18 @@ class vtkTeeth:
 
 
 
-    def GetLabelSurface(self,surf,Preference='Universal_ID'):
-        out = None
+    def GetLabelSurface(self, surf, preference="Universal_ID"):
+        """The numbering array to use: see `ADTLib.labels`.
 
-        list_label = [surf.GetPointData().GetArrayName(i) for i in range(surf.GetPointData().GetNumberOfArrays())]
-
-        if len(list_label)!=0 :
-            for label in list_label:
-                out = label
-                if Preference == label:
-                    out = Preference
-                    continue
-                    
-        return out
+        Four of the five copies did `continue` where `break` was needed, and
+        so returned `Preference` only when it was the last array.
+        """
+        return label_array(surf, preference)
 
 
 
-    def isLabelSurface(self,surf,property):
-        out = False
-        list_label = [surf.GetPointData().GetArrayName(i) for i in range(surf.GetPointData().GetNumberOfArrays())]
-        if property in list_label:
-            out = True
-        return out
+    def isLabelSurface(self, surf, property):
+        return has_label_array(surf, property)
 
 
 
@@ -76,7 +58,7 @@ class vtkIterTeeth(vtkTeeth):
         if len(verts_crown)== 0 :
             raise ToothNoExist(self.list_teeth[self.iter])
 
-        self.iter += 1 
+        self.iter += 1
         return np.array(self.verts[verts_crown]) , self.list_teeth[self.iter-1]
 
 
@@ -97,7 +79,7 @@ class vtkMiddleTeeth(vtkTeeth):
         super().__init__(list_teeth, property)
 
     def __call__(self,surf):
-        dic ={} 
+        dic ={}
         for points, tooth in vtkIterTeeth(self.list_teeth,surf,property=self.property):
             dic[str(tooth)]= ((np.amax(points,axis=0)+np.amin(points,axis = 0))/2).squeeze(0)
         return dic
@@ -118,22 +100,22 @@ class vtkMeshTeeth(vtkTeeth):
             size+= points.shape[0]
 
         Points = vtk.vtkPoints()
-        Vertices = vtk.vtkCellArray()
+        vertices = vtk.vtkCellArray()
         labels = vtk.vtkStringArray()
         labels.SetNumberOfValues(size)
         labels.SetName("labels")
-        index = 0 
+        index = 0
         for  points in list_points:
             for i in range(points.shape[0]):
                 sp_id = Points.InsertNextPoint(points[i,:].squeeze(0))
-                Vertices.InsertNextCell(1)
-                Vertices.InsertCellPoint(sp_id)
+                vertices.InsertNextCell(1)
+                vertices.InsertCellPoint(sp_id)
                 labels.SetValue(index, str(index))
                 index+=1
             
         output = vtk.vtkPolyData()
         output.SetPoints(Points)
-        output.SetVerts(Vertices)
+        output.SetVerts(vertices)
         output.GetPointData().AddArray(labels)
 
         return output
@@ -143,7 +125,7 @@ class vtkMeshTeeth(vtkTeeth):
 class ToothNoExist(Exception):
     def __init__(self, tooth ) -> None:
         dic = {1: 'UR8', 2: 'UR7', 3: 'UR6', 4: 'UR5', 5: 'UR4', 6: 'UR3', 7: 'UR2', 8: 'UR1', 9: 'UL1', 10: 'UL2', 11: 'UL3',
-         12: 'UL4', 13: 'UL5', 14: 'UL6', 15: 'UL7', 16: 'UL8', 17: 'LL8', 18: 'LL7', 19: 'LL6', 20: 'LL5', 21: 'LL4', 22: 'LL3', 
+         12: 'UL4', 13: 'UL5', 14: 'UL6', 15: 'UL7', 16: 'UL8', 17: 'LL8', 18: 'LL7', 19: 'LL6', 20: 'LL5', 21: 'LL4', 22: 'LL3',
          23: 'LL2', 24: 'LL1', 25: 'LR1', 26: 'LR2', 27: 'LR3', 28: 'LR4', 29: 'LR5', 30: 'LR6', 31: 'LR7', 32: 'LR8'}
         if isinstance(tooth,int):
             tooth = dic[tooth]

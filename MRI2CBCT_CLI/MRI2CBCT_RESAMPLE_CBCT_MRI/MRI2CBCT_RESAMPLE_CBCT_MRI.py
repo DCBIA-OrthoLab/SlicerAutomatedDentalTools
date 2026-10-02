@@ -5,28 +5,32 @@ import argparse
 import os
 import time
 import sys
-import logging
 
-# ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_CLI_Approx")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
 # realpath, not __file__: registering the CLI through a symlink (a flat dev
 # folder of links into the source tree) leaves __file__ on the link, whose
 # parent holds no MRI2CBCT_CLI_utils. Resolving first lands in MRI2CBCT_CLI
 # either way. In a built install the package is already on sys.path.
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+# ===== Logging Configuration =====
+from ADTLib.logging_setup import get_logger
+from ADTLib.progress_protocol import emit_fraction
+
+logger = get_logger("MRI2CBCT_CLI_Approx")
+
 fpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")
 sys.path.append(fpath)
 
 from MRI2CBCT_CLI_utils import create_csv, resample_images
-import csv
 
 
 def run_resample(img=None, dir=None, csv=None, csv_column='image', csv_root_path=None, csv_use_spc=0,
@@ -95,31 +99,31 @@ def main(input_folder,output_folder,resample_size,spacing,center,iso_spacing,is_
             linear = False if is_seg else True
             center_image = 1 if center == "True" else 0
             
-            isMRI = 1 if iso_spacing else 0
+            is_mri = 1 if iso_spacing else 0
             
             if "left" in input_path.lower():
-                isRight = 0
+                is_right = 0
             elif "right" in input_path.lower():
-                isRight = 1
+                is_right = 1
             else:
-                isRight = 0  # default fallback
+                is_right = 0  # default fallback
             
             if resample_size != "None" and spacing=="None" :
-                run_resample(img=input_path,out=out_path,size=list(map(int, resample_size.split(','))),fit_spacing=True,center=center_image,rightSide=isRight,mri=isMRI,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+                run_resample(img=input_path,out=out_path,size=list(map(int, resample_size.split(','))),fit_spacing=True,center=center_image,rightSide=is_right,mri=is_mri,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
             elif resample_size == "None" and spacing!="None" :
-                run_resample(img=input_path,out=out_path,spacing=list(map(float, spacing.split(','))),size=[size_file[0],size_file[1],size_file[2]],fit_spacing=False,center=center_image,rightSide=isRight,mri=isMRI,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+                run_resample(img=input_path,out=out_path,spacing=list(map(float, spacing.split(','))),size=[size_file[0],size_file[1],size_file[2]],fit_spacing=False,center=center_image,rightSide=is_right,mri=is_mri,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
             elif resample_size != "None" and spacing!="None" :
-                run_resample(img=input_path,out=out_path,spacing=list(map(float, spacing.split(','))),size=list(map(int, resample_size.split(','))),fit_spacing=True,center=center_image,rightSide=isRight,mri=isMRI,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+                run_resample(img=input_path,out=out_path,spacing=list(map(float, spacing.split(','))),size=list(map(int, resample_size.split(','))),fit_spacing=True,center=center_image,rightSide=is_right,mri=is_mri,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
             else:
                 # Neither a target size nor a target spacing was requested -
                 # keep this file's own original size/spacing (e.g. just to
                 # apply centering/mirroring) instead of silently skipping it.
-                run_resample(img=input_path,out=out_path,spacing=list(spacing_file),size=[size_file[0],size_file[1],size_file[2]],fit_spacing=False,center=center_image,rightSide=isRight,mri=isMRI,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
+                run_resample(img=input_path,out=out_path,spacing=list(spacing_file),size=[size_file[0],size_file[1],size_file[2]],fit_spacing=False,center=center_image,rightSide=is_right,mri=is_mri,iso_spacing=False,linear=linear,image_dimension=3,pixel_dimension=1,rgb=False,ow=0)
 
             if total_patients > 0:
                 patient_count += 1
                 progress = patient_count / total_patients
-                print(f"<filter-progress>{progress}</filter-progress>")
+                emit_fraction(progress)
                 sys.stdout.flush()
                 time.sleep(0.5)
             

@@ -1,10 +1,10 @@
 #!/usr/bin/env python-real
 import json
 import os
+import shutil
 import argparse
 from urllib import request
 import requests
-import subprocess
 import pandas as pd
 
 import torch
@@ -16,7 +16,7 @@ from tqdm import tqdm
 from shapeaxi.saxi_dataset import SaxiDataset
 from shapeaxi.saxi_transforms import EvalTransform
 
-from shapeaxi.saxi_gradcam import gradcam_process 
+from shapeaxi.saxi_gradcam import gradcam_process
 
 import vtk
 
@@ -25,20 +25,23 @@ from captum.attr import LayerGradCam
 import cv2
 import numpy as np
 
+
 import sys
-import logging
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("DOCShapeAXI_CLI")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("DOCShapeAXI_CLI")
 
 def scale_cam_image(cam, target_size=None):
     ## adapted from https://github.com/jacobgil/pytorch-grad-cam/blob/master/pytorch_grad_cam/utils/image.py#L162
@@ -52,7 +55,7 @@ def scale_cam_image(cam, target_size=None):
         new_min = np.percentile(img.flatten(),q=1)
         img = np.clip(img,new_min,new_max)
 
-        img =  2*((img - np.min(img)) / (np.max(img) -np.min(img))) -1 
+        img =  2*((img - np.min(img)) / (np.max(img) -np.min(img))) -1
 
       result.append(img)
     result = np.float32(result)
@@ -63,7 +66,7 @@ def gradcam_save(args, gradcam_path, surf_path, surf):
     '''
     Function to save the GradCAM on the surface
 
-    Args : 
+    Args :
         gradcam_path : path to save the GradCAM
         surf_path : path to the surface
         surf : surface read by utils.ReadSurf
@@ -128,7 +131,7 @@ def saxi_gradcam(args, out_model_path):
   with open(args.log_path,'w+') as log_f :
     log_f.write(f"{args.task},explainability,NaN,{args.num_classes}")
 
-  NN = getattr(saxi_nets_lightning, args.nn)    
+  NN = getattr(saxi_nets_lightning, args.nn)
   model = NN.load_from_checkpoint(out_model_path, strict=False)
 
   model.eval()
@@ -138,8 +141,8 @@ def saxi_gradcam(args, out_model_path):
   predicted_csv = os.path.join(args.output_dir, fname.replace('.csv', "_prediction.csv"))
   df_test = pd.read_csv(predicted_csv)
     
-  test_ds = SaxiDataset(df_test, transform=EvalTransform(), CN=True, 
-                          surf_column=model.hparams.surf_column, mount_point = args.input_dir, 
+  test_ds = SaxiDataset(df_test, transform=EvalTransform(), CN=True,
+                          surf_column=model.hparams.surf_column, mount_point = args.input_dir,
                           class_column=None, scalar_column=None, **vars(args))
   test_loader = DataLoader(test_ds, batch_size=1, num_workers=4, pin_memory=False)
 
@@ -158,9 +161,9 @@ def saxi_gradcam(args, out_model_path):
     F = F.to(args.device)
     CN = CN.to(args.device)
     
-    X_mesh = model.create_mesh(V, F, CN)
-    X_pc = model.sample_points_from_meshes(X_mesh, model.hparams.sample_levels[0])  ## mhafb
-    X_views, PF = model.render(X_mesh)
+    x_mesh = model.create_mesh(V, F, CN)
+    x_pc = model.sample_points_from_meshes(x_mesh, model.hparams.sample_levels[0])  ## mhafb
+    x_views, PF = model.render(x_mesh)
 
     surf = test_ds.getSurf(idx)
     surf_path = test_ds.getSurfPath(idx)
@@ -169,7 +172,7 @@ def saxi_gradcam(args, out_model_path):
     for class_idx in range(args.num_classes):
       if args.num_classes > 1:
         args.target_class = class_idx
-      mv_att = mv_cam.attribute(inputs=(X_pc,X_views), target=class_idx,attr_dim_summation=False)
+      mv_att = mv_cam.attribute(inputs=(x_pc,x_views), target=class_idx,attr_dim_summation=False)
 
       mv_att = mv_att.sum(dim=1).cpu().detach() ## LayerIntegratedGradients
 
@@ -203,8 +206,8 @@ def saxi_predict(args,out_model_path):
     if hasattr(model.hparams, 'scale_factor'):
         scale_factor = model.hparams.scale_factor
     
-    test_ds = SaxiDataset(df, transform=EvalTransform(scale_factor), CN=True, 
-                          surf_column=model.hparams.surf_column, mount_point = args.input_dir, 
+    test_ds = SaxiDataset(df, transform=EvalTransform(scale_factor), CN=True,
+                          surf_column=model.hparams.surf_column, mount_point = args.input_dir,
                           class_column=None, scalar_column=None, **vars(args))
     
     test_loader = DataLoader(test_ds, batch_size=1, pin_memory=False)
@@ -220,11 +223,11 @@ def saxi_predict(args,out_model_path):
         F = F.to(args.device)
         CN = CN.to(args.device)
 
-        X_mesh = model.create_mesh(V, F, CN)
-        X_pc = model.sample_points_from_meshes(X_mesh, model.hparams.sample_levels[0])
-        X_views, X_PF = model.render(X_mesh)
+        x_mesh = model.create_mesh(V, F, CN)
+        x_pc = model.sample_points_from_meshes(x_mesh, model.hparams.sample_levels[0])
+        x_views, X_PF = model.render(x_mesh)
 
-        x = model(X_pc, X_views)
+        x = model(x_pc, x_views)
         
         if args.nn == 'SaxiMHAFBClassification': # no argmax for regression
           x = softmax(x).detach()

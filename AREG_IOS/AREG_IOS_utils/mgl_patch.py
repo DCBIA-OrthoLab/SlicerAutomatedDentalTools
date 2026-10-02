@@ -16,25 +16,16 @@
 #     buccal patch cannot leak onto the lingual side where the ridge is thin.
 import heapq
 import json
-import logging
 import re
-import sys
 
 import numpy as np
 import vtk
 from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
 
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("AREG_IOS_MGL")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("AREG_IOS_MGL")
 
 # Landmark names of the MG model, in arch order. L0MG is the midline (tooth 25),
 # so the right side is shifted by one against the tooth numbers.

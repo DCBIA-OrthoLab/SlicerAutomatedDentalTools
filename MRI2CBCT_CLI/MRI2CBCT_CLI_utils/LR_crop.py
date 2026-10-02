@@ -2,20 +2,11 @@ import SimpleITK as sitk
 import os
 import numpy as np
 
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_CLI_utils_LR_Crop")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("MRI2CBCT_CLI_utils_LR_Crop")
 
 def crop_mri(img_path, output_folder):
     image = sitk.ReadImage(img_path)

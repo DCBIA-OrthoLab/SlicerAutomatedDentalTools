@@ -84,7 +84,7 @@ QProgressBar::chunk {
         </property>
        </widget>
       </item>
-    <!-- Ajout du choix du type de note -->
+    <!-- Added the choice of the note type -->
     <item row="3" column="0">
      <widget class="QLabel" name="label_selectNotesType">
       <property name="text">

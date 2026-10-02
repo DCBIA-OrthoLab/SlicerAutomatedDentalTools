@@ -2,6 +2,9 @@ import os
 import json
 import glob
 
+# The same body as the fourteen other copies, down to the spacing.
+from ADTLib.io.fs import search  # noqa: F401  (re-exporte)
+
 def GenControlPoint(groupe_data):
     lm_lst = []
     false = False
@@ -41,7 +44,6 @@ def WriteJson(lm_lst,out_path):
             "display": {
                 "visibility": false,
                 "opacity": 1.0,
-                "color": [0.4, 1.0, 0.0],
                 "color": [0.5, 0.5, 0.5],
                 "selectedColor": [0.26666666666666669, 0.6745098039215687, 0.39215686274509806],
                 "propertiesLabelVisibility": false,
@@ -70,40 +72,18 @@ def WriteJson(lm_lst,out_path):
     with open(out_path, 'w', encoding='utf-8') as f:
         json.dump(file, f, ensure_ascii=False, indent=4)
 
-    f.close
 
 def GetBrain(dir_path):
-    brainDic = {}
+    brain_dic = {}
     normpath = os.path.normpath("/".join([dir_path, '**', '']))
     for img_fn in sorted(glob.iglob(normpath, recursive=True)):
         if os.path.isfile(img_fn) and ".pth" in img_fn:
             lab = os.path.basename(os.path.dirname(os.path.dirname(img_fn)))
             num = os.path.basename(os.path.dirname(img_fn))
-            if lab in brainDic.keys():
-                brainDic[lab][num] = img_fn
+            if lab in brain_dic.keys():
+                brain_dic[lab][num] = img_fn
             else:
                 network = {num : img_fn}
-                brainDic[lab] = network
+                brain_dic[lab] = network
 
-    return brainDic
-
-def search(path,*args):
-    """
-    Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
-
-    Example:
-    args = ('json',['.nii.gz','.nrrd'])
-    return:
-        {
-            'json' : ['path/a.json', 'path/b.json','path/c.json'],
-            '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
-            '.nrrd.gz' : ['path/c.nrrd']
-        }
-    """
-    arguments=[]
-    for arg in args:
-        if type(arg) == list:
-            arguments.extend(arg)
-        else:
-            arguments.append(arg)
-    return {key: [i for i in glob.iglob(os.path.normpath("/".join([path,'**','*'])),recursive=True) if i.endswith(key)] for key in arguments}
+    return brain_dic

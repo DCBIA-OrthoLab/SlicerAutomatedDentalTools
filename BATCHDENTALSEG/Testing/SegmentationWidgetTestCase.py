@@ -97,9 +97,9 @@ class SegmentationWidgetTestCase(DentalSegmentatorTestCase):
 
         exp_names = {"Maxilla & Upper Skull", "Mandible", "Upper Teeth", "Lower Teeth", "Mandibular canal"}
         segmentation = node.GetSegmentation()
-        segmentIds = [segmentation.GetNthSegmentID(i) for i in range(segmentation.GetNumberOfSegments())]
-        segmentNames = {segmentation.GetSegment(segmentId).GetName() for segmentId in segmentIds}
-        self.assertEqual(segmentNames, exp_names)
+        segment_ids = [segmentation.GetNthSegmentID(i) for i in range(segmentation.GetNumberOfSegments())]
+        segment_names = {segmentation.GetSegment(segment_id).GetName() for segment_id in segment_ids}
+        self.assertEqual(segment_names, exp_names)
 
     def test_loading_sets_correct_names_when_segmentation_has_missing_segments(self):
         self.logic.loadSegmentation.side_effect = self.logic.load_segmentation_partial
@@ -110,9 +110,9 @@ class SegmentationWidgetTestCase(DentalSegmentatorTestCase):
 
         exp_names = {"Maxilla & Upper Skull", "Upper Teeth", "Mandibular canal"}
         segmentation = node.GetSegmentation()
-        segmentIds = [segmentation.GetNthSegmentID(i) for i in range(segmentation.GetNumberOfSegments())]
-        segmentNames = {segmentation.GetSegment(segmentId).GetName() for segmentId in segmentIds}
-        self.assertEqual(segmentNames, exp_names)
+        segment_ids = [segmentation.GetNthSegmentID(i) for i in range(segmentation.GetNumberOfSegments())]
+        segment_names = {segmentation.GetSegment(segment_id).GetName() for segment_id in segment_ids}
+        self.assertEqual(segment_names, exp_names)
 
     def test_can_export_segmentation_to_file(self):
         self.logic.inferenceFinished()
@@ -121,21 +121,21 @@ class SegmentationWidgetTestCase(DentalSegmentatorTestCase):
         self.widget.stlCheckBox.setChecked(True)
         self.widget.niftiCheckBox.setChecked(True)
         self.widget.gltfCheckBox.setChecked(True)
-        allFormats = self.widget.getSelectedExportFormats()
+        all_formats = self.widget.getSelectedExportFormats()
         self.assertEqual(
-            allFormats,
+            all_formats,
             ExportFormat.NIFTI | ExportFormat.STL | ExportFormat.OBJ | ExportFormat.GLTF
         )
 
         with TemporaryDirectory() as tmp:
-            self.widget.exportSegmentation(self.widget.getCurrentSegmentationNode(), tmp, allFormats)
+            self.widget.exportSegmentation(self.widget.getCurrentSegmentationNode(), tmp, all_formats)
             slicer.app.processEvents()
 
-            tmpPath = Path(tmp)
-            self.assertEqual(len(list(tmpPath.glob("*.stl"))), 5)
-            self.assertEqual(len(list(tmpPath.glob("*.obj"))), 1)
-            self.assertEqual(len(list(tmpPath.glob("*.nii.gz"))), 1)
-            self.assertEqual(len(list(tmpPath.glob("*.gltf"))), 1)
+            tmp_path = Path(tmp)
+            self.assertEqual(len(list(tmp_path.glob("*.stl"))), 5)
+            self.assertEqual(len(list(tmp_path.glob("*.obj"))), 1)
+            self.assertEqual(len(list(tmp_path.glob("*.nii.gz"))), 1)
+            self.assertEqual(len(list(tmp_path.glob("*.gltf"))), 1)
 
     def test_synchronises_segmentation_selector_to_processed_volume(self):
         self.assertIsNone(self.widget.getCurrentSegmentationNode())
@@ -143,8 +143,8 @@ class SegmentationWidgetTestCase(DentalSegmentatorTestCase):
         slicer.app.processEvents()
         self.assertIsNotNone(self.widget.getCurrentSegmentationNode())
 
-        otherNode = SampleData.SampleDataLogic().downloadMRHead()
-        self.widget.inputSelector.setCurrentNode(otherNode)
+        other_node = SampleData.SampleDataLogic().downloadMRHead()
+        self.widget.inputSelector.setCurrentNode(other_node)
         self.assertIsNone(self.widget.getCurrentSegmentationNode())
 
         self.widget.inputSelector.setCurrentNode(self.node)
@@ -154,15 +154,15 @@ class SegmentationWidgetTestCase(DentalSegmentatorTestCase):
         self.logic.inferenceFinished()
         slicer.app.processEvents()
 
-        otherNode = SampleData.SampleDataLogic().downloadMRHead()
-        self.widget.inputSelector.setCurrentNode(otherNode)
+        other_node = SampleData.SampleDataLogic().downloadMRHead()
+        self.widget.inputSelector.setCurrentNode(other_node)
         slicer.app.processEvents()
 
         self.widget.inputSelector.setCurrentNode(self.node)
         slicer.app.processEvents()
         slicer.mrmlScene.RemoveNode(self.widget.getCurrentSegmentationNode())
 
-        self.widget.inputSelector.setCurrentNode(otherNode)
+        self.widget.inputSelector.setCurrentNode(other_node)
         slicer.app.processEvents()
         self.widget.inputSelector.setCurrentNode(self.node)
         slicer.app.processEvents()

@@ -1,8 +1,25 @@
 import os
 import sys
-from typing import Annotated, Optional
-from qt import QApplication, QWidget, QTableWidget, QDoubleSpinBox, QTableWidgetItem, QHeaderView,QSpinBox, QVBoxLayout, QLabel, QSizePolicy, QCheckBox, QFileDialog,QMessageBox, QApplication, QProgressDialog
+from typing import Annotated
+from qt import QDoubleSpinBox, QHeaderView,QSpinBox, QCheckBox, QFileDialog,QMessageBox
 import qt
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+# This has to run before the first import of anything local, not just before
+# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+from ADTLib.logging_setup import get_logger
+from ADTLib.env.deps import check_lib_installed as lib_satisfies
+from ADTLib.env.cuda import torch_install_arguments
+
 from MRI2CBCT_utils.Preprocess_MRI import Process_MRI
 from MRI2CBCT_utils.Preprocess_CBCT_MRI import Preprocess_CBCT_MRI
 from MRI2CBCT_utils.Reg_MRI2CBCT import Registration_MRI2CBCT
@@ -16,7 +33,6 @@ import time
 import slicer
 from functools import partial
 from slicer.i18n import tr as _
-from slicer.i18n import translate
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin, pip_install
 from slicer.parameterNodeWrapper import (
@@ -24,29 +40,77 @@ from slicer.parameterNodeWrapper import (
     WithinRange,
 )
 
-import shutil
 import urllib
-import zipfile
-import importlib.metadata
 from pathlib import Path
 
-from packaging.version import Version
-from packaging.specifiers import SpecifierSet
 
 from slicer import vtkMRMLScalarVolumeNode
-import logging
+
+from ADTLib.theming import apply_dark_mode, update_line_edit_and_combo_box
+from ADTLib import testdata
+from ADTLib.model_registry import (
+    MRI2CBCT_TEST_FILES,
+    SLICER_TESTING_DATA,
+    TMJ_CROP_MODEL,
+)
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("MRI2CBCT")
+
+#: The folder, under the Slicer downloads, where the test set is dropped,
+#: and the one where the test outputs are written.
+TEST_FILES_DIRECTORY = "MRI2CBCT_TestFiles"
+TEST_OUTPUT_DIRECTORY = "MRI2CBCT_TestFiles_output"
+
+#: What the published test set feeds, step by step.
+#:
+#: `inputs` gives, for each input field of the step, the subfolder of the
+#: archive that fills it; `output` gives the output field and the name of the
+#: folder it receives; `model` names the model field, when the step asks for
+#: one. The step is chosen by the button, not guessed by comparing
+#: `objectName`: adding a field is done here, in a single place.
+#:
+#: The archive does not carry everything: it has neither an original
+#: segmentation -- its own is already preprocessed -- nor a second timepoint,
+#: so `lineEditResampleSeg` and the three T2 fields of the resampling stay
+#: empty. Neither is required: `resampleMRICBCT` passes "None" to the CLI for
+#: an empty field.
+TEST_FILE_STEPS = {
+    "Resample": {
+        "inputs": (("lineEditResampleMRI", ("MRI_ori",)),
+                   ("lineEditResampleCBCT", ("CBCT_ori",))),
+        "output": ("lineEditOuputResample", "Resample"),
+    },
+    "Orient": {
+        "inputs": (("LineEditMRI", ("MRI_ori",)),),
+        "output": ("lineEditOutputOrientMRI", "Orient"),
+    },
+    "LRCrop": {
+        "inputs": (("lineEditSepMRI", ("REG", "MRI")),
+                   ("lineEditSepCBCT", ("REG", "CBCT")),
+                   ("lineEditSepSeg", ("REG", "Seg"))),
+        "output": ("lineEditSepOut", "LR_crop"),
+    },
+    "Approx": {
+        "inputs": (("lineEditApproxMRI", ("REG", "MRI")),
+                   ("lineEditApproxCBCT", ("REG", "CBCT"))),
+        "output": ("lineEditOutputApprox", "Approx"),
+    },
+    "TMJCrop": {
+        "inputs": (("lineEditCropTMJMRI", ("REG", "MRI")),
+                   ("lineEditCropTMJCBCT", ("REG", "CBCT")),
+                   ("lineEditCropTMJSeg", ("REG", "Seg"))),
+        "output": ("lineEditCropTMJOut", "TMJ_crop"),
+        "model": "lineEditTMJModel",
+    },
+    "Registration": {
+        "inputs": (("lineEditRegMRI", ("REG", "MRI")),
+                   ("lineEditRegCBCT", ("REG", "CBCT")),
+                   ("lineEditRegLabel", ("REG", "Seg"))),
+        "output": ("LineEditOutput", "Registration"),
+    },
+}
+
 
 def pathFromVolumeNode(node):
     """Returns the on-disk file path a volume node was loaded from, or None
@@ -54,32 +118,20 @@ def pathFromVolumeNode(node):
     AMASSS's PathFromNode helper for its single-file input mode."""
     if node is None:
         return None
-    storageNode = node.GetStorageNode()
-    if storageNode is None:
+    storage_node = node.GetStorageNode()
+    if storage_node is None:
         return None
-    return storageNode.GetFullNameFromFileName()
+    return storage_node.GetFullNameFromFileName()
 
 def check_lib_installed(lib_name, required_version=None):
-    try:
-        installed_version = Version(importlib.metadata.version(lib_name))
-        if required_version:
-            spec = SpecifierSet(required_version)
-            if installed_version not in spec:
-                logger.warning(f"{lib_name} version {installed_version} does not satisfy {required_version}")
-                return False
-        return True
-    except importlib.metadata.PackageNotFoundError:
-        logger.warning(f"{lib_name} not installed")
-        return False
-    except Exception as e:
-        logger.warning(f"Error checking {lib_name}: {e}")
-        return False
+    """Whether the library is installed and satisfies the constraint."""
+    return lib_satisfies(lib_name, required_version)
 
 def install_function():
     libs = [
         ('itk', None),
         ('einops', None),
-        ('dicom2nifti', '==2.6.2'),
+        ('dicom2nifti', '>=2.6.2'),
         # pydicom is kept on the version Slicer ships: downgrading it to 2.x breaks
         # dicomweb-client and highdicom, hence every DICOM module of Slicer.
         ('pydicom', '==3.0.2'),
@@ -91,9 +143,9 @@ def install_function():
         ('torchreg', None),
         ('SimpleITK', None),
         ('numpy', '==1.26.4'),
-        ('numexpr', '==2.9.0'),
+        ('numexpr', '>=2.9.0'),
         ('psutil', None),
-        ('nnunet_version',"==2.8.0")
+        ('nnunetv2', '>=2.8.0')  # 'nnunet_version' is published nowhere; AREG already names it nnunetv2
     ]
 
     libs_to_install = []
@@ -113,8 +165,17 @@ def install_function():
             for lib, version_spec in libs_to_install:
                 try:
                     if lib == "torch":
-                        logger.info("Installing torch from official PyTorch wheel (cu118)")
-                        pip_install("torch==2.2.0 --index-url https://download.pytorch.org/whl/cu118")
+                        # cu118 was hardcoded here, and its kernels stop at
+                        # sm_90: on an RTX 50 series it installed cleanly and
+                        # then failed every launch with "no kernel image is
+                        # available". Which build this machine needs is a
+                        # question about its GPU, so it is asked of the GPU.
+                        arguments = torch_install_arguments()
+                        if arguments is None:
+                            logger.info("the installed torch already serves this GPU")
+                        else:
+                            logger.info("Installing torch: %s", arguments)
+                            pip_install(arguments)
                     else:
                         pip_target = f"{lib}{version_spec}" if version_spec else lib
                         pip_install(pip_target)
@@ -125,8 +186,8 @@ def install_function():
             return False
 
     try:
-        import vtk
-        import itk
+        import vtk  # noqa: F401  (sonde de disponibilite)
+        import itk  # noqa: F401  (sonde de disponibilite)
     except ImportError as e:
         slicer.util.errorDisplay(f"Final import check failed: {e}")
         return False
@@ -144,18 +205,18 @@ class MRI2CBCT(ScriptedLoadableModule):
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("MRI2CBCT")  # TODO: make this more human readable by adding spaces
-        # TODO: set categories (folders where the module shows up in the module selector)
+        self.parent.title = _("MRI2CBCT")
+      
         self.parent.categories = ["Automated Dental Tools"]
-        self.parent.dependencies = ["SlicerNNUNet"]  # TODO: add here list of module names that this module requires
-        self.parent.contributors = ["John Doe (AnyWare Corp.)"]  # TODO: replace with "Firstname Lastname (Organization)"
-        # TODO: update with short description of the module and a link to online module documentation
+        self.parent.dependencies = ["SlicerNNUNet"]
+        self.parent.contributors = ["Gaelle Leroux (UoM), Alexandre Buisson (UoM), Raphael Barret (UoM)"]
+        
         # _() function marks text as translatable to other languages
         self.parent.helpText = _("""
 This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#MRI2CBCT">module documentation</a>.
+See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools#MRI2CBCT">module documentation</a>.
 """)
-        # TODO: replace with organization, grant and thanks
+        
         self.parent.acknowledgementText = _("""
 This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
 and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
@@ -177,7 +238,7 @@ def registerSampleData():
 
     import SampleData
 
-    iconsPath = os.path.join(os.path.dirname(__file__), "Resources/Icons")
+    icons_path = os.path.join(os.path.dirname(__file__), "Resources/Icons")
 
     # To ensure that the source code repository remains small (can be downloaded and installed quickly)
     # it is recommended to store data sets that are larger than a few MB in a Github release.
@@ -189,9 +250,9 @@ def registerSampleData():
         sampleName="MRI2CBCT1",
         # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
         # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, "MRI2CBCT1.png"),
+        thumbnailFileName=os.path.join(icons_path, "MRI2CBCT1.png"),
         # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+        uris=f"{SLICER_TESTING_DATA}/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
         fileNames="MRI2CBCT1.nrrd",
         # Checksum to ensure file integrity. Can be computed by this command:
         checksums="SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
@@ -204,9 +265,9 @@ def registerSampleData():
         # Category and sample name displayed in Sample Data module
         category="MRI2CBCT",
         sampleName="MRI2CBCT2",
-        thumbnailFileName=os.path.join(iconsPath, "MRI2CBCT2.png"),
+        thumbnailFileName=os.path.join(icons_path, "MRI2CBCT2.png"),
         # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+        uris=f"{SLICER_TESTING_DATA}/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
         fileNames="MRI2CBCT2.nrrd",
         checksums="SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
         # This node name will be used when the data set is loaded
@@ -253,7 +314,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
         self.logic = None
-        self.checked_cells = set() 
+        self.checked_cells = set()
         self.minus_checked_rows = set()
         self._parameterNode = None
         self._parameterNodeGuiTag = None
@@ -268,22 +329,22 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath("UI/MRI2CBCT.ui"))
-        self.layout.addWidget(uiWidget)
-        self.uiWidget = uiWidget  # Store reference for styling
-        self.ui = slicer.util.childWidgetVariables(uiWidget)
+        ui_widget = slicer.util.loadUI(self.resourcePath("UI/MRI2CBCT.ui"))
+        self.layout.addWidget(ui_widget)
+        self.uiWidget = ui_widget  # Store reference for styling
+        self.ui = slicer.util.childWidgetVariables(ui_widget)
 
         # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
         # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
         # "setMRMLScene(vtkMRMLScene*)" slot.
-        uiWidget.setMRMLScene(slicer.mrmlScene)
+        ui_widget.setMRMLScene(slicer.mrmlScene)
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
         self.logic = MRI2CBCTLogic()
         
-        documentsLocation = qt.QStandardPaths.DocumentsLocation
-        self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        documents_location = qt.QStandardPaths.DocumentsLocation
+        self.documents = qt.QStandardPaths.writableLocation(documents_location)
         self.SlicerDownloadPath = os.path.join(
             self.documents,
             slicer.app.applicationName + "Downloads",
@@ -318,6 +379,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SearchButtonApproxMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRIApprox"))
         self.ui.SearchButtonOutputApprox.connect("clicked(bool)",partial(self.openFinder,"OutputApprox"))
         self.ui.pushButtonApproximateMRI.connect("clicked(bool)", self.approximateMRI)
+        self.ui.pushButtonTestFileApprox.connect(
+            "clicked(bool)", partial(self.fillWithTestFiles, "Approx"))
         self._setupApproxSceneInputs()
         self.manual_approx_mri2cbct.injectUI(self.ui.approxCollapsibleButton)
 
@@ -332,7 +395,9 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.lineEditSepMRI.textChanged.connect(self.updateSepLabel)
         self.ui.lineEditSepSeg.textChanged.connect(self.updateSepLabel)
         self.ui.pushButtonCropLR.connect("clicked(bool)", self.lrCropMRI2CBCT)
-        
+        self.ui.pushButtonTestFileSep.connect(
+            "clicked(bool)", partial(self.fillWithTestFiles, "LRCrop"))
+
         
         ### TMJ Cropping ###
         self.ui.SearchButtonTMJCBCT.connect("clicked(bool)",partial(self.openFinder,"InputCBCTTMJ"))
@@ -346,6 +411,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
         self.ui.pushButtonSearchModelTMJ.connect("clicked(bool)",partial(self.openFinder,"InputTMJModel"))
         self.ui.pushButtonCropTMJ.connect("clicked(bool)", self.tmjCropMRI2CBCT)
+        self.ui.pushButtonTestFileTMJ.connect(
+            "clicked(bool)", partial(self.fillWithTestFiles, "TMJCrop"))
         
         
         
@@ -369,6 +436,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.CheckBoxT2Seg.connect("clicked(bool)",self.toggleT2)
         
         self.ui.pushButtonResample.connect("clicked(bool)",self.resampleMRICBCT)
+        self.ui.pushButtonTestFileResample.connect(
+            "clicked(bool)", partial(self.fillWithTestFiles, "Resample"))
         
         
         
@@ -382,16 +451,22 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SearchButtonMRI.connect("clicked(bool)",partial(self.openFinder,"InputMRI"))
         self.ui.SearchOutputFolderOrientMRI.connect("clicked(bool)",partial(self.openFinder,"OutputOrientMRI"))
         self.ui.pushButtonOrientMRI.connect("clicked(bool)",self.orientCenterMRI)
+        self.ui.pushButtonTestFilePreMRI.connect(
+            "clicked(bool)", partial(self.fillWithTestFiles, "Orient"))
         
         
         
         
         ### Registration ###
         self.ui.SearchButtonOutput.connect("clicked(bool)",partial(self.openFinder,"OutputReg"))
-        self.ui.pushButtonTestFilePreMRI.connect("clicked(bool)",partial(self.downloadModel,self.ui.LineEditMRI, "MRI2CBCT", True))
-        self.ui.pushButtonTestFileRegMRI.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegMRI, "MRI2CBCT", True))
-        self.ui.pushButtonTestFileRegCBCT.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegCBCT, "MRI2CBCT", True))
-        self.ui.pushButtonTestFileRegSeg.connect("clicked(bool)",partial(self.downloadModel,self.ui.lineEditRegLabel, "MRI2CBCT", True))
+        # The three buttons of the step fill the same thing: the whole step.
+        # Which one is pressed changes nothing -- a test set is not chosen
+        # field by field.
+        for button in (self.ui.pushButtonTestFileRegMRI,
+                       self.ui.pushButtonTestFileRegCBCT,
+                       self.ui.pushButtonTestFileRegSeg):
+            button.connect("clicked(bool)",
+                           partial(self.fillWithTestFiles, "Registration"))
         self.ui.SearchButtonRegMRI.connect("clicked(bool)",partial(self.openFinder,"InputRegMRI"))
         self.ui.SearchButtonRegCBCT.connect("clicked(bool)",partial(self.openFinder,"InputRegCBCT"))
         self.ui.SearchButtonRegLabel.connect("clicked(bool)",partial(self.openFinder,"InputRegLabel"))
@@ -402,7 +477,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         self.ui.pushButtonCancelProcess.connect("clicked(bool)", self.onCancel)
 
-        # Make sure parameter node is initialized (needed for module reload) 
+        # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
         self.ui.ComboBoxMRI.setCurrentIndex(1)
         self.ui.ComboBoxMRI.setEnabled(False)
@@ -463,20 +538,20 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         header.setSectionResizeMode(QHeaderView.Stretch)
         
         # Set a fixed height for the table to avoid stretching
-        self.tableWidgetOrient.setFixedHeight(self.tableWidgetOrient.horizontalHeader().height + 
+        self.tableWidgetOrient.setFixedHeight(self.tableWidgetOrient.horizontalHeader().height +
                                             self.tableWidgetOrient.verticalHeader().sectionSize(0) * self.tableWidgetOrient.rowCount)
 
         # Add widgets for each cell
         for row in range(3):
             for col in range(4):  # Columns X, Y, Z, and Minus
                 if col!=3 :
-                    checkBox = QCheckBox('0')
-                    checkBox.stateChanged.connect(lambda state, r=row, c=col: self.onCheckboxOrientClicked(r, c, state))
-                    self.tableWidgetOrient.setCellWidget(row, col, checkBox)
+                    check_box = QCheckBox('0')
+                    check_box.stateChanged.connect(lambda state, r=row, c=col: self.onCheckboxOrientClicked(r, c, state))
+                    self.tableWidgetOrient.setCellWidget(row, col, check_box)
                 else :
-                    checkBox = QCheckBox('No')
-                    checkBox.stateChanged.connect(lambda state, r=row, c=col: self.onCheckboxOrientClicked(r, c, state))
-                    self.tableWidgetOrient.setCellWidget(row, col, checkBox)
+                    check_box = QCheckBox('No')
+                    check_box.stateChanged.connect(lambda state, r=row, c=col: self.onCheckboxOrientClicked(r, c, state))
+                    self.tableWidgetOrient.setCellWidget(row, col, check_box)
 
         self.ui.ButtonDefaultOrientMRI.connect("clicked(bool)",self.defaultOrientMRI)
         self.defaultOrientMRI()
@@ -493,7 +568,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         header.setSectionResizeMode(QHeaderView.Stretch)
         
         # Set a fixed height for the table to avoid stretching
-        self.tableWidgetNorm.setFixedHeight(self.tableWidgetNorm.horizontalHeader().height + 
+        self.tableWidgetNorm.setFixedHeight(self.tableWidgetNorm.horizontalHeader().height +
                                             self.tableWidgetNorm.verticalHeader().sectionSize(0) * self.tableWidgetNorm.rowCount)
 
         # Set the headers
@@ -503,12 +578,12 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         for row in range(2):
             for col in range(4):
-                spinBox = QSpinBox()
+                spin_box = QSpinBox()
                 if col in [2, 3]:  # Columns for Percentile Min and Percentile Max
-                    spinBox.setMaximum(100)
+                    spin_box.setMaximum(100)
                 else:
-                    spinBox.setMaximum(10000)
-                self.tableWidgetNorm.setCellWidget(row, col, spinBox)
+                    spin_box.setMaximum(10000)
+                self.tableWidgetNorm.setCellWidget(row, col, spin_box)
                 
         self.ui.ButtonCheckBoxDefaultNorm1.connect("clicked(bool)",partial(self.DefaultNorm,"1"))
         self.ui.ButtonCheckBoxDefaultNorm2.connect("clicked(bool)",partial(self.DefaultNorm,"2"))
@@ -529,7 +604,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Set a fixed height for the table to avoid stretching
         self.tableWidgetResample.setFixedHeight(
-            self.tableWidgetResample.horizontalHeader().height + 
+            self.tableWidgetResample.horizontalHeader().height +
             self.tableWidgetResample.verticalHeader().sectionSize(0) * self.tableWidgetResample.rowCount
         )
 
@@ -538,39 +613,39 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.tableWidgetResample.setVerticalHeaderLabels(["Number of slices", "Spacing"])
 
         # Add QSpinBoxes for the first row
-        spinBox1 = QSpinBox()
-        spinBox1.setMaximum(10000)
-        spinBox1.setValue(443)
-        self.tableWidgetResample.setCellWidget(0, 0, spinBox1)
+        spin_box1 = QSpinBox()
+        spin_box1.setMaximum(10000)
+        spin_box1.setValue(443)
+        self.tableWidgetResample.setCellWidget(0, 0, spin_box1)
 
-        spinBox2 = QSpinBox()
-        spinBox2.setMaximum(10000)
-        spinBox2.setValue(443)
-        self.tableWidgetResample.setCellWidget(0, 1, spinBox2)
+        spin_box2 = QSpinBox()
+        spin_box2.setMaximum(10000)
+        spin_box2.setValue(443)
+        self.tableWidgetResample.setCellWidget(0, 1, spin_box2)
 
-        spinBox3 = QSpinBox()
-        spinBox3.setMaximum(10000)
-        spinBox3.setValue(119)
-        self.tableWidgetResample.setCellWidget(0, 2, spinBox3)
+        spin_box3 = QSpinBox()
+        spin_box3.setMaximum(10000)
+        spin_box3.setValue(119)
+        self.tableWidgetResample.setCellWidget(0, 2, spin_box3)
 
         # Add QSpinBoxes for the new row
-        spinBox4 = QDoubleSpinBox()
-        spinBox4.setMaximum(10000)
-        spinBox4.setSingleStep(0.1)
-        spinBox4.setValue(0.3)
-        self.tableWidgetResample.setCellWidget(1, 0, spinBox4)
+        spin_box4 = QDoubleSpinBox()
+        spin_box4.setMaximum(10000)
+        spin_box4.setSingleStep(0.1)
+        spin_box4.setValue(0.3)
+        self.tableWidgetResample.setCellWidget(1, 0, spin_box4)
 
-        spinBox5 = QDoubleSpinBox()
-        spinBox5.setMaximum(10000)
-        spinBox5.setSingleStep(0.1)
-        spinBox5.setValue(0.3)
-        self.tableWidgetResample.setCellWidget(1, 1, spinBox5)
+        spin_box5 = QDoubleSpinBox()
+        spin_box5.setMaximum(10000)
+        spin_box5.setSingleStep(0.1)
+        spin_box5.setValue(0.3)
+        self.tableWidgetResample.setCellWidget(1, 1, spin_box5)
 
-        spinBox6 = QDoubleSpinBox()
-        spinBox6.setMaximum(10000)
-        spinBox6.setSingleStep(0.1)
-        spinBox6.setValue(0.3)
-        self.tableWidgetResample.setCellWidget(1, 2, spinBox6)
+        spin_box6 = QDoubleSpinBox()
+        spin_box6.setMaximum(10000)
+        spin_box6.setSingleStep(0.1)
+        spin_box6.setValue(0.3)
+        self.tableWidgetResample.setCellWidget(1, 2, spin_box6)
         # Add QCheckBox for the "Keep File" column
         # Check if dark mode
         app = qt.QApplication.instance()
@@ -605,19 +680,19 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           }
         """
         
-        checkBox1 = QCheckBox("Keep the same size as the input scan")
+        check_box1 = QCheckBox("Keep the same size as the input scan")
         if is_dark_mode:
-            checkBox1.setStyleSheet(checkbox_stylesheet)
-        checkBox1.stateChanged.connect(lambda state: self.toggleSpinBoxes(state, [spinBox1, spinBox2, spinBox3]))
-        self.tableWidgetResample.setCellWidget(0, 3, checkBox1)
+            check_box1.setStyleSheet(checkbox_stylesheet)
+        check_box1.stateChanged.connect(lambda state: self.toggleSpinBoxes(state, [spin_box1, spin_box2, spin_box3]))
+        self.tableWidgetResample.setCellWidget(0, 3, check_box1)
 
-        checkBox2 = QCheckBox("Keep the same spacing as the input scan")
+        check_box2 = QCheckBox("Keep the same spacing as the input scan")
         if is_dark_mode:
-            checkBox2.setStyleSheet(checkbox_stylesheet)
-        checkBox2.stateChanged.connect(lambda state: self.toggleSpinBoxes(state, [spinBox4, spinBox5, spinBox6]))
-        self.tableWidgetResample.setCellWidget(1, 3, checkBox2)
+            check_box2.setStyleSheet(checkbox_stylesheet)
+        check_box2.stateChanged.connect(lambda state: self.toggleSpinBoxes(state, [spin_box4, spin_box5, spin_box6]))
+        self.tableWidgetResample.setCellWidget(1, 3, check_box2)
         
-    def toggleSpinBoxes(self, state, spinBoxes):
+    def toggleSpinBoxes(self, state, spin_boxes):
         """
         Enable or disable a list of QSpinBox widgets based on the provided state.
 
@@ -633,23 +708,23 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         (state == 2), the spin boxes are disabled and shown in gray. If the checkbox is unchecked,
         the spin boxes are enabled and restored to their default style.
         """
-        for spinBox in spinBoxes:
+        for spin_box in spin_boxes:
             if state == 2:
-                spinBox.setEnabled(False)
-                spinBox.setStyleSheet("color: gray;")
+                spin_box.setEnabled(False)
+                spin_box.setStyleSheet("color: gray;")
             else:
-                spinBox.setEnabled(True)
-                spinBox.setStyleSheet("")
+                spin_box.setEnabled(True)
+                spin_box.setStyleSheet("")
 
         
     def get_resample_values(self):
         """
         Retrieves the resample values (X, Y, Z) from the QTableWidget.
 
-        :return: A tuple of two lists representing the resample values for the two rows. 
+        :return: A tuple of two lists representing the resample values for the two rows.
                 Each list contains three values (X, Y, Z) or None if the "Keep File" checkbox is checked.
                 First output : number of slices.
-                Second output : spacing 
+                Second output : spacing
         """
         resample_values_row1 = []
         resample_values_row2 = []
@@ -692,7 +767,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.updateDICOMComboBox()
 
     def updateDICOMComboBox(self):
-        currentID = self.ui.comboBoxDICOMVolumes.itemData(self.ui.comboBoxDICOMVolumes.currentIndex) if self.ui.comboBoxDICOMVolumes.currentIndex > 0 else None
+        current_id = self.ui.comboBoxDICOMVolumes.itemData(self.ui.comboBoxDICOMVolumes.currentIndex) if self.ui.comboBoxDICOMVolumes.currentIndex > 0 else None
         self.ui.comboBoxDICOMVolumes.blockSignals(True)
         self.ui.comboBoxDICOMVolumes.clear()
         self.ui.comboBoxDICOMVolumes.addItem("Select DICOM node")
@@ -702,8 +777,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if volume.GetAttribute("DICOM.instanceUIDs"):
                 self.ui.comboBoxDICOMVolumes.addItem(volume.GetName(), volume.GetID())
         
-        if currentID:
-            index = self.ui.comboBoxDICOMVolumes.findData(currentID)
+        if current_id:
+            index = self.ui.comboBoxDICOMVolumes.findData(current_id)
             if index != -1:
                 self.ui.comboBoxDICOMVolumes.setCurrentIndex(index)
         self.ui.comboBoxDICOMVolumes.blockSignals(False)
@@ -713,26 +788,26 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.labelDICOMSpacing.text = "Acquisition Spacing: None"
             return
         
-        volumeID = self.ui.comboBoxDICOMVolumes.itemData(self.ui.comboBoxDICOMVolumes.currentIndex)
-        volumeNode = slicer.mrmlScene.GetNodeByID(volumeID)
-        if not volumeNode:
+        volume_id = self.ui.comboBoxDICOMVolumes.itemData(self.ui.comboBoxDICOMVolumes.currentIndex)
+        volume_node = slicer.mrmlScene.GetNodeByID(volume_id)
+        if not volume_node:
             return
         
-        instanceUIDs = volumeNode.GetAttribute("DICOM.instanceUIDs").split()
-        if not instanceUIDs:
+        instance_ui_ds = volume_node.GetAttribute("DICOM.instanceUIDs").split()
+        if not instance_ui_ds:
             self.ui.labelDICOMSpacing.text = "Acquisition Spacing: N/A (No DICOM metadata)"
             return
         
-        firstInstanceUID = instanceUIDs[0]
+        first_instance_uid = instance_ui_ds[0]
         db = slicer.dicomDatabase
         if not db:
             self.ui.labelDICOMSpacing.text = "DICOM database not available"
             return
         
         # Get spacing values from DICOM tags
-        spacing = db.instanceValue(firstInstanceUID, "0018,0088")  # Spacing Between Slices
+        spacing = db.instanceValue(first_instance_uid, "0018,0088")  # Spacing Between Slices
         if not spacing:
-            spacing = db.instanceValue(firstInstanceUID, "0018,0050")  # Slice Thickness
+            spacing = db.instanceValue(first_instance_uid, "0018,0050")  # Slice Thickness
         
         if spacing:
             self.ui.labelDICOMSpacing.text = f"Acquisition Spacing: {float(spacing):.2f} mm"
@@ -760,48 +835,48 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if col == 3:  # If the "Minus" column checkbox is clicked
             if state == 2:  # Checkbox is checked
                 self.minus_checked_rows.add(row)
-                checkBox = self.tableWidgetOrient.cellWidget(row, col)
-                checkBox.setText('Yes')
+                check_box = self.tableWidgetOrient.cellWidget(row, col)
+                check_box.setText('Yes')
                 for c in range(3):
-                    checkBox = self.tableWidgetOrient.cellWidget(row, c)
-                    if checkBox.text=="1":
-                        checkBox.setText('-1')
+                    check_box = self.tableWidgetOrient.cellWidget(row, c)
+                    if check_box.text=="1":
+                        check_box.setText('-1')
             else:  # Checkbox is unchecked
                 self.minus_checked_rows.discard(row)
-                checkBox = self.tableWidgetOrient.cellWidget(row, col)
-                checkBox.setText('No')
+                check_box = self.tableWidgetOrient.cellWidget(row, col)
+                check_box.setText('No')
                 for c in range(3):
-                    checkBox = self.tableWidgetOrient.cellWidget(row, c)
-                    if checkBox.text=="-1":
-                        checkBox.setText('1')
-        else :   
+                    check_box = self.tableWidgetOrient.cellWidget(row, c)
+                    if check_box.text=="-1":
+                        check_box.setText('1')
+        else :
             if state == 2:  # Checkbox is checked
                 # Set the clicked checkbox to '1' and uncheck all others in the same row
                 for c in range(3):
-                    checkBox = self.tableWidgetOrient.cellWidget(row, c)
-                    if checkBox:
+                    check_box = self.tableWidgetOrient.cellWidget(row, c)
+                    if check_box:
                         if c == col:
                             if row in self.minus_checked_rows:
-                                checkBox.setText('-1')
+                                check_box.setText('-1')
                             else :
-                                checkBox.setText('1')
-                            checkBox.setStyleSheet("color: black;")
-                            checkBox.setStyleSheet("font-weight: bold;")
+                                check_box.setText('1')
+                            check_box.setStyleSheet("color: black;")
+                            check_box.setStyleSheet("font-weight: bold;")
                             self.checked_cells.add((row, col))
                         else:
-                            checkBox.setText('0')
-                            checkBox.setChecked(False)
+                            check_box.setText('0')
+                            check_box.setChecked(False)
                             self.checked_cells.discard((row, c))
 
                 # Check for other '1' in the same column and set them to '0'
                 for r in range(3):
                     if r != row:
-                        checkBox = self.tableWidgetOrient.cellWidget(r, col)
-                        if checkBox and (checkBox.text == '1' or checkBox.text == '-1'):
-                            checkBox.setText('0')
-                            checkBox.setChecked(False)
-                            checkBox.setStyleSheet("color: gray;")
-                            checkBox.setStyleSheet("font-weight: normal;")
+                        check_box = self.tableWidgetOrient.cellWidget(r, col)
+                        if check_box and (check_box.text == '1' or check_box.text == '-1'):
+                            check_box.setText('0')
+                            check_box.setChecked(False)
+                            check_box.setStyleSheet("color: gray;")
+                            check_box.setStyleSheet("font-weight: normal;")
                             self.checked_cells.discard((r, col))
                             
                 # Check if two checkboxes are checked in different rows, then check the third one
@@ -814,35 +889,35 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     # Find the unchecked column
                     unchecked_cols = list(all_cols - {c for r, c in self.checked_cells})
                     for c in range(3):
-                        checkBox = self.tableWidgetOrient.cellWidget(unchecked_row, c)
+                        check_box = self.tableWidgetOrient.cellWidget(unchecked_row, c)
                         if c in unchecked_cols:
-                            checkBox.setStyleSheet("color: black;")
-                            checkBox.setStyleSheet("font-weight: bold;")
-                            checkBox.setChecked(True)
+                            check_box.setStyleSheet("color: black;")
+                            check_box.setStyleSheet("font-weight: bold;")
+                            check_box.setChecked(True)
                             if unchecked_row in self.minus_checked_rows:
-                                checkBox.setText('-1')
+                                check_box.setText('-1')
                             else :
-                                checkBox.setText('1')
+                                check_box.setText('1')
                             self.checked_cells.add((unchecked_row, c))
-                        else : 
-                            checkBox.setText('0')
-                            checkBox.setChecked(False)
+                        else :
+                            check_box.setText('0')
+                            check_box.setChecked(False)
                             self.checked_cells.discard((row, c))
 
             else:  # Checkbox is unchecked
-                checkBox = self.tableWidgetOrient.cellWidget(row, col)
-                if checkBox:
-                    checkBox.setText('0')
-                    checkBox.setStyleSheet("color: black;")
-                    checkBox.setStyleSheet("font-weight: normal;")
+                check_box = self.tableWidgetOrient.cellWidget(row, col)
+                if check_box:
+                    check_box.setText('0')
+                    check_box.setStyleSheet("color: black;")
+                    check_box.setStyleSheet("font-weight: normal;")
                     self.checked_cells.discard((row, col))
                     
                 # Reset the style of all checkboxes in the same row
                 for c in range(3):
-                    checkBox = self.tableWidgetOrient.cellWidget(row, c)
-                    if checkBox:
-                        checkBox.setStyleSheet("color: black;")
-                        checkBox.setStyleSheet("font-weight: normal;")
+                    check_box = self.tableWidgetOrient.cellWidget(row, c)
+                    if check_box:
+                        check_box.setStyleSheet("color: black;")
+                        check_box.setStyleSheet("font-weight: normal;")
                         
     def getCheckboxValuesOrient(self):
         """
@@ -858,9 +933,9 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         values = []
         for row in range(3):
             for col in range(3):
-                checkBox = self.tableWidgetOrient.cellWidget(row, col)
-                if checkBox:
-                    values.append(int(checkBox.text))
+                check_box = self.tableWidgetOrient.cellWidget(row, col)
+                if check_box:
+                    values.append(int(check_box.text))
         return tuple(values)
     
     def defaultOrientMRI(self):
@@ -885,219 +960,30 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             (2, 1, -1)
         ]
         for row, col, value in initial_states:
-            checkBox = self.tableWidgetOrient.cellWidget(row, col)
-            if checkBox:
+            check_box = self.tableWidgetOrient.cellWidget(row, col)
+            if check_box:
                 if value == 1:
-                    checkBox.setChecked(True)
-                    checkBox.setText('1')
-                    checkBox.setStyleSheet("font-weight: bold;")
+                    check_box.setChecked(True)
+                    check_box.setText('1')
+                    check_box.setStyleSheet("font-weight: bold;")
                     self.checked_cells.add((row, col))
                 elif value == -1:
-                    checkBox.setChecked(True)
-                    checkBox.setText('-1')
-                    checkBox.setStyleSheet("font-weight: bold;")
-                    minus_checkBox = self.tableWidgetOrient.cellWidget(row, 3)
-                    if minus_checkBox:
-                        minus_checkBox.setChecked(True)
-                        minus_checkBox.setText("Yes")
+                    check_box.setChecked(True)
+                    check_box.setText('-1')
+                    check_box.setStyleSheet("font-weight: bold;")
+                    minus_check_box = self.tableWidgetOrient.cellWidget(row, 3)
+                    if minus_check_box:
+                        minus_check_box.setChecked(True)
+                        minus_check_box.setText("Yes")
                     self.minus_checked_rows.add(row)
 
     def applyDarkModeStyles(self):
-        """Apply dark mode styling to the widget if needed"""
-        app = qt.QApplication.instance()
-        palette = app.palette()
-        bg_color = palette.color(qt.QPalette.Window)
-        if bg_color.lightness() < 128:
-            # Complete dark mode stylesheet
-            dark_stylesheet = """
-QLineEdit, QTextEdit {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 6px;
-  color: #ffffff;
-  selection-background-color: #5dade2;
-}
-QLineEdit:focus, QTextEdit:focus {
-  border: 2px solid #5dade2;
-}
-QComboBox {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #ffffff;
-}
-QComboBox:focus {
-  border: 2px solid #5dade2;
-}
-QComboBox::drop-down {
-  width: 20px;
-  border: none;
-}
-QComboBox QAbstractItemView {
-  background-color: #3c3c3c;
-  color: #ffffff;
-  selection-background-color: #5dade2;
-}
-QLabel {
-  color: #ffffff;
-  font-weight: 500;
-  background-color: transparent;
-}
-QPushButton {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 10pt;
-  padding: 8px;
-  margin-top: 4px;
-}
-QPushButton:hover:!pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7bbcef, stop:1 #5dade2);
-}
-QPushButton:pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1e638d);
-}
-QPushButton:disabled {
-  background-color: #555555;
-  color: #888888;
-}
-QCheckBox {
-  color: #ffffff;
-  font-weight: 500;
-  spacing: 6px;
-  background-color: transparent;
-}
-QCheckBox::indicator {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #555555;
-  border-radius: 3px;
-  background-color: #3c3c3c;
-}
-QCheckBox::indicator:hover {
-  border: 1px solid #5dade2;
-}
-QCheckBox::indicator:checked {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #5dade2;
-  border-radius: 3px;
-  background-color: #5dade2;
-  image: url(:/Icons/SmallCheckMark.png);
-}
-QCheckBox::indicator:checked:hover {
-  border: 1px solid #7bbcef;
-  background-color: #7bbcef;
-}
-QProgressBar {
-  border: 1px solid #555555;
-  border-radius: 4px;
-  background-color: #3c3c3c;
-  padding: 2px;
-  color: #ffffff;
-}
-QProgressBar::chunk {
-  background-color: #5dade2;
-  border-radius: 3px;
-}
-QSpinBox, QDoubleSpinBox {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #ffffff;
-}
-QSpinBox:focus, QDoubleSpinBox:focus {
-  border: 2px solid #5dade2;
-}
-QSlider::groove:horizontal {
-  background-color: #555555;
-  border-radius: 4px;
-}
-QSlider::handle:horizontal {
-  background-color: #5dade2;
-  width: 12px;
-  margin: -4px 0;
-  border-radius: 6px;
-}
-QSlider::handle:horizontal:hover {
-  background-color: #7bbcef;
-}
-            """
-            self.uiWidget.setStyleSheet(dark_stylesheet)
-            
-            # Update QLineEdit, QComboBox, and QLabel for dark mode
-            self._updateLineEditAndComboBoxDarkMode(self.uiWidget)
+        """Give this module's widget the palette shared by the extension."""
+        apply_dark_mode(self.uiWidget)
 
     def _updateLineEditAndComboBoxDarkMode(self, parent):
-        """
-        Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
-        """
-        # Update QLabel
-        if isinstance(parent, qt.QLabel):
-            try:
-                parent.setStyleSheet("""
-                    QLabel {
-                      color: #ffffff;
-                      font-weight: 500;
-                    }
-                """)
-            except:
-                pass
-        
-        # Update QLineEdit
-        if isinstance(parent, qt.QLineEdit):
-            try:
-                parent.setStyleSheet("""
-                    QLineEdit {
-                      background-color: #3c3c3c;
-                      border: 1px solid #555555;
-                      border-radius: 4px;
-                      padding: 6px;
-                      color: #ffffff;
-                    }
-                    QLineEdit:focus {
-                      border: 2px solid #5dade2;
-                    }
-                """)
-            except:
-                pass
-        
-        # Update QComboBox
-        if isinstance(parent, qt.QComboBox):
-            try:
-                parent.setStyleSheet("""
-                    QComboBox {
-                      background-color: #3c3c3c;
-                      border: 1px solid #555555;
-                      border-radius: 4px;
-                      padding: 4px 6px;
-                      color: #ffffff;
-                    }
-                    QComboBox:focus {
-                      border: 2px solid #5dade2;
-                    }
-                    QComboBox::drop-down {
-                      width: 20px;
-                      border: none;
-                    }
-                    QComboBox QAbstractItemView {
-                      background-color: #3c3c3c;
-                      color: #ffffff;
-                      selection-background-color: #5dade2;
-                    }
-                """)
-            except:
-                pass
-        
-        # Recursively update all children
-        if hasattr(parent, 'children'):
-            for child in parent.children():
-                self._updateLineEditAndComboBoxDarkMode(child)
+        """Shared recursive pass, kept as a method for the existing call sites."""
+        update_line_edit_and_combo_box(parent)
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -1146,12 +1032,12 @@ QSlider::handle:horizontal:hover {
         """
         values = []
         for row in range(self.tableWidgetNorm.rowCount):
-            rowData = []
+            row_data = []
             for col in range(self.tableWidgetNorm.columnCount):
                 widget = self.tableWidgetNorm.cellWidget(row, col)
                 if isinstance(widget, QSpinBox):
-                    rowData.append(widget.value)
-            values.append(rowData)
+                    row_data.append(widget.value)
+            values.append(row_data)
         return(values)
     
     def DefaultNorm(self,num : str,_)->None:
@@ -1178,10 +1064,10 @@ QSlider::handle:horizontal:hover {
         
         for row in range(self.tableWidgetNorm.rowCount):
             for col in range(self.tableWidgetNorm.columnCount):
-                spinBox = QSpinBox()
-                spinBox.setMaximum(10000)
-                spinBox.setValue(default_values[row][col])
-                self.tableWidgetNorm.setCellWidget(row, col, spinBox)
+                spin_box = QSpinBox()
+                spin_box.setMaximum(10000)
+                spin_box.setValue(default_values[row][col])
+                self.tableWidgetNorm.setCellWidget(row, col, spin_box)
                 
     def onCollapsibleToggled(self, name: str, expanded: bool) -> None:
         if name == "Resample":
@@ -1198,9 +1084,10 @@ QSlider::handle:horizontal:hover {
         Parameters:
         - lineEdit: The QLineEdit widget where the model path will be set.
         """
-        foldPath, is_installed = self.install_nnunet()
+        fold_path, is_installed = self.install_nnunet()
         if is_installed:
-            self.ui.lineEditTMJModel.setText(foldPath)
+            # install_nnunet answers a pathlib.Path; setText wants a string.
+            self.ui.lineEditTMJModel.setText(str(fold_path))
         else:
             slicer.util.errorDisplay("Failed to download TMJ model.")
             
@@ -1234,19 +1121,19 @@ QSlider::handle:horizontal:hover {
                 
     def install_nnunet(self) -> bool:
         # Set up base and fold paths
-        basePath = Path(self.SlicerDownloadPath).joinpath("ML", "Dataset001_myseg", "nnUNetTrainer__nnUNetResEncUNetXLPlans__3d_fullres").resolve()
-        foldPath = basePath.joinpath("fold_0")
-        foldPath.mkdir(parents=True, exist_ok=True)
+        base_path = Path(self.SlicerDownloadPath).joinpath("ML", "Dataset001_myseg", "nnUNetTrainer__nnUNetResEncUNetXLPlans__3d_fullres").resolve()
+        fold_path = base_path.joinpath("fold_0")
+        fold_path.mkdir(parents=True, exist_ok=True)
 
         # Define destination paths
-        checkpoint_path = foldPath.joinpath("checkpoint_final.pth")
-        dataset_json_path = basePath.joinpath("dataset.json")
-        plans_json_path = basePath.joinpath("plans.json")
+        checkpoint_path = fold_path.joinpath("checkpoint_final.pth")
+        dataset_json_path = base_path.joinpath("dataset.json")
+        plans_json_path = base_path.joinpath("plans.json")
 
         # Define URLs
-        url_checkpoint = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/TMJ_CROP_MODEL/checkpoint_final.pth"
-        url_dataset = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/TMJ_CROP_MODEL/dataset.json"
-        url_plans = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/TMJ_CROP_MODEL/plans.json"
+        url_checkpoint = f"{TMJ_CROP_MODEL}/checkpoint_final.pth"
+        url_dataset = f"{TMJ_CROP_MODEL}/dataset.json"
+        url_plans = f"{TMJ_CROP_MODEL}/plans.json"
 
         # Download files if missing
         if not checkpoint_path.exists():
@@ -1259,9 +1146,9 @@ QSlider::handle:horizontal:hover {
             self.download_file_with_progress(url_plans, plans_json_path, label="Downloading plans.json")
 
         # If everything exists, return True
-        return basePath, (checkpoint_path.exists() and dataset_json_path.exists() and plans_json_path.exists())
+        return base_path, (checkpoint_path.exists() and dataset_json_path.exists() and plans_json_path.exists())
 
-    def openFinder(self,nom : str,_) -> None : 
+    def openFinder(self,nom : str,_) -> None :
         """
          Open finder to let the user choose is files or folder
         """
@@ -1379,119 +1266,63 @@ QSlider::handle:horizontal:hover {
             self.ui.lineEditTMJModel.setText(surface_folder)
         
         
-    def downloadModel(self, lineEdit, name, test,_):
+    def testFilesRoot(self):
+        """Where the test dataset is kept: Slicer's download directory."""
+        documents_location = qt.QStandardPaths.DocumentsLocation
+        self.documents = qt.QStandardPaths.writableLocation(documents_location)
+        return os.path.join(self.documents, slicer.app.applicationName + "Downloads")
+
+    def fillWithTestFiles(self, step, _=None):
+        """Fill every field of one step of the module with the test dataset.
+
+        `step` is a key of `TEST_FILE_STEPS`, given by the button that was
+        pressed -- the fields to fill are named there, not guessed from the
+        `objectName` of a widget handed over one at a time.
+
+        The dataset is downloaded only when it is missing, and the download is
+        checked: an interrupted one does not count as present, and a release
+        link that answers with a web page is named as such instead of failing
+        later on "not a zip file". Input fields are always rewritten, that
+        being what the button is for; the output folder is only filled when
+        the user has not chosen one.
         """
-        Download model files from the URL(s) provided by the getModelUrl function.
+        fields = TEST_FILE_STEPS[step]
+        root = self.testFilesRoot()
 
-        Parameters:
-        - lineEdit: The QLineEdit widget to update with the model folder path.
-        - name: The name of the model to download.
-        - test: A flag for testing purposes (unused in this function).
-        - _: Unused parameter for compatibility.
+        try:
+            dataset = testdata.ensure_with_progress(
+                MRI2CBCT_TEST_FILES, root, TEST_FILES_DIRECTORY,
+                parent=self.parent,
+                title="Downloading the MRI2CBCT test files...")
+        except testdata.TestDataError as error:
+            self.showMessage(str(error))
+            return
+        except OSError as error:
+            self.showMessage(
+                "The MRI2CBCT test files could not be downloaded from\n%s\n\n%s"
+                % (MRI2CBCT_TEST_FILES, error))
+            return
 
-        This function fetches the model URL(s) using getModelUrl, downloads the files,
-        unzips them to the appropriate directory, and updates the lineEdit with the model
-        folder path. It also runs a test on the downloaded model and shows a warning message
-        if any errors occur.
-        """
-        install_function()
-        url = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/test_files/TestFile.zip"
+        scans = os.path.join(dataset, "TestFile")
+        for name, parts in fields["inputs"]:
+            getattr(self.ui, name).setText(os.path.join(scans, *parts))
 
-        documentsLocation = qt.QStandardPaths.DocumentsLocation
-        self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
-        self.SlicerDownloadPath = os.path.join(
-            self.documents,
-            slicer.app.applicationName + "Downloads",
-        )
-        self.isDCMInput = False
-        if not os.path.exists(self.SlicerDownloadPath):
-            os.makedirs(self.SlicerDownloadPath)
+        if "model" in fields:
+            model_folder, is_installed = self.install_nnunet()
+            if not is_installed:
+                self.showMessage(
+                    "The test scans are in place, but the nnU-Net model this "
+                    "step needs could not be downloaded.")
+                return
+            getattr(self.ui, fields["model"]).setText(str(model_folder))
 
-        scan_folder = self.DownloadUnzip(
-                url=url,
-                directory=os.path.join(self.SlicerDownloadPath),
-                folder_name=os.path.join(name)
-                if not self.isDCMInput
-                else os.path.join(name),
-            )
-        
-        scan_folder = os.path.join(scan_folder,"TestFile")
-        if lineEdit.objectName=="LineEditMRI":
-            lineEdit.setText(os.path.join(scan_folder,"MRI_ori"))
-        elif lineEdit.objectName=="lineEditRegMRI":
-            lineEdit.setText(os.path.join(scan_folder,"REG","MRI"))
-        elif lineEdit.objectName=="lineEditRegCBCT":
-            lineEdit.setText(os.path.join(scan_folder,"REG","CBCT"))
-        elif lineEdit.objectName=="lineEditRegLabel":
-            lineEdit.setText(os.path.join(scan_folder,"REG","Seg"))
+        output_name, folder = fields["output"]
+        output_field = getattr(self.ui, output_name)
+        if not output_field.text:
+            destination = os.path.join(root, TEST_OUTPUT_DIRECTORY, folder)
+            os.makedirs(destination, exist_ok=True)
+            output_field.setText(destination)
 
-    def DownloadUnzip(
-        self, url, directory, folder_name=None, num_downl=1, total_downloads=1
-    ):
-        """
-        Download and unzip a file from a given URL to a specified directory.
-
-        Parameters:
-        - url: The URL of the zip file to download.
-        - directory: The directory where the file should be downloaded and unzipped.
-        - folder_name: The name of the folder to create and unzip the contents into.
-        - num_downl: The current download number (for progress display).
-        - total_downloads: The total number of downloads (for progress display).
-
-        Returns:
-        - out_path: The path to the unzipped folder.
-        """
-        
-        out_path = os.path.join(directory, folder_name)
-
-        if not os.path.exists(out_path):
-            os.makedirs(out_path)
-
-            temp_path = os.path.join(directory, "temp.zip")
-
-            # Download the zip file from the url
-            with urllib.request.urlopen(url) as response, open(
-                temp_path, "wb"
-            ) as out_file:
-                # Pop up a progress bar with a QProgressDialog
-                progress = QProgressDialog(
-                    "Downloading {} (File {}/{})".format(
-                        folder_name.split(os.sep)[0], num_downl, total_downloads
-                    ),
-                    "Cancel",
-                    0,
-                    100,
-                    self.parent,
-                )
-                progress.setCancelButton(None)
-                progress.setWindowModality(qt.Qt.WindowModal)
-                progress.setWindowTitle(
-                    "Downloading {}...".format(folder_name.split(os.sep)[0])
-                )
-                # progress.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
-                progress.show()
-                length = response.info().get("Content-Length")
-                if length:
-                    length = int(length)
-                    blocksize = max(4096, length // 100)
-                    read = 0
-                    while True:
-                        buffer = response.read(blocksize)
-                        if not buffer:
-                            break
-                        read += len(buffer)
-                        out_file.write(buffer)
-                        progress.setValue(read * 100.0 / length)
-                        QApplication.processEvents()
-                shutil.copyfileobj(response, out_file)
-
-            with zipfile.ZipFile(temp_path, "r") as zip:
-                zip.extractall(out_path)
-
-            os.remove(temp_path)
-
-        return out_path
-    
     def tmjCropMRI2CBCT(self)->None:
         """
         This function is called when the button "pushButtonCropTMJ" is clicked.
@@ -1564,21 +1395,21 @@ QSlider::handle:horizontal:hover {
         """
         
         install_function()
-        LinEditMRISep = "None"
-        LinEditCBCTSep = "None"
-        LineEditSegSep = "None"
+        lin_edit_mri_sep = "None"
+        lin_edit_cbct_sep = "None"
+        line_edit_seg_sep = "None"
         
         if self.ui.lineEditSepMRI.text != "":
-            LinEditMRISep = self.ui.lineEditSepMRI.text
+            lin_edit_mri_sep = self.ui.lineEditSepMRI.text
         if self.ui.lineEditSepCBCT.text != "":
-            LinEditCBCTSep = self.ui.lineEditSepCBCT.text
+            lin_edit_cbct_sep = self.ui.lineEditSepCBCT.text
         if self.ui.lineEditSepSeg.text != "":
-            LineEditSegSep = self.ui.lineEditSepSeg.text
+            line_edit_seg_sep = self.ui.lineEditSepSeg.text
             
         param = {
-            "input_folder_CBCT": LinEditCBCTSep,
-            "input_folder_MRI": LinEditMRISep,
-            "input_folder_Seg": LineEditSegSep,
+            "input_folder_CBCT": lin_edit_cbct_sep,
+            "input_folder_MRI": lin_edit_mri_sep,
+            "input_folder_Seg": line_edit_seg_sep,
             "output_folder": self.ui.lineEditSepOut.text,
         }
         
@@ -1642,12 +1473,12 @@ QSlider::handle:horizontal:hover {
             "acquisition_z_spacing": z_spacing,
         }
         
-        ok,mess = self.preprocess_mri.TestProcess(**param) 
-        if not ok : 
+        ok,mess = self.preprocess_mri.TestProcess(**param)
+        if not ok :
             self.showMessage(mess)
             return
         ok,mess = self.preprocess_mri.TestScan(param["input_folder"])
-        if not ok : 
+        if not ok :
             self.showMessage(mess)
             return
         
@@ -1682,44 +1513,44 @@ QSlider::handle:horizontal:hover {
         passing, and process initiation, including setting up observers for process updates.
         """
         install_function()
-        LineEditMRI = "None"
-        LineEditT2MRI = "None"
-        LineEditCBCT = "None"
-        LineEditT2CBCT = "None"
-        LineEditSeg = "None"
-        LineEditT2Seg = "None"
+        line_edit_mri = "None"
+        line_edit_t2_mri = "None"
+        line_edit_cbct = "None"
+        line_edit_t2_cbct = "None"
+        line_edit_seg = "None"
+        line_edit_t2_seg = "None"
         if self.ui.lineEditResampleMRI.text != "":
-            LineEditMRI = self.ui.lineEditResampleMRI.text
+            line_edit_mri = self.ui.lineEditResampleMRI.text
         if self.ui.lineEditResampleT2MRI.text != "" and self.ui.CheckBoxT2MRI.isChecked():
-            LineEditT2MRI = self.ui.lineEditResampleT2MRI.text
+            line_edit_t2_mri = self.ui.lineEditResampleT2MRI.text
         if self.ui.lineEditResampleCBCT.text != "":
-            LineEditCBCT = self.ui.lineEditResampleCBCT.text
+            line_edit_cbct = self.ui.lineEditResampleCBCT.text
         if self.ui.lineEditResampleT2CBCT.text != "" and self.ui.CheckBoxT2CBCT.isChecked():
-            LineEditT2CBCT = self.ui.lineEditResampleT2CBCT.text
+            line_edit_t2_cbct = self.ui.lineEditResampleT2CBCT.text
         if self.ui.lineEditResampleSeg.text != "":
-            LineEditSeg = self.ui.lineEditResampleSeg.text
+            line_edit_seg = self.ui.lineEditResampleSeg.text
         if self.ui.lineEditResampleT2Seg.text != "" and self.ui.CheckBoxT2Seg.isChecked():
-            LineEditT2Seg = self.ui.lineEditResampleT2Seg.text
+            line_edit_t2_seg = self.ui.lineEditResampleT2Seg.text
             
-        param = {"input_folder_MRI": LineEditMRI,
-            "input_folder_T2_MRI": LineEditT2MRI,
-            "input_folder_CBCT": LineEditCBCT,
-            "input_folder_T2_CBCT": LineEditT2CBCT,
-            "input_folder_Seg": LineEditSeg,
-            "input_folder_T2_Seg": LineEditT2Seg,
+        param = {"input_folder_MRI": line_edit_mri,
+            "input_folder_T2_MRI": line_edit_t2_mri,
+            "input_folder_CBCT": line_edit_cbct,
+            "input_folder_T2_CBCT": line_edit_t2_cbct,
+            "input_folder_Seg": line_edit_seg,
+            "input_folder_T2_Seg": line_edit_t2_seg,
             "output_folder": self.ui.lineEditOuputResample.text,
             "resample_size": self.get_resample_values()[0],
             "spacing": self.get_resample_values()[1],
             "center": str(self.ui.checkBoxCenterImage.isChecked()),
         }
             
-        ok,mess = self.preprocess_mri_cbct.TestProcess(**param) 
-        if not ok : 
+        ok,mess = self.preprocess_mri_cbct.TestProcess(**param)
+        if not ok :
             self.showMessage(mess)
             return
         
         ok,mess = self.preprocess_mri_cbct.TestScan(param["input_folder_MRI"])
-        if not ok : 
+        if not ok :
             if self.ui.CheckBoxT2MRI.isChecked():
                 mess = mess + "MRI T1 folder"
             else:
@@ -1734,7 +1565,7 @@ QSlider::handle:horizontal:hover {
             return
         
         ok,mess = self.preprocess_mri_cbct.TestScan(param["input_folder_CBCT"])
-        if not ok : 
+        if not ok :
             if self.ui.CheckBoxT2CBCT.isChecked():
                 mess = mess + "CBCT T1 folder"
             else:
@@ -1752,7 +1583,7 @@ QSlider::handle:horizontal:hover {
         if not ok :
             if self.ui.CheckBoxT2Seg.isChecked():
                 mess = mess + "Seg T1 folder"
-            else: 
+            else:
                 mess = mess + "Seg folder"
             self.showMessage(mess)
             return
@@ -1898,8 +1729,8 @@ QSlider::handle:horizontal:hover {
             "normalization" : [self.getNormalization()],
             "tempo_fold" : self.ui.checkBoxTompraryFold.isChecked()}
         
-        ok,mess = self.registration_mri2cbct.TestProcess(**param) 
-        if not ok : 
+        ok,mess = self.registration_mri2cbct.TestProcess(**param)
+        if not ok :
             self.showMessage(mess)
             return
         
@@ -1922,9 +1753,9 @@ QSlider::handle:horizontal:hover {
             return
         
         ok,mess = self.registration_mri2cbct.CheckNormalization(param["normalization"])
-        if not ok : 
+        if not ok :
             self.showMessage(mess)
-            return 
+            return
         
         self.list_Processes_Parameters = self.registration_mri2cbct.Process(**param)
         
@@ -1955,13 +1786,13 @@ QSlider::handle:horizontal:hover {
         already uses for its own scan input (input_type_select +
         MRMLNodeComboBox_file).
         """
-        gridLayout = self.ui.gridLayout_4
+        grid_layout = self.ui.gridLayout_4
 
         self.labelApproxInputType = qt.QLabel("Input type:")
-        gridLayout.addWidget(self.labelApproxInputType, 3, 0)
+        grid_layout.addWidget(self.labelApproxInputType, 3, 0)
         self.comboBoxApproxInputType = qt.QComboBox()
         self.comboBoxApproxInputType.addItems(["Folder", "Scene Volume"])
-        gridLayout.addWidget(self.comboBoxApproxInputType, 3, 1)
+        grid_layout.addWidget(self.comboBoxApproxInputType, 3, 1)
 
         self.approxSceneCBCTSelector = slicer.qMRMLNodeComboBox()
         self.approxSceneCBCTSelector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
@@ -1970,7 +1801,7 @@ QSlider::handle:horizontal:hover {
         self.approxSceneCBCTSelector.addEnabled = False
         self.approxSceneCBCTSelector.removeEnabled = False
         self.approxSceneCBCTSelector.setToolTip("CBCT volume already loaded in the scene")
-        gridLayout.addWidget(self.approxSceneCBCTSelector, 0, 1, 1, 3)
+        grid_layout.addWidget(self.approxSceneCBCTSelector, 0, 1, 1, 3)
 
         self.approxSceneMRISelector = slicer.qMRMLNodeComboBox()
         self.approxSceneMRISelector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
@@ -1979,19 +1810,19 @@ QSlider::handle:horizontal:hover {
         self.approxSceneMRISelector.addEnabled = False
         self.approxSceneMRISelector.removeEnabled = False
         self.approxSceneMRISelector.setToolTip("MRI volume already loaded in the scene")
-        gridLayout.addWidget(self.approxSceneMRISelector, 1, 1, 1, 3)
+        grid_layout.addWidget(self.approxSceneMRISelector, 1, 1, 1, 3)
 
         def onInputTypeChanged(index):
-            useScene = (index == 1)
-            self.ui.label_17.setText("CBCT volume:" if useScene else "Input CBCT folder:")
-            self.ui.lineEditApproxCBCT.setVisible(not useScene)
-            self.ui.SearchButtonApproxCBCT.setVisible(not useScene)
-            self.approxSceneCBCTSelector.setVisible(useScene)
+            use_scene = (index == 1)
+            self.ui.label_17.setText("CBCT volume:" if use_scene else "Input CBCT folder:")
+            self.ui.lineEditApproxCBCT.setVisible(not use_scene)
+            self.ui.SearchButtonApproxCBCT.setVisible(not use_scene)
+            self.approxSceneCBCTSelector.setVisible(use_scene)
 
-            self.ui.label_16.setText("MRI volume:" if useScene else "Input MRI folder:")
-            self.ui.lineEditApproxMRI.setVisible(not useScene)
-            self.ui.SearchButtonApproxMRI.setVisible(not useScene)
-            self.approxSceneMRISelector.setVisible(useScene)
+            self.ui.label_16.setText("MRI volume:" if use_scene else "Input MRI folder:")
+            self.ui.lineEditApproxMRI.setVisible(not use_scene)
+            self.ui.SearchButtonApproxMRI.setVisible(not use_scene)
+            self.approxSceneMRISelector.setVisible(use_scene)
 
         self.comboBoxApproxInputType.currentIndexChanged.connect(onInputTypeChanged)
         onInputTypeChanged(0)
@@ -2012,36 +1843,36 @@ QSlider::handle:horizontal:hover {
             self.showMessage("Failed to download the condyle segmentation model required for Approximate.")
             return
 
-        useSceneVolumes = self.comboBoxApproxInputType.currentIndex == 1
-        cbctFolder = self.ui.lineEditApproxCBCT.text
-        mriFolder = self.ui.lineEditApproxMRI.text
+        use_scene_volumes = self.comboBoxApproxInputType.currentIndex == 1
+        cbct_folder = self.ui.lineEditApproxCBCT.text
+        mri_folder = self.ui.lineEditApproxMRI.text
 
-        if useSceneVolumes:
-            cbctNode = self.approxSceneCBCTSelector.currentNode()
-            mriNode = self.approxSceneMRISelector.currentNode()
-            if not cbctNode or not mriNode:
+        if use_scene_volumes:
+            cbct_node = self.approxSceneCBCTSelector.currentNode()
+            mri_node = self.approxSceneMRISelector.currentNode()
+            if not cbct_node or not mri_node:
                 self.showMessage("Please select a CBCT and an MRI volume from the scene.")
                 return
 
             # Volumes already loaded from a file already have that file's path
             # on their storage node, same as AMASSS's single-file input mode -
             # no need to export/copy anything.
-            cbctFolder = pathFromVolumeNode(cbctNode)
-            mriFolder = pathFromVolumeNode(mriNode)
-            if not cbctFolder or not mriFolder:
+            cbct_folder = pathFromVolumeNode(cbct_node)
+            mri_folder = pathFromVolumeNode(mri_node)
+            if not cbct_folder or not mri_folder:
                 self.showMessage(
                     "The selected volume(s) don't have a file on disk yet. "
                     "Save them first, or switch Input type to Folder.")
                 return
 
-        param = {"cbct_folder": cbctFolder,
-            "mri_folder": mriFolder,
+        param = {"cbct_folder": cbct_folder,
+            "mri_folder": mri_folder,
             "output_folder" : self.ui.lineEditOutputApprox.text,
             "model_folder": str(model_folder),
-            "use_scene_volumes": useSceneVolumes}
+            "use_scene_volumes": use_scene_volumes}
 
         ok,mess = self.approximate_mri2cbct.TestProcess(**param)
-        if not ok : 
+        if not ok :
             self.showMessage(mess)
             return
         
@@ -2079,7 +1910,7 @@ QSlider::handle:horizontal:hover {
             "ModifiedEvent", self.onProcessUpdate
         )
 
-        del self.list_Processes_Parameters[0]   
+        del self.list_Processes_Parameters[0]
         
     def onProcessStarted(self):
         """
@@ -2124,13 +1955,13 @@ QSlider::handle:horizontal:hover {
         if not self.processWasCanceled:
             self.ui.pushButtonCancelProcess.setVisible(True)
         
-        currentTime = time.time() - self.startTime
-        if currentTime < 60:
-            timer = f"Time: {int(currentTime)}s"
-        elif currentTime < 3600:
-            timer = f"Time: {int(currentTime/60)}min and {int(currentTime%60)}s"
+        current_time = time.time() - self.startTime
+        if current_time < 60:
+            timer = f"Time: {int(current_time)}s"
+        elif current_time < 3600:
+            timer = f"Time: {int(current_time/60)}min and {int(current_time%60)}s"
         else:
-            timer = f"Time: {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+            timer = f"Time: {int(current_time/3600)}h, {int(current_time%3600/60)}min and {int(current_time%60)}s"
 
         self.ui.label_time.setText(timer)
         self.ui.label_info.setText(f"Extension {self.module_name} is running. \nNumber of extension runned: {self.nb_extnesion_did} / {self.nb_extension_launch}")
@@ -2152,8 +1983,8 @@ QSlider::handle:horizontal:hover {
 
                 logger.info(self.process.GetOutputText())
                 logger.error("\n\n ========= ERROR ========= \n")
-                errorText = self.process.GetErrorText()
-                logger.error("CLI execution failed: \n \n" + errorText)
+                error_text = self.process.GetErrorText()
+                logger.error("CLI execution failed: \n \n" + error_text)
 
                 self.onCancel()
 
@@ -2209,7 +2040,7 @@ QSlider::handle:horizontal:hover {
 
         self.RunningUI(False)
 
-        stopTime = time.time()
+        stop_time = time.time()
 
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Information)
@@ -2284,7 +2115,7 @@ class MRI2CBCTLogic(ScriptedLoadableModuleLogic):
     def process(self,
                 inputVolume: vtkMRMLScalarVolumeNode,
                 outputVolume: vtkMRMLScalarVolumeNode,
-                imageThreshold: float,
+                image_threshold: float,
                 invert: bool = False,
                 showResult: bool = True) -> None:
         """
@@ -2302,22 +2133,22 @@ class MRI2CBCTLogic(ScriptedLoadableModuleLogic):
 
         import time
 
-        startTime = time.time()
+        start_time = time.time()
         logger.info("Processing started")
 
         # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-        cliParams = {
+        cli_params = {
             "InputVolume": inputVolume.GetID(),
             "OutputVolume": outputVolume.GetID(),
-            "ThresholdValue": imageThreshold,
+            "ThresholdValue": image_threshold,
             "ThresholdType": "Above" if invert else "Below",
         }
-        cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
+        cli_node = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cli_params, wait_for_completion=True, update_display=showResult)
         # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-        slicer.mrmlScene.RemoveNode(cliNode)
+        slicer.mrmlScene.RemoveNode(cli_node)
 
-        stopTime = time.time()
-        logger.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
+        stop_time = time.time()
+        logger.info(f"Processing completed in {stop_time-start_time:.2f} seconds")
 
 
 #
@@ -2360,14 +2191,14 @@ class MRI2CBCTTest(ScriptedLoadableModuleTest):
         import SampleData
 
         registerSampleData()
-        inputVolume = SampleData.downloadSample("MRI2CBCT1")
+        input_volume = SampleData.downloadSample("MRI2CBCT1")
         self.delayDisplay("Loaded test data set")
 
-        inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(inputScalarRange[0], 0)
-        self.assertEqual(inputScalarRange[1], 695)
+        input_scalar_range = input_volume.GetImageData().GetScalarRange()
+        self.assertEqual(input_scalar_range[0], 0)
+        self.assertEqual(input_scalar_range[1], 695)
 
-        outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+        output_volume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
         threshold = 100
 
         # Test the module logic
@@ -2375,15 +2206,15 @@ class MRI2CBCTTest(ScriptedLoadableModuleTest):
         logic = MRI2CBCTLogic()
 
         # Test algorithm with non-inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, True)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], threshold)
+        logic.process(input_volume, output_volume, threshold, True)
+        output_scalar_range = output_volume.GetImageData().GetScalarRange()
+        self.assertEqual(output_scalar_range[0], input_scalar_range[0])
+        self.assertEqual(output_scalar_range[1], threshold)
 
         # Test algorithm with inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, False)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], inputScalarRange[1])
+        logic.process(input_volume, output_volume, threshold, False)
+        output_scalar_range = output_volume.GetImageData().GetScalarRange()
+        self.assertEqual(output_scalar_range[0], input_scalar_range[0])
+        self.assertEqual(output_scalar_range[1], input_scalar_range[1])
 
         self.delayDisplay("Test passed")

@@ -2,31 +2,31 @@
 import os
 import sys
 import time
-import glob
-import logging
 import argparse
 import ast
-import shutil
+import json
 from pathlib import Path
 
 import numpy as np
 import torch
 
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("ALI_CBCT")
-logger.setLevel(logging.INFO)
+from ADTLib.logging_setup import get_logger
+from ADTLib.progress_protocol import PATIENT_DONE, STEP_DONE, emit_event
 
-logger.propagate = False
+logger = get_logger("ALI_CBCT")
 
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
 
 # --- DYNAMIC IMPORTS ---
 try:
@@ -45,10 +45,184 @@ except ImportError as e:
     logger.error(f"Failed to import required modules: {e}")
     sys.exit(1)
 
-def update_slicer_progress(value):
-    """Utility to update Slicer progress bar."""
-    print(f"<filter-progress>{value}</filter-progress>", flush=True)
-    time.sleep(0.05)
+def report_landmark_done():
+    """One landmark has been placed.
+
+    This CLI used to print percentages (5, 20, then 20 up to 100). Slicer
+    multiplies what it reads by a hundred, so the widget received 500, 2000, up
+    to 10000, while `DisplayALICBCT.isProgress` only ever reacts to 100 and 200
+    -- the values 1 and 2. The bar and the landmark counter therefore never
+    moved, on any run.
+
+    The widget's own message says what it wants: "Landmarks : x / N | Patient :
+    y / M". So that is what is sent -- one STEP_DONE per landmark, one
+    PATIENT_DONE per patient, which is what the four CLIs whose bar does advance
+    already send.
+    """
+    emit_event(STEP_DONE)
+
+
+def report_patient_done():
+    """One patient is finished."""
+    emit_event(PATIENT_DONE)
+
+def _report_missing_landmarks(patient_id, missing, out_dir):
+    """Make visible what the output file does not say.
+
+    When `Search` returns -1, no `AddPredictedLandmark` is made: the landmark
+    is simply ABSENT from the `.mrk.json`, and nothing tells a landmark nobody
+    asked for apart from one the search did not find. The only sign was a
+    warning line lost in the middle
+    of the CLI log.
+
+    Here the list goes into a file placed beside the predictions -- same
+    folder, same patient prefix, so you run into it on your way to your
+    results -- and a boxed block goes to the CLI output,
+    ou Slicer l'affiche.
+    """
+    if not missing:
+        return None
+
+    stem = str(patient_id).split(".")[0]
+    report = {
+        "patient": str(patient_id),
+        "not_found": [{"landmark": lm, "reason": reason}
+                      for lm, reason in sorted(missing.items())],
+    }
+
+    file_path = None
+    if out_dir:
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+            file_path = os.path.join(out_dir, f"{stem}_lm_NotFound.json")
+            with open(file_path, "w", encoding="utf-8") as handle:
+                json.dump(report, handle, ensure_ascii=False, indent=4)
+        except OSError as e:
+            logger.error(f"Could not write the not-found report for "
+                         f"{patient_id}: {e}")
+            file_path = None
+
+    logger.warning("=" * 70)
+    logger.warning(f"{len(missing)} LANDMARK(S) NOT PLACED for {patient_id} "
+                   "-- they are absent from the output files:")
+    for lm, reason in sorted(missing.items()):
+        logger.warning(f"    {lm} : {reason}")
+    if file_path:
+        logger.warning(f"  listed in {file_path}")
+    logger.warning("=" * 70)
+    return file_path
+
+
+def _predict_one_patient(agent_lst, args, brain_weights, env_idx, environment, environment_lst, fails, scale_keys, tot_step, transition_layer_size):
+    """Move the agents over one scan until they settle."""
+    logger.info(f"Processing patient: {environment.patient_id}")
+    missing = {}
+
+    for agent in agent_lst:
+        try:
+            # Initialize Brain for the specific landmark
+            brain = Brain(
+                network_type=DNet,
+                network_scales=scale_keys,
+                device=DEVICE,
+                in_channels=transition_layer_size,
+                out_channels=len(MOVEMENTS["id"]),
+                batch_size=1,
+                generate_tensorboard=False,
+                verbose=False
+            )
+
+            # Load weights
+            if agent.target in brain_weights:
+                try:
+                    brain.LoadModels(brain_weights[agent.target])
+                    agent.SetBrain(brain)
+                    agent.SetEnvironment(environment)
+
+                    # Execute Deep RL Search
+                    search_result = agent.Search()
+
+                    if search_result == -1:
+                        fails[agent.target] = fails.get(agent.target, 0) + 1
+                        missing[agent.target] = (
+                            agent.failure_reason or "the search did not place it")
+                        logger.warning(f"Agent failed to find {agent.target}")
+                    else:
+                        tot_step += search_result
+                except Exception as e:
+                    logger.error(f"Error loading model weights for {agent.target}: {e}")
+                    fails[agent.target] = fails.get(agent.target, 0) + 1
+                    missing[agent.target] = f"could not load its model: {e}"
+            else:
+                # Counted as a failure like the others: without it the
+                # end-of-run summary stayed silent about a landmark that was
+                # asked for and never even searched.
+                logger.error(f"No model found for landmark: {agent.target}")
+                fails[agent.target] = fails.get(agent.target, 0) + 1
+                missing[agent.target] = "no model for it in the model folder"
+
+        except Exception as e:
+            logger.error(f"Error during agent search for {agent.target}: {e}")
+            missing[agent.target] = f"the search raised: {e}"
+        finally:
+            # Cleanup to free GPU memory
+            agent.SetBrain(None)
+            if 'brain' in locals(): del brain
+            if torch.cuda.is_available(): torch.cuda.empty_cache()
+            # Placed or not, this landmark has been worked on, and the counter
+            # the widget shows -- "Landmarks : x / N" -- measures the work, not
+            # the successes: a run where one landmark cannot be found must still
+            # reach the end of its bar.
+            report_landmark_done()
+
+    # Save results for this patient
+    try:
+        unplaceable = environment.SavePredictedLandmarks(scale_keys[-1], args.output_dir)
+        for landmark in unplaceable or ():
+            missing[landmark] = (
+                "found, but no group is declared for this name, so it could not "
+                "be written to the output file")
+    except Exception as e:
+        logger.error(f"Failed to save predictions for patient {environment.patient_id}: {e}")
+
+    _report_missing_landmarks(environment.patient_id, missing, args.output_dir)
+
+    report_patient_done()
+    return tot_step
+
+def _prepare_one_patient(data, p_name, patients, scale_spacing, temp_fold):
+    """Correct the histogram and resample one scan at every scale."""
+    try:
+        scan_path = data["scan"]
+        # Correct Histogram
+        temp_patient_path = temp_fold / p_name
+        if not temp_patient_path.exists():
+            logger.info(f"Correcting histogram for {p_name}")
+            try:
+                CorrectHisto(scan_path, str(temp_patient_path), 0.01, 0.99)
+            except Exception as e:
+                logger.error(f"Histogram correction failed for {p_name}: {e}")
+                return
+
+        # Resample for each scale
+        for sp in scale_spacing:
+            try:
+                spac_key = str(sp).replace(".", "-")
+                # Construct new filename: name_scan_sp1-0.nii.gz
+                resampled_name = f"{temp_patient_path.stem}_sp{spac_key}{''.join(temp_patient_path.suffixes)}"
+                out_resampled = temp_fold / resampled_name
+
+                if not out_resampled.exists():
+                    logger.debug(f"Setting spacing {sp} for {p_name}")
+                    SetSpacing(str(temp_patient_path), [sp, sp, sp], str(out_resampled))
+
+                patients[p_name]["scans"][spac_key] = str(out_resampled)
+            except Exception as e:
+                logger.error(f"Spacing resampling failed for {p_name} at scale {sp}: {e}")
+                continue
+    except Exception as e:
+        logger.error(f"Pre-processing failed for patient {p_name}: {e}")
+        return
 
 def main(args):
     # 1. PARAMETERS PARSING
@@ -106,41 +280,12 @@ def main(args):
         sys.exit(1)
 
     # 4. PRE-PROCESSING (HISTOGRAM & SPACING)
-    update_slicer_progress(5)
+    #
+    # Rien n est emis ici : ce canal ne porte que deux evenements, un landmark
+    # et un patient. Les 5 % et 20 % envoyes avant arrivaient en 500 et 2000,
+    # que le widget ne sait pas lire.
     for p_name, data in patients.items():
-        try:
-            scan_path = data["scan"]
-            # Correct Histogram
-            temp_patient_path = temp_fold / p_name
-            if not temp_patient_path.exists():
-                logger.info(f"Correcting histogram for {p_name}")
-                try:
-                    CorrectHisto(scan_path, str(temp_patient_path), 0.01, 0.99)
-                except Exception as e:
-                    logger.error(f"Histogram correction failed for {p_name}: {e}")
-                    continue
-
-            # Resample for each scale
-            for sp in scale_spacing:
-                try:
-                    spac_key = str(sp).replace(".", "-")
-                    # Construct new filename: name_scan_sp1-0.nii.gz
-                    resampled_name = f"{temp_patient_path.stem}_sp{spac_key}{''.join(temp_patient_path.suffixes)}"
-                    out_resampled = temp_fold / resampled_name
-                    
-                    if not out_resampled.exists():
-                        logger.debug(f"Setting spacing {sp} for {p_name}")
-                        SetSpacing(str(temp_patient_path), [sp, sp, sp], str(out_resampled))
-                    
-                    patients[p_name]["scans"][spac_key] = str(out_resampled)
-                except Exception as e:
-                    logger.error(f"Spacing resampling failed for {p_name} at scale {sp}: {e}")
-                    continue
-        except Exception as e:
-            logger.error(f"Pre-processing failed for patient {p_name}: {e}")
-            continue
-
-    update_slicer_progress(20)
+        _prepare_one_patient(data, p_name, patients, scale_spacing, temp_fold)
 
     # 5. ENVIRONMENT & AGENT INIT
     scale_keys = [str(s).replace('.', '-') for s in scale_spacing]
@@ -189,60 +334,7 @@ def main(args):
     fails = {}
 
     for env_idx, environment in enumerate(environment_lst):
-        logger.info(f"Processing patient: {environment.patient_id}")
-        
-        for agent in agent_lst:
-            try:
-                # Initialize Brain for the specific landmark
-                brain = Brain(
-                    network_type=DNet,
-                    network_scales=scale_keys,
-                    device=DEVICE,
-                    in_channels=transition_layer_size,
-                    out_channels=len(MOVEMENTS["id"]),
-                    batch_size=1,
-                    generate_tensorboard=False,
-                    verbose=False
-                )
-                
-                # Load weights
-                if agent.target in brain_weights:
-                    try:
-                        brain.LoadModels(brain_weights[agent.target])
-                        agent.SetBrain(brain)
-                        agent.SetEnvironment(environment)
-                        
-                        # Execute Deep RL Search
-                        search_result = agent.Search()
-                        
-                        if search_result == -1:
-                            fails[agent.target] = fails.get(agent.target, 0) + 1
-                            logger.warning(f"Agent failed to find {agent.target}")
-                        else:
-                            tot_step += search_result
-                    except Exception as e:
-                        logger.error(f"Error loading model weights for {agent.target}: {e}")
-                        fails[agent.target] = fails.get(agent.target, 0) + 1
-                else:
-                    logger.error(f"No model found for landmark: {agent.target}")
-
-            except Exception as e:
-                logger.error(f"Error during agent search for {agent.target}: {e}")
-            finally:
-                # Cleanup to free GPU memory
-                agent.SetBrain(None)
-                if 'brain' in locals(): del brain
-                if torch.cuda.is_available(): torch.cuda.empty_cache()
-
-        # Save results for this patient
-        try:
-            environment.SavePredictedLandmarks(scale_keys[-1], args.output_dir)
-        except Exception as e:
-            logger.error(f"Failed to save predictions for patient {environment.patient_id}: {e}")
-        
-        # Update Slicer Progress
-        progress = 20 + int((env_idx + 1) / len(environment_lst) * 80)
-        update_slicer_progress(progress)
+        tot_step = _predict_one_patient(agent_lst, args, brain_weights, env_idx, environment, environment_lst, fails, scale_keys, tot_step, transition_layer_size)
 
     # 7. FINAL LOGS
     end_time = time.time()
@@ -250,8 +342,14 @@ def main(args):
     logger.info(f"Total steps taken: {tot_step}")
     logger.info(f"Execution time: {end_time - start_time:.2f}s")
     
-    for lm, count in fails.items():
-        logger.warning(f"Landmark '{lm}': {count}/{len(environment_lst)} failures")
+    if fails:
+        logger.warning(
+            f"{len(fails)} landmark(s) were not placed on at least one scan. "
+            "They are ABSENT from the output files, not misplaced in them; "
+            "each scan concerned has a <patient>_lm_NotFound.json next to "
+            "its predictions saying which and why.")
+        for lm, count in sorted(fails.items()):
+            logger.warning(f"Landmark '{lm}': {count}/{len(environment_lst)} failures")
 
 if __name__ == "__main__":
     try:

@@ -8,19 +8,10 @@ import subprocess
 import os
 from pathlib import Path
 
-import logging
-import sys
 # ===== Logging Configuration =====
-logger = logging.getLogger("AREG_IOS_checkdeps")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("AREG_IOS_checkdeps")
 
 
 def remove_broken_image_so():
@@ -35,7 +26,8 @@ def remove_broken_image_so():
         if image_so_path.exists():
             image_so_path.unlink()
             return True
-    except Exception:
+    except (ImportError, OSError):
+        # torchvision missing, or the file already removed by another pass.
         pass
 
     return False
@@ -64,7 +56,7 @@ def parse_version(version_str):
     try:
         parts = version_str.split('.')
         return tuple(int(p) for p in parts[:2])
-    except:
+    except Exception:
         return None
 
 
@@ -181,8 +173,8 @@ def fix_torchvision_auto():
             result = subprocess.run(cmd_conda, capture_output=True, text=True)
             if result.returncode == 0:
                 return True
-        except:
-            pass
+        except (OSError, subprocess.SubprocessError):
+            logger.debug("Installation par conda impossible", exc_info=True)
         
         return False
             
@@ -192,7 +184,6 @@ def fix_torchvision_auto():
 
 def get_conda_env():
     """Get current conda environment name"""
-    import os
     return os.environ.get('CONDA_DEFAULT_ENV', 'base')
 
 
@@ -209,7 +200,6 @@ def ensure_compatible():
     if is_compatible is False:
         if fix_torchvision_auto():
             # Force reload to get new versions
-            import importlib
             if 'torch' in sys.modules:
                 del sys.modules['torch']
             if 'torchvision' in sys.modules:

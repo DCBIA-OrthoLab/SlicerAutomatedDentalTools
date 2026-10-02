@@ -1,26 +1,8 @@
 #!/usr/bin/env python-real
 import argparse
-import sys, os, time
-import logging
-import numpy as np
-import slicer
+import sys, os
 import SimpleITK as sitk
 
-# --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("AREG_CBCT")
-logger.setLevel(logging.INFO)
-
-logger.propagate = False
-
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
 
 # realpath, not __file__: a CLI registered through a symlink - the flat dev
 # folder of links into the source tree - leaves __file__ on the link, whose
@@ -28,16 +10,96 @@ logger.addHandler(console_handler)
 fpath = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(fpath)
 
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+# This has to run before the first import of anything local, not just before
+# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+from ADTLib.logging_setup import get_logger
+from ADTLib.progress_protocol import PATIENT_DONE, emit_event
+
+logger = get_logger("AREG_CBCT")
+
 from AREG_CBCT_utils import (
     GetDictPatients,
     VoxelBasedRegistration,
-    LoadOnlyLandmarks,
-    applyTransformLandmarks,
-    WriteJson,
     translate,
     convertdicom2nifti,
 )
 
+
+def _register_one_patient(Approx, SegLabel, add_name, data, failed_patients, output_dir, patient, processed_patients, reg_type, temp_folder):
+    """Register one patient and write the volume and the matrix it yields."""
+    patient_context = f"patient: {patient}"
+    logger.info(f"Processing {patient_context}")
+
+    try:
+        # ===== OUTPUT PATH SETUP =====
+        try:
+            outpath = os.path.join(output_dir, translate(reg_type), patient + "_OutReg")
+            scan_out_path = os.path.join(
+                outpath, patient + "_" + reg_type + "Scan" + add_name + ".nii.gz"
+            )
+            trans_out_path = os.path.join(
+                outpath, patient + "_" + reg_type + add_name + "_matrix.tfm"
+            )
+            logger.debug(f"Output paths set for {patient}")
+        except Exception as e:
+            logger.error(f"Error setting output paths for {patient}: {e}")
+            raise
+
+        # ===== REGISTRATION EXECUTION =====
+        try:
+            logger.debug(f"Starting registration for {patient}")
+            transform, resample_t2 = VoxelBasedRegistration(
+                fixed_image_path=data["scanT1"],
+                moving_image_path=data["scanT2"],
+                fixed_seg_path=data["segT1"],
+                temp_folder=temp_folder,
+                approx=Approx,
+                SegLabel=SegLabel,
+            )
+            logger.info(f"Registration completed for {patient}")
+        except Exception as e:
+            logger.error(f"Error during registration for {patient}: {e}")
+            raise
+
+        # ===== OUTPUT SAVING =====
+        try:
+            if not os.path.exists(outpath):
+                os.makedirs(outpath)
+            logger.debug(f"Saving transform to {trans_out_path}")
+            sitk.WriteTransform(transform, trans_out_path)
+            logger.debug(f"Saving resampled image to {scan_out_path}")
+            sitk.WriteImage(resample_t2, scan_out_path)
+            logger.info(f"Output files saved for {patient}")
+        except Exception as e:
+            logger.error(f"Error saving output files for {patient}: {e}")
+            raise
+
+        # ===== PROGRESS REPORTING =====
+        try:
+            emit_event(PATIENT_DONE)
+            logger.debug("Progress reported")
+        except Exception as e:
+            logger.warning(f"Error reporting progress: {e}")
+
+        processed_patients += 1
+        logger.info(f"Successfully processed {patient_context}")
+
+    except Exception as e:
+        logger.error(f"Failed to process {patient_context}: {e}")
+        failed_patients.append((patient, str(e)))
+        return processed_patients
+    return processed_patients
 
 def main(args):
     """Main function for CBCT registration with comprehensive error handling."""
@@ -53,9 +115,9 @@ def main(args):
                 output_dir,
                 reg_type,
                 add_name,
-                SegLabel,
+                seg_label,
                 temp_folder,
-                Approx,
+                approx,
                 mask_folder_t1,
             ) = (
                 args.t1_folder[0],
@@ -68,9 +130,9 @@ def main(args):
                 True if args.ApproxReg[0] == "true" else False,
                 None if args.mask_folder_t1[0] == "None" else args.mask_folder_t1[0],
             )
-            if SegLabel == 0:
-                SegLabel = None
-            logger.debug(f"Arguments parsed: reg_type={reg_type}, SegLabel={SegLabel}, Approx={Approx}")
+            if seg_label == 0:
+                seg_label = None
+            logger.debug(f"Arguments parsed: reg_type={reg_type}, SegLabel={seg_label}, Approx={approx}")
         except (IndexError, ValueError) as e:
             logger.error(f"Error parsing arguments: {e}")
             raise
@@ -146,75 +208,7 @@ def main(args):
         failed_patients = []
         
         for patient, data in patients.items():
-            patient_context = f"patient: {patient}"
-            logger.info(f"Processing {patient_context}")
-            
-            try:
-                # ===== OUTPUT PATH SETUP =====
-                try:
-                    outpath = os.path.join(output_dir, translate(reg_type), patient + "_OutReg")
-                    ScanOutPath = os.path.join(
-                        outpath, patient + "_" + reg_type + "Scan" + add_name + ".nii.gz"
-                    )
-                    TransOutPath = os.path.join(
-                        outpath, patient + "_" + reg_type + add_name + "_matrix.tfm"
-                    )
-                    logger.debug(f"Output paths set for {patient}")
-                except Exception as e:
-                    logger.error(f"Error setting output paths for {patient}: {e}")
-                    raise
-
-                # ===== REGISTRATION EXECUTION =====
-                try:
-                    logger.debug(f"Starting registration for {patient}")
-                    transform, resample_t2 = VoxelBasedRegistration(
-                        fixed_image_path=data["scanT1"],
-                        moving_image_path=data["scanT2"],
-                        fixed_seg_path=data["segT1"],
-                        temp_folder=temp_folder,
-                        approx=Approx,
-                        SegLabel=SegLabel,
-                    )
-                    logger.info(f"Registration completed for {patient}")
-                except Exception as e:
-                    logger.error(f"Error during registration for {patient}: {e}")
-                    raise
-
-                # ===== OUTPUT SAVING =====
-                try:
-                    if not os.path.exists(outpath):
-                        os.makedirs(outpath)
-                    logger.debug(f"Saving transform to {TransOutPath}")
-                    sitk.WriteTransform(transform, TransOutPath)
-                    logger.debug(f"Saving resampled image to {ScanOutPath}")
-                    sitk.WriteImage(resample_t2, ScanOutPath)
-                    logger.info(f"Output files saved for {patient}")
-                except Exception as e:
-                    logger.error(f"Error saving output files for {patient}: {e}")
-                    raise
-
-                # ===== PROGRESS REPORTING =====
-                try:
-                    print(f"""<filter-progress>{0}</filter-progress>""")
-                    sys.stdout.flush()
-                    time.sleep(0.2)
-                    print(f"""<filter-progress>{2}</filter-progress>""")
-                    sys.stdout.flush()
-                    time.sleep(0.2)
-                    print(f"""<filter-progress>{0}</filter-progress>""")
-                    sys.stdout.flush()
-                    time.sleep(0.2)
-                    logger.debug("Progress reported")
-                except Exception as e:
-                    logger.warning(f"Error reporting progress: {e}")
-
-                processed_patients += 1
-                logger.info(f"Successfully processed {patient_context}")
-            
-            except Exception as e:
-                logger.error(f"Failed to process {patient_context}: {e}")
-                failed_patients.append((patient, str(e)))
-                continue
+            processed_patients = _register_one_patient(approx, seg_label, add_name, data, failed_patients, output_dir, patient, processed_patients, reg_type, temp_folder)
 
         # ===== FINAL REPORT =====
         try:

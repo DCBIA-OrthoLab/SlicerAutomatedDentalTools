@@ -2,32 +2,30 @@
 """
 AMASSS_CLI.py – Adaptation for nnUNet v2 (MAX, MAND, CB)
 """
-import argparse
 import inspect
 import time, os, sys, glob, shutil
 import numpy as np
-import torch, cc3d, dicom2nifti
+import torch, cc3d
 import SimpleITK as sitk
 import vtk
 import re
-import vtk
-import logging
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
 
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("AMASSS_CLI")
-logger.setLevel(logging.INFO)
+from ADTLib.logging_setup import get_logger
+from ADTLib.progress_protocol import emit_fraction
 
-logger.propagate = False
-
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("AMASSS_CLI")
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -633,6 +631,168 @@ def AssembleScanOutputs(record, predictions, args, temp_folder):
 
 
 # -- Main adapt for nnUNet v2 ---
+def _write_one_scan(args, failed_scans, predictions, processed_scans, record, tmp):
+    """Assemble the predictions of one scan and write them out."""
+    scan_context = f"scan {record['case_id']}: {record['name']}"
+    logger.info(f"Saving outputs for {scan_context}")
+    try:
+        AssembleScanOutputs(record, predictions, args, tmp)
+        record["status"] = "ok"
+        processed_scans += 1
+        logger.info(f"Successfully processed {scan_context}")
+    except Exception as e:
+        # A failure here is recorded and the run continues: the original
+        # re-raised on the LAST scan only, so a batch could abort at the
+        # very end and lose everything already produced.
+        logger.error(f"Failed to process {scan_context}: {e}")
+        record["status"] = "failed"
+        failed_scans.append((record["case_id"], record["path"], str(e)))
+
+    # This scan's predictions are no longer needed.
+    for pred_dir in predictions.values():
+        try:
+            os.remove(os.path.join(pred_dir, f"p_{record['case_id']}.nii.gz"))
+        except OSError:
+            pass
+    return processed_scans
+
+def _predict_one_structure(device, failed_structures, model_folder, nnunet_input, predictions, scan_count, struct, struct_idx, tmp, total_steps, total_struct):
+    """Run one model over every scan at once."""
+    logger.info(f"Processing structure {struct_idx}/{total_struct}: {struct}")
+    outp = os.path.join(tmp, f"pred_{struct}")
+    try:
+        PredictFolder(model_folder, nnunet_input, outp, device)
+        predictions[struct] = outp
+        logger.info(f"Prediction for {struct} completed")
+    except Exception as e:
+        # One structure failing must not lose the others.
+        logger.error(f"Prediction failed for structure {struct}: {e}")
+        failed_structures[struct] = str(e)
+
+    # Progress is still counted in (scan x structure) steps, so the
+    # scale the Slicer modules were written against is unchanged.
+    try:
+        step = struct_idx * scan_count
+        fraction = step / total_steps
+        emit_fraction(fraction)
+        sys.stdout.flush()
+        logger.debug(f"Progress: {fraction:.4f}")
+    except Exception as e:
+        logger.warning(f"Error reporting progress: {e}")
+
+def _read_one_scan(args, base_output, nnunet_input, scan_idx, scan_records, volume_file):
+    """Read a volume and prepare it in the format nnUNet expects."""
+    case_id = f"{scan_idx:03d}"
+    basename = os.path.basename(volume_file)
+    base, ext = os.path.splitext(basename)
+    if ext == ".gz":
+        base, ext2 = os.path.splitext(base)
+        ext = ext2 + ext
+
+    if args.get("save_in_folder"):
+        outdir = os.path.join(base_output, f"{base}_{args['prediction_ID']}_SegOut")
+    else:
+        outdir = base_output
+    os.makedirs(outdir, exist_ok=True)
+
+    record = {
+        "case_id": case_id,
+        "name": basename,
+        "path": volume_file,
+        "base": base,
+        "ext": ext,
+        "outdir": outdir,
+        "status": "pending",
+    }
+    try:
+        PrepareScanForNnunet(
+            volume_file, os.path.join(nnunet_input, f"p_{case_id}_0000.nii.gz")
+        )
+        logger.debug(f"Prepared {basename} as case p_{case_id}")
+    except Exception as e:
+        logger.error(f"Could not read scan {volume_file}: {e}")
+        record["status"] = "failed"
+        record["error"] = f"Unreadable input: {e}"
+    scan_records.append(record)
+
+def _find_models(args, device):
+    """The nnUNet models that are present, and the structures that have none."""
+    logger.debug("Searching for nnUNet models")
+    nnunet_models = {}
+    missing_structures = []
+    for struct in args["skullStructure"].split(","):
+        struct = struct.strip()
+        if not struct:
+            continue
+        model_folder = FindModelFolder(args["modelDirectory"], struct)
+        if model_folder is None:
+            logger.warning(
+                f"No usable model for structure '{struct}' in {args['modelDirectory']}"
+            )
+            missing_structures.append(struct)
+        else:
+            nnunet_models[struct] = model_folder
+            logger.debug(f"Found model for {struct}: {model_folder}")
+
+    if not nnunet_models:
+        logger.error("No models found for any structure")
+        raise FileNotFoundError(
+            f"No nnUNet model found in '{args['modelDirectory']}' for any of the "
+            f"requested structures ({args['skullStructure']}). Expected "
+            f"<bundle>/<CODE>/**/*__nnUNetPlans__3d_fullres/fold_0/{CHECKPOINT_NAME}"
+        )
+
+    logger.info(f"Found {len(nnunet_models)} model(s) to process on {device}")
+    return missing_structures, nnunet_models
+
+def _resolve_inputs(args):
+    """The volumes to segment, single file or folder."""
+    logger.debug("Discovering input files")
+    input_path = args["inputVolume"]
+    extensions = (".nii", ".nii.gz", ".nrrd", ".nrrd.gz")
+
+    if not os.path.exists(input_path):
+        logger.error(f"Input path does not exist: {input_path}")
+        raise FileNotFoundError(f"Input path not found: {input_path}")
+
+    if os.path.isdir(input_path):
+        logger.debug(f"Input is directory, scanning for volume files")
+        # Walk sub-directories: AREG writes its registered scans to
+        # <output>/<Region>/<patient>_OutReg/, so a flat listing finds
+        # none of them and the segmentation silently produces nothing.
+        skip_own_output = not args["isSegmentInput"]
+        own_suffix = "_{}_".format(args["prediction_ID"])
+        input_files = []
+        for root, _, files in os.walk(input_path):
+            for f in sorted(files):
+                if not f.lower().endswith(extensions):
+                    continue
+                if 'MASK' in f:
+                    continue
+                # An earlier pass may have written its segmentations
+                # into this same tree. Re-segmenting one as if it were
+                # a scan yields an empty mesh, so skip our own output
+                # unless the caller really is feeding us segmentations.
+                if skip_own_output and own_suffix in f:
+                    logger.debug(f"Skipping previously generated segmentation: {f}")
+                    continue
+                file = os.path.join(root, f)
+                input_files.append(file)
+                logger.debug(f"Found input file: {file}")
+    else:
+        if not input_path.lower().endswith(extensions):
+            logger.warning(f"Input file has unexpected extension: {input_path}")
+        input_files = [input_path]
+        logger.debug(f"Single input file: {input_path}")
+
+    scan_count = len(input_files)
+    if scan_count == 0:
+        logger.error("No valid input files found")
+        sys.exit(1)
+
+    logger.info(f"Found {scan_count} input file(s)")
+    return input_files, scan_count
+
 def main(args):
     try:
         logger.info("Starting AMASSS_CLI with nnUNet v2 backend")
@@ -657,50 +817,7 @@ def main(args):
 
         # ===== INPUT FILE DISCOVERY PHASE =====
         try:
-            logger.debug("Discovering input files")
-            input_path = args["inputVolume"]
-            extensions = (".nii", ".nii.gz", ".nrrd", ".nrrd.gz")
-
-            if not os.path.exists(input_path):
-                logger.error(f"Input path does not exist: {input_path}")
-                raise FileNotFoundError(f"Input path not found: {input_path}")
-
-            if os.path.isdir(input_path):
-                logger.debug(f"Input is directory, scanning for volume files")
-                # Walk sub-directories: AREG writes its registered scans to
-                # <output>/<Region>/<patient>_OutReg/, so a flat listing finds
-                # none of them and the segmentation silently produces nothing.
-                skip_own_output = not args["isSegmentInput"]
-                own_suffix = "_{}_".format(args["prediction_ID"])
-                input_files = []
-                for root, _, files in os.walk(input_path):
-                    for f in sorted(files):
-                        if not f.lower().endswith(extensions):
-                            continue
-                        if 'MASK' in f:
-                            continue
-                        # An earlier pass may have written its segmentations
-                        # into this same tree. Re-segmenting one as if it were
-                        # a scan yields an empty mesh, so skip our own output
-                        # unless the caller really is feeding us segmentations.
-                        if skip_own_output and own_suffix in f:
-                            logger.debug(f"Skipping previously generated segmentation: {f}")
-                            continue
-                        file = os.path.join(root, f)
-                        input_files.append(file)
-                        logger.debug(f"Found input file: {file}")
-            else:
-                if not input_path.lower().endswith(extensions):
-                    logger.warning(f"Input file has unexpected extension: {input_path}")
-                input_files = [input_path]
-                logger.debug(f"Single input file: {input_path}")
-
-            scan_count = len(input_files)
-            if scan_count == 0:
-                logger.error("No valid input files found")
-                sys.exit(1)
-
-            logger.info(f"Found {scan_count} input file(s)")
+            input_files, scan_count = _resolve_inputs(args)
         except Exception as e:
             logger.error(f"Error during input file discovery: {e}")
             raise
@@ -715,32 +832,7 @@ def main(args):
         # Once for the whole run, not once per scan: the bundle is the same for
         # every scan, and a missing model must be found out before inference.
         try:
-            logger.debug("Searching for nnUNet models")
-            nnunet_models = {}
-            missing_structures = []
-            for struct in args["skullStructure"].split(","):
-                struct = struct.strip()
-                if not struct:
-                    continue
-                model_folder = FindModelFolder(args["modelDirectory"], struct)
-                if model_folder is None:
-                    logger.warning(
-                        f"No usable model for structure '{struct}' in {args['modelDirectory']}"
-                    )
-                    missing_structures.append(struct)
-                else:
-                    nnunet_models[struct] = model_folder
-                    logger.debug(f"Found model for {struct}: {model_folder}")
-
-            if not nnunet_models:
-                logger.error("No models found for any structure")
-                raise FileNotFoundError(
-                    f"No nnUNet model found in '{args['modelDirectory']}' for any of the "
-                    f"requested structures ({args['skullStructure']}). Expected "
-                    f"<bundle>/<CODE>/**/*__nnUNetPlans__3d_fullres/fold_0/{CHECKPOINT_NAME}"
-                )
-
-            logger.info(f"Found {len(nnunet_models)} model(s) to process on {device}")
+            missing_structures, nnunet_models = _find_models(args, device)
         except Exception as e:
             logger.error(f"Error during model discovery: {e}")
             raise
@@ -754,38 +846,7 @@ def main(args):
 
         scan_records = []
         for scan_idx, volume_file in enumerate(input_files, start=1):
-            case_id = f"{scan_idx:03d}"
-            basename = os.path.basename(volume_file)
-            base, ext = os.path.splitext(basename)
-            if ext == ".gz":
-                base, ext2 = os.path.splitext(base)
-                ext = ext2 + ext
-
-            if args.get("save_in_folder"):
-                outdir = os.path.join(base_output, f"{base}_{args['prediction_ID']}_SegOut")
-            else:
-                outdir = base_output
-            os.makedirs(outdir, exist_ok=True)
-
-            record = {
-                "case_id": case_id,
-                "name": basename,
-                "path": volume_file,
-                "base": base,
-                "ext": ext,
-                "outdir": outdir,
-                "status": "pending",
-            }
-            try:
-                PrepareScanForNnunet(
-                    volume_file, os.path.join(nnunet_input, f"p_{case_id}_0000.nii.gz")
-                )
-                logger.debug(f"Prepared {basename} as case p_{case_id}")
-            except Exception as e:
-                logger.error(f"Could not read scan {volume_file}: {e}")
-                record["status"] = "failed"
-                record["error"] = f"Unreadable input: {e}"
-            scan_records.append(record)
+            _read_one_scan(args, base_output, nnunet_input, scan_idx, scan_records, volume_file)
 
         readable = [r for r in scan_records if r["status"] != "failed"]
         if not readable:
@@ -798,27 +859,7 @@ def main(args):
         failed_structures = {}
 
         for struct_idx, (struct, model_folder) in enumerate(nnunet_models.items(), start=1):
-            logger.info(f"Processing structure {struct_idx}/{total_struct}: {struct}")
-            outp = os.path.join(tmp, f"pred_{struct}")
-            try:
-                PredictFolder(model_folder, nnunet_input, outp, device)
-                predictions[struct] = outp
-                logger.info(f"Prediction for {struct} completed")
-            except Exception as e:
-                # One structure failing must not lose the others.
-                logger.error(f"Prediction failed for structure {struct}: {e}")
-                failed_structures[struct] = str(e)
-
-            # Progress is still counted in (scan x structure) steps, so the
-            # scale the Slicer modules were written against is unchanged.
-            try:
-                step = struct_idx * scan_count
-                fraction = step / total_steps
-                print(f"<filter-progress>{fraction:.4f}</filter-progress>", flush=True)
-                sys.stdout.flush()
-                logger.debug(f"Progress: {fraction:.4f}")
-            except Exception as e:
-                logger.warning(f"Error reporting progress: {e}")
+            _predict_one_structure(device, failed_structures, model_folder, nnunet_input, predictions, scan_count, struct, struct_idx, tmp, total_steps, total_struct)
 
         if not predictions:
             raise RuntimeError(
@@ -835,27 +876,7 @@ def main(args):
         failed_scans = []
 
         for record in readable:
-            scan_context = f"scan {record['case_id']}: {record['name']}"
-            logger.info(f"Saving outputs for {scan_context}")
-            try:
-                AssembleScanOutputs(record, predictions, args, tmp)
-                record["status"] = "ok"
-                processed_scans += 1
-                logger.info(f"Successfully processed {scan_context}")
-            except Exception as e:
-                # A failure here is recorded and the run continues: the original
-                # re-raised on the LAST scan only, so a batch could abort at the
-                # very end and lose everything already produced.
-                logger.error(f"Failed to process {scan_context}: {e}")
-                record["status"] = "failed"
-                failed_scans.append((record["case_id"], record["path"], str(e)))
-
-            # This scan's predictions are no longer needed.
-            for pred_dir in predictions.values():
-                try:
-                    os.remove(os.path.join(pred_dir, f"p_{record['case_id']}.nii.gz"))
-                except OSError:
-                    pass
+            processed_scans = _write_one_scan(args, failed_scans, predictions, processed_scans, record, tmp)
 
         for record in scan_records:
             if record["status"] == "failed" and "error" in record:
@@ -923,12 +944,12 @@ if __name__=="__main__":
                 "inputVolume":    argv[1],
                 "modelDirectory": argv[2],
                 "skullStructure": argv[3],
-                "merge":          re.split(r'[, ]+', argv[4].strip()),  
+                "merge":          re.split(r'[, ]+', argv[4].strip()),
                 "genVtk":         argv[5].lower()=="true",
                 "save_in_folder": argv[6].lower()=="true",
                 "output_folder":  argv[7],
                 "vtk_smooth":     int(argv[8]),
-                "prediction_ID":  argv[9],        
+                "prediction_ID":  argv[9],
                 "temp_fold":      argv[10],
                 "isSegmentInput": argv[11].lower()=="true",
                 "isDCMInput":     argv[12].lower()=="true",

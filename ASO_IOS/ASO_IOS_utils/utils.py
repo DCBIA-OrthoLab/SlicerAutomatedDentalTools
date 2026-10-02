@@ -1,181 +1,16 @@
 import os
-import glob
 import re
-import vtk
 import numpy as np
 import json
 import SimpleITK as sitk
-from vtk.util.numpy_support import vtk_to_numpy
-from ASO_IOS_utils.OFFReader import OFFReader
-import logging
-import sys
+from ADTLib.io.landmarks import LoadJsonLandmarks  # noqa: F401  (re-exported)
+from ADTLib.io.fs import search  # noqa: F401  (re-exported)
+from ADTLib.io.surface import ReadSurf, WriteSurf  # noqa: F401  (re-exported)
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("ASO_IOS_utils")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
 
-
-def ReadSurf(path):
-    fname, extension = os.path.splitext(os.path.basename(path))
-    extension = extension.lower()
-    if extension == ".vtk":
-        reader = vtk.vtkPolyDataReader()
-        reader.SetFileName(path)
-        reader.Update()
-        surf = reader.GetOutput()
-    elif extension == ".vtp":
-        reader = vtk.vtkXMLPolyDataReader()
-        reader.SetFileName(path)
-        reader.Update()
-        surf = reader.GetOutput()
-    elif extension == ".stl":
-        reader = vtk.vtkSTLReader()
-        reader.SetFileName(path)
-        reader.Update()
-        surf = reader.GetOutput()
-    elif extension == ".off":
-        reader = OFFReader()
-        reader.SetFileName(path)
-        reader.Update()
-        surf = reader.GetOutput()
-    elif extension == ".obj":
-        if os.path.exists(fname + ".mtl"):
-            obj_import = vtk.vtkOBJImporter()
-            obj_import.SetFileName(path)
-            obj_import.SetFileNameMTL(fname + ".mtl")
-            textures_path = os.path.normpath(os.path.dirname(fname) + "/../images")
-            if os.path.exists(textures_path):
-                textures_path = os.path.normpath(
-                    fname.replace(os.path.basename(fname), "")
-                )
-                obj_import.SetTexturePath(textures_path)
-            else:
-                textures_path = os.path.normpath(
-                    fname.replace(os.path.basename(fname), "")
-                )
-                obj_import.SetTexturePath(textures_path)
-
-            obj_import.Read()
-
-            actors = obj_import.GetRenderer().GetActors()
-            actors.InitTraversal()
-            append = vtk.vtkAppendPolyData()
-
-            for i in range(actors.GetNumberOfItems()):
-                surfActor = actors.GetNextActor()
-                append.AddInputData(surfActor.GetMapper().GetInputAsDataSet())
-
-            append.Update()
-            surf = append.GetOutput()
-
-        else:
-            reader = vtk.vtkOBJReader()
-            reader.SetFileName(path)
-            reader.Update()
-            surf = reader.GetOutput()
-
-    return surf
-
-
-def LoadJsonLandmarks(ldmk_path, full_landmark=True, list_landmark=[]):
-    """
-    Load landmarks from json file
-
-    Parameters
-    ----------
-    img : sitk.Image
-        Image to which the landmarks belong
-
-    Returns
-    -------
-    dict
-        Dictionary of landmarks
-
-    Raises
-    ------
-    ValueError
-        If the json file is not valid
-    """
-
-    with open(ldmk_path) as f:
-        data = json.load(f)
-
-    markups = data["markups"][0]["controlPoints"]
-
-    landmarks = {}
-    for markup in markups:
-        lm_ph_coord = np.array(
-            [markup["position"][0], markup["position"][1], markup["position"][2]]
-        )
-        lm_coord = lm_ph_coord.astype(np.float64)
-        landmarks[markup["label"]] = lm_coord
-
-    if not full_landmark:
-        out = {}
-        for lm in list_landmark:
-            out[lm] = landmarks[lm]
-        landmarks = out
-    return landmarks
-
-
-def WriteSurf(surf, output_folder, name, inname):
-    """Write surface to file with proper error handling.
-    
-    Args:
-        surf: VTK polydata surface
-        output_folder: Output directory path
-        name: Filename (can include path)
-        inname: Infix to add to filename (e.g., "Or" -> "A2_SegOr.vtk")
-    """
-    try:
-        dir, name = os.path.split(name)
-        name, extension = os.path.splitext(name)
-
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder, exist_ok=True)
-
-        if extension == ".vtk":
-            writer = vtk.vtkPolyDataWriter()
-        elif extension == ".vtp":
-            writer = vtk.vtkXMLPolyDataWriter()
-        elif extension == ".obj":
-            writer = vtk.vtkOBJWriter()
-        else:
-            # Default to VTK format if extension is not recognized
-            extension = ".vtk"
-            writer = vtk.vtkPolyDataWriter()
-        
-        output_path = os.path.join(output_folder, f"{name}{inname}{extension}")
-        logger.debug(f"DEBUG WriteSurf: output_path = {output_path}")
-        logger.debug(f"DEBUG WriteSurf: output_folder = {output_folder}")
-        logger.debug(f"DEBUG WriteSurf: name = {name}, inname = {inname}, extension = {extension}")
-        
-        writer.SetFileName(output_path)
-        writer.SetInputData(surf)
-        writer.Update()
-        
-        # Verify file was created
-        if not os.path.exists(output_path):
-            raise RuntimeError(f"WriteSurf failed: File {output_path} was not created after writer.Update()")
-        
-        # Check file size
-        file_size = os.path.getsize(output_path)
-        logger.debug(f"DEBUG WriteSurf: File created successfully: {output_path} ({file_size} bytes)")
-            
-    except Exception as e:
-        logger.error(f"ERROR in WriteSurf: {str(e)}")
-        logger.debug(f"  Output folder: {output_folder}")
-        logger.debug(f"  Filename: {name}{inname}{extension}")
-        logger.debug(f"  Full path attempted: {output_path if 'output_path' in locals() else 'N/A'}")
-        raise
+logger = get_logger("ASO_IOS_utils")
 
 
 # Which arch a file belongs to is read from its name, and it has to be read the
@@ -247,52 +82,12 @@ def UpperOrLower(path_filename):
     """tell if the file is for upper jaw of lower
 
     Args:
-        path_filename (str): exemple /home/..../landmark_upper.json
+        path_filename (str): example /home/..../landmark_upper.json
 
     Returns:
-        str: Upper or Lower, for the following exemple if Upper
+        str: Upper or Lower, for the example above Upper
     """
     return JawFromFileName(path_filename, default="Lower")
-
-
-def search(path, *args):
-    """
-    Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
-
-    Example:
-    args = ('json',['.nii.gz','.nrrd'])
-    return:
-        {
-            'json' : ['path/a.json', 'path/b.json','path/c.json'],
-            '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
-            '.nrrd.gz' : ['path/c.nrrd']
-        }
-    """
-    arguments = []
-    for arg in args:
-        if type(arg) == list:
-            arguments.extend(arg)
-        else:
-            arguments.append(arg)
-    return {
-        key: [
-            i
-            for i in glob.iglob(
-                os.path.normpath("/".join([path, "**", "*"])), recursive=True
-            )
-            if i.endswith(key)
-        ]
-        for key in arguments
-    }
-
-
-def PatientNumber(filename):
-    number = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
-    for i in range(len(filename)):
-        if filename[i] in number:
-            for y in range(i, len(filename)):
-                if not filename[y] in number:
-                    return int(filename[i:y])
 
 
 def WriteJsonLandmarks(
@@ -316,17 +111,17 @@ def WriteJsonLandmarks(
         os.mkdir(output_folder)
 
     with open(input_file_json, "r") as outfile:
-        tempData = json.load(outfile)
+        temp_data = json.load(outfile)
     for i in range(len(landmarks)):
-        pos = landmarks[tempData["markups"][0]["controlPoints"][i]["label"]]
-        tempData["markups"][0]["controlPoints"][i]["position"] = [
+        pos = landmarks[temp_data["markups"][0]["controlPoints"][i]["label"]]
+        temp_data["markups"][0]["controlPoints"][i]["position"] = [
             pos[0],
             pos[1],
             pos[2],
         ]
     with open(output_file, "w") as outfile:
 
-        json.dump(tempData, outfile, indent=4)
+        json.dump(temp_data, outfile, indent=4)
 
 
 def listlandmark2diclandmark(list_landmark):

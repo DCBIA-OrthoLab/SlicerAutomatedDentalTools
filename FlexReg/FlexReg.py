@@ -1,4 +1,18 @@
-import os, sys, platform, shutil, zipfile, urllib, textwrap, time, threading, re, io, tempfile
+import os, sys, platform, shutil, textwrap, time, threading, re, io, tempfile
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+# This has to run before the first import of anything local, not just before
+# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
 try:
     import importlib.metadata as importlib_metadata
 except ImportError:
@@ -20,8 +34,6 @@ from qt import (
     QSpinBox,
     QWidget,
     QTimer,
-    QApplication,
-    QStandardPaths,
     QDialog,
     QSizePolicy,
     QSpacerItem,
@@ -46,16 +58,6 @@ from pathlib import Path
 import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("FlexReg")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
 
 def _get_installed_version(lib_name):
     try:
@@ -63,7 +65,22 @@ def _get_installed_version(lib_name):
     except importlib_metadata.PackageNotFoundError:
         raise importlib_metadata.PackageNotFoundError
 
+
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("FlexReg")
+
 from FlexReg_utils.util import ToothNoExist, NoSegmentationSurf
+
+from ADTLib.format import format_elapsed, elapsed_since
+from ADTLib.theming import apply_dark_mode, update_line_edit_and_combo_box
+from ADTLib.env.deps import check_lib_installed as lib_satisfies, requirement
+from ADTLib.env.conda import (
+    check_pythonpath, conda_quote, give_pythonpath,
+    init_conda as init_conda_call, check_lib_wsl as wsl_libraries_present,
+    windows_to_linux_path as windows_to_linux_path_shared)
+from ADTLib import testdata
+from ADTLib.model_registry import FLEXREG_TEST_FILES, SLICER_TESTING_DATA
 from FlexReg_utils.orientation import orientation_f
 from FlexReg_utils.butterfly_preview import ButterflyPreview, ADJUST_SIGN
 from FlexReg_utils.mgl_patch import (
@@ -71,6 +88,12 @@ from FlexReg_utils.mgl_patch import (
     DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT, ReadLandmarks, WriteLandmarks,
     DoubtfulLandmarks,
 )
+import json
+
+# The folder, under the Slicer downloads, where the test set is dropped, and
+# the one the button offers as output when the output is empty.
+TEST_FILES_DIRECTORY = "FlexReg_TestFiles"
+TEST_OUTPUT_DIRECTORY = "FlexReg_TestFiles_output"
 
 # Travel of the joystick pads along the antero-posterior axis, in mm. Typing a
 # larger value in the line edit still works, the knob just saturates.
@@ -100,20 +123,8 @@ SHIFT_PAD_SIZE = 128
 
 
 def check_lib_installed(lib_name, required_version=None):
-    '''
-    Check if the library is installed and meets the required version constraint (if any).
-    - lib_name: "torch"
-    - required_version: ">=1.10.0", "==0.7.0", "<2.0.0", etc.
-    '''
-    try:
-        installed_version = _get_installed_version(lib_name)
-        if required_version:
-            # Simple version check - for minimal change, assume it's satisfied if installed
-            # In future, could use packaging to parse required_version
-            pass
-        return True
-    except importlib_metadata.PackageNotFoundError:
-        return False
+    """Whether the library is installed and satisfies the constraint."""
+    return lib_satisfies(lib_name, required_version)
 
 # import csv
 
@@ -130,7 +141,7 @@ def install_function(self, list_libs: list):
             try:
                 if _get_installed_version(lib):
                     libs_to_update.append((lib, version_constraint))
-            except:
+            except Exception:
                 libs_to_install.append((lib, version_constraint))
 
     if libs_to_install or libs_to_update:
@@ -163,7 +174,7 @@ def install_function(self, list_libs: list):
                         pip_install(version_constraint)
                     else:
                         # Correctly format the library and version constraint
-                        lib_version = f"{lib}{version_constraint}" if version_constraint.startswith(("==", ">=", "<=", ">", "<")) else f"{lib}=={version_constraint}"
+                        lib_version = requirement(lib, version_constraint)
                         pip_install(lib_version)
                 except Exception as e:
                     installation_errors.append((lib, str(e)))
@@ -228,29 +239,8 @@ def ensureBooted(widget):
 #
 
 def condaQuote(conda, value):
-    """Quote `value` only if this SlicerConda joins the command into a shell line.
-
-    Two SlicerConda versions are in circulation and they want the opposite of
-    each other. The older one builds a bash line, where a path holding a space -
-    and the ';' inside a `python -c` body - has to be quoted or the line falls
-    apart. The newer one hands conda an argv list, where nothing ever strips
-    those quotes: they reach PYTHONPATH and argv literally and break exactly what
-    they were meant to protect. Reading the installed source tests the property
-    that decides it, rather than guessing from a version number.
-
-    Only commands going to SlicerConda come through here. The copies of
-    condaRunCommand this extension carries of its own always build a shell line,
-    so what they are given keeps its quotes unconditionally.
-    """
-    try:
-        import inspect
-
-        shell = "shell=True" in inspect.getsource(conda.condaRunCommand)
-    except Exception:
-        # Source unreadable: assume the argv contract, which is the one shipping
-        # now, rather than emitting quotes that would land literally.
-        shell = False
-    return f'"{value}"' if shell else str(value)
+    """Delegated to ADTLib; kept as a module function for the call sites."""
+    return conda_quote(conda, value)
 
 
 class FlexReg(ScriptedLoadableModule):
@@ -260,16 +250,16 @@ class FlexReg(ScriptedLoadableModule):
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "FlexReg"  # TODO: make this more human readable by adding spaces
-        self.parent.categories = ["Automated Dental Tools"]  # TODO: set categories (folders where the module shows up in the module selector)
-        self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = ["John Doe (AnyWare Corp.)"]  # TODO: replace with "Firstname Lastname (Organization)"
-        # TODO: update with short description of the module and a link to online module documentation
+        self.parent.title = "FlexReg"
+        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.dependencies = []
+        self.parent.contributors = ["Raphael Barret (UoM), Alexandre Buisson (UoM), Jules Grivot Pelisson (UoM), Lucie Dole (UoNC)"]
+        
         self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#FlexReg">module documentation</a>.
+See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools#FlexReg">module documentation</a>.
 """
-        # TODO: replace with organization, grant and thanks
+        
         self.parent.acknowledgementText = """
 This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
 and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
@@ -291,7 +281,7 @@ def registerSampleData():
     # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
 
     import SampleData
-    iconsPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
+    icons_path = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
 
     # To ensure that the source code repository remains small (can be downloaded and installed quickly)
     # it is recommended to store data sets that are larger than a few MB in a Github release.
@@ -303,9 +293,9 @@ def registerSampleData():
         sampleName='FlexReg1',
         # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
         # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, 'FlexReg1.png'),
+        thumbnailFileName=os.path.join(icons_path, 'FlexReg1.png'),
         # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+        uris=f"{SLICER_TESTING_DATA}/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
         fileNames='FlexReg1.nrrd',
         # Checksum to ensure file integrity. Can be computed by this command:
         #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
@@ -319,9 +309,9 @@ def registerSampleData():
         # Category and sample name displayed in Sample Data module
         category='FlexReg',
         sampleName='FlexReg2',
-        thumbnailFileName=os.path.join(iconsPath, 'FlexReg2.png'),
+        thumbnailFileName=os.path.join(icons_path, 'FlexReg2.png'),
         # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+        uris=f"{SLICER_TESTING_DATA}/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
         fileNames='FlexReg2.nrrd',
         checksums='SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
         # This node name will be used when the data set is loaded
@@ -357,15 +347,15 @@ class FlexRegWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath('UI/FlexReg.ui'))
-        self.layout.addWidget(uiWidget)
-        self.uiWidget = uiWidget  # Store reference for styling
-        self.ui = slicer.util.childWidgetVariables(uiWidget)
+        ui_widget = slicer.util.loadUI(self.resourcePath('UI/FlexReg.ui'))
+        self.layout.addWidget(ui_widget)
+        self.uiWidget = ui_widget  # Store reference for styling
+        self.ui = slicer.util.childWidgetVariables(ui_widget)
 
         # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
         # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
         # "setMRMLScene(vtkMRMLScene*)" slot.
-        uiWidget.setMRMLScene(slicer.mrmlScene)
+        ui_widget.setMRMLScene(slicer.mrmlScene)
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
@@ -413,7 +403,7 @@ class FlexRegWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.applyDarkModeStyles()
 
 # Creation of the custom layout with 3 windows
-        customLayout = """
+        custom_layout = """
 <layout type="horizontal">
   <item>
     <view class="vtkMRMLViewNode" singletontag="1">
@@ -433,13 +423,13 @@ class FlexRegWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 </layout>
 """
 
-        customLayoutId=501
+        custom_layout_id=501
 
-        layoutManager = slicer.app.layoutManager()
-        layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId, customLayout)
+        layout_manager = slicer.app.layoutManager()
+        layout_manager.layoutLogic().GetLayoutNode().AddLayoutDescription(custom_layout_id, custom_layout)
 
         # Switch to the new custom layout
-        layoutManager.setLayout(customLayoutId)
+        layout_manager.setLayout(custom_layout_id)
 
     def on_apply_button_clicked(self)->None:
         '''
@@ -504,13 +494,14 @@ class FlexRegWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         add one widget of list_widget_scan
         '''
         self.list_widget_scan.append(
-            WidgetParameter(self.ui.verticalLayout_2,self.parent,title,self.list_widget_scan))
+            WidgetParameter(self.ui.verticalLayout_2,self.parent,title,self.list_widget_scan,
+                            self.ui.lineEditOutput))
         self.list_widget_scan[-1].setArch(self.isLowerArch())
 
-    def openFinder(self,nom : str,_) -> None : 
+    def openFinder(self,nom : str,_) -> None :
         """
          Open finder to let the user choose is folder
-        """ 
+        """
 
 
         if nom=="Output":
@@ -522,201 +513,12 @@ class FlexRegWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditLowerArch.setText(path_file)
 
     def applyDarkModeStyles(self):
-        """Apply dark mode styling to the widget if needed"""
-        app = qt.QApplication.instance()
-        palette = app.palette()
-        bg_color = palette.color(qt.QPalette.Window)
-        if bg_color.lightness() < 128:
-            # Complete dark mode stylesheet
-            dark_stylesheet = """
-QLineEdit, QTextEdit {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 6px;
-  color: #ffffff;
-  selection-background-color: #5dade2;
-}
-QLineEdit:focus, QTextEdit:focus {
-  border: 2px solid #5dade2;
-}
-QComboBox {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #ffffff;
-}
-QComboBox:focus {
-  border: 2px solid #5dade2;
-}
-QComboBox::drop-down {
-  width: 20px;
-  border: none;
-}
-QComboBox QAbstractItemView {
-  background-color: #3c3c3c;
-  color: #ffffff;
-  selection-background-color: #5dade2;
-}
-QLabel {
-  color: #ffffff;
-  font-weight: 500;
-  background-color: transparent;
-}
-QPushButton {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 10pt;
-  padding: 8px;
-  margin-top: 4px;
-}
-QPushButton:hover:!pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7bbcef, stop:1 #5dade2);
-}
-QPushButton:pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1e638d);
-}
-QPushButton:disabled {
-  background-color: #555555;
-  color: #888888;
-}
-QCheckBox {
-  color: #ffffff;
-  font-weight: 500;
-  spacing: 6px;
-  background-color: transparent;
-}
-QCheckBox::indicator {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #555555;
-  border-radius: 3px;
-  background-color: #3c3c3c;
-}
-QCheckBox::indicator:hover {
-  border: 1px solid #5dade2;
-}
-QCheckBox::indicator:checked {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #5dade2;
-  border-radius: 3px;
-  background-color: #5dade2;
-  image: url(:/Icons/SmallCheckMark.png);
-}
-QCheckBox::indicator:checked:hover {
-  border: 1px solid #7bbcef;
-  background-color: #7bbcef;
-}
-QProgressBar {
-  border: 1px solid #555555;
-  border-radius: 4px;
-  background-color: #3c3c3c;
-  padding: 2px;
-  color: #ffffff;
-}
-QProgressBar::chunk {
-  background-color: #5dade2;
-  border-radius: 3px;
-}
-QSpinBox, QDoubleSpinBox {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #ffffff;
-}
-QSpinBox:focus, QDoubleSpinBox:focus {
-  border: 2px solid #5dade2;
-}
-QSlider::groove:horizontal {
-  background-color: #555555;
-  border-radius: 4px;
-}
-QSlider::handle:horizontal {
-  background-color: #5dade2;
-  width: 12px;
-  margin: -4px 0;
-  border-radius: 6px;
-}
-QSlider::handle:horizontal:hover {
-  background-color: #7bbcef;
-}
-            """
-            self.uiWidget.setStyleSheet(dark_stylesheet)
-            
-            # Update QLineEdit, QComboBox, and QLabel for dark mode
-            self._updateLineEditAndComboBoxDarkMode(self.uiWidget)
+        """Give this module's widget the palette shared by the extension."""
+        apply_dark_mode(self.uiWidget)
 
     def _updateLineEditAndComboBoxDarkMode(self, parent):
-        """
-        Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
-        """
-        # Update QLabel
-        if isinstance(parent, qt.QLabel):
-            try:
-                parent.setStyleSheet("""
-                    QLabel {
-                      color: #ffffff;
-                      font-weight: 500;
-                    }
-                """)
-            except:
-                pass
-        
-        # Update QLineEdit
-        if isinstance(parent, qt.QLineEdit):
-            try:
-                parent.setStyleSheet("""
-                    QLineEdit {
-                      background-color: #3c3c3c;
-                      border: 1px solid #555555;
-                      border-radius: 4px;
-                      padding: 6px;
-                      color: #ffffff;
-                    }
-                    QLineEdit:focus {
-                      border: 2px solid #5dade2;
-                    }
-                """)
-            except:
-                pass
-        
-        # Update QComboBox
-        if isinstance(parent, qt.QComboBox):
-            try:
-                parent.setStyleSheet("""
-                    QComboBox {
-                      background-color: #3c3c3c;
-                      border: 1px solid #555555;
-                      border-radius: 4px;
-                      padding: 4px 6px;
-                      color: #ffffff;
-                    }
-                    QComboBox:focus {
-                      border: 2px solid #5dade2;
-                    }
-                    QComboBox::drop-down {
-                      width: 20px;
-                      border: none;
-                    }
-                    QComboBox QAbstractItemView {
-                      background-color: #3c3c3c;
-                      color: #ffffff;
-                      selection-background-color: #5dade2;
-                    }
-                """)
-            except:
-                pass
-        
-        # Recursively update all children
-        if hasattr(parent, 'children'):
-            for child in parent.children():
-                self._updateLineEditAndComboBoxDarkMode(child)
+        """Shared recursive pass, kept as a method for the existing call sites."""
+        update_line_edit_and_combo_box(parent)
 
     def cleanup(self):
         """
@@ -764,25 +566,25 @@ QSlider::handle:horizontal:hover {
 
         # Select default input nodes if nothing is selected yet to save a few clicks for the user
         if not self._parameterNode.GetNodeReference("InputVolume"):
-            firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-            if firstVolumeNode:
-                self._parameterNode.SetNodeReferenceID("InputVolume", firstVolumeNode.GetID())
+            first_volume_node = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+            if first_volume_node:
+                self._parameterNode.SetNodeReferenceID("InputVolume", first_volume_node.GetID())
 
-    def setParameterNode(self, inputParameterNode):
+    def setParameterNode(self, input_parameter_node):
         """
         Set and observe parameter node.
         Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
         """
 
-        if inputParameterNode:
-            self.logic.setDefaultParameters(inputParameterNode)
+        if input_parameter_node:
+            self.logic.setDefaultParameters(input_parameter_node)
 
         # Unobserve previously selected parameter node and add an observer to the newly selected.
         # Changes of parameter node are observed so that whenever parameters are changed by a script or any other module
         # those are reflected immediately in the GUI.
         if self._parameterNode is not None:
             self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-        self._parameterNode = inputParameterNode
+        self._parameterNode = input_parameter_node
         if self._parameterNode is not None:
             self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
 
@@ -814,13 +616,13 @@ QSlider::handle:horizontal:hover {
         if self._parameterNode is None or self._updatingGUIFromParameterNode:
             return
 
-        wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
+        was_modified = self._parameterNode.StartModify()  # Modify all properties in a single batch
 
         self._parameterNode.SetNodeReferenceID("OutputVolume", self.ui.outputSelector.currentNodeID)
         self._parameterNode.SetParameter("Invert", "true" if self.ui.invertOutputCheckBox.checked else "false")
         self._parameterNode.SetNodeReferenceID("OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID)
 
-        self._parameterNode.EndModify(wasModified)
+        self._parameterNode.EndModify(was_modified)
 
 
 
@@ -909,14 +711,14 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         # cp310-cp313, so 3.12 is now both possible and required.
         self.python_version = "3.12"
 
-    def setDefaultParameters(self, parameterNode):
+    def setDefaultParameters(self, parameter_node):
         """
         Initialize parameter node with default settings.
         """
-        if not parameterNode.GetParameter("Threshold"):
-            parameterNode.SetParameter("Threshold", "100.0")
-        if not parameterNode.GetParameter("Invert"):
-            parameterNode.SetParameter("Invert", "false")
+        if not parameter_node.GetParameter("Threshold"):
+            parameter_node.SetParameter("Threshold", "100.0")
+        if not parameter_node.GetParameter("Invert"):
+            parameter_node.SetParameter("Invert", "false")
 
     def process(self)->None:
         """
@@ -961,10 +763,10 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
 
         logger.info(f"Running FlexReg_CLI with parameters: {parameters}")
 
-        flybyProcess = slicer.modules.flexreg_cli
-        self.cliNode = slicer.cli.run(flybyProcess,None, parameters)
-        self.cliNode.AddObserver(slicer.vtkMRMLCommandLineModuleNode.StatusModifiedEvent, self.onCliModified)  
-        return flybyProcess
+        flyby_process = slicer.modules.flexreg_cli
+        self.cliNode = slicer.cli.run(flyby_process,None, parameters)
+        self.cliNode.AddObserver(slicer.vtkMRMLCommandLineModuleNode.StatusModifiedEvent, self.onCliModified)
+        return flyby_process
     
     def onCliModified(self, caller, event):
         """Callback triggered when CLI status changes (completed, cancelled, etc.)."""
@@ -991,20 +793,10 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
                 logger.error("---------------------\n")
     
     def init_conda(self):
-        # check if CondaSetUp exists
-        try:
-            import CondaSetUp
-        except:
-            return False
-        self.isCondaSetUp = True
-        
-        # set up conda on windows with WSL
-        if platform.system() == "Windows":
-            from CondaSetUp import CondaSetUpCallWsl
-            return CondaSetUpCallWsl()
-        else:
-            from CondaSetUp import CondaSetUpCall
-            return CondaSetUpCall()
+        """The SlicerConda entry point for this platform, or False without it."""
+        call = init_conda_call()
+        self.isCondaSetUp = bool(call)
+        return call
         
     def run_conda_command(self, target, command):
         self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
@@ -1034,10 +826,10 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         Returns whether it could be started : the caller waits on
         self.process, so it must not wait on a thread that never ran.
         '''
-        result_pythonpath = self.check_pythonpath_windows("FlexReg_utils.install_pytorch")
+        result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
         if not result_pythonpath :
             self.give_pythonpath_windows()
-            result_pythonpath = self.check_pythonpath_windows("FlexReg_utils.install_pytorch")
+            result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
 
         if not result_pythonpath :
             # Nothing to run. Falling through to run_conda_command here used to
@@ -1045,14 +837,14 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
             # failure -- usually that the environment cannot import the module.
             logger.error(
                 f"The conda environment '{self.name_env}' cannot import "
-                "FlexReg_utils.install_pytorch. Run that import by hand in the "
+                "ADTLib.env.install_pytorch. Run that import by hand in the "
                 "environment to see why."
             )
             return False
 
         conda_exe = self.conda.getCondaExecutable()
         path_pip = self.conda.getCondaPath()+f"/envs/{self.name_env}/bin/pip"
-        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"FlexReg_utils.install_pytorch",path_pip]
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"ADTLib.env.install_pytorch",path_pip]
 
         self.run_conda_command(target=self.conda.condaRunCommand, command=(command,))
         return True
@@ -1067,68 +859,23 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         self.run_conda_command(target=self.condaRunCommand, command=(command,))
         
     def check_lib_wsl(self) -> bool:
-        # Ubuntu versions < 24.04
-        required_libs_old = ["libxrender1", "libgl1-mesa-glx"]
-        # Ubuntu versions >= 24.04
-        required_libs_new = ["libxrender1", "libgl1", "libglx-mesa0"]
-
-
-        all_installed = lambda libs: all(
-            subprocess.run(
-                f"wsl -- bash -c \"dpkg -l | grep {lib}\"", capture_output=True, text=True
-            ).stdout.encode("utf-16-le").decode("utf-8").replace("\x00", "").find(lib) >= 0
-            for lib in libs
-        )
-
-        return all_installed(required_libs_old) or all_installed(required_libs_new)
-
-        return "libxrender1" in clean_output1 and "libgl1-mesa-glx" in clean_output2
+        """Whether WSL carries the system libraries the tools need."""
+        return wsl_libraries_present()
     
-    def check_pythonpath_windows(self,file):
-        '''
-        Check if the environment env_name in wsl know the path to a specific file (ex : Crownsegmentationcli.py)
-        return : bool
-        '''
-        conda_exe = self.conda.getCondaExecutable()
-        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", condaQuote(self.conda, f"import {file} as check;import os; print(os.path.isfile(check.__file__))")]
-        result = self.conda.condaRunCommand(command)
-        if "True" in result :
-            return True
-        return False
+    def check_pythonpath_windows(self, file):
+        """Whether `file` is importable by the Python of this module's environment."""
+        return check_pythonpath(self.conda, self.name_env, file)
     
     def give_pythonpath_windows(self):
-        '''
-        take the pythonpath of Slicer and give it to the environment name_env in wsl.
-        '''
-        paths = slicer.app.moduleManager().factoryManager().searchPaths
-        mnt_paths = []
-        for path in paths :
-            # Quoted only where a shell will strip the quotes again. They used to be
-            # unconditional: under the argv-passing SlicerConda they survived into
-            # PYTHONPATH, Python read each entry as a relative path and prefixed the
-            # cwd, and every sys.path entry pointed nowhere.
-            mnt_paths.append(condaQuote(self.conda, self.windows_to_linux_path(path)))
-        pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
-        conda_exe = self.conda.getCondaExecutable()
-        argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
-        results = self.conda.condaRunCommand(argument)
+        """Publish Slicer's module search paths into this module's environment."""
+        give_pythonpath(self.conda, self.name_env)
         
-    def windows_to_linux_path(self,windows_path):
-        '''
-        convert a windows path to a wsl path
-        '''
-        windows_path = windows_path.strip()
-
-        path = windows_path.replace('\\', '/')
-
-        if ':' in path:
-            drive, path_without_drive = path.split(':', 1)
-            path = "/mnt/" + drive.lower() + path_without_drive
-
-        return path
+    def windows_to_linux_path(self, windows_path):
+        """A Windows path as WSL sees it."""
+        return windows_to_linux_path_shared(windows_path)
     
     def check_cli_script(self):
-        if not self.check_pythonpath_windows("FlexReg_CLI"): 
+        if not self.check_pythonpath_windows("FlexReg_CLI"):
             self.give_pythonpath_windows()
             results = self.check_pythonpath_windows("FlexReg_CLI")
             
@@ -1159,7 +906,7 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
         '''
         Runs a command in a specified Conda environment, handling different operating systems.
         
-        copy paste from SlicerConda and change the process line to be able to get the stderr/stdout 
+        copy paste from SlicerConda and change the process line to be able to get the stderr/stdout
         and cancel the process without blocking slicer
         '''
         path_activate = self.conda.getActivateExecutable()
@@ -1176,7 +923,7 @@ class FlexRegLogic(ScriptedLoadableModuleLogic):
             command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
             logger.info(f"command_to_execute in condaRunCommand : {command_to_execute}")
 
-            self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+            self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
                                     creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
                                     )
@@ -1232,14 +979,14 @@ class FlexRegTest(ScriptedLoadableModuleTest):
 
         import SampleData
         registerSampleData()
-        inputVolume = SampleData.downloadSample('FlexReg1')
+        input_volume = SampleData.downloadSample('FlexReg1')
         self.delayDisplay('Loaded test data set')
 
-        inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(inputScalarRange[0], 0)
-        self.assertEqual(inputScalarRange[1], 695)
+        input_scalar_range = input_volume.GetImageData().GetScalarRange()
+        self.assertEqual(input_scalar_range[0], 0)
+        self.assertEqual(input_scalar_range[1], 695)
 
-        outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+        output_volume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
         threshold = 100
 
         # Test the module logic
@@ -1247,16 +994,16 @@ class FlexRegTest(ScriptedLoadableModuleTest):
         logic = FlexRegLogic()
 
         # Test algorithm with non-inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, True)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], threshold)
+        logic.process(input_volume, output_volume, threshold, True)
+        output_scalar_range = output_volume.GetImageData().GetScalarRange()
+        self.assertEqual(output_scalar_range[0], input_scalar_range[0])
+        self.assertEqual(output_scalar_range[1], threshold)
 
         # Test algorithm with inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, False)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], inputScalarRange[1])
+        logic.process(input_volume, output_volume, threshold, False)
+        output_scalar_range = output_volume.GetImageData().GetScalarRange()
+        self.assertEqual(output_scalar_range[0], input_scalar_range[0])
+        self.assertEqual(output_scalar_range[1], input_scalar_range[1])
 
         self.delayDisplay('Test passed')
 
@@ -1338,7 +1085,7 @@ class Reg:
                 self.suffix=suffix
                 self.lower_arch=lower_arch
                 self._processed = False # To allow onProcessUpdateICP to display the time and launch endProcess
-                # CLI 
+                # CLI
                 self.logic = FlexRegLogic(self.T2.getPath(),
                                 int(0),
                             int(0),
@@ -1376,10 +1123,10 @@ class Reg:
         """
         Check if the patch of the current arch is available for the model node.
         """
-        polyData = model_node.GetPolyData()
-        if polyData:
-            scalars = (polyData.GetPointData().GetScalars(array_name)
-                       or polyData.GetPointData().GetArray(array_name))
+        poly_data = model_node.GetPolyData()
+        if poly_data:
+            scalars = (poly_data.GetPointData().GetScalars(array_name)
+                       or poly_data.GetPointData().GetArray(array_name))
             return scalars is not None
         return False
 
@@ -1439,9 +1186,9 @@ class Reg:
         self.cleanView()
         # Load the result of the registration and T1 model
         outpath = self.T2.getPath().replace(os.path.dirname(self.T2.getPath()),self.output_folder)
-        path_newT2 = outpath.split('.vtk')[0].split('vtp')[0]+self.suffix+'.vtk'
+        path_new_t2 = outpath.split('.vtk')[0].split('vtp')[0]+self.suffix+'.vtk'
         self.surfT1 = slicer.util.loadModel(self.T1.getPath())
-        self.surfT2 = slicer.util.loadModel(path_newT2)
+        self.surfT2 = slicer.util.loadModel(path_new_t2)
 
         if self.preview:
             # The file behind this node is about to disappear, so keep the node
@@ -1453,30 +1200,30 @@ class Reg:
                 storage.SetSaveWithScene(False)
 
         # Get data model
-        displayNodeT1 = self.surfT1.GetDisplayNode()
-        displayNodeT2 = self.surfT2.GetDisplayNode()
+        display_node_t1 = self.surfT1.GetDisplayNode()
+        display_node_t2 = self.surfT2.GetDisplayNode()
         
         # Get all vtkMRMLViewNodes of the scene
-        viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-        viewNodes.UnRegister(None) # De-register to avoid memory leaks
+        view_nodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+        view_nodes.UnRegister(None) # De-register to avoid memory leaks
         
         # Access to our custom layout
-        customLayoutId=501
-        layoutManager = slicer.app.layoutManager()
-        layoutManager.setLayout(customLayoutId)
+        custom_layout_id=501
+        layout_manager = slicer.app.layoutManager()
+        layout_manager.setLayout(custom_layout_id)
 
         # Access layout 2
-        viewNode = viewNodes.GetItemAsObject(2) if viewNodes.GetNumberOfItems() >= 2 else None
+        view_node = view_nodes.GetItemAsObject(2) if view_nodes.GetNumberOfItems() >= 2 else None
 
         # Set colors of the model
         colors = [[255/256,51/256,200/256], [102/256,102/256,255/256]]
-        displayNodeT1.SetColor(colors[0])
-        displayNodeT2.SetColor(colors[1])
+        display_node_t1.SetColor(colors[0])
+        display_node_t2.SetColor(colors[1])
         
-        if viewNode:
+        if view_node:
             # Display model in windows
-            displayNodeT1.SetViewNodeIDs([viewNode.GetID()])
-            displayNodeT2.SetViewNodeIDs([viewNode.GetID()])
+            display_node_t1.SetViewNodeIDs([view_node.GetID()])
+            display_node_t2.SetViewNodeIDs([view_node.GetID()])
 
         else:
             slicer.util.errorDisplay(f"There is 3D windows available with the index : {2}.")
@@ -1500,18 +1247,18 @@ class Reg:
         '''
         Delete all model load in windows 2
         '''
-        viewNode1 = slicer.mrmlScene.GetSingletonNode("3", "vtkMRMLViewNode")
-        modelNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLModelNode")
-        modelNodes.InitTraversal()
-        modelsToDelete = []
-        for i in range(modelNodes.GetNumberOfItems()):
-            modelNode = modelNodes.GetNextItemAsObject()
-            modelDisplayNode = modelNode.GetDisplayNode()
+        view_node1 = slicer.mrmlScene.GetSingletonNode("3", "vtkMRMLViewNode")
+        model_nodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLModelNode")
+        model_nodes.InitTraversal()
+        models_to_delete = []
+        for i in range(model_nodes.GetNumberOfItems()):
+            modelNode = model_nodes.GetNextItemAsObject()
+            model_display_node = modelNode.GetDisplayNode()
 
-            if modelDisplayNode and modelDisplayNode.GetViewNodeIDs() and viewNode1.GetID() in modelDisplayNode.GetViewNodeIDs():
-                modelsToDelete.append(modelNode)
+            if model_display_node and model_display_node.GetViewNodeIDs() and view_node1.GetID() in model_display_node.GetViewNodeIDs():
+                models_to_delete.append(modelNode)
         
-        for model in modelsToDelete:
+        for model in models_to_delete:
             slicer.mrmlScene.RemoveNode(model)
 
 
@@ -1855,9 +1602,13 @@ class JoystickPad(QWidget):
 
 # Class with widget
 class WidgetParameter:
-    def __init__(self,layout,parent,title,scans=None) -> None:
+    def __init__(self,layout,parent,title,scans=None,output_line_edit=None) -> None:
         self.parent_layout = layout
         self.parent = parent
+        # The output field of the module, a single one for both panels. The
+        # panel never reads it: it fills it in when the user has chosen
+        # nothing and the TestFile button is pressed.
+        self.output_line_edit = output_line_edit
         self.surf = None
         self.curve = None
         self.glue = False
@@ -1936,12 +1687,12 @@ class WidgetParameter:
         self.layout_file.addWidget(self.button_scene)
         self.layout_file.addWidget(self.button_test_file)
 
-        widgetView = QWidget()
-        self.layoutView = QGridLayout(widgetView)
+        widget_view = QWidget()
+        self.layoutView = QGridLayout(widget_view)
         self.button_view = QPushButton('View')
         self.button_view.pressed.connect(self.viewScan)
         self.layoutView.addWidget(self.button_view)
-        layout.addWidget(widgetView)
+        layout.addWidget(widget_view)
         
 
         self.combobox_choice_method = QComboBox()
@@ -2021,16 +1772,16 @@ class WidgetParameter:
 
         self.button_curvepoint = QPushButton('Point Curve')
         self.button_curvepoint.pressed.connect(self.curvePoint)
-        self.layout_outline.addWidget(self.button_curvepoint,1,0,1,2)  
+        self.layout_outline.addWidget(self.button_curvepoint,1,0,1,2)
 
         self.add_points = QPushButton('Resample points')
         self.add_points.pressed.connect(self.addPoints)
-        self.layout_outline.addWidget(self.add_points,2,0) 
+        self.layout_outline.addWidget(self.add_points,2,0)
 
         self.spin_add_points = QSpinBox()
         self.spin_add_points.setMinimum(4)
         self.spin_add_points.setValue(4)
-        self.layout_outline.addWidget(self.spin_add_points,2,1) 
+        self.layout_outline.addWidget(self.spin_add_points,2,1)
 
         self.button_placepoint = QPushButton('Middle point')
         self.button_placepoint.pressed.connect(self.placeMiddlePoint)
@@ -2466,7 +2217,6 @@ class WidgetParameter:
         # (a .vtk with no metadata is assumed LPS), while ReadLandmarks reads
         # the raw positions of the json. Flip LPS landmarks the way Slicer's
         # own markups loader would, or the curve is a mirror of the arch.
-        import json
         with open(path) as handle:
             system = json.load(handle)['markups'][0].get('coordinateSystem', 'LPS')
         if system.upper() == 'LPS':
@@ -2898,88 +2648,46 @@ class WidgetParameter:
         self.timer.timeout.connect(self.onProcessUpdateDelete)
         self.timer.start(500)
         
-    def DownloadUnzip(
-        self, url, directory, folder_name=None, num_downl=1, total_downloads=1
-    ):
-        """
-        Download and unzip a file from a given URL to a specified directory.
-
-        Parameters:
-        - url: The URL of the zip file to download.
-        - directory: The directory where the file should be downloaded and unzipped.
-        - folder_name: The name of the folder to create and unzip the contents into.
-        - num_downl: The current download number (for progress display).
-        - total_downloads: The total number of downloads (for progress display).
-
-        Returns:
-        - out_path: The path to the unzipped folder.
-        """
-        
-        out_path = os.path.join(directory, folder_name)
-
-        if not os.path.exists(out_path):
-            os.makedirs(out_path)
-
-            temp_path = os.path.join(directory, "temp.zip")
-
-            # Download the zip file from the url
-            with urllib.request.urlopen(url) as response, open(
-                temp_path, "wb"
-            ) as out_file:
-                # Pop up a progress bar with a QProgressDialog
-                progress = QProgressDialog(
-                    "Downloading {} (File {}/{})".format(
-                        folder_name.split(os.sep)[0], num_downl, total_downloads
-                    ),
-                    "Cancel",
-                    0,
-                    100,
-                    self.parent,
-                )
-                progress.setCancelButton(None)
-                progress.setWindowModality(Qt.WindowModal)
-                progress.setWindowTitle(
-                    "Downloading {}...".format(folder_name.split(os.sep)[0])
-                )
-                progress.show()
-                length = response.info().get("Content-Length")
-                if length:
-                    length = int(length)
-                    blocksize = max(4096, length // 100)
-                    read = 0
-                    while True:
-                        buffer = response.read(blocksize)
-                        if not buffer:
-                            break
-                        read += len(buffer)
-                        out_file.write(buffer)
-                        progress.setValue(read * 100.0 / length)
-                        QApplication.processEvents()
-                shutil.copyfileobj(response, out_file) 
-
-            # Unzip the file
-            with zipfile.ZipFile(temp_path, "r") as zip:
-                zip.extractall(out_path)
-
-            # Delete the zip file
-            os.remove(temp_path)
-
-        return out_path
-        
     def testFile(self):
-        url = "https://github.com/GaelleLeroux/SlicerAutomatedDentalTools/releases/download/testfileFlexReg/TestFiles.zip"
-        
+        '''
+        Fill this scan panel -- and the output folder, when it is still empty
+        -- with the published test files, then show the scan.
 
-        _ = self.DownloadUnzip(
-            url=url,
-            directory=os.path.join(self.SlicerDownloadPath),
-            folder_name=os.path.join("FlexReg"),
-            num_downl=1,
-            total_downloads=1,
-        )
-        model_folder = os.path.join(self.SlicerDownloadPath,"FlexReg", "TestFiles")
-        path_file = os.path.join(model_folder,f"T{self.title}_test_file.vtk")
+        The panel number picks the file: T1 for the fixed scan, T2 for the
+        moving one. The arch selector does not, and cannot: the published
+        archive holds a single pair of surfaces, with no segmentation labels
+        on them, so it says nothing about being an upper or a lower arch.
+        Both arches are served the same pair.
+
+        The dataset is downloaded only when it is missing; pressing the button
+        again makes no request.
+        '''
+        try:
+            dataset = testdata.ensure_with_progress(
+                FLEXREG_TEST_FILES, self.SlicerDownloadPath, TEST_FILES_DIRECTORY,
+                parent=self.parent,
+                title="Downloading the FlexReg test files...")
+        except testdata.TestDataError as error:
+            self.warning(str(error))
+            return
+        except OSError as error:
+            self.warning("The FlexReg test files could not be downloaded from\n%s\n\n%s"
+                         % (FLEXREG_TEST_FILES, error))
+            return
+
+        path_file = os.path.join(dataset, "TestFiles", f"T{self.title}_test_file.vtk")
+        if not os.path.isfile(path_file):
+            self.warning("The test dataset does not hold %s."
+                         % os.path.basename(path_file))
+            return
         self.lineedit.setText(path_file)
+
+        # The output was never filled in, and the registration asks for it.
+        if self.output_line_edit is not None and not self.output_line_edit.text:
+            destination = os.path.join(self.SlicerDownloadPath, TEST_OUTPUT_DIRECTORY)
+            os.makedirs(destination, exist_ok=True)
+            self.output_line_edit.setText(destination)
+
         self.viewScan()
 
     def onProcessUpdateDelete(self):
@@ -2998,9 +2706,9 @@ class WidgetParameter:
             self._processed3 = True
             self.timer.stop()
             self.viewScan()
-            indexC = self.combobox_patch.findText(str(int(self.addItemsCombobox())-1))
-            if indexC!=0:
-                self.combobox_patch.removeItem(indexC)
+            index_c = self.combobox_patch.findText(str(int(self.addItemsCombobox())-1))
+            if index_c!=0:
+                self.combobox_patch.removeItem(index_c)
             self.displaySegmentation(self.surf)
             
 
@@ -3323,10 +3031,10 @@ class WidgetParameter:
             self.label_preview.setText(f'No live preview : {message}')
 
     def previewViewNode(self):
-        viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-        viewNodes.UnRegister(None)
-        if viewNodes.GetNumberOfItems() >= self.title:
-            return viewNodes.GetItemAsObject(self.title - 1)
+        view_nodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+        view_nodes.UnRegister(None)
+        if view_nodes.GetNumberOfItems() >= self.title:
+            return view_nodes.GetItemAsObject(self.title - 1)
         return None
 
     def showContour(self, polydata):
@@ -3540,21 +3248,21 @@ class WidgetParameter:
                 self.surf = slicer.util.loadModel(self.lineedit.text)
 
                 # Get data model
-                displayNode = self.surf.GetDisplayNode()
+                display_node = self.surf.GetDisplayNode()
                 
                 # Retrieve all availables vtkMRMLViewNodes in the scene
-                viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-                viewNodes.UnRegister(None) # Unregister to avoid memory leakage
+                view_nodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+                view_nodes.UnRegister(None) # Unregister to avoid memory leakage
                 
-                customLayoutId=501
-                layoutManager = slicer.app.layoutManager()
-                layoutManager.setLayout(customLayoutId)
+                custom_layout_id=501
+                layout_manager = slicer.app.layoutManager()
+                layout_manager.setLayout(custom_layout_id)
 
-                viewNode = viewNodes.GetItemAsObject(self.title - 1) if viewNodes.GetNumberOfItems() >= self.title else None
+                view_node = view_nodes.GetItemAsObject(self.title - 1) if view_nodes.GetNumberOfItems() >= self.title else None
                 
-                if viewNode:
+                if view_node:
                     # Display model in windows
-                    displayNode.SetViewNodeIDs([viewNode.GetID()])
+                    display_node.SetViewNodeIDs([view_node.GetID()])
 
                 else:
                     slicer.util.errorDisplay(f"There is 3D windows available with the index : {self.title - 1}.")
@@ -3569,7 +3277,7 @@ class WidgetParameter:
                 # Get the focal point of the camera
                 render_view = slicer.app.layoutManager().threeDWidget(0).threeDView()
                 camera = render_view.renderWindow().GetRenderers().GetFirstRenderer().GetActiveCamera()
-                focal_point = camera.GetFocalPoint() 
+                focal_point = camera.GetFocalPoint()
                 center[0]-=focal_point[0]
                 center[1]-=focal_point[1]
                 center[2]-=focal_point[2]
@@ -3577,10 +3285,10 @@ class WidgetParameter:
 
                 # Create matrix to center the vtk
                 matrix = vtk.vtkMatrix4x4()
-                matrix.Identity()  
-                matrix.SetElement(0, 3, -center[0])  
-                matrix.SetElement(1, 3, -center[1])  
-                matrix.SetElement(2, 3, -center[2])  
+                matrix.Identity()
+                matrix.SetElement(0, 3, -center[0])
+                matrix.SetElement(1, 3, -center[1])
+                matrix.SetElement(2, 3, -center[2])
 
                 self.matrix = matrix
 
@@ -3607,18 +3315,18 @@ class WidgetParameter:
 
         else :
             self.clearPreview()
-            viewNode1 = slicer.mrmlScene.GetSingletonNode(str(self.title), "vtkMRMLViewNode")
-            modelNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLModelNode")
-            modelNodes.InitTraversal()
-            modelsToDelete = []
-            for i in range(modelNodes.GetNumberOfItems()):
-                modelNode = modelNodes.GetNextItemAsObject()
-                modelDisplayNode = modelNode.GetDisplayNode()
+            view_node1 = slicer.mrmlScene.GetSingletonNode(str(self.title), "vtkMRMLViewNode")
+            model_nodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLModelNode")
+            model_nodes.InitTraversal()
+            models_to_delete = []
+            for i in range(model_nodes.GetNumberOfItems()):
+                modelNode = model_nodes.GetNextItemAsObject()
+                model_display_node = modelNode.GetDisplayNode()
     
-                if modelDisplayNode and modelDisplayNode.GetViewNodeIDs() and viewNode1.GetID() in modelDisplayNode.GetViewNodeIDs():
-                    modelsToDelete.append(modelNode)
+                if model_display_node and model_display_node.GetViewNodeIDs() and view_node1.GetID() in model_display_node.GetViewNodeIDs():
+                    models_to_delete.append(modelNode)
           
-            for model in modelsToDelete:
+            for model in models_to_delete:
                 slicer.mrmlScene.RemoveNode(model)
             
             self.surf = None
@@ -3645,7 +3353,7 @@ class WidgetParameter:
                     self.label_addpatch.setVisible(True)
                     self.add_patch.setVisible(True)
                 
-                else : 
+                else :
                     self.combobox_patch.addItem(str(index))
 
                 
@@ -3670,26 +3378,26 @@ class WidgetParameter:
         url = "https://github.com/DCBIA-OrthoLab/Fly-by-CNN/releases/download/3.0/07-21-22_val-loss0.169.pth"
         name = "Model_segmentation_teeh.pth"
 
-        documentsLocation = QStandardPaths.DocumentsLocation
-        documentsPath = QStandardPaths.writableLocation(documentsLocation)
+        documents_location = QStandardPaths.DocumentsLocation
+        documents_path = QStandardPaths.writableLocation(documents_location)
 
         # Path for Slicer downloads
-        slicerDownloadPath = os.path.join(documentsPath, slicer.app.applicationName + "Downloads")
+        slicer_download_path = os.path.join(documents_path, slicer.app.applicationName + "Downloads")
 
         # Create the directory if it does not exist
-        if not os.path.exists(slicerDownloadPath):
-            os.makedirs(slicerDownloadPath)
+        if not os.path.exists(slicer_download_path):
+            os.makedirs(slicer_download_path)
 
         # Full path where the file will be saved
-        modelFilePath = os.path.join(slicerDownloadPath, name)
+        model_file_path = os.path.join(slicer_download_path, name)
 
         # Download the file
-        if not os.path.isfile(modelFilePath):
-            slicer.util.downloadFile(url, modelFilePath)
+        if not os.path.isfile(model_file_path):
+            slicer.util.downloadFile(url, model_file_path)
 
         # Now you can use the downloaded model file path as needed
-        logger.info(f"Model file downloaded to: {modelFilePath}")
-        return modelFilePath
+        logger.info(f"Model file downloaded to: {model_file_path}")
+        return model_file_path
     
     def checkSegmentation(self)->bool:
         '''
@@ -3712,12 +3420,12 @@ class WidgetParameter:
         transform = vtk.vtkTransform()
         transform.Scale(-1, -1, 1)
 
-        transformFilter = vtk.vtkTransformPolyDataFilter()
-        transformFilter.SetInputData(modelNode)
-        transformFilter.SetTransform(transform)
-        transformFilter.Update()
+        transform_filter = vtk.vtkTransformPolyDataFilter()
+        transform_filter.SetInputData(modelNode)
+        transform_filter.SetTransform(transform)
+        transform_filter.Update()
 
-        modelNode = transformFilter.GetOutput()
+        modelNode = transform_filter.GetOutput()
         surf_tmp = vtk.vtkPolyData()
         surf_tmp.DeepCopy(modelNode)
 
@@ -3739,20 +3447,8 @@ class WidgetParameter:
             return False
         
     def check_lib_wsl(self) -> bool:
-        # Ubuntu versions under 24.04
-        required_libs_old = ["libxrender1", "libgl1-mesa-glx"]
-        # Ubuntu versions after 24.04
-        required_libs_new = ["libxrender1", "libgl1", "libglx-mesa0"]
-
-
-        all_installed = lambda libs: all(
-            subprocess.run(
-                f"wsl -- bash -c \"dpkg -l | grep {lib}\"", capture_output=True, text=True
-            ).stdout.encode("utf-16-le").decode("utf-8").replace("\x00", "").find(lib) >= 0
-            for lib in libs
-        )
-
-        return all_installed(required_libs_old) or all_installed(required_libs_new)
+        """Whether WSL carries the system libraries the tools need."""
+        return wsl_libraries_present()
             
     def shapeaxi_conda(self):
         slicer.app.processEvents()
@@ -3787,7 +3483,7 @@ class WidgetParameter:
                 "0",                                #crownsegmentation
                 "Universal_ID",                     #array_name
                 "0",                                #fdi
-                "None",                             #suffix 
+                "None",                             #suffix
                 os.path.dirname(self.lineedit.text),#vtk_folder
                 dentalmodelseg_path_clean]          #dentalmodelseg_path
 
@@ -3840,12 +3536,12 @@ class WidgetParameter:
         self.label_time.setHidden(False)
         
         if not self.logic.isCondaSetUp:
-            messageBox = qt.QMessageBox()
+            message_box = qt.QMessageBox()
             text = textwrap.dedent("""
-            SlicerConda is not set up, please click 
+            SlicerConda is not set up, please click
             <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
             """).strip()
-            messageBox.information(None, "Information", text)
+            message_box.information(None, "Information", text)
             return False
         
         if platform.system() == "Windows":
@@ -3855,24 +3551,24 @@ class WidgetParameter:
                 self.label_time.setText(f"WSL installed")
                 if not self.logic.check_lib_wsl():
                     self.label_time.setText(f"Checking if the required librairies are installed, this task may take a moments")
-                    messageBox = qt.QMessageBox()
+                    message_box = qt.QMessageBox()
                     text = textwrap.dedent("""
-                        WSL doesn't have all the necessary libraries, please download the installer 
-                        and follow the instructions 
-                        <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+                        WSL doesn't have all the necessary libraries, please download the installer
+                        and follow the instructions
+                        <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
                         for installation. The link may be blocked by Chrome, just authorize it.""").strip()
 
-                    messageBox.information(None, "Information", text)
+                    message_box.information(None, "Information", text)
                     return False
                 
             else : # if wsl not install, ask user to install it ans stop process
-                messageBox = qt.QMessageBox()
+                message_box = qt.QMessageBox()
                 text = textwrap.dedent("""
-                    WSL is not installed, please download the installer and follow the instructions 
-                    <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
-                    for installation. The link may be blocked by Chrome, just authorize it.""").strip()        
+                    WSL is not installed, please download the installer and follow the instructions
+                    <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
+                    for installation. The link may be blocked by Chrome, just authorize it.""").strip()
 
-                messageBox.information(None, "Information", text)
+                message_box.information(None, "Information", text)
                 return False
             
         
@@ -3881,11 +3577,11 @@ class WidgetParameter:
         
         self.label_time.setText(f"Checking if miniconda is installed")
         if "no setup" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
-            messageBox = qt.QMessageBox()
+            message_box = qt.QMessageBox()
             text = textwrap.dedent("""
-            Code can't be launch. \nConda is not setup. 
+            Code can't be launch. \nConda is not setup.
             Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
-            messageBox.information(None, "Information", text)
+            message_box.information(None, "Information", text)
             return False
         
         
@@ -3894,8 +3590,8 @@ class WidgetParameter:
 
         self.label_time.setText(f"Checking if environnement exists")
         if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
-            userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
-            if userResponse :
+            user_response = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+            if user_response :
                 start_time = time.time()
                 previous_time = start_time
                 formatted_time = self.format_time(0)
@@ -3911,7 +3607,7 @@ class WidgetParameter:
                 previous_time = start_time
                 formatted_time = self.format_time(0)
                 text = textwrap.dedent(f"""
-                Installation of librairies into the new environnement. 
+                Installation of librairies into the new environnement.
                 This task may take a few minutes.\ntime: {formatted_time}""").strip()
                 self.label_time.setText(text)
             else:
@@ -3928,7 +3624,7 @@ class WidgetParameter:
             slicer.util.errorDisplay(
                 "The pytorch3d installation could not be started : the conda "
                 f"environment '{self.logic.name_env}' cannot import "
-                "FlexReg_utils.install_pytorch.\n\n"
+                "ADTLib.env.install_pytorch.\n\n"
                 "See the Python console for the underlying import error."
             )
             return False
@@ -3939,29 +3635,29 @@ class WidgetParameter:
             slicer.app.processEvents()
             formatted_time = self.update_ui_time(start_time, previous_time)
             text = textwrap.dedent(f"""
-            Installation of pytorch into the new environnement. 
+            Installation of pytorch into the new environnement.
             This task may take a few minutes.\ntime: {formatted_time}
             """).strip()
             self.label_time.setText(text)
 
-        self.all_installed = True   
+        self.all_installed = True
         return True
             
-    def format_time(self,seconds):
-        """ Convert seconds to H:M:S format. """
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-        return f"{hours:02}:{minutes:02}:{secs:02}"
-    
+    def format_time(self, seconds):
+        """Seconds as HH:MM:SS."""
+        return format_elapsed(seconds)
+
     def update_ui_time(self, start_time, previous_time):
-        current_time = time.time()
-        gap=current_time-previous_time
-        if gap>0.3:
-            previous_time = current_time
-            self.elapsed_time = current_time - start_time
-            formatted_time = self.format_time(self.elapsed_time)
-            return formatted_time
+        """Elapsed time since `start_time`, formatted for the installation label.
+
+        `previous_time` is kept for signature parity with the call sites, which
+        pass it but never update their own copy. It used to throttle this to one
+        update every 0.3s and return None in between, which is what wrote
+        "time: None" into the label. Formatting unconditionally is both simpler
+        and correct.
+        """
+        self.elapsed_time = elapsed_since(start_time)
+        return self.format_time(self.elapsed_time)
 
     def shapeaxi(self):
         '''
@@ -3970,10 +3666,10 @@ class WidgetParameter:
         slicer_path = slicer.app.applicationDirPath()
         dentalmodelseg_path = os.path.join(slicer_path,"..","lib","Python","bin","dentalmodelseg")
 
-        moduleName = "CrownSegmentation"
-        moduleAvailable = moduleName in slicer.app.moduleManager().modulesNames()
+        module_name = "CrownSegmentation"
+        module_available = module_name in slicer.app.moduleManager().modulesNames()
         self._processed2 = False
-        if moduleAvailable : 
+        if module_available :
             parameters = {
                 "surf" :self.lineedit.text,
                 "input_csv":"None",
@@ -3988,7 +3684,7 @@ class WidgetParameter:
                 "dentalmodelseg_path":dentalmodelseg_path
             }
             self.start_time = time.time()
-            flybyProcess = slicer.modules.crownsegmentationcli
+            flyby_process = slicer.modules.crownsegmentationcli
             self.start_time = time.time()
             try:
                 self.timer.timeout.disconnect()
@@ -3996,7 +3692,7 @@ class WidgetParameter:
                 pass
             self.timer.timeout.connect(self.onProcessUpdateSeg)
             self.timer.start(500)
-            self.seg_clinode = slicer.cli.run(flybyProcess,None, parameters)    
+            self.seg_clinode = slicer.cli.run(flyby_process,None, parameters)
             
             self._segmentationCompleted = False
             while not self._segmentationCompleted:
@@ -4021,7 +3717,7 @@ class WidgetParameter:
         if self.seg_clinode.GetStatus() & self.seg_clinode.Completed:
             self._processed2 = True
             self.timer.stop()
-            self.viewScan() 
+            self.viewScan()
             self._segmentationCompleted = True
             
 
@@ -4103,7 +3799,7 @@ class WidgetParameter:
                 number_to_add = self.addItemsCombobox()
                 self.combobox_patch.addItem(number_to_add)
                 self.add_patch.setChecked(False)
-                index = self.combobox_patch.findText(number_to_add)  
+                index = self.combobox_patch.findText(number_to_add)
                 if index >= 0:  # -1 signify that the value hasn't been found
                     self.combobox_patch.setCurrentIndex(index)
             if not self.combobox_patch.isVisible():
@@ -4135,56 +3831,56 @@ class WidgetParameter:
         '''
         Display the landmarks
         '''
-        viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-        viewNodes.UnRegister(None)  # Unregister to avoid memory leakage
+        view_nodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+        view_nodes.UnRegister(None)  # Unregister to avoid memory leakage
 
         if self.curve!=None:
-            displayNode = self.curve.GetDisplayNode()
-            if displayNode is not None:
-                displayNode.SetVisibility2D(False)
-                displayNode.SetVisibility3D(True)
+            display_node = self.curve.GetDisplayNode()
+            if display_node is not None:
+                display_node.SetVisibility2D(False)
+                display_node.SetVisibility3D(True)
 
-                view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
-                displayNode.SetViewNodeIDs(view_ids_to_display)
+                view_ids_to_display = [view_nodes.GetItemAsObject(self.title-1).GetID()]
+                display_node.SetViewNodeIDs(view_ids_to_display)
 
         if self.middle_point!=None:
-            displayNode = self.middle_point.GetDisplayNode()
-            if displayNode is not None:
-                displayNode.SetVisibility2D(False)
-                displayNode.SetVisibility3D(True)
-                view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
-                displayNode.SetViewNodeIDs(view_ids_to_display)
+            display_node = self.middle_point.GetDisplayNode()
+            if display_node is not None:
+                display_node.SetVisibility2D(False)
+                display_node.SetVisibility3D(True)
+                view_ids_to_display = [view_nodes.GetItemAsObject(self.title-1).GetID()]
+                display_node.SetViewNodeIDs(view_ids_to_display)
 
     def hideLandmark(self) -> None:
         '''
         Hide the landmarks
         '''
-        viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-        viewNodes.UnRegister(None)  # Unregister to avoid memory leakage
+        view_nodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+        view_nodes.UnRegister(None)  # Unregister to avoid memory leakage
 
         if self.curve!=None :
-            displayNode = self.curve.GetDisplayNode()
-            if displayNode is not None:
-                displayNode.SetVisibility2D(True)  #Restore 2D view
-                displayNode.SetVisibility3D(False)  # Hide 3D view
+            display_node = self.curve.GetDisplayNode()
+            if display_node is not None:
+                display_node.SetVisibility2D(True)  #Restore 2D view
+                display_node.SetVisibility3D(False)  # Hide 3D view
 
-                view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
-                displayNode.SetViewNodeIDs(view_ids_to_display)
+                view_ids_to_display = [view_nodes.GetItemAsObject(self.title-1).GetID()]
+                display_node.SetViewNodeIDs(view_ids_to_display)
 
         if self.middle_point!=None :
-            displayNode = self.middle_point.GetDisplayNode()
-            if displayNode is not None:
-                displayNode.SetVisibility2D(True)  #Restore 2D view
-                displayNode.SetVisibility3D(False)  # Hide 3D view
+            display_node = self.middle_point.GetDisplayNode()
+            if display_node is not None:
+                display_node.SetVisibility2D(True)  #Restore 2D view
+                display_node.SetVisibility3D(False)  # Hide 3D view
 
-                view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
-                displayNode.SetViewNodeIDs(view_ids_to_display)
+                view_ids_to_display = [view_nodes.GetItemAsObject(self.title-1).GetID()]
+                display_node.SetViewNodeIDs(view_ids_to_display)
 
 
 
     def curvePoint(self)->None:
         '''
-        Match the points with the load model 
+        Match the points with the load model
         '''
 
         self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
@@ -4198,39 +3894,39 @@ class WidgetParameter:
         Resample the curve with more control points.
         '''
         # Get your curve node
-        curveNode = self.curve
-        curvePolyData = curveNode.GetCurveWorld()
-        points = curvePolyData.GetPoints()
+        curve_node = self.curve
+        curve_poly_data = curve_node.GetCurveWorld()
+        points = curve_poly_data.GetPoints()
 
         # Create splines to interpolate curve points
-        splineX = vtk.vtkCardinalSpline()
-        splineY = vtk.vtkCardinalSpline()
-        splineZ = vtk.vtkCardinalSpline()
+        spline_x = vtk.vtkCardinalSpline()
+        spline_y = vtk.vtkCardinalSpline()
+        spline_z = vtk.vtkCardinalSpline()
 
         # Add curve points to splines
         for i in range(points.GetNumberOfPoints()):
             p = points.GetPoint(i)
-            splineX.AddPoint(i, p[0])
-            splineY.AddPoint(i, p[1])
-            splineZ.AddPoint(i, p[2])
+            spline_x.AddPoint(i, p[0])
+            spline_y.AddPoint(i, p[1])
+            spline_z.AddPoint(i, p[2])
 
         # Determine the desired number of points
-        numberOfPoints = self.spin_add_points.value
-        newCurveNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsClosedCurveNode',f'T{self.title} curve')
+        number_of_points = self.spin_add_points.value
+        new_curve_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsClosedCurveNode',f'T{self.title} curve')
 
         # Evaluate the splines at regular intervals to obtain the new set of points
-        for i in range(numberOfPoints):
-            u = i / (numberOfPoints - 1.0) * (points.GetNumberOfPoints() - 1)
-            if i == numberOfPoints-1:
-                u = u -(points.GetNumberOfPoints() - 1)/(numberOfPoints*2)
-            x = splineX.Evaluate(u)
-            y = splineY.Evaluate(u)
-            z = splineZ.Evaluate(u)
-            newCurveNode.AddControlPoint(vtk.vtkVector3d(x, y, z))
+        for i in range(number_of_points):
+            u = i / (number_of_points - 1.0) * (points.GetNumberOfPoints() - 1)
+            if i == number_of_points-1:
+                u = u -(points.GetNumberOfPoints() - 1)/(number_of_points*2)
+            x = spline_x.Evaluate(u)
+            y = spline_y.Evaluate(u)
+            z = spline_z.Evaluate(u)
+            new_curve_node.AddControlPoint(vtk.vtkVector3d(x, y, z))
 
         # If you wish, you can now delete the old curve node
-        self.curve = newCurveNode
-        slicer.mrmlScene.RemoveNode(curveNode)
+        self.curve = new_curve_node
+        slicer.mrmlScene.RemoveNode(curve_node)
         self.viewLandmark()
         if self.glue:
             self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
@@ -4238,7 +3934,7 @@ class WidgetParameter:
 
     def placeMiddlePoint(self)->None:
         '''
-        Place the middle point for the curve patch 
+        Place the middle point for the curve patch
         '''
 
         bounding_box = [0, 0, 0, 0, 0, 0]
@@ -4249,15 +3945,15 @@ class WidgetParameter:
 
         self.middle_point.AddControlPoint(center,'F1')
 
-        viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-        viewNodes.UnRegister(None)  # Unregister to avoid memory leakage
+        view_nodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+        view_nodes.UnRegister(None)  # Unregister to avoid memory leakage
 
-        displayNode = self.middle_point.GetDisplayNode()
-        if displayNode is not None:
-            displayNode.SetVisibility2D(False)
-            displayNode.SetVisibility3D(True)
-            view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
-            displayNode.SetViewNodeIDs(view_ids_to_display)
+        display_node = self.middle_point.GetDisplayNode()
+        if display_node is not None:
+            display_node.SetVisibility2D(False)
+            display_node.SetVisibility3D(True)
+            view_ids_to_display = [view_nodes.GetItemAsObject(self.title-1).GetID()]
+            display_node.SetViewNodeIDs(view_ids_to_display)
 
 
     def moveCurve(self,matrix)->None:
@@ -4270,7 +3966,7 @@ class WidgetParameter:
         self.curve.SetAndObserveTransformNodeID(transform_node.GetID())
         self.curve.HardenTransform()
         self.middle_point.SetAndObserveTransformNodeID(transform_node.GetID())
-        self.middle_point.HardenTransform() 
+        self.middle_point.HardenTransform()
 
 
     def draw(self)->None:
@@ -4286,7 +3982,7 @@ class WidgetParameter:
             inverse_matrix = vtk.vtkMatrix4x4()
 
             # Calculate invert matrix to reg curve and middle point with model not center in front of the camera
-            inverse_matrix.DeepCopy(self.getMatrix()) 
+            inverse_matrix.DeepCopy(self.getMatrix())
             inverse_matrix.Invert()
 
             self.moveCurve(inverse_matrix)
@@ -4294,12 +3990,12 @@ class WidgetParameter:
             self.viewScan()
             self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
 
-            middle_point_vector3D = self.middle_point.GetNthControlPointPositionWorld(0)
+            middle_point_vector3_d = self.middle_point.GetNthControlPointPositionWorld(0)
             
             # put the data in str type
-            vector_middle = ','.join([str(middle_point_vector3D.GetX()), str(middle_point_vector3D.GetY()), str(middle_point_vector3D.GetZ())])
+            vector_middle = ','.join([str(middle_point_vector3_d.GetX()), str(middle_point_vector3_d.GetY()), str(middle_point_vector3_d.GetZ())])
             list_curve = list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData()))
-            list_curve_str = ','.join(map(str, list_curve))   
+            list_curve_str = ','.join(map(str, list_curve))
             vector_middle="["+vector_middle+"]"
 
             if self.add_patch.isChecked():
@@ -4307,7 +4003,7 @@ class WidgetParameter:
             else:
                 index=int(self.combobox_patch.currentText)
 
-            # CLI 
+            # CLI
             self.logic = FlexRegLogic(str(self.lineedit.text),
                             int(self.lineedit_teeth_left_top.text),
                         int(self.lineedit_teeth_right_top.text),
@@ -4359,12 +4055,12 @@ class WidgetParameter:
         self.label_time.setText(f"Creation of the patch, time : {round(float(elapsed_time),2)}s")
 
         if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
-            #PLACE BACK THE CURVE AND THE MIDDLE POINT ON THE CENTER MODEL 
+            #PLACE BACK THE CURVE AND THE MIDDLE POINT ON THE CENTER MODEL
             self.label_time.setText(f"Patch created, time : {round(float(elapsed_time),2)}s")
             self.camera=True
             self.viewScan()
             self.moveCurve(self.matrix)
-            # Load the new model and display the patch 
+            # Load the new model and display the patch
             self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
             self.displaySegmentation(self.surf)
             self._processed = True  # set the flag to prevent reprocessing
@@ -4418,21 +4114,21 @@ class WidgetParameter:
 
         self.createButterfly(model_node.GetPolyData())
         
-        displayNode = model_node.GetModelDisplayNode()
-        displayNode.SetScalarVisibility(False)
-        disabledModify = displayNode.StartModify()
-        displayNode.SetActiveScalarName("Butterfly")
-        displayNode.SetScalarVisibility(True)
-        displayNode.EndModify(disabledModify)
+        display_node = model_node.GetModelDisplayNode()
+        display_node.SetScalarVisibility(False)
+        disabled_modify = display_node.StartModify()
+        display_node.SetActiveScalarName("Butterfly")
+        display_node.SetScalarVisibility(True)
+        display_node.EndModify(disabled_modify)
 
 
     def isButterflyPatchAvailable(self, model_node,name)->bool:
         """
         Check if the Butterfly patch is available for the provided model node.
         """
-        polyData = model_node
-        if polyData:
-            scalars = polyData.GetPointData().GetScalars(name)
+        poly_data = model_node
+        if poly_data:
+            scalars = poly_data.GetPointData().GetScalars(name)
             return scalars is not None
         return False
     

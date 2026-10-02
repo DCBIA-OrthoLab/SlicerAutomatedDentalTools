@@ -1,24 +1,12 @@
-import shutil
 import SimpleITK as sitk
 import numpy as np
-import argparse
 import os
 import glob
-import sys
-import csv
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("ASO_CBCT_Resample_Pre")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ASO_CBCT_Resample_Pre")
 
 Spacing = []
 
@@ -31,9 +19,9 @@ def resample_fn(img, args):
     center = args["center"]
 
     if args["linear"]:
-        InterpolatorType = sitk.sitkLinear
+        interpolator_type = sitk.sitkLinear
     else:
-        InterpolatorType = sitk.sitkNearestNeighbor
+        interpolator_type = sitk.sitkNearestNeighbor
 
     spacing = img.GetSpacing()
     size = img.GetSize()
@@ -80,14 +68,14 @@ def resample_fn(img, args):
         output_direction = img.GetDirection()
     Spacing.append(output_spacing)
 
-    resampleImageFilter = sitk.ResampleImageFilter()
-    resampleImageFilter.SetInterpolator(InterpolatorType)
-    resampleImageFilter.SetOutputSpacing(output_spacing)
-    resampleImageFilter.SetSize(output_size)
-    resampleImageFilter.SetOutputDirection(output_direction)
-    resampleImageFilter.SetOutputOrigin(output_origin)
+    resample_image_filter = sitk.ResampleImageFilter()
+    resample_image_filter.SetInterpolator(interpolator_type)
+    resample_image_filter.SetOutputSpacing(output_spacing)
+    resample_image_filter.SetSize(output_size)
+    resample_image_filter.SetOutputDirection(output_direction)
+    resample_image_filter.SetOutputOrigin(output_origin)
 
-    return resampleImageFilter.Execute(img)
+    return resample_image_filter.Execute(img)
 
 
 def Resample(img_filename, args):
@@ -193,7 +181,13 @@ def main(args):
                     writer.Execute(img)
 
             except Exception as e:
-                logger.error("Error during the resampling.")
+                # `e` was caught and dropped: a resampling that failed said
+                # "Error during the resampling." and nothing else -- not the
+                # file, not the cause -- and the loop carried on to the next
+                # scan. The name of the scan is what makes it actionable.
+                logger.error("Error during the resampling of %s: %s: %s",
+                             os.path.basename(str(fobj.get("img", "?"))),
+                             type(e).__name__, e)
 
 
 def PreASOResample(data_dir, out_dir, spacing):

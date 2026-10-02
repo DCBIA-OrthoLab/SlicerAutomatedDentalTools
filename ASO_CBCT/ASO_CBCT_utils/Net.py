@@ -1,11 +1,9 @@
-from slicer.util import pip_install, pip_uninstall
 
 #try to upgrade pip
 
 
 
 
-import torch
 
 
 import torch.nn as nn
@@ -18,20 +16,11 @@ import pytorch_lightning as pl
 
 from monai.networks.nets.densenet import DenseNet169
 
-import logging
-import sys
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("ASO_CBCT_Net")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ASO_CBCT_Net")
 
 # Different Network
 
@@ -47,12 +36,12 @@ class DenseNet(pl.LightningModule):
         return nn.functional.normalize(self.net(x), dim=1)
 
     def training_step(self, batch, batch_idx):
-        scan, directionVector, scan_path = batch
+        scan, direction_vector, scan_path = batch
         batch_size = scan.shape[0]
 
-        directionVector_hat = self(scan)
+        direction_vector_hat = self(scan)
 
-        loss = 1 - self.CosSimLoss(directionVector_hat, directionVector)
+        loss = 1 - self.CosSimLoss(direction_vector_hat, direction_vector)
         # Sum the loss over the batch
         loss = loss.sum()
         self.log("train_loss", loss, batch_size=batch_size)
@@ -60,23 +49,23 @@ class DenseNet(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        scan, directionVector, scan_path = batch
+        scan, direction_vector, scan_path = batch
         batch_size = scan.shape[0]
-        directionVector_hat = self(scan)
+        direction_vector_hat = self(scan)
 
-        loss = 1 - self.CosSimLoss(directionVector_hat, directionVector)
+        loss = 1 - self.CosSimLoss(direction_vector_hat, direction_vector)
         loss = loss.sum()
         self.log("val_loss", loss, batch_size=batch_size)
 
         return loss
 
     def test_step(self, batch, batch_idx):
-        scan, directionVector, scan_path = batch
+        scan, direction_vector, scan_path = batch
         batch_size = scan.shape[0]
 
-        directionVector_hat = self(scan)
+        direction_vector_hat = self(scan)
 
-        loss = 1 - self.CosSimLoss(directionVector_hat, directionVector)
+        loss = 1 - self.CosSimLoss(direction_vector_hat, direction_vector)
         loss = loss.sum()
         self.log("test_loss", loss, batch_size=batch_size)
 

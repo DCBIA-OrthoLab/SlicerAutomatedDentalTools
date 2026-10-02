@@ -9,6 +9,13 @@ set(MODULE_PYTHON_SCRIPTS
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
   Resources/UI/${MODULE_NAME}.ui
+
+  # The test data set behind the "Test Files" button and the self-test. Left
+  # undeclared, it existed in a development tree -- where everything is there
+  # -- and vanished from the compiled extension, where the button would have
+  # found nothing to unzip.
+  Resources/testfiles/${MODULE_NAME}/Segmentation.zip
+  Resources/testfiles/${MODULE_NAME}/ROI.mrk.zip
 )
 
 #-----------------------------------------------------------------------------

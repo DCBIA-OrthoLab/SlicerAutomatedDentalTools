@@ -421,19 +421,19 @@ qMRMLNodeComboBox:focus {
            <number>0</number>
           </property>
           <item>
-           <widget class="QPushButton" name="DownloadScanButton">
+           <widget class="QPushButton" name="TestFilesButton">
             <property name="toolTip">
-             <string>Initiate download of a test scan (~ 100MB) using an URL opened in default system browser</string>
+             <string>Download the published test scan (99 MB) and the segmentation models (2 GB) once, then fill every required field</string>
             </property>
             <property name="text">
-             <string>Download test scan</string>
+             <string>Test Files</string>
             </property>
            </widget>
           </item>
           <item>
            <widget class="QPushButton" name="DownloadButton">
             <property name="toolTip">
-             <string>Initiate download of the trained model (&gt; 1GB) using an URL opened in default system browser</string>
+             <string>Download the trained segmentation models (2 GB) and fill the model folder</string>
             </property>
             <property name="text">
              <string>Download latest models</string>

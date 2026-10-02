@@ -1,21 +1,23 @@
 #!/usr/bin/env python-real
 import sys, argparse, os, traceback, glob, json
-from pathlib import Path
 
-import sys
-import logging
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("CNE_CLI")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+from ADTLib.progress_protocol import emit_fraction
+
+logger = get_logger("CNE_CLI")
 
 logger.info("CNE_CLI.py run")
 
@@ -83,17 +85,17 @@ def extract_text(file_path: str) -> str:
 
 def main(args):
     # Arguments extraction
-    notesFolder_input = args.notesFolder_input
-    notesType = args.notesType
-    notesFolder_output = args.notesFolder_output
-    modelPath = args.modelPath
+    notes_folder_input = args.notesFolder_input
+    notes_type = args.notesType
+    notes_folder_output = args.notesFolder_output
+    model_path = args.modelPath
     
     print("<filter-start><filter-name>Clinical Notes Extraction</filter-name></filter-start>", flush=True)
     
     # ---------------------------------------------------------
     # STEP 1 : Model Path Validation
     # ---------------------------------------------------------
-    print("<filter-progress>0.05</filter-progress>", flush=True)
+    emit_fraction(0.05)
     print("<filter-comment>Validating model path...</filter-comment>", flush=True)
     
     try:
@@ -115,39 +117,39 @@ def main(args):
         sys.exit(1)
 
     # Validate that modelPath is provided and exists
-    if not modelPath or not os.path.exists(modelPath):
-        error_msg = f"ERROR: Model file not found or not provided: {modelPath}"
+    if not model_path or not os.path.exists(model_path):
+        error_msg = f"ERROR: Model file not found or not provided: {model_path}"
         logger.error(error_msg)
         sys.exit(1)
     
-    logger.info(f"Using model: {modelPath}")
+    logger.info(f"Using model: {model_path}")
     
     # ---------------------------------------------------------
     # STEP 2 : Verification
     # ---------------------------------------------------------
-    print("<filter-progress>0.10</filter-progress>", flush=True)
+    emit_fraction(0.10)
     print("<filter-comment>Scanning input folder...</filter-comment>", flush=True)
 
     files_to_process = []
     for ext in SUPPORTED_EXTENSIONS:
-        files_to_process.extend(glob.glob(os.path.join(notesFolder_input, f"*{ext}")))
+        files_to_process.extend(glob.glob(os.path.join(notes_folder_input, f"*{ext}")))
 
     if not files_to_process:
         supported = ", ".join(SUPPORTED_EXTENSIONS)
-        logger.warning(f"WARNING: No supported files ({supported}) found in {notesFolder_input}")
-        print("<filter-progress>1.00</filter-progress>", flush=True)
+        logger.warning(f"WARNING: No supported files ({supported}) found in {notes_folder_input}")
+        emit_fraction(1.00)
         sys.exit(0)
 
     # ---------------------------------------------------------
     # STEP 3 : Loading the model in memory
     # ---------------------------------------------------------
-    print("<filter-progress>0.20</filter-progress>", flush=True)
+    emit_fraction(0.20)
     print(f"<filter-comment>Loading model...</filter-comment>", flush=True)
     
     try:
-        logger.info(f"Initializing Llama engine with {modelPath}...")
+        logger.info(f"Initializing Llama engine with {model_path}...")
 
-        if notesType == "TMJ":
+        if notes_type == "TMJ":
             max_seq_length = 6144
         else:
             max_seq_length = 2048
@@ -158,9 +160,9 @@ def main(args):
 
         # Loading the model into memory with GPU support
         llm = Llama(
-            model_path=modelPath,
+            model_path=model_path,
             n_gpu_layers=-1,    # Use GPU if available
-            n_ctx=max_seq_length,      
+            n_ctx=max_seq_length,
             verbose=False       # Keep logs clean
         )
 
@@ -182,7 +184,7 @@ def main(args):
             
             try:
                 progress = 0.20 + (0.75 * (i / total_files))
-                print(f"<filter-progress>{progress:.2f}</filter-progress>", flush=True)
+                emit_fraction(progress)
                 print(f"<filter-comment>Processing {filename} ({i+1}/{total_files})...</filter-comment>", flush=True)
 
                 clinical_text = extract_text(file_path)
@@ -190,7 +192,7 @@ def main(args):
                 logger.info(f"Generating extraction for {filename}...")
 
                 messages = []
-                if notesType.upper() == "TMJ":
+                if notes_type.upper() == "TMJ":
                     messages.append({"role": "system", "content": INSTRUCTION_TMJ})
                 messages.append({"role": "user", "content": clinical_text})
 
@@ -203,13 +205,13 @@ def main(args):
                 ai_response = output['choices'][0]['message']['content'].strip()
 
                 formatted_response = ""
-                try: 
+                try:
                     start_idx = ai_response.find('{')
                     end_idx = ai_response.rfind('}') + 1
                     
                     if start_idx != -1 and end_idx != 0:
                         json_str = ai_response[start_idx:end_idx]
-                        data = json.loads(json_str) 
+                        data = json.loads(json_str)
                         
                         if "extraction" in data:
                             data = data["extraction"]
@@ -224,7 +226,7 @@ def main(args):
                     formatted_response = ai_response
 
                 output_filename = f"Extraction_{os.path.splitext(filename)[0]}.txt"
-                output_filepath = os.path.join(notesFolder_output, output_filename)
+                output_filepath = os.path.join(notes_folder_output, output_filename)
 
                 with open(output_filepath, 'w', encoding='utf-8') as f:
                     f.write(formatted_response)
@@ -246,14 +248,22 @@ def main(args):
         logger.error("ERROR: 'llama-cpp-python' library is not installed in Slicer.")
         sys.exit(1)
     except Exception as e:
-        logger.error("ERROR OCCURRED DURING INFERENCE:")
-        traceback.print_exc(file=sys.stderr)
+        # `e` was bound and never used, and the traceback went to sys.stderr
+        # alone -- which Slicer does not put in the log the operator reads. All
+        # that reached it was the header, so a CNE run that failed said
+        # "ERROR OCCURRED DURING INFERENCE:" and nothing else, on every machine
+        # and for every cause. Measured on 2026-09-29: the load of a 7B GGUF
+        # failed identically on main and on adt/integration, and neither run
+        # could say why.
+        logger.error("ERROR OCCURRED DURING INFERENCE: %s: %s",
+                     type(e).__name__, e)
+        logger.error("%s", traceback.format_exc())
         sys.exit(1)
 
     # ---------------------------------------------------------
     # FINISH : Progress to 100%
     # ---------------------------------------------------------
-    print("<filter-progress>1.00</filter-progress>", flush=True)
+    emit_fraction(1.00)
     print("<filter-comment>All files processed successfully!</filter-comment>", flush=True)
 
     print("<filter-end><filter-name>Clinical Notes Extraction</filter-name></filter-end>", flush=True)

@@ -1,7 +1,14 @@
-import torch
 import numpy as np
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from ADTLib.env.cuda import preferred_device
+
+# preferred_device rather than `cuda if is_available()`: that test answers for
+# the driver and the runtime, not for the wheel. On a GPU the installed torch
+# carries no kernels for it says True, every launch afterwards fails, and the
+# agents reported the result as "landmark not found" -- seven times out of
+# seven, with nothing naming the cause. The probe runs one real kernel and
+# falls back to the CPU, slowly but visibly, when it cannot.
+DEVICE = preferred_device()
 
 GROUP_LABELS = {
     'CB': ['Ba', 'S', 'N', 'RPo', 'LPo', 'RFZyg', 'LFZyg', 'C2', 'C3', 'C4'],

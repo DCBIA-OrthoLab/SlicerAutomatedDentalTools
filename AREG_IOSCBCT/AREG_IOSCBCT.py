@@ -2,10 +2,7 @@
 
 import os
 import sys
-import shutil
 import argparse
-import platform
-import logging
 
 import pyvista as pv
 import SimpleITK as sitk
@@ -16,21 +13,22 @@ import vtk
 from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation
 
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("AREG_IOSCBCT")
-logger.setLevel(logging.INFO)
+from ADTLib.logging_setup import get_logger
+import re
 
-logger.propagate = False
-
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("AREG_IOSCBCT")
 
 # vtkLandmarkTransform needs as many source points as target points: given
 # anything else it logs an error on stderr and returns the identity, so the
@@ -613,11 +611,11 @@ def _point_to_point_step(source, target):
     target_center = np.mean(target, axis=0)
 
     H = (source - source_center).T @ (target - target_center)
-    U, _, Vt = np.linalg.svd(H)
-    R = Vt.T @ U.T
+    U, _, vt = np.linalg.svd(H)
+    R = vt.T @ U.T
     if np.linalg.det(R) < 0:
-        Vt[-1, :] *= -1
-        R = Vt.T @ U.T
+        vt[-1, :] *= -1
+        R = vt.T @ U.T
 
     delta = np.eye(4)
     delta[:3, :3] = R
@@ -803,10 +801,10 @@ def run_icp_point_to_plane(moving_mesh, fixed_mesh, max_dist=1.5, label=""):
     return final_mesh, transformation, quality
 
 def save_registered_ios(registered_vtk_upper,registered_vtk_lower,output_path,num_patient):
-    file_path_U = os.path.join(output_path,f"{num_patient}_Reg_U.vtk")
-    registered_vtk_upper.save(file_path_U)
-    file_path_L = os.path.join(output_path,f"{num_patient}_Reg_L.vtk")
-    registered_vtk_lower.save(file_path_L)
+    file_path_u = os.path.join(output_path,f"{num_patient}_Reg_U.vtk")
+    registered_vtk_upper.save(file_path_u)
+    file_path_l = os.path.join(output_path,f"{num_patient}_Reg_L.vtk")
+    registered_vtk_lower.save(file_path_l)
 
 def apply_matrix_and_save_landmarks(aligned_upper_lm,aligned_lower_lm,mat_u,mat_l,json_output_path,num_patient,landmarks_json_cbct_U,landmarks_json_cbct_L,labels_u=None,labels_l=None):
     # Apply transformations using NumPy (no Open3D dependency)
@@ -820,17 +818,17 @@ def apply_matrix_and_save_landmarks(aligned_upper_lm,aligned_lower_lm,mat_u,mat_
     aligned_icp_lm_lower_homo = np.hstack([aligned_lower_lm, np.ones((aligned_lower_lm.shape[0], 1))])
     aligned_icp_lm_lower = (aligned_icp_lm_lower_homo @ mat_l.T)[:, :3]
 
-    json_output_path_IOS_U = os.path.join(json_output_path,f"{num_patient}_lm_Reg_U.mrk.json")
-    json_output_path_IOS_L = os.path.join(json_output_path,f"{num_patient}_lm_Reg_L.mrk.json")
+    json_output_path_ios_u = os.path.join(json_output_path,f"{num_patient}_lm_Reg_U.mrk.json")
+    json_output_path_ios_l = os.path.join(json_output_path,f"{num_patient}_lm_Reg_L.mrk.json")
 
     _write_positions(landmarks_json_cbct_U, aligned_icp_lm_upper, labels_u)
 
-    with open(json_output_path_IOS_U, "w") as file:
+    with open(json_output_path_ios_u, "w") as file:
         json.dump(landmarks_json_cbct_U, file,indent=4, ensure_ascii=False)
 
     _write_positions(landmarks_json_cbct_L, aligned_icp_lm_lower, labels_l)
 
-    with open(json_output_path_IOS_L, "w") as file:
+    with open(json_output_path_ios_l, "w") as file:
         json.dump(landmarks_json_cbct_L, file,indent=4, ensure_ascii=False)
 
 def get_landmarks (json_path):
@@ -967,12 +965,12 @@ def surface_threshold(image_array, ijk_to_lps, landmarks, patient_id=""):
     return level
 
 
-def load_data(scan_path,json_path_CBCT_U,json_path_CBCT_L,json_path_IOS_U,json_path_IOS_L,patient_id=""):
+def load_data(scan_path,json_path_cbct_u,json_path_cbct_l,json_path_ios_u,json_path_ios_l,patient_id=""):
     
-    lm_cbct_U = get_landmarks(json_path_CBCT_U)
-    lm_cbct_L = get_landmarks(json_path_CBCT_L)
-    lm_ios_U = get_landmarks(json_path_IOS_U)
-    lm_ios_L = get_landmarks(json_path_IOS_L)
+    lm_cbct_u = get_landmarks(json_path_cbct_u)
+    lm_cbct_l = get_landmarks(json_path_cbct_l)
+    lm_ios_u = get_landmarks(json_path_ios_u)
+    lm_ios_l = get_landmarks(json_path_ios_l)
 
     image = sitk.ReadImage(scan_path)
     image_array = sitk.GetArrayFromImage(image)
@@ -986,16 +984,16 @@ def load_data(scan_path,json_path_CBCT_U,json_path_CBCT_L,json_path_IOS_U,json_p
 
     # Both arches: the level describes the scan, not one jaw, and reading it off
     # twelve landmarks rather than six makes the median that much steadier.
-    arch_landmarks = [a for a in (lm_cbct_U, lm_cbct_L) if a is not None and len(a)]
+    arch_landmarks = [a for a in (lm_cbct_u, lm_cbct_l) if a is not None and len(a)]
     all_landmarks = np.vstack(arch_landmarks) if arch_landmarks else np.empty((0, 3))
     level = surface_threshold(image_array, ijk_to_lps, all_landmarks, patient_id)
 
     # Judged here, where the voxels are already in hand: the array is gigabytes
     # and is dropped on the way out of this function.
     on_enamel = {
-        "Upper": _landmarks_on_enamel(image_array, ijk_to_lps, json_path_CBCT_U,
+        "Upper": _landmarks_on_enamel(image_array, ijk_to_lps, json_path_cbct_u,
                                       level, "Upper", patient_id),
-        "Lower": _landmarks_on_enamel(image_array, ijk_to_lps, json_path_CBCT_L,
+        "Lower": _landmarks_on_enamel(image_array, ijk_to_lps, json_path_cbct_l,
                                       level, "Lower", patient_id),
     }
 
@@ -1004,7 +1002,7 @@ def load_data(scan_path,json_path_CBCT_U,json_path_CBCT_L,json_path_IOS_U,json_p
 
     cbct_surface = cbct_raw_mesh.transform(ijk_to_lps, inplace=False)
 
-    return lm_cbct_U,lm_cbct_L,lm_ios_U,lm_ios_L,cbct_surface,on_enamel
+    return lm_cbct_u,lm_cbct_l,lm_ios_u,lm_ios_l,cbct_surface,on_enamel
 
 def getPatients(ios_folder, cbct_folder, ios_lm_folder, cbct_lm_folder):
     """
@@ -1013,7 +1011,6 @@ def getPatients(ios_folder, cbct_folder, ios_lm_folder, cbct_lm_folder):
     
     Uses pattern matching to identify timepoints (T0, T1, T2) and jaws (U/u, L/l)
     """
-    import re
     
     patients = {}
     
@@ -1181,7 +1178,7 @@ def main(args):
         try:
             # 1. LOAD DATA
             logger.debug(f"Loading data for patient {patient_id}")
-            lm_cbct_U, lm_cbct_L, lm_ios_U, lm_ios_L, cbct_surface, on_enamel = load_data(
+            lm_cbct_u, lm_cbct_l, lm_ios_u, lm_ios_l, cbct_surface, on_enamel = load_data(
                 patient_data["cbct"],
                 patient_data["cbct_lm_upper"],
                 patient_data["cbct_lm_lower"],
@@ -1191,9 +1188,9 @@ def main(args):
             )
             
             # Keep only the landmarks present on both sides, in the same order
-            labels_U, lm_cbct_U, lm_ios_U = _pair_landmarks(
+            labels_U, lm_cbct_u, lm_ios_u = _pair_landmarks(
                 patient_data["cbct_lm_upper"], patient_data["ios_lm_upper"], "Upper", patient_id)
-            labels_L, lm_cbct_L, lm_ios_L = _pair_landmarks(
+            labels_L, lm_cbct_l, lm_ios_l = _pair_landmarks(
                 patient_data["cbct_lm_lower"], patient_data["ios_lm_lower"], "Lower", patient_id)
 
             # Load IOS meshes (VTK files)
@@ -1205,15 +1202,15 @@ def main(args):
             
             # 2. ALIGN BY LANDMARKS
             logger.debug(f"Aligning IOS upper jaw by landmarks")
-            aligned_ios_upper, mat_ios_upper, aligned_lms_ios_upper, kept_U = align_by_landmarks(
-                ios_upper_mesh, lm_ios_U, lm_cbct_U, "Upper", patient_id, labels_U,
+            aligned_ios_upper, mat_ios_upper, aligned_lms_ios_upper, kept_u = align_by_landmarks(
+                ios_upper_mesh, lm_ios_u, lm_cbct_u, "Upper", patient_id, labels_U,
                 on_enamel.get("Upper")
             )
             logger.info(f"IOS Upper landmarks after alignment:\n{aligned_lms_ios_upper}")
             
             logger.debug(f"Aligning IOS lower jaw by landmarks")
-            aligned_ios_lower, mat_ios_lower, aligned_lms_ios_lower, kept_L = align_by_landmarks(
-                ios_lower_mesh, lm_ios_L, lm_cbct_L, "Lower", patient_id, labels_L,
+            aligned_ios_lower, mat_ios_lower, aligned_lms_ios_lower, kept_l = align_by_landmarks(
+                ios_lower_mesh, lm_ios_l, lm_cbct_l, "Lower", patient_id, labels_L,
                 on_enamel.get("Lower")
             )
             logger.debug(f"IOS Lower landmarks after alignment shape: {aligned_lms_ios_lower.shape}")
@@ -1227,9 +1224,9 @@ def main(args):
             # Normals over the whole surface once, rather than once per arch
             # inside each ICP, and the crop is then a slice of those arrays.
             cbct_target = _Target.FromMesh(cbct_surface, f"{patient_id} / CBCT")
-            cbct_upper = cbct_target.Around(lm_cbct_U, CBCT_CROP_MARGIN_MM,
+            cbct_upper = cbct_target.Around(lm_cbct_u, CBCT_CROP_MARGIN_MM,
                                             f"{patient_id} / Upper")
-            cbct_lower = cbct_target.Around(lm_cbct_L, CBCT_CROP_MARGIN_MM,
+            cbct_lower = cbct_target.Around(lm_cbct_l, CBCT_CROP_MARGIN_MM,
                                             f"{patient_id} / Lower")
 
             logger.debug(f"Running ICP for upper jaw")
@@ -1246,10 +1243,10 @@ def main(args):
             logger.info(f"ICP registration completed for patient {patient_id}")
 
             # The one check on the ICP that the ICP does not grade itself.
-            _report_landmark_drift(aligned_lms_ios_upper, lm_cbct_U,
-                                   mat_icp_upper, "Upper", patient_id, kept_U)
-            _report_landmark_drift(aligned_lms_ios_lower, lm_cbct_L,
-                                   mat_icp_lower, "Lower", patient_id, kept_L)
+            _report_landmark_drift(aligned_lms_ios_upper, lm_cbct_u,
+                                   mat_icp_upper, "Upper", patient_id, kept_u)
+            _report_landmark_drift(aligned_lms_ios_lower, lm_cbct_l,
+                                   mat_icp_lower, "Lower", patient_id, kept_l)
 
             # An ICP that matched nothing still returns a matrix, and writing it
             # out put an untouched IOS in the results folder under the name of a
@@ -1275,16 +1272,16 @@ def main(args):
             
             # Load landmark JSON files to update them
             with open(patient_data["cbct_lm_upper"], 'r') as f:
-                landmarks_json_cbct_U = json.load(f)
+                landmarks_json_cbct_u = json.load(f)
             with open(patient_data["cbct_lm_lower"], 'r') as f:
-                landmarks_json_cbct_L = json.load(f)
+                landmarks_json_cbct_l = json.load(f)
             
             # Save registered landmarks
             apply_matrix_and_save_landmarks(
                 aligned_lms_ios_upper, aligned_lms_ios_lower,
                 mat_icp_upper, mat_icp_lower,
                 output_dir, patient_id,
-                landmarks_json_cbct_U, landmarks_json_cbct_L,
+                landmarks_json_cbct_u, landmarks_json_cbct_l,
                 labels_U, labels_L
             )
             registered += 1

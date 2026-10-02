@@ -1,24 +1,12 @@
 # Utilities for generating landmark JSON outputs and label translation
 import json
-import logging
 import os
-import sys
 
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("ALI_IOS_IO")
-logger.setLevel(logging.INFO)
+from ADTLib.logging_setup import get_logger
+import re
 
-logger.propagate = False
-
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("ALI_IOS_IO")
 
 def GenControlPoint(group_data, selected_lm):
     """Generate control points for landmarks with error handling."""
@@ -217,7 +205,6 @@ def ScanJawFromName(path):
     renumbering an arch on a guess is worse than leaving it alone. Same refusal
     as AREG_IOSCBCT.extract_jaw, which reads the same files further down.
     """
-    import re
 
     name = os.path.basename(path)
     upper = re.search(r'(?:^|_)(?:u|upper|max|mx)(?=_|\.|$)', name, re.IGNORECASE)

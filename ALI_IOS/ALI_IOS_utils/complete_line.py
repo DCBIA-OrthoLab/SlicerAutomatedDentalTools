@@ -23,23 +23,14 @@
 # scans it was picked on. A straight line from the last two points was tried
 # and is worse everywhere once snapping is on; so is reading the point off its
 # mirror image across the arch, by a long way.
-import logging
-import sys
 
 import numpy as np
 import vtk
 from vtk.util.numpy_support import vtk_to_numpy
 
-logger = logging.getLogger("ALI_IOS_complete")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ALI_IOS_complete")
 
 MGL_ORDER = ['LL6MG', 'LL5MG', 'LL4MG', 'LL3MG', 'LL2MG', 'LL1MG', 'L0MG',
              'LR1MG', 'LR2MG', 'LR3MG', 'LR4MG', 'LR5MG', 'LR6MG']

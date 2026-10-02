@@ -26,8 +26,6 @@
 # arch and a spaced one get their own bound. It is deliberately generous: the
 # aim is an anatomical prior, not a measurement, and the point of this is to
 # exclude the neighbour's answer, not to second-guess the network's.
-import logging
-import sys
 
 import numpy as np
 
@@ -36,16 +34,9 @@ import numpy as np
 MGL_ORDER = ['LL6MG', 'LL5MG', 'LL4MG', 'LL3MG', 'LL2MG', 'LL1MG', 'L0MG',
              'LR1MG', 'LR2MG', 'LR3MG', 'LR4MG', 'LR5MG', 'LR6MG']
 
-logger = logging.getLogger("ALI_IOS_patch")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ALI_IOS_patch")
 
 
 def ToothPitch(region_ids, vertices, minimum_teeth=4):

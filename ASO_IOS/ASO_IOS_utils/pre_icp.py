@@ -1,43 +1,16 @@
 import numpy as np
 import vtk
-from vtk.util.numpy_support import vtk_to_numpy
 from ASO_IOS_utils.icp import vtkMeanTeeth
 from ASO_IOS_utils.transformation import RotationMatrix, TransformSurf
-import logging
-import sys
+from ADTLib.geometry import make_vector  # noqa: F401  (re-exported)
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("ASO_IOS_pre_icp")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ASO_IOS_pre_icp")
 
 
 cross = lambda a, b: np.cross(a, b)
-
-
-def make_vector(points2, point1):
-    perpen = points2[1] - points2[0]
-    perpen = perpen / np.linalg.norm(perpen)
-
-    vector1 = points2[0] - point1
-    vector1 = vector1 / np.linalg.norm(vector1)
-
-    vector2 = points2[1] - point1
-    vector2 = vector2 / np.linalg.norm(vector2)
-
-    normal = cross(vector1, vector2)
-    normal = normal / np.linalg.norm(normal)
-
-    direction = cross(normal, perpen)
-    direction = direction / np.linalg.norm(direction)
-    return normal, direction
 
 
 def organizeLandmark(landmarks: list):
@@ -45,7 +18,7 @@ def organizeLandmark(landmarks: list):
 
     out = {"left": str, "middle": [], "right": str}
 
-    toothTonumber = {
+    tooth_tonumber = {
         "UR8": "1",
         "UR7": "2",
         "UR6": "3",
@@ -108,12 +81,12 @@ def PrePreAso(source, target, landmarks):
     left, middle, right = organizeLandmark(landmarks)
 
     if len(landmarks) == 4:
-        meanTeeth = vtkMeanTeeth(
+        mean_teeth = vtkMeanTeeth(
             [int(left), int(middle[0]), int(middle[1]), int(right)],
             property="Universal_ID",
         )
-        mean_source = meanTeeth(source)
-        mean_target = meanTeeth(target)
+        mean_source = mean_teeth(source)
+        mean_target = mean_teeth(target)
 
         left_source, middle_source, right_source = (
             mean_source[left],
@@ -127,11 +100,11 @@ def PrePreAso(source, target, landmarks):
         )
 
     else:
-        meanTeeth = vtkMeanTeeth(
+        mean_teeth = vtkMeanTeeth(
             [int(left), int(middle[0]), int(right)], property="Universal_ID"
         )
-        mean_source = meanTeeth(source)
-        mean_target = meanTeeth(target)
+        mean_source = mean_teeth(source)
+        mean_target = mean_teeth(target)
 
         left_source, middle_source, right_source = (
             mean_source[left],
@@ -144,8 +117,8 @@ def PrePreAso(source, target, landmarks):
             mean_target[right],
         )
 
-    mean_source = meanTeeth(source)
-    mean_target = meanTeeth(target)
+    mean_source = mean_teeth(source)
+    mean_target = mean_teeth(target)
 
     normal_source, direction_source = make_vector(
         [right_source, left_source], middle_source

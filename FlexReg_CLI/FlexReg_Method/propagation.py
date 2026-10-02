@@ -1,23 +1,12 @@
-from typing import Any
 import torch
-from collections import deque
 import vtk
 import numpy as np
 
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("FlexReg_CLI_propagation")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("FlexReg_CLI_propagation")
 
 
 def Difference(t1,t2):
@@ -42,7 +31,7 @@ def Neighbours(arg_point,F):
 def GetNeighbors(vtkdata, pids_tensor):
     all_neighbor_pids = []
 
-    # Convertir le tensor en une liste d'entiers
+    # Convert the tensor into a list of integers
     pids_list = pids_tensor.tolist()
 
     for pid in pids_list:
@@ -57,7 +46,7 @@ def GetNeighbors(vtkdata, pids_tensor):
                 if pid_inner != pid:
                     all_neighbor_pids.append(pid_inner)
 
-    # Rendre unique tous les indices de voisins
+    # Make every neighbour index unique
     unique_neighbors = np.unique(all_neighbor_pids).tolist()
     return torch.tensor(unique_neighbors).cuda().to(torch.int64)
 
@@ -78,7 +67,7 @@ def Dilation(arg_point,F,texture,surf):
 
     nmb_treatment = 1000
 
-    while dif_queue :  # La boucle continue tant que l'une des files d'attente n'est pas vide
+    while dif_queue :  # The loop runs as long as one of the queues is not empty
         new_neighbour_batch = []
         while dif_queue:
             current_dif = dif_queue.pop(0)

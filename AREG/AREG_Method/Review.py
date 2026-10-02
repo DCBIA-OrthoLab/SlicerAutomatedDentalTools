@@ -349,8 +349,8 @@ class ReviewSession:
         # oriented CBCT carry no reference folder at all: there the scan under
         # review is itself the volume, and asking the catalogue for permission
         # left exactly those pauses with an empty 3D view.
-        onScreen = reference if _isVolume(reference) else moving
-        self._showVolumeRendering(onScreen)
+        on_screen = reference if _isVolume(reference) else moving
+        self._showVolumeRendering(on_screen)
 
         self._layout(item)
         return True

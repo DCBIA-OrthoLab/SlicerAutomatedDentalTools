@@ -3,20 +3,11 @@ import os
 import SimpleITK as sitk
 import numpy as np
 
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_CLI_utils_normalize")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("MRI2CBCT_CLI_utils_normalize")
 
 def compute_thresholds(image, lower_percentile=10, upper_percentile=90):
     """
@@ -88,8 +79,8 @@ def normalize(input_folder, output_folder,upper_percentile,lower_percentile,min_
 
 def main():
     parser = argparse.ArgumentParser(description='Enhance contrast of NIfTI images and save with a new suffix.')
-    parser.add_argument('--input_folder', type=str, help='Path to the input folder containing .nii.gz images.', default="/home/lucia/Documents/Gaelle/Data/MultimodelReg/Segmentation/a3_Registration_closer_all/b0_CBCT")
-    parser.add_argument('--output_folder', type=str, help='Path to the output folder to save normalized images.', default="/home/lucia/Documents/Gaelle/Data/MultimodelReg/Segmentation/a3_Registration_closer_all/b2_CBCT_norm")
+    parser.add_argument('--input_folder', type=str, help='Path to the input folder containing .nii.gz images.', required=True)
+    parser.add_argument('--output_folder', type=str, help='Path to the output folder to save normalized images.', required=True)
     parser.add_argument('--upper_percentile', type=int, help='upper percentile to apply, choose between 0 and 100',default=95)
     parser.add_argument('--lower_percentile', type=int, help='lower percentile to apply, choose between 0 and 100',default=10)
     parser.add_argument('--max_norm', type=int, help='max value after normalization',default=75)

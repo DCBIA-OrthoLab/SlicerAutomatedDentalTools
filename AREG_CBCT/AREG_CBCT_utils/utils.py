@@ -9,32 +9,20 @@
 8888888 888       888 888         "Y88888P"  888   T88b     888      "Y8888P"
 """
 import numpy as np
-import time
-import sys
-import logging
-from glob import iglob
 import os, json
 import SimpleITK as sitk
 
 
 import dicom2nifti
 import itk
+from ADTLib.naming import patient_id as read_patient_id
 
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("AREG_CBCT_utils")
-logger.setLevel(logging.INFO)
+from ADTLib.logging_setup import get_logger
+from ADTLib.io.landmarks import WriteJson  # noqa: F401  (re-exported)
+from ADTLib.io.fs import search as search_files
 
-logger.propagate = False
-
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("AREG_CBCT_utils")
 
 """
 8888888888 8888888 888      8888888888  .d8888b.
@@ -79,11 +67,12 @@ def GetListFiles(folder_path, file_extension):
 # in the way.
 #
 # Accepting any _T<digit> means replacing the split chain with
-# re.sub(r"_[Tt]\d+$", "", ...) here AND in every other copy of it: grep for
-# TIMEPOINT-SUFFIX to get the 10 sites, spread over AREG, AREG_CBCT, AREG_IOS,
-# AREG_IOSCBCT, ASO, MRI2CBCT and VFACE. Watch the order of the splits while
-# doing it - several chains rely on a longer marker being cut before a shorter
-# one that would otherwise match inside it.
+# re.sub(r"_[Tt]\d+$", "", ...) in ADTLib.naming.patient_id, which the six
+# identical chains now share, AND in the four sites that still carry a chain of
+# their own with a different marker list: ASO_Method/CBCT.py,
+# ASO_CBCT_utils/utils.py, AREG_Method/IOSCBCT.py and MRI2CBCT_CLI_utils/
+# TMJ_crop.py. The order of the markers is load-bearing and is now a property
+# of ADTLib.naming, checked by its test.
 #
 # Left as is deliberately: the supported answer today is to rename the inputs
 # to _T1/_T2, and a rewrite touches two modules (ASO, MRI2CBCT) that nothing
@@ -98,22 +87,7 @@ def GetPatients(folder_path, time_point="T1", segmentationType=None, mask_folder
 
     for file in file_list:
         basename = os.path.basename(file)
-        patient = (
-            basename.split("_Scan")[0]
-            .split("_scan")[0]
-            .split("_Or")[0]
-            .split("_OR")[0]
-            .split("_MAND")[0]
-            .split("_MD")[0]
-            .split("_MAX")[0]
-            .split("_MX")[0]
-            .split("_CB")[0]
-            .split("_lm")[0]
-            .split("_T2")[0]
-            .split("_T1")[0]
-            .split("_Cl")[0]
-            .split(".")[0]
-        )
+        patient = read_patient_id(basename)
 
         if patient not in patients:
             patients[patient] = {}
@@ -136,27 +110,11 @@ def GetPatients(folder_path, time_point="T1", segmentationType=None, mask_folder
         search_folder = mask_folder if mask_folder else folder_path
         mask_files = GetListFiles(search_folder, file_extension)
 
-        # TIMEPOINT-SUFFIX: only _T1/_T2 are stripped here, so _T3/_T4 inputs break
-        # patient pairing. See the full note above GetPatients in
-        # AREG_CBCT/AREG_CBCT_utils/utils.py before changing this.
+        # TIMEPOINT-SUFFIX: the chain that builds this id now lives in
+        # ADTLib.naming, together with the note on what it would take.
         for file in mask_files:
             basename = os.path.basename(file)
-            patient = (
-                basename.split("_Scan")[0]
-                .split("_scan")[0]
-                .split("_Or")[0]
-                .split("_OR")[0]
-                .split("_MAND")[0]
-                .split("_MD")[0]
-                .split("_MAX")[0]
-                .split("_MX")[0]
-                .split("_CB")[0]
-                .split("_lm")[0]
-                .split("_T2")[0]
-                .split("_T1")[0]
-                .split("_Cl")[0]
-                .split(".")[0]
-            )
+            patient = read_patient_id(basename)
             if True in [kw in basename.lower() for kw in target_keywords]:
                 if patient not in patients:
                     patients[patient] = {}
@@ -286,36 +244,8 @@ def ModifiedDictPatients(patients, todo_str):
 
 
 def search(path, *args):
-    """
-    Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
-
-    Example:
-    args = ('json',['.nii.gz','.nrrd'])
-    return:
-        {
-            'json' : ['path/a.json', 'path/b.json','path/c.json'],
-            '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
-            '.nrrd.gz' : ['path/c.nrrd']
-        }
-    """
-    arguments = []
-    for arg in args:
-        if type(arg) == list:
-            arguments.extend(arg)
-        else:
-            arguments.append(arg)
-    return {
-        key: sorted(
-            [
-                i
-                for i in iglob(
-                    os.path.normpath("/".join([path, "**", "*"])), recursive=True
-                )
-                if i.endswith(key)
-            ]
-        )
-        for key in arguments
-    }
+    """Delegated to ADTLib. This site sorts: the patient order depends on it."""
+    return search_files(path, *args, sort=True)
 
 
 """
@@ -362,58 +292,6 @@ def GenControlePoint(landmarks):
     return lm_lst
 
 
-def WriteJson(landmarks, out_path):
-    false = False
-    true = True
-    file = {
-        "@schema": "https://raw.githubusercontent.com/slicer/slicer/master/Modules/Loadable/Markups/Resources/Schema/markups-schema-v1.0.0.json#",
-        "markups": [
-            {
-                "type": "Fiducial",
-                "coordinateSystem": "LPS",
-                "locked": false,
-                "labelFormat": "%N-%d",
-                "controlPoints": GenControlePoint(landmarks),
-                "measurements": [],
-                "display": {
-                    "visibility": false,
-                    "opacity": 1.0,
-                    "color": [0.4, 1.0, 0.0],
-                    "color": [0.5, 0.5, 0.5],
-                    "selectedColor": [
-                        0.26666666666666669,
-                        0.6745098039215687,
-                        0.39215686274509806,
-                    ],
-                    "propertiesLabelVisibility": false,
-                    "pointLabelsVisibility": true,
-                    "textScale": 2.0,
-                    "glyphType": "Sphere3D",
-                    "glyphScale": 2.0,
-                    "glyphSize": 5.0,
-                    "useGlyphScale": true,
-                    "sliceProjection": false,
-                    "sliceProjectionUseFiducialColor": true,
-                    "sliceProjectionOutlinedBehindSlicePlane": false,
-                    "sliceProjectionColor": [1.0, 1.0, 1.0],
-                    "sliceProjectionOpacity": 0.6,
-                    "lineThickness": 0.2,
-                    "lineColorFadingStart": 1.0,
-                    "lineColorFadingEnd": 10.0,
-                    "lineColorFadingSaturation": 1.0,
-                    "lineColorFadingHueOffset": 0.0,
-                    "handlesInteractive": false,
-                    "snapMode": "toVisibleSurface",
-                },
-            }
-        ],
-    }
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(file, f, ensure_ascii=False, indent=4)
-
-    f.close
-
-
 def LoadOnlyLandmarks(ldmk_path, ldmk_list=None):
     """
     Load landmarks from json file without using the img as input
@@ -449,7 +327,10 @@ def LoadOnlyLandmarks(ldmk_path, ldmk_list=None):
             # lm_coord = ((lm_ph_coord - origin) / spacing).astype(np.float16)
             lm_coord = lm_ph_coord.astype(np.float64)
             landmarks[markup["label"]] = lm_coord
-        except:
+        except (KeyError, IndexError, TypeError):
+            # A control point with no readable position is skipped. Say so:
+            # a missing landmark shifts the registration without a word.
+            logger.debug("Unreadable control point in %s", ldmk_path, exc_info=True)
             continue
     if ldmk_list is not None:
         return {key: landmarks[key] for key in ldmk_list if key in landmarks.keys()}
@@ -654,7 +535,7 @@ def VoxelBasedRegistration(
         # ===== PERFORM REGISTRATION =====
         try:
             logger.debug("Starting Elastix registration")
-            TransformObj_Fine = ElastixReg(
+            transform_obj_fine = ElastixReg(
                 fixed_image_masked, moving_image, initial_transform=None
             )
             logger.info("Elastix registration completed")
@@ -665,8 +546,8 @@ def VoxelBasedRegistration(
         # ===== EXTRACT TRANSFORMATION =====
         try:
             logger.debug("Extracting transformation matrix")
-            transforms_Fine = MatrixRetrieval(TransformObj_Fine)
-            Transforms = [transforms_Fine]
+            transforms_fine = MatrixRetrieval(transform_obj_fine)
+            transforms = [transforms_fine]
             logger.debug("Transformation matrix extracted")
         except Exception as e:
             logger.error(f"Error extracting transformation matrix: {e}")
@@ -675,7 +556,7 @@ def VoxelBasedRegistration(
         # ===== COMPUTE FINAL MATRIX =====
         try:
             logger.debug("Computing final transformation matrix")
-            transform = ComputeFinalMatrix(Transforms)
+            transform = ComputeFinalMatrix(transforms)
             logger.info("Final transformation matrix computed")
         except Exception as e:
             logger.error(f"Error computing final transformation matrix: {e}")
@@ -827,19 +708,19 @@ def convertdicom2nifti(input_folder, output_folder=None):
         raise
 
 
-def MatrixRetrieval(TransformParameterMapObject):
+def MatrixRetrieval(transform_parameter_map_object):
     """Retrieve the matrix from the transform parameter map"""
-    ParameterMap = TransformParameterMapObject.GetParameterMap(0)
+    parameter_map = transform_parameter_map_object.GetParameterMap(0)
 
-    if ParameterMap["Transform"][0] == "AffineTransform":
-        matrix = [float(i) for i in ParameterMap["TransformParameters"]]
+    if parameter_map["Transform"][0] == "AffineTransform":
+        matrix = [float(i) for i in parameter_map["TransformParameters"]]
         # Convert to a sitk transform
         transform = sitk.AffineTransform(3)
         transform.SetParameters(matrix)
 
-    elif ParameterMap["Transform"][0] == "EulerTransform":
-        A = [float(i) for i in ParameterMap["TransformParameters"][0:3]]
-        B = [float(i) for i in ParameterMap["TransformParameters"][3:6]]
+    elif parameter_map["Transform"][0] == "EulerTransform":
+        A = [float(i) for i in parameter_map["TransformParameters"][0:3]]
+        B = [float(i) for i in parameter_map["TransformParameters"][3:6]]
         # Convert to a sitk transform
         transform = sitk.Euler3DTransform()
         transform.SetRotation(angleX=A[0], angleY=A[1], angleZ=A[2])
@@ -850,21 +731,21 @@ def MatrixRetrieval(TransformParameterMapObject):
 
 def ComputeFinalMatrix(Transforms):
     """Compute the final matrix from the list of matrices and translations"""
-    Rotation, Translation = [], []
+    rotation, translation = [], []
     for i in range(len(Transforms)):
-        Rotation.append(Transforms[i].GetMatrix())
-        Translation.append(Transforms[i].GetTranslation())
+        rotation.append(Transforms[i].GetMatrix())
+        translation.append(Transforms[i].GetTranslation())
 
     # Compute the final rotation matrix
-    final_rotation = np.reshape(np.asarray(Rotation[0]), (3, 3))
-    for i in range(1, len(Rotation)):
-        final_rotation = final_rotation @ np.reshape(np.asarray(Rotation[i]), (3, 3))
+    final_rotation = np.reshape(np.asarray(rotation[0]), (3, 3))
+    for i in range(1, len(rotation)):
+        final_rotation = final_rotation @ np.reshape(np.asarray(rotation[i]), (3, 3))
 
     # Compute the final translation matrix
-    final_translation = np.reshape(np.asarray(Translation[0]), (1, 3))
-    for i in range(1, len(Translation)):
+    final_translation = np.reshape(np.asarray(translation[0]), (1, 3))
+    for i in range(1, len(translation)):
         final_translation = final_translation + np.reshape(
-            np.asarray(Translation[i]), (1, 3)
+            np.asarray(translation[i]), (1, 3)
         )
 
     # Create the final transform

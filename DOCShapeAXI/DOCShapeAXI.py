@@ -10,51 +10,41 @@ import threading
 import signal
 import textwrap
 
-from pathlib import Path
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+# This has to run before the first import of anything local, not just before
+# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+from ADTLib.logging_setup import get_logger
+
+from ADTLib.format import format_elapsed, elapsed_since
+from ADTLib.theming import apply_dark_mode, update_line_edit_and_combo_box
+from ADTLib.env.conda import (
+    check_pythonpath, conda_quote, give_pythonpath,
+    init_conda as init_conda_call, check_lib_wsl as wsl_libraries_present,
+    windows_to_linux_path as windows_to_linux_path_shared)
+
 #
 # DOCShapeAXI
 #
 
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("DOCShapeAXI")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("DOCShapeAXI")
 
 
 
 def condaQuote(conda, value):
-    """Quote `value` only if this SlicerConda joins the command into a shell line.
-
-    Two SlicerConda versions are in circulation and they want the opposite of
-    each other. The older one builds a bash line, where a path holding a space -
-    and the ';' inside a `python -c` body - has to be quoted or the line falls
-    apart. The newer one hands conda an argv list, where nothing ever strips
-    those quotes: they reach PYTHONPATH and argv literally and break exactly what
-    they were meant to protect. Reading the installed source tests the property
-    that decides it, rather than guessing from a version number.
-
-    Only commands going to SlicerConda come through here. The copies of
-    condaRunCommand this extension carries of its own always build a shell line,
-    so what they are given keeps its quotes unconditionally.
-    """
-    try:
-        import inspect
-
-        shell = "shell=True" in inspect.getsource(conda.condaRunCommand)
-    except Exception:
-        # Source unreadable: assume the argv contract, which is the one shipping
-        # now, rather than emitting quotes that would land literally.
-        shell = False
-    return f'"{value}"' if shell else str(value)
+    """Delegated to ADTLib; kept as a module function for the call sites."""
+    return conda_quote(conda, value)
 
 
 class DOCShapeAXI(ScriptedLoadableModule):
@@ -64,37 +54,37 @@ class DOCShapeAXI(ScriptedLoadableModule):
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "DOCShapeAXI" 
+    self.parent.title = "DOCShapeAXI"
     self.parent.categories = ["Automated Dental Tools"]
-    self.parent.dependencies = ["CondaSetUp"] 
+    self.parent.dependencies = ["CondaSetUp"]
     
-    self.parent.contributors = ["Lucie Dole (University of North Carolina)", 
+    self.parent.contributors = ["Lucie Dole (University of North Carolina)",
     "Gaelle Leroux (University of Michigan)",
     "Lucia Cevidanes (University of Michigan)",
-    "Juan Carlos Prieto (University of North Carolina)"] 
+    "Juan Carlos Prieto (University of North Carolina)"]
     
     self.parent.helpText = textwrap.dedent("""
-    This extension provides a Graphical User Interface (GUI) 
-    for a deep learning automated classification of Alveolar Bone Defect in Cleft, 
+    This extension provides a Graphical User Interface (GUI)
+    for a deep learning automated classification of Alveolar Bone Defect in Cleft,
     Nasopharynx Airway Obstruction and Mandibular Condyles.<br>
 
     - The input file must be a folder containing a list of vtk files.<br>
 
-    - data type for classification: Mandibular Condyle, Nasopharynx Airway 
+    - data type for classification: Mandibular Condyle, Nasopharynx Airway
     Obstruction and Alveolar Bone Defect in Cleft.<br>
 
-    - output directory: a folder that will contain all the outputs 
+    - output directory: a folder that will contain all the outputs
     (models, prediction and explainability results)<br>
 
-    When prediction is over, you can open the output csv file which will containing 
+    When prediction is over, you can open the output csv file which will containing
     the path of each .vtk file as well as the predicted class. <br><br>
 
-    More help can be found on the <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools">Github repository</a> 
+    More help can be found on the <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools">Github repository</a>
     for the extension.
     """).strip()
 
     self.parent.acknowledgementText = """
-    This file was developed by Lucie Dole, (University of North Carolina) and 
+    This file was developed by Lucie Dole, (University of North Carolina) and
     Gaelle Leroux (University of Michigan), and was supported by R01-DE024450.
     """
 
@@ -129,14 +119,14 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     ScriptedLoadableModuleWidget.setup(self)
 
     # Load widget from .ui file (created by Qt Designer).
-    # Additional widgets can be instantiated manually and added to self.layout. 
-    uiWidget = slicer.util.loadUI(self.resourcePath("UI/DOCShapeAXI.ui"))
-    self.layout.addWidget(uiWidget)
-    self.uiWidget = uiWidget  # Store reference for styling
-    self.ui = slicer.util.childWidgetVariables(uiWidget)
+    # Additional widgets can be instantiated manually and added to self.layout.
+    ui_widget = slicer.util.loadUI(self.resourcePath("UI/DOCShapeAXI.ui"))
+    self.layout.addWidget(ui_widget)
+    self.uiWidget = ui_widget  # Store reference for styling
+    self.ui = slicer.util.childWidgetVariables(ui_widget)
 
     # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
-    uiWidget.setMRMLScene(slicer.mrmlScene)
+    ui_widget.setMRMLScene(slicer.mrmlScene)
 
     # Create logic class. Logic implements all computations that should be possible to run
     # in batch mode, without a graphical user interface.
@@ -147,7 +137,7 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
     self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
 
-    # UI elements 
+    # UI elements
 
     self.ui.browseDirectoryButton.connect('clicked(bool)',self.onBrowseOutputButton)
     self.ui.browseMountPointButton.connect('clicked(bool)',self.onBrowseMountPointButton)
@@ -190,201 +180,12 @@ class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.applyDarkModeStyles()
 
   def applyDarkModeStyles(self):
-    """Apply dark mode styling to the widget if needed"""
-    app = qt.QApplication.instance()
-    palette = app.palette()
-    bg_color = palette.color(qt.QPalette.Window)
-    if bg_color.lightness() < 128:
-      # Complete dark mode stylesheet
-      dark_stylesheet = """
-QLineEdit, QTextEdit {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 6px;
-  color: #ffffff;
-  selection-background-color: #5dade2;
-}
-QLineEdit:focus, QTextEdit:focus {
-  border: 2px solid #5dade2;
-}
-QComboBox {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #ffffff;
-}
-QComboBox:focus {
-  border: 2px solid #5dade2;
-}
-QComboBox::drop-down {
-  width: 20px;
-  border: none;
-}
-QComboBox QAbstractItemView {
-  background-color: #3c3c3c;
-  color: #ffffff;
-  selection-background-color: #5dade2;
-}
-QLabel {
-  color: #ffffff;
-  font-weight: 500;
-  background-color: transparent;
-}
-QPushButton {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 10pt;
-  padding: 8px;
-  margin-top: 4px;
-}
-QPushButton:hover:!pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7bbcef, stop:1 #5dade2);
-}
-QPushButton:pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1e638d);
-}
-QPushButton:disabled {
-  background-color: #555555;
-  color: #888888;
-}
-QCheckBox {
-  color: #ffffff;
-  font-weight: 500;
-  spacing: 6px;
-  background-color: transparent;
-}
-QCheckBox::indicator {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #555555;
-  border-radius: 3px;
-  background-color: #3c3c3c;
-}
-QCheckBox::indicator:hover {
-  border: 1px solid #5dade2;
-}
-QCheckBox::indicator:checked {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #5dade2;
-  border-radius: 3px;
-  background-color: #5dade2;
-  image: url(:/Icons/SmallCheckMark.png);
-}
-QCheckBox::indicator:checked:hover {
-  border: 1px solid #7bbcef;
-  background-color: #7bbcef;
-}
-QProgressBar {
-  border: 1px solid #555555;
-  border-radius: 4px;
-  background-color: #3c3c3c;
-  padding: 2px;
-  color: #ffffff;
-}
-QProgressBar::chunk {
-  background-color: #5dade2;
-  border-radius: 3px;
-}
-QSpinBox, QDoubleSpinBox {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #ffffff;
-}
-QSpinBox:focus, QDoubleSpinBox:focus {
-  border: 2px solid #5dade2;
-}
-QSlider::groove:horizontal {
-  background-color: #555555;
-  border-radius: 4px;
-}
-QSlider::handle:horizontal {
-  background-color: #5dade2;
-  width: 12px;
-  margin: -4px 0;
-  border-radius: 6px;
-}
-QSlider::handle:horizontal:hover {
-  background-color: #7bbcef;
-}
-      """
-      self.uiWidget.setStyleSheet(dark_stylesheet)
-      
-      # Update QLineEdit, QComboBox, and QLabel for dark mode
-      self._updateLineEditAndComboBoxDarkMode(self.uiWidget)
+    """Give this module's widget the palette shared by the extension."""
+    apply_dark_mode(self.uiWidget)
 
   def _updateLineEditAndComboBoxDarkMode(self, parent):
-    """
-    Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
-    """
-    # Update QLabel
-    if isinstance(parent, qt.QLabel):
-      try:
-        parent.setStyleSheet("""
-          QLabel {
-            color: #ffffff;
-            font-weight: 500;
-          }
-        """)
-      except:
-        pass
-    
-    # Update QLineEdit
-    if isinstance(parent, qt.QLineEdit):
-      try:
-        parent.setStyleSheet("""
-          QLineEdit {
-            background-color: #3c3c3c;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 6px;
-            color: #ffffff;
-          }
-          QLineEdit:focus {
-            border: 2px solid #5dade2;
-          }
-        """)
-      except:
-        pass
-    
-    # Update QComboBox
-    if isinstance(parent, qt.QComboBox):
-      try:
-        parent.setStyleSheet("""
-          QComboBox {
-            background-color: #3c3c3c;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 4px 6px;
-            color: #ffffff;
-          }
-          QComboBox:focus {
-            border: 2px solid #5dade2;
-          }
-          QComboBox::drop-down {
-            width: 20px;
-            border: none;
-          }
-          QComboBox QAbstractItemView {
-            background-color: #3c3c3c;
-            color: #ffffff;
-            selection-background-color: #5dade2;
-          }
-        """)
-      except:
-        pass
-    
-    # Recursively update all children
-    if hasattr(parent, 'children'):
-      for child in parent.children():
-        self._updateLineEditAndComboBoxDarkMode(child)
+    """Shared recursive pass, kept as a method for the existing call sites."""
+    update_line_edit_and_combo_box(parent)
 
   def cleanup(self) -> None:
     """Called when the application closes and the module widget is destroyed."""
@@ -418,7 +219,7 @@ QSlider::handle:horizontal:hover {
 
     self.setParameterNode(self.logic.getParameterNode())
 
-  def setParameterNode(self, inputParameterNode) -> None:
+  def setParameterNode(self, input_parameter_node) -> None:
     """
     Set and observe parameter node.
     Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
@@ -426,7 +227,7 @@ QSlider::handle:horizontal:hover {
 
     if self._parameterNode:
       self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-    self._parameterNode = inputParameterNode
+    self._parameterNode = input_parameter_node
     if self._parameterNode:
       self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
 
@@ -454,11 +255,11 @@ QSlider::handle:horizontal:hover {
     """
     if self._parameterNode is None or self._updatingGUIFromParameterNode:
       return
-    wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
-    self._parameterNode.EndModify(wasModified)
+    was_modified = self._parameterNode.StartModify()  # Modify all properties in a single batch
+    self._parameterNode.EndModify(was_modified)
 
 
-  ## 
+  ##
   ## Inputs
   ##
 
@@ -479,11 +280,11 @@ QSlider::handle:horizontal:hover {
   ##
     
   def onBrowseOutputButton(self):
-    newoutputFolder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a directory")
-    if newoutputFolder != '':
-      if newoutputFolder[-1] != "/":
-        newoutputFolder += '/'
-    self.outputFolder = newoutputFolder
+    newoutput_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a directory")
+    if newoutput_folder != '':
+      if newoutput_folder[-1] != "/":
+        newoutput_folder += '/'
+    self.outputFolder = newoutput_folder
     self.ui.outputLineEdit.setText(self.outputFolder)
 
   def onEditOutputLine(self):
@@ -492,7 +293,7 @@ QSlider::handle:horizontal:hover {
   ##
   ##  Process
   ##
-  def check_input_parameters(self): 
+  def check_input_parameters(self):
     msg = qt.QMessageBox()
     if not(os.path.isdir(self.logic.output_dir)):
       if not(os.path.isdir(self.logic.output_dir)):
@@ -524,12 +325,12 @@ QSlider::handle:horizontal:hover {
 
     if not self.logic.isCondaSetUp:
       self.ui.timeLabel.setText(f"Checking if SlicerConda is installed")
-      messageBox = qt.QMessageBox()
+      message_box = qt.QMessageBox()
       text = textwrap.dedent("""
-      SlicerConda is not set up, please click 
+      SlicerConda is not set up, please click
       <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
       """).strip()
-      messageBox.information(None, "Information", text)
+      message_box.information(None, "Information", text)
       return False
 
     ## wsl
@@ -542,25 +343,25 @@ QSlider::handle:horizontal:hover {
         self.ui.timeLabel.setText("WSL installed")
         if not self.logic.check_lib_wsl() : # if lib required are not install
           self.ui.timeLabel.setText(f"Checking if the required librairies are installed, this task may take a moments")
-          messageBox = qt.QMessageBox()
+          message_box = qt.QMessageBox()
           # text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip may be blocked by Chrome, this is normal, just authorize it."
           text = textwrap.dedent("""
-            WSL doesn't have all the necessary libraries, please download the installer 
-            nd follow the instructions 
-            <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+            WSL doesn't have all the necessary libraries, please download the installer
+            nd follow the instructions
+            <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
             for installation. The link may be blocked by Chrome, just authorize it.""").strip()
 
-          messageBox.information(None, "Information", text)
+          message_box.information(None, "Information", text)
           return False
       else : # if wsl not install, ask user to install it ans stop process
-        messageBox = qt.QMessageBox()
+        message_box = qt.QMessageBox()
         # text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip may be blocked by Chrome, this is normal, just authorize it."
         text = textwrap.dedent("""
-          WSL is not installed, please download the installer and follow the instructions 
-          <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
-          for installation. The link may be blocked by Chrome, just authorize it.""").strip()        
+          WSL is not installed, please download the installer and follow the instructions
+          <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
+          for installation. The link may be blocked by Chrome, just authorize it.""").strip()
 
-        messageBox.information(None, "Information", text)
+        message_box.information(None, "Information", text)
         return False
     
 
@@ -568,19 +369,19 @@ QSlider::handle:horizontal:hover {
 
     self.ui.timeLabel.setText(f"Checking if miniconda is installed")
     if "no setup" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
-      messageBox = qt.QMessageBox()
+      message_box = qt.QMessageBox()
       text = textwrap.dedent("""
-      Code can't be launch. \nConda is not setup. 
+      Code can't be launch. \nConda is not setup.
       Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
-      messageBox.information(None, "Information", text)
+      message_box.information(None, "Information", text)
       return False
 
     ## shapeAXI
 
     self.ui.timeLabel.setText(f"Checking if environnement exists")
     if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
-      userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
-      if userResponse :
+      user_response = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+      if user_response :
         start_time = time.time()
         previous_time = start_time
         formatted_time = self.format_time(0)
@@ -596,7 +397,7 @@ QSlider::handle:horizontal:hover {
         previous_time = start_time
         formatted_time = self.format_time(0)
         text = textwrap.dedent(f"""
-        Installation of librairies into the new environnement. 
+        Installation of librairies into the new environnement.
         This task may take a few minutes.\ntime: {formatted_time}""").strip()
         self.ui.timeLabel.setText(text)
       else:
@@ -607,7 +408,7 @@ QSlider::handle:horizontal:hover {
     ## pytorch3d
 
     self.ui.timeLabel.setText(f"Checking if pytorch3d is installed")
-    if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed 
+    if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed
       process = self.logic.install_pytorch3d()
       start_time = time.time()
       previous_time = start_time
@@ -616,7 +417,7 @@ QSlider::handle:horizontal:hover {
         slicer.app.processEvents()
         formatted_time = self.update_ui_time(start_time, previous_time)
         text = textwrap.dedent(f"""
-        Installation of pytorch into the new environnement. 
+        Installation of pytorch into the new environnement.
         This task may take a few minutes.\ntime: {formatted_time}
         """).strip()
         self.ui.timeLabel.setText(text)
@@ -628,13 +429,16 @@ QSlider::handle:horizontal:hover {
 
 
   def update_ui_time(self, start_time, previous_time):
-    current_time = time.time()
-    gap=current_time-previous_time
-    if gap>0.3:
-      previous_time = current_time
-      self.elapsed_time = current_time - start_time
-      formatted_time = self.format_time(self.elapsed_time)
-      return formatted_time
+    """Elapsed time since `start_time`, formatted for the installation label.
+
+    `previous_time` is kept for signature parity with the call sites, which
+    pass it but never update their own copy. It used to throttle this to one
+    update every 0.3s and return None in between, which is what wrote
+    "time: None" into the label. Formatting unconditionally is both simpler
+    and correct.
+    """
+    self.elapsed_time = elapsed_since(start_time)
+    return self.format_time(self.elapsed_time)
 
   def onApplyChangesButton(self):
     '''
@@ -728,7 +532,7 @@ QSlider::handle:horizontal:hover {
           self.ui.labelBar.setText(f'Loading {self.task} model...')
         else:
           self.progress = int(progress)
-          if self.logic.previous_saxi_task != current_saxi_task: 
+          if self.logic.previous_saxi_task != current_saxi_task:
             self.progress = 0
             self.logic.previous_saxi_task = current_saxi_task
             self.ui.progressBar.setValue(0)
@@ -759,7 +563,7 @@ QSlider::handle:horizontal:hover {
 
     self.ui.applyChangesButton.setEnabled(True)
     self.ui.resetButton.setEnabled(True)
-    self.ui.progressLabel.setHidden(False)     
+    self.ui.progressLabel.setHidden(False)
     self.ui.cancelButton.setHidden(True)
     self.resetProgressBar()
     self.ui.doneLabel.setHidden(False)
@@ -786,7 +590,7 @@ QSlider::handle:horizontal:hover {
     self.ui.timeLabel.setText(f"time : {formatted_time}")
     self.ui.progressBar.setEnabled(False)
     self.ui.progressBar.setRange(0,100)
-    self.removeObservers()  
+    self.removeObservers()
     self.ui.cancelButton.setEnabled(True)
 
   def onCancel(self):
@@ -795,15 +599,12 @@ QSlider::handle:horizontal:hover {
     self.logic.cancel_process()
 
     self.ui.cancelButton.setEnabled(False)
-    self.removeObservers()  
+    self.removeObservers()
     self.onReset()
 
-  def format_time(self,seconds):
-    """ Convert seconds to H:M:S format. """
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    return f"{hours:02}:{minutes:02}:{secs:02}"
+  def format_time(self, seconds):
+    """Seconds as HH:MM:SS."""
+    return format_elapsed(seconds)
 
 
 class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
@@ -845,20 +646,10 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
     with open(self.log_path, mode='w') as f: pass
 
   def init_conda(self):
-    # check if CondaSetUp exists
-    try:
-      import CondaSetUp
-    except:
-      return False
-    self.isCondaSetUp = True
-
-    # set up conda on windows with WSL
-    if platform.system() == "Windows":
-      from CondaSetUp import CondaSetUpCallWsl
-      return CondaSetUpCallWsl()
-    else:
-      from CondaSetUp import CondaSetUpCall
-      return CondaSetUpCall()     
+    """The SlicerConda entry point for this platform, or False without it."""
+    call = init_conda_call()
+    self.isCondaSetUp = bool(call)
+    return call
 
   def run_conda_command(self, target, command):
     self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
@@ -883,15 +674,15 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
     return self.conda.condaRunCommand(command)
     
   def install_pytorch3d(self):
-    result_pythonpath = self.check_pythonpath_windows("DOCShapeAXI_utils.install_pytorch")
+    result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
     if not result_pythonpath :
       self.give_pythonpath_windows()
-      result_pythonpath = self.check_pythonpath_windows("DOCShapeAXI_utils.install_pytorch")
+      result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
       
-    if result_pythonpath : 
+    if result_pythonpath :
       conda_exe = self.conda.getCondaExecutable()
       path_pip = self.conda.getCondaPath()+f"/envs/{self.name_env}/bin/pip"
-      command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"DOCShapeAXI_utils.install_pytorch",path_pip]
+      command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"ADTLib.env.install_pytorch",path_pip]
 
     self.run_conda_command(target=self.conda.condaRunCommand, command=(command,))
 
@@ -906,68 +697,23 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
     self.run_conda_command(target=self.condaRunCommand, command=(command,))
 
   def check_lib_wsl(self) -> bool:
-    # Ubuntu versions < 24.04
-    required_libs_old = ["libxrender1", "libgl1-mesa-glx"]
-    # Ubuntu versions >= 24.04
-    required_libs_new = ["libxrender1", "libgl1", "libglx-mesa0"]
+    """Whether WSL carries the system libraries the tools need."""
+    return wsl_libraries_present()
 
-
-    all_installed = lambda libs: all(
-        subprocess.run(
-            f"wsl -- bash -c \"dpkg -l | grep {lib}\"", capture_output=True, text=True
-        ).stdout.encode("utf-16-le").decode("utf-8").replace("\x00", "").find(lib) >= 0
-        for lib in libs
-    )
-
-    return all_installed(required_libs_old) or all_installed(required_libs_new)
-
-  def check_pythonpath_windows(self,file):
-      '''
-      Check if the environment env_name in wsl know the path to a specific file (ex : Crownsegmentationcli.py)
-      return : bool
-      '''
-      conda_exe = self.conda.getCondaExecutable()
-      command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", condaQuote(self.conda, f"import {file} as check;import os; print(os.path.isfile(check.__file__))")]
-      result = self.conda.condaRunCommand(command)
-      logger.info(f"output CHECK python path: {result}")
-      if "True" in result :
-          return True
-      return False
+  def check_pythonpath_windows(self, file):
+    """Whether `file` is importable by the Python of this module's environment."""
+    return check_pythonpath(self.conda, self.name_env, file)
 
   def give_pythonpath_windows(self):
-      '''
-      take the pythonpath of Slicer and give it to the environment name_env in wsl.
-      '''
-      paths = slicer.app.moduleManager().factoryManager().searchPaths
-      mnt_paths = []
-      for path in paths :
-          # Quoted only where a shell will strip the quotes again. They used to be
-          # unconditional: under the argv-passing SlicerConda they survived into
-          # PYTHONPATH, Python read each entry as a relative path and prefixed the
-          # cwd, and every sys.path entry pointed nowhere.
-          mnt_paths.append(condaQuote(self.conda, self.windows_to_linux_path(path)))
-      pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
-      conda_exe = self.conda.getCondaExecutable()
-      argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
-      results = self.conda.condaRunCommand(argument)
-      logger.info(f"output GIVE python path: {results}")
+    """Publish Slicer's module search paths into this module's environment."""
+    give_pythonpath(self.conda, self.name_env)
 
-  def windows_to_linux_path(self,windows_path):
-    '''
-    Convert a windows path to a wsl path
-    '''
-    windows_path = windows_path.strip()
-
-    path = windows_path.replace('\\', '/')
-
-    if ':' in path:
-      drive, path_without_drive = path.split(':', 1)
-      path = "/mnt/" + drive.lower() + path_without_drive
-
-    return path
+  def windows_to_linux_path(self, windows_path):
+    """A Windows path as WSL sees it."""
+    return windows_to_linux_path_shared(windows_path)
   
   def check_cli_script(self):
-    if not self.check_pythonpath_windows("DOCShapeAXI_CLI") : 
+    if not self.check_pythonpath_windows("DOCShapeAXI_CLI") :
       self.give_pythonpath_windows()
       results = self.check_pythonpath_windows("DOCShapeAXI_CLI")
 
@@ -976,7 +722,7 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
     '''
     Runs a command in a specified Conda environment, handling different operating systems.
     
-    copy paste from SlicerConda and change the process line to be able to get the stderr/stdout 
+    copy paste from SlicerConda and change the process line to be able to get the stderr/stdout
     and cancel the process without blocking slicer
     '''
     path_activate = self.conda.getActivateExecutable()
@@ -994,7 +740,7 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
       command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
       logger.info(f"command_to_execute in condaRunCommand : {command_to_execute}")
 
-      self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+      self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
                               creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
                               )
@@ -1005,7 +751,7 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
       for com in command :
           command_execute = command_execute+ " "+com
 
-      logger.info(f"command_execute dans conda run : {command_execute}")
+      logger.info(f"command_execute in conda run: {command_execute}")
       self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
   
     self.stdout, self.stderr = self.subpro.communicate()
@@ -1038,13 +784,13 @@ class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
     self.nn_type = self.find_nn_type()
     self.model, self.num_classes = self.find_model_name()
 
-    parameters = [self.input_dir, 
-                  self.output_dir, 
-                  self.data_type, 
-                  self.task, 
-                  self.model, 
-                  self.nn_type, 
-                  str(self.num_classes), 
+    parameters = [self.input_dir,
+                  self.output_dir,
+                  self.data_type,
+                  self.task,
+                  self.model,
+                  self.nn_type,
+                  str(self.num_classes),
                   self.log_path]
     
     return parameters

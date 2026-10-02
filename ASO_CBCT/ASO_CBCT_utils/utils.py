@@ -16,7 +16,6 @@ import SimpleITK as sitk
 import glob
 import os
 import shutil
-from slicer.util import pip_install
 
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import (
@@ -29,20 +28,16 @@ from vtkmodules.vtkFiltersGeneral import vtkTransformPolyDataFilter
 
 import dicom2nifti
 
-import logging
-import sys
+from ADTLib.geometry import VTKMatrixToNumpy  # noqa: F401  (re-exported)
+from ADTLib.io.landmarks import WriteJson  # noqa: F401  (re-exported)
+from ADTLib.io.fs import search as search_files
+from ADTLib.naming import patient_id as read_patient_id, ASO_CBCT_CLI_MARKERS
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("ASO_CBCT_utils")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+import math
+
+logger = get_logger("ASO_CBCT_utils")
 
 
 cross = lambda x, y: np.cross(
@@ -174,46 +169,21 @@ def FindOptimalLandmarks(source, target, nb_lmrk):
     list
         list of the optimal landmarks
     """
-    dist, LMlist, ii = [], [], 0
+    dist, l_mlist, ii = [], [], 0
     while len(dist) < (nb_lmrk * (nb_lmrk - 1) * (nb_lmrk - 2)) and ii < 2500:
         ii += 1
         firstpick, secondpick, thirdpick, d = InitICP(
             source, target, Print=False, search=True
         )
-        if [firstpick, secondpick, thirdpick] not in LMlist:
+        if [firstpick, secondpick, thirdpick] not in l_mlist:
             dist.append(d)
-            LMlist.append([firstpick, secondpick, thirdpick])
-    return LMlist[dist.index(min(dist))]
+            l_mlist.append([firstpick, secondpick, thirdpick])
+    return l_mlist[dist.index(min(dist))]
 
 
 def search(self, path, *args):
-    """
-    Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
-    Example:
-    args = ('json',['.nii.gz','.nrrd'])
-    return:
-        {
-            'json' : ['path/a.json', 'path/b.json','path/c.json'],
-            '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
-            '.nrrd.gz' : ['path/c.nrrd']
-        }
-    """
-    arguments = []
-    for arg in args:
-        if type(arg) == list:
-            arguments.extend(arg)
-        else:
-            arguments.append(arg)
-    return {
-        key: [
-            i
-            for i in glob.iglob(
-                os.path.normpath("/".join([path, "**", "*"])), recursive=True
-            )
-            if i.endswith(key)
-        ]
-        for key in arguments
-    }
+    """Delegated to ADTLib; the signature is kept for the callers."""
+    return search_files(path, *args)
 
 
 def WriteJsonLandmarks(landmarks, input_json_file, output_file):
@@ -228,11 +198,11 @@ def WriteJsonLandmarks(landmarks, input_json_file, output_file):
         output file name
     """
     with open(input_json_file, "r") as outfile:
-        tempData = json.load(outfile)
+        temp_data = json.load(outfile)
     for i in range(len(landmarks)):
-        pos = landmarks[tempData["markups"][0]["controlPoints"][i]["label"]]
+        pos = landmarks[temp_data["markups"][0]["controlPoints"][i]["label"]]
         # pos = (pos + abs(inorigin)) * inspacing
-        tempData["markups"][0]["controlPoints"][i]["position"] = [
+        temp_data["markups"][0]["controlPoints"][i]["position"] = [
             pos[0],
             pos[1],
             pos[2],
@@ -240,7 +210,7 @@ def WriteJsonLandmarks(landmarks, input_json_file, output_file):
     if not os.path.exists(output_file):
         shutil.copy(input_json_file, output_file)
     with open(output_file, "w") as outfile:
-        json.dump(tempData, outfile, indent=4)
+        json.dump(temp_data, outfile, indent=4)
 
 
 def GenControlePoint(landmarks):
@@ -265,58 +235,6 @@ def GenControlePoint(landmarks):
         lm_lst.append(controle_point)
 
     return lm_lst
-
-
-def WriteJson(landmarks, out_path):
-    false = False
-    true = True
-    file = {
-        "@schema": "https://raw.githubusercontent.com/slicer/slicer/master/Modules/Loadable/Markups/Resources/Schema/markups-schema-v1.0.0.json#",
-        "markups": [
-            {
-                "type": "Fiducial",
-                "coordinateSystem": "LPS",
-                "locked": false,
-                "labelFormat": "%N-%d",
-                "controlPoints": GenControlePoint(landmarks),
-                "measurements": [],
-                "display": {
-                    "visibility": false,
-                    "opacity": 1.0,
-                    "color": [0.4, 1.0, 0.0],
-                    "color": [0.5, 0.5, 0.5],
-                    "selectedColor": [
-                        0.26666666666666669,
-                        0.6745098039215687,
-                        0.39215686274509806,
-                    ],
-                    "propertiesLabelVisibility": false,
-                    "pointLabelsVisibility": true,
-                    "textScale": 2.0,
-                    "glyphType": "Sphere3D",
-                    "glyphScale": 2.0,
-                    "glyphSize": 5.0,
-                    "useGlyphScale": true,
-                    "sliceProjection": false,
-                    "sliceProjectionUseFiducialColor": true,
-                    "sliceProjectionOutlinedBehindSlicePlane": false,
-                    "sliceProjectionColor": [1.0, 1.0, 1.0],
-                    "sliceProjectionOpacity": 0.6,
-                    "lineThickness": 0.2,
-                    "lineColorFadingStart": 1.0,
-                    "lineColorFadingEnd": 10.0,
-                    "lineColorFadingSaturation": 1.0,
-                    "lineColorFadingHueOffset": 0.0,
-                    "handlesInteractive": false,
-                    "snapMode": "toVisibleSurface",
-                },
-            }
-        ],
-    }
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(file, f, ensure_ascii=False, indent=4)
-
-    f.close
 
 
 def GetDistances(landmark_dic):
@@ -564,45 +482,24 @@ def ConvertToVTKPoints(dict_landmarks):
     vtkPoints
         VTK points object
     """
-    Points = vtkPoints()
-    Vertices = vtkCellArray()
+    points = vtkPoints()
+    vertices = vtkCellArray()
     labels = vtk.vtkStringArray()
     labels.SetNumberOfValues(len(dict_landmarks.keys()))
     labels.SetName("labels")
 
     for i, landmark in enumerate(dict_landmarks.keys()):
-        sp_id = Points.InsertNextPoint(dict_landmarks[landmark])
-        Vertices.InsertNextCell(1)
-        Vertices.InsertCellPoint(sp_id)
+        sp_id = points.InsertNextPoint(dict_landmarks[landmark])
+        vertices.InsertNextCell(1)
+        vertices.InsertCellPoint(sp_id)
         labels.SetValue(i, landmark)
 
     output = vtkPolyData()
-    output.SetPoints(Points)
-    output.SetVerts(Vertices)
+    output.SetPoints(points)
+    output.SetVerts(vertices)
     output.GetPointData().AddArray(labels)
 
     return output
-
-
-def VTKMatrixToNumpy(matrix):
-    """
-    Copies the elements of a vtkMatrix4x4 into a numpy array.
-
-    Parameters
-    ----------
-    matrix : vtkMatrix4x4
-        Matrix to be copied
-
-    Returns
-    -------
-    numpy array
-        Numpy array with the elements of the vtkMatrix4x4
-    """
-    m = np.ones((4, 4))
-    for i in range(4):
-        for j in range(4):
-            m[i, j] = matrix.GetElement(i, j)
-    return m
 
 
 """
@@ -638,10 +535,10 @@ def ICP_Transform(source, target):
     icp.Update()
 
     # ============ apply ICP transform ==============
-    transformFilter = vtkTransformPolyDataFilter()
-    transformFilter.SetInputData(source)
-    transformFilter.SetTransform(icp)
-    transformFilter.Update()
+    transform_filter = vtkTransformPolyDataFilter()
+    transform_filter.SetInputData(source)
+    transform_filter.SetTransform(icp)
+    transform_filter.Update()
 
     return icp
 
@@ -651,9 +548,9 @@ def InitICP(source, target, Print=False, BestLMList=None, search=False):
     Do some initialisation transforms (1 translation and 2 rotations to make the ICP even more efficient
     """
 
-    TransformList = []
-    TranslationTransformMatrix = np.eye(4)
-    RotationTransformMatrix = np.eye(4)
+    transform_list = []
+    translation_transform_matrix = np.eye(4)
+    rotation_transform_matrix = np.eye(4)
 
     labels = list(source.keys())
     if BestLMList is not None:
@@ -670,10 +567,10 @@ def InitICP(source, target, Print=False, BestLMList=None, search=False):
 
     # ============ Compute Translation Transform ==============
     T = target[firstpick] - source[firstpick]
-    TranslationTransformMatrix[:3, 3] = T
-    Translationsitk = sitk.TranslationTransform(3)
-    Translationsitk.SetOffset(T.tolist())
-    TransformList.append(Translationsitk)
+    translation_transform_matrix[:3, 3] = T
+    translationsitk = sitk.TranslationTransform(3)
+    translationsitk.SetOffset(T.tolist())
+    transform_list.append(translationsitk)
     # ============ Apply Translation Transform ==============
     source = ApplyTranslation(source, T)
 
@@ -694,15 +591,15 @@ def InitICP(source, target, Print=False, BestLMList=None, search=False):
 
     # ============ Compute Rotation Transform ==============
     R = RotationMatrix(axis, angle)
-    RotationTransformMatrix[:3, :3] = R
-    Rotationsitk = sitk.VersorRigid3DTransform()
-    Rotationsitk.SetMatrix(R.flatten().tolist())
-    TransformList.append(Rotationsitk)
+    rotation_transform_matrix[:3, :3] = R
+    rotationsitk = sitk.VersorRigid3DTransform()
+    rotationsitk.SetMatrix(R.flatten().tolist())
+    transform_list.append(rotationsitk)
     # ============ Apply Rotation Transform ==============
-    source = ApplyTransform(source, RotationTransformMatrix)
+    source = ApplyTransform(source, rotation_transform_matrix)
 
     # ============ Compute Transform Matrix (Rotation + Translation) ==============
-    TransformMatrix = RotationTransformMatrix  # @ TranslationTransformMatrix
+    transform_matrix = rotation_transform_matrix  # @ TranslationTransformMatrix
 
     # ============ Pick another Random Landmark ==============
     if BestLMList is None:
@@ -719,17 +616,17 @@ def InitICP(source, target, Print=False, BestLMList=None, search=False):
     angle, axis = AngleAndAxisVectors(v2, v1)
 
     # ============ Compute Rotation Transform ==============
-    RotationTransformMatrix = np.eye(4)
+    rotation_transform_matrix = np.eye(4)
     R = RotationMatrix(abs(source[secondpick] - source[firstpick]), angle)
-    RotationTransformMatrix[:3, :3] = R
-    Rotationsitk = sitk.VersorRigid3DTransform()
-    Rotationsitk.SetMatrix(R.flatten().tolist())
-    TransformList.append(Rotationsitk)
+    rotation_transform_matrix[:3, :3] = R
+    rotationsitk = sitk.VersorRigid3DTransform()
+    rotationsitk.SetMatrix(R.flatten().tolist())
+    transform_list.append(rotationsitk)
     # ============ Apply Rotation Transform ==============
-    source = ApplyTransform(source, RotationTransformMatrix)
+    source = ApplyTransform(source, rotation_transform_matrix)
 
     # ============ Compute Transform Matrix (Init ICP) ==============
-    TransformMatrix = RotationTransformMatrix @ TransformMatrix
+    transform_matrix = rotation_transform_matrix @ transform_matrix
 
     if Print:
         logger.info("Mean Distance:{:.2f}".format(ComputeMeanDistance(source, target)))
@@ -737,7 +634,7 @@ def InitICP(source, target, Print=False, BestLMList=None, search=False):
     if search:
         return firstpick, secondpick, thirdpick, ComputeMeanDistance(source, target)
 
-    return source, TransformMatrix, TransformList
+    return source, transform_matrix, transform_list
 
 
 def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark, input_transform_file):
@@ -756,7 +653,17 @@ def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark, i
 
     # Read input files
     input_image = sitk.ReadImage(input_file)
-    input_transform = sitk.ReadTransform(input_transform_file)
+    # No prior transform is a normal case, not a missing file. This one is
+    # composed at the END of the chain below, to carry the result back into the
+    # space the scan was already in; when the scan was never moved, the neutral
+    # value of that composition is the identity. Demanding the file made the
+    # Semi-Automated mode refuse the test set published for it, which has a scan
+    # and its landmarks and no .tfm -- the only .tfm in the release are OUTPUTS
+    # of the Fully-Automated mode.
+    if input_transform_file:
+        input_transform = sitk.ReadTransform(input_transform_file)
+    else:
+        input_transform = sitk.Euler3DTransform()
     gold_image = sitk.ReadImage(gold_file)
     source = LoadJsonLandmarks(input_json_file, list_landmark)
     nb_lmrk = len(source.keys())
@@ -780,7 +687,7 @@ def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark, i
     target = SortDict(target)
 
     # Apply Init ICP with only the best landmarks
-    source_transformed, TransformMatrix, TransformList = InitICP(
+    source_transformed, transform_matrix, transform_list = InitICP(
         source,
         target,
         Print=False,
@@ -789,35 +696,35 @@ def ICP(input_file, input_json_file, gold_file, gold_json_file, list_landmark, i
 
     # Apply ICP
     icp = ICP_Transform(source_transformed, target)
-    TransformMatrixBis = VTKMatrixToNumpy(icp.GetMatrix())
-    TransformMatrixBis[:3, 3] = [0, 0, 0]
+    transform_matrix_bis = VTKMatrixToNumpy(icp.GetMatrix())
+    transform_matrix_bis[:3, 3] = [0, 0, 0]
 
     # Split the transform matrix into translation and rotation simpleitk transform
-    TransformMatrixsitk = sitk.Euler3DTransform()
+    transform_matrixsitk = sitk.Euler3DTransform()
     # TransformMatrixsitk.SetTranslation(TransformMatrixBis[:3, 3].tolist())
-    TransformMatrixsitk.SetMatrix(TransformMatrixBis[:3, :3].flatten().tolist())
-    TransformList.append(TransformMatrixsitk)
+    transform_matrixsitk.SetMatrix(transform_matrix_bis[:3, :3].flatten().tolist())
+    transform_list.append(transform_matrixsitk)
 
     # Compute the final transform (inverse all the transforms)
-    TransformSITK = sitk.CompositeTransform(3)
-    for i in range(len(TransformList) - 1, 0, -1):
-        TransformSITK.AddTransform(TransformList[i])
+    transform_sitk = sitk.CompositeTransform(3)
+    for i in range(len(transform_list) - 1, 0, -1):
+        transform_sitk.AddTransform(transform_list[i])
 
-    TransformSITKFinal = sitk.CompositeTransform(TransformSITK)
-    TransformSITKFinal.AddTransform(input_transform)
-    TransformSITKFinal = TransformSITKFinal.GetInverse()
+    transform_sitk_final = sitk.CompositeTransform(transform_sitk)
+    transform_sitk_final.AddTransform(input_transform)
+    transform_sitk_final = transform_sitk_final.GetInverse()
     
-    TransformSITK = TransformSITK.GetInverse()
+    transform_sitk = transform_sitk.GetInverse()
 
-    TransformMatrixFinal = TransformMatrixBis @ TransformMatrix
+    transform_matrix_final = transform_matrix_bis @ transform_matrix
 
     # Apply the final transform matrix
-    source_transformed = ApplyTransform(source_orig, TransformMatrixFinal)
+    source_transformed = ApplyTransform(source_orig, transform_matrix_final)
 
     # Resample the source image with the final transform
-    output = ResampleImage(input_image, transform=TransformSITK)
+    output = ResampleImage(input_image, transform=transform_sitk)
 
-    return output, source_transformed, TransformSITKFinal
+    return output, source_transformed, transform_sitk_final
 
 
 """
@@ -935,7 +842,6 @@ def RotationMatrix(axis, theta):
     np.array
         Rotation matrix
     """
-    import math
 
     axis = np.asarray(axis)
     axis = axis / np.linalg.norm(axis)
@@ -1018,14 +924,7 @@ def GetPatients(folder_path):
     for file in glob.iglob(normpath, recursive=True):
         basename = os.path.basename(file)
         patient = (
-            basename.split("_Or")[0]
-            .split("_OR")[0]
-            .split("_scan")[0]
-            .split("_Scanreg")[0]
-            .split("_Scan")[0]
-            .split("_lm")[0]
-            .split(".")[0]
-        )
+            read_patient_id(basename, ASO_CBCT_CLI_MARKERS))
 
         if patient not in patients.keys():
             patients[patient] = {}

@@ -10,20 +10,13 @@ from ASO_IOS_utils.transformation import (
     TransformDict,
 )
 from random import choice
-import logging
-import sys
+from ADTLib.geometry import VTKMatrixToNumpy  # noqa: F401  (re-exported)
+from ADTLib.labels import has_label_array, label_array
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("ASO_IOS_icp")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ASO_IOS_icp")
 
 
 class ICP:
@@ -73,9 +66,36 @@ class ICP:
         source_int = self.copy(source)
         target_int = self.copy(target)
 
-        if callable(self.option):
-            source_int = self.option(source_int)
-            target_int = self.option(target_int)
+        option = self.option
+        if isinstance(option, SelectKey) and isinstance(source, dict):
+            # Keep only the landmarks BOTH files carry, which is what the CBCT
+            # path has always done: it filters on what is present and then
+            # refuses below three. Here `SelectKey` indexed the requested names
+            # outright, so one absent name raised KeyError and the whole pair was
+            # abandoned -- twelve landmarks asked for, four in the file, nothing
+            # registered. Measured on 2026-09-30 on the published Semi-Automated
+            # test set.
+            wanted = list(option.list_key)
+            usable = [key for key in wanted if key in source and key in target]
+            dropped = [key for key in wanted if key not in usable]
+            if dropped:
+                logger.warning(
+                    "%d of the %d landmarks asked for are not in both files, so "
+                    "they are not used: %s",
+                    len(dropped), len(wanted), ", ".join(dropped))
+            # Three is not a convention, it is the minimum a 3D rigid
+            # registration is determined by: with two, a rotation around the
+            # line joining them stays free.
+            if len(usable) < 3:
+                raise ValueError(
+                    "only %d landmark(s) are in both the scan and the reference "
+                    "(%s); a registration needs at least 3"
+                    % (len(usable), ", ".join(usable) or "none"))
+            option = SelectKey(usable)
+
+        if callable(option):
+            source_int = option(source_int)
+            target_int = option(target_int)
 
         matrix_final = np.identity(4)
 
@@ -125,10 +145,10 @@ class vtkICP:
         icp.Update()
 
         # ============ apply ICP transform ==============
-        transformFilter = vtk.vtkTransformPolyDataFilter()
-        transformFilter.SetInputData(source)
-        transformFilter.SetTransform(icp)
-        transformFilter.Update()
+        transform_filter = vtk.vtkTransformPolyDataFilter()
+        transform_filter.SetInputData(source)
+        transform_filter.SetTransform(icp)
+        transform_filter.Update()
 
         return source, VTKMatrixToNumpy(icp.GetMatrix())
 
@@ -165,16 +185,16 @@ class InitIcp:
 
         (
             source_transformed,
-            TransformMatrix,
+            transform_matrix,
         ) = self.InitICP(source, target, BestLMList=best)
 
-        return source_transformed, TransformMatrix
+        return source_transformed, transform_matrix
 
     def InitICP(self, source, target, BestLMList=None, search=False):
-        TransformList = []
+        transform_list = []
         # TransformMatrix = np.eye(4)
-        TranslationTransformMatrix = np.eye(4)
-        RotationTransformMatrix = np.eye(4)
+        translation_transform_matrix = np.eye(4)
+        rotation_transform_matrix = np.eye(4)
 
         labels = list(source.keys())
         if BestLMList is not None:
@@ -190,7 +210,7 @@ class InitIcp:
             # firstpick = 'LOr'
         # ============ Compute Translation Transform ==============
         T = target[firstpick] - source[firstpick]
-        TranslationTransformMatrix[:3, 3] = T
+        translation_transform_matrix[:3, 3] = T
 
         # ============ Apply Translation Transform ==============
         source = TranslationDict(source, T)
@@ -212,14 +232,14 @@ class InitIcp:
         # ============ Compute Rotation Transform ==============
         R = RotationMatrix(axis, angle)
         # TransformMatrix[:3, :3] = R
-        RotationTransformMatrix[:3, :3] = R
+        rotation_transform_matrix[:3, :3] = R
 
         # ============ Apply Rotation Transform ==============
 
-        source = TransformDict(source, RotationTransformMatrix)
+        source = TransformDict(source, rotation_transform_matrix)
 
         # ============ Compute Transform Matrix (Rotation + Translation) ==============
-        TransformMatrix = RotationTransformMatrix @ TranslationTransformMatrix
+        transform_matrix = rotation_transform_matrix @ translation_transform_matrix
 
         # ============ Pick another Random Landmark ==============
         if BestLMList is None:
@@ -235,16 +255,16 @@ class InitIcp:
         angle, axis = self.AngleAndAxisVectors(v2, v1)
 
         # ============ Compute Rotation Transform ==============
-        RotationTransformMatrix = np.eye(4)
+        rotation_transform_matrix = np.eye(4)
         R = RotationMatrix(abs(source[secondpick] - source[firstpick]), angle)
-        RotationTransformMatrix[:3, :3] = R
+        rotation_transform_matrix[:3, :3] = R
 
         # ============ Apply Rotation Transform ==============
 
-        source = TransformDict(source, RotationTransformMatrix)
+        source = TransformDict(source, rotation_transform_matrix)
 
         # ============ Compute Transform Matrix (Init ICP) ==============
-        TransformMatrix = RotationTransformMatrix @ TransformMatrix
+        transform_matrix = rotation_transform_matrix @ transform_matrix
 
         if search:
             return (
@@ -254,7 +274,7 @@ class InitIcp:
                 self.ComputeMeanDistance(source, target),
             )
 
-        return source, TransformMatrix
+        return source, transform_matrix
 
     def FindOptimalLandmarks(self, source, target):
         """
@@ -274,7 +294,7 @@ class InitIcp:
         """
 
         # remplacer 210 by n*(n-1)*(n-2)   (n)
-        dist, LMlist, ii = [], [], 0
+        dist, l_mlist, ii = [], [], 0
         n = len(source)
         # source used to be reloaded from a .npy on every turn, guarding
         # against a mutation that never happens: InitICP goes through
@@ -285,11 +305,11 @@ class InitIcp:
             firstpick, secondpick, thirdpick, d = self.InitICP(
                 source, target, search=True
             )
-            if [firstpick, secondpick, thirdpick] not in LMlist:
+            if [firstpick, secondpick, thirdpick] not in l_mlist:
                 dist.append(d)
-                LMlist.append([firstpick, secondpick, thirdpick])
+                l_mlist.append([firstpick, secondpick, thirdpick])
 
-        return LMlist[dist.index(min(dist))]
+        return l_mlist[dist.index(min(dist))]
 
     def ComputeMeanDistance(self, source, target):
         """
@@ -353,32 +373,16 @@ class vtkTeeth:
             property = self.GetLabelSurface(surf)
         self.property = property
 
-    def GetLabelSurface(self, surf, Preference="Universal_ID"):
-        out = None
+    def GetLabelSurface(self, surf, preference="Universal_ID"):
+        """The numbering array to use: see `ADTLib.labels`.
 
-        list_label = [
-            surf.GetPointData().GetArrayName(i)
-            for i in range(surf.GetPointData().GetNumberOfArrays())
-        ]
-
-        if len(list_label) != 0:
-            for label in list_label:
-                out = label
-                if Preference == label:
-                    out = Preference
-                    break
-
-        return out
+        Four of the five copies did `continue` where `break` was needed, and
+        so returned `Preference` only when it was the last array.
+        """
+        return label_array(surf, preference)
 
     def isLabelSurface(self, surf, property):
-        out = False
-        list_label = [
-            surf.GetPointData().GetArrayName(i)
-            for i in range(surf.GetPointData().GetNumberOfArrays())
-        ]
-        if property in list_label:
-            out = True
-        return out
+        return has_label_array(surf, property)
 
 
 class vtkIterTeeth(vtkTeeth):
@@ -450,7 +454,7 @@ class vtkMeshTeeth(vtkTeeth):
             size += points.shape[0]
 
         Points = vtk.vtkPoints()
-        Vertices = vtk.vtkCellArray()
+        vertices = vtk.vtkCellArray()
         labels = vtk.vtkStringArray()
         labels.SetNumberOfValues(size)
         labels.SetName("labels")
@@ -458,14 +462,14 @@ class vtkMeshTeeth(vtkTeeth):
         for points in list_points:
             for i in range(points.shape[0]):
                 sp_id = Points.InsertNextPoint(points[i, :].squeeze(0))
-                Vertices.InsertNextCell(1)
-                Vertices.InsertCellPoint(sp_id)
+                vertices.InsertNextCell(1)
+                vertices.InsertCellPoint(sp_id)
                 labels.SetValue(index, str(index))
                 index += 1
 
         output = vtk.vtkPolyData()
         output.SetPoints(Points)
-        output.SetVerts(Vertices)
+        output.SetVerts(vertices)
         output.GetPointData().AddArray(labels)
 
         return output
@@ -499,44 +503,23 @@ def DictTovtkPoints(dict_landmarks):
         VTK points object
     """
     Points = vtk.vtkPoints()
-    Vertices = vtk.vtkCellArray()
+    vertices = vtk.vtkCellArray()
     labels = vtk.vtkStringArray()
     labels.SetNumberOfValues(len(dict_landmarks.keys()))
     labels.SetName("labels")
 
     for i, landmark in enumerate(dict_landmarks.keys()):
         sp_id = Points.InsertNextPoint(dict_landmarks[landmark])
-        Vertices.InsertNextCell(1)
-        Vertices.InsertCellPoint(sp_id)
+        vertices.InsertNextCell(1)
+        vertices.InsertCellPoint(sp_id)
         labels.SetValue(i, landmark)
 
     output = vtk.vtkPolyData()
     output.SetPoints(Points)
-    output.SetVerts(Vertices)
+    output.SetVerts(vertices)
     output.GetPointData().AddArray(labels)
 
     return output
-
-
-def VTKMatrixToNumpy(matrix):
-    """
-    Copies the elements of a vtkMatrix4x4 into a numpy array.
-
-    Parameters
-    ----------
-    matrix : vtkMatrix4x4
-        Matrix to be copied
-
-    Returns
-    -------
-    numpy array
-        Numpy array with the elements of the vtkMatrix4x4
-    """
-    m = np.ones((4, 4))
-    for i in range(4):
-        for j in range(4):
-            m[i, j] = matrix.GetElement(i, j)
-    return m
 
 
 def vtkSameNumberPoint(source, target):
@@ -587,7 +570,7 @@ def npSameNumberPoint(source, target):
         save = np.random.choice(
             np.arange(0, target.shape[0]), source.shape[0], replace=False
         )
-        target_points = target_points[save]
+        target = target[save]
 
     return source, target
 

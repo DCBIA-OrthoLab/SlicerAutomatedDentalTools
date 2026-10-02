@@ -1,23 +1,28 @@
 import slicer
 from slicer.ScriptedLoadableModule import *
 
+import os
+import sys
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
 from BATCHDENTALSEGLib import SegmentationWidget
 from BATCHDENTALSEGLib.IconPath import icon
 
-import logging
 import sys
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("BatchDentalSeg")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("BatchDentalSeg")
 
 class BATCHDENTALSEG(ScriptedLoadableModule):
     def __init__(self, parent):
@@ -26,7 +31,7 @@ class BATCHDENTALSEG(ScriptedLoadableModule):
         self.parent.title = tr("BatchDentalSegmentator")
         self.parent.categories = [translate("qSlicerAbstractCoreModule", "Automated Dental Tools")]
         self.parent.dependencies = []
-        self.parent.icon = icon("DentalSegmentator_full_icon_2.png")  
+        self.parent.icon = icon("DentalSegmentator_full_icon_2.png")
         self.parent.contributors = [
             "Enzo Tulissi (UoM)",
             "Gauthier DOT (AP-HP)",
@@ -63,15 +68,15 @@ class BATCHDENTALSEGWidget(ScriptedLoadableModuleWidget):
 class DentalSegmentatorTest(ScriptedLoadableModuleTest):
     def runTest(self):
         try:
-            from SlicerPythonTestRunnerLib import RunnerLogic, RunnerWidget, RunSettings, isRunningInTestMode
+            from SlicerPythonTestRunnerLib import RunnerLogic, RunnerWidget, RunSettings, isRunningInTestMode  # noqa: F401  (sonde de disponibilite)
             from pathlib import Path
         except ImportError:
             slicer.util.warningDisplay("Please install SlicerPythonTestRunner extension to run the self tests.")
             return
 
-        currentDirTest = Path(__file__).parent.joinpath("Testing")
+        current_dir_test = Path(__file__).parent.joinpath("Testing")
         results = RunnerLogic().runAndWaitFinished(
-            currentDirTest,
+            current_dir_test,
             RunSettings(extraPytestArgs=RunSettings.pytestFileFilterArgs("*TestCase.py") + ["-m not slow"]),
             doRunInSubProcess=not isRunningInTestMode()
         )

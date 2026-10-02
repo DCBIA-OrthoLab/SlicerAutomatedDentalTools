@@ -1,52 +1,12 @@
 from pathlib import Path
 import os
-import glob
 
-import logging
-import sys
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("AutoMatrix_general_tools")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+from ADTLib.io.fs import search  # noqa: F401  (re-exporte)
 
-def search(path, *args):
-        """
-        Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
-
-        Example:
-        args = ('json',['.nii.gz','.nrrd'])
-        return:
-            {
-                'json' : ['path/a.json', 'path/b.json','path/c.json'],
-                '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
-                '.nrrd.gz' : ['path/c.nrrd']
-            }
-        """
-        arguments = []
-        for arg in args:
-            if type(arg) == list:
-                arguments.extend(arg)
-            else:
-                arguments.append(arg)
-        return {
-            key: [
-                i
-                for i in glob.iglob(
-                    os.path.normpath("/".join([path, "**", "*"])), recursive=True
-                )
-                if i.endswith(key)
-            ]
-            for key in arguments
-        }
-
+logger = get_logger("AutoMatrix_general_tools")
 
 def GetPatients(file_path:str,matrix_path:str):
         """
@@ -108,7 +68,7 @@ def GetPatients(file_path:str,matrix_path:str):
             try :
                 fname, extension2 = os.path.splitext(os.path.basename(fname))
                 extension = extension2+extension
-            except :
+            except Exception:
                 logger.error("The file is not in the format .nii.gz")
 
             if extension ==".vtk" or extension ==".vtp" or extension ==".stl" or extension ==".off" or extension ==".obj" or extension==".nii" or extension==".nii.gz" or extension==".nrrd" or extension==".mrk.json":

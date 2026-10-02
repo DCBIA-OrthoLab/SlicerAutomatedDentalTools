@@ -1,62 +1,19 @@
-import os
 from pathlib import Path
-import sys
-import logging
+from ADTLib.naming import patient_id as read_patient_id, TMJ_CROP_MARKERS
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_CLI_utils_TMJ_Crop")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("MRI2CBCT_CLI_utils_TMJ_Crop")
 
 def GetListFiles(folder_path, extensions):
     return [str(p) for ext in extensions for p in Path(folder_path).rglob(f"*{ext}")]
 
-# TIMEPOINT-SUFFIX: only _T1/_T2 are stripped here, so _T3/_T4 inputs break
-# patient pairing. See the full note above GetPatients in
-# AREG_CBCT/AREG_CBCT_utils/utils.py before changing this.
+# TIMEPOINT-SUFFIX: the chain lives in ADTLib.naming, with the note. This site
+# uses the widest marker set of the repository -- the default plus seventeen
+# markers of its own -- declared there as TMJ_CROP_MARKERS.
 def extract_patient_id(filename: str) -> str:
-    # Remove suffixes like _Scan, _CB, _T1, _seg, _mask, etc.
-    return (
-        Path(filename).stem
-        .split("_Scan")[0]
-        .split("_scan")[0]
-        .split("_Or")[0]
-        .split("_OR")[0]
-        .split("_MAND")[0]
-        .split("_MD")[0]
-        .split("_MAX")[0]
-        .split("_MX")[0]
-        .split("_CB")[0]
-        .split("_lm")[0]
-        .split("_T2")[0]
-        .split("_T1")[0]
-        .split("_Cl")[0]
-        .split("_seg")[0]
-        .split("_Seg")[0]
-        .split("_mask")[0]
-        .split("_Mask")[0]
-        .split("_pred")[0]
-        .split("_Pred")[0]
-        .split("_crop")[0]
-        .split("_Crop")[0]
-        .split("_Left")[0]
-        .split("_left")[0]
-        .split("_Right")[0]
-        .split("_right")[0]
-        .split("_approximate")[0]
-        .split("_Approximate")[0]
-        .split("_CBCT")[0]
-        .split("_MRI")[0]
-        .split("_MR")[0]
-        .split(".")[0]
-    )
+    return read_patient_id(Path(filename).stem, TMJ_CROP_MARKERS)
 
 def GetPatients(cbct_folder, mri_folder, seg_folder):
     extensions = [".nii.gz", ".nii", ".nrrd", ".nrrd.gz", ".gipl", ".gipl.gz"]

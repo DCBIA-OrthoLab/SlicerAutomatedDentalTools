@@ -1,5 +1,4 @@
 import vtk
-import argparse
 import SimpleITK as sitk
 import numpy as np
 import os
@@ -33,11 +32,11 @@ def convertNiftiToVTK(input_path, output_path ) -> None:
 
         label = np.max(img_arr)
 
-        paddedImage_filename = padding(img)
+        padded_image_filename = padding(img)
 
         # Read the original Nifti image
         surf = vtk.vtkNIFTIImageReader()
-        surf.SetFileName(paddedImage_filename)
+        surf.SetFileName(padded_image_filename)
         surf.Update()
 
         # Apply filter to create an isosurface from the input image
@@ -48,14 +47,14 @@ def convertNiftiToVTK(input_path, output_path ) -> None:
 
         # LAPLACIAN smooth to improve VTK rendering
         # by reducing the impact of jagged edges
-        SmoothPolyDataFilter = vtk.vtkSmoothPolyDataFilter()
-        SmoothPolyDataFilter.SetInputConnection(dmc.GetOutputPort())
-        SmoothPolyDataFilter.SetNumberOfIterations(5)
-        SmoothPolyDataFilter.SetFeatureAngle(120.0)
-        SmoothPolyDataFilter.SetRelaxationFactor(0.6)
-        SmoothPolyDataFilter.Update()
+        smooth_poly_data_filter = vtk.vtkSmoothPolyDataFilter()
+        smooth_poly_data_filter.SetInputConnection(dmc.GetOutputPort())
+        smooth_poly_data_filter.SetNumberOfIterations(5)
+        smooth_poly_data_filter.SetFeatureAngle(120.0)
+        smooth_poly_data_filter.SetRelaxationFactor(0.6)
+        smooth_poly_data_filter.Update()
 
-        model = SmoothPolyDataFilter.GetOutput()
+        model = smooth_poly_data_filter.GetOutput()
 
         # Coloring the VTK according to labels
         color = vtk.vtkUnsignedCharArray()
@@ -69,7 +68,7 @@ def convertNiftiToVTK(input_path, output_path ) -> None:
 
         model.GetCellData().SetScalars(color)
 
-        os.remove(paddedImage_filename)
+        os.remove(padded_image_filename)
         # Save the final VTK model
         Write(model, output_filename)
 

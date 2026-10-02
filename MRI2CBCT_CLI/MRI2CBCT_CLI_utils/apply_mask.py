@@ -3,20 +3,11 @@ import os
 import argparse
 import numpy as np
 
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_CLI_utils_applymask")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("MRI2CBCT_CLI_utils_applymask")
 
 
 def MaskedImage(fixed_image_path, fixed_seg_path, folder_output, suffix, SegLabel=None):
@@ -35,8 +26,8 @@ def MaskedImage(fixed_image_path, fixed_seg_path, folder_output, suffix, SegLabe
 
     fixed_image_masked = applyMask(fixed_image_sitk, fixed_seg_sitk, label=SegLabel)
     if fixed_image_masked=="failed":
-        logger.warning("failed process on : ",fixed_image_sitk)
-        return 
+        logger.warning("failed process on : %s", fixed_image_sitk)
+        return
     
     base_name, ext = os.path.splitext(fixed_image_path)
     if base_name.endswith('.nii'):  # Case for .nii.gz
@@ -138,9 +129,9 @@ def apply_mask_f(folder_path, seg_folder, folder_output, suffix, seg_label):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Apply segmentation mask to all MRI files in a folder.")
-    parser.add_argument("--folder_path", type=str, default="/home/lucia/Documents/Gaelle/Data/MultimodelReg/Segmentation/a3_Registration_closer_all/b2_CBCT_norm/test_percentile=[10,95]_norm=[0,75]", help="The path to the folder containing the MRI files.")
-    parser.add_argument("--seg_folder", type=str, default="/home/lucia/Documents/Gaelle/Data/MultimodelReg/Segmentation/a3_Registration_closer_all/d0_CBCT_seg_sep/label_2", help="The path to the segmentation file.")
-    parser.add_argument("--folder_output", type=str, default="/home/lucia/Documents/Gaelle/Data/MultimodelReg/Segmentation/a3_Registration_closer_all/b3_CBCT_inv_norm_mask:l2/a03_test_percentile=[10,95]_norm=[0,75]", help="The path to the output folder for the masked files.")
+    parser.add_argument("--folder_path", type=str, required=True, help="The path to the folder containing the MRI files.")
+    parser.add_argument("--seg_folder", type=str, required=True, help="The path to the segmentation file.")
+    parser.add_argument("--folder_output", type=str, required=True, help="The path to the output folder for the masked files.")
     parser.add_argument("--suffix", type=str, default="mask", help="The suffix to add to the output filenames.")
     parser.add_argument("--seg_label", type=int, default=1, help="Label of the segmentation.")
 

@@ -11,7 +11,6 @@
 # leaves the point coordinates untouched (measured: 5e-5 mm over 118k points),
 # so the landmarks predicted on the copy are valid in the file the user gave.
 import glob
-import logging
 import os
 import shutil
 import subprocess
@@ -21,16 +20,9 @@ import tempfile
 import vtk
 from vtk.util.numpy_support import vtk_to_numpy
 
-logger = logging.getLogger("ALI_IOS_segmentation")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ALI_IOS_segmentation")
 
 # Array names a segmentation may carry, in the order they are looked for.
 LABEL_ARRAYS = ("Universal_ID", "PredictedID", "UniversalID")

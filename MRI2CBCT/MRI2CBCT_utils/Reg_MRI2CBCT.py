@@ -1,37 +1,23 @@
 from .Method import Method
-from .utils_CBCT import GetDictPatients, GetPatients
-import os, sys
+from .utils_CBCT import GetDictPatients
 
-import SimpleITK as sitk
-import numpy as np
 
-from glob import iglob
 import slicer
-import time
 import qt
 import platform
-import re
 
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_REG")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("MRI2CBCT_REG")
 
 
 class Registration_MRI2CBCT(Method):
     def __init__(self, widget):
         super().__init__(widget)
-        documentsLocation = qt.QStandardPaths.DocumentsLocation
-        documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        documents_location = qt.QStandardPaths.DocumentsLocation
+        documents = qt.QStandardPaths.writableLocation(documents_location)
 
     def getGPUUsage(self):
         if platform.system() == "Darwin":
@@ -74,7 +60,7 @@ class Registration_MRI2CBCT(Method):
         
         message = "\n".join(messages)
         
-        return ok, message 
+        return ok, message
         
     def TestProcess(self, **kwargs) -> str:
         out = ""

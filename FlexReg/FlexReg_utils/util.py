@@ -1,21 +1,12 @@
 import numpy as np
-from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
-import vtk
+from vtk.util.numpy_support import vtk_to_numpy
 
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("FlexReg_util")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+from ADTLib.labels import has_label_array, label_array
+
+logger = get_logger("FlexReg_util")
 
 class vtkTeeth:
     def __init__(self, list_teeth, property=None):
@@ -27,36 +18,21 @@ class vtkTeeth:
             property = self.GetLabelSurface(surf)
         self.property = property
 
-    def GetLabelSurface(self, surf, Preference="Universal_ID"):
-        out = None
+    def GetLabelSurface(self, surf, preference="Universal_ID"):
+        """The numbering array to use: see `ADTLib.labels`.
 
-        list_label = [
-            surf.GetPointData().GetArrayName(i)
-            for i in range(surf.GetPointData().GetNumberOfArrays())
-        ]
-
-        if len(list_label) != 0:
-            for label in list_label:
-                out = label
-                if Preference == label:
-                    out = Preference
-                    continue
-        return out
+        Four of the five copies did `continue` where `break` was needed, and
+        so returned `Preference` only when it was the last array.
+        """
+        return label_array(surf, preference)
 
     def isLabelSurface(self, surf, property):
-        out = False
-        list_label = [
-            surf.GetPointData().GetArrayName(i)
-            for i in range(surf.GetPointData().GetNumberOfArrays())
-        ]
-        if property in list_label:
-            out = True
-        return out
+        return has_label_array(surf, property)
 
 class ToothNoExist(Exception):
     def __init__(self, tooth ) -> None:
         dic = {1: 'UR8', 2: 'UR7', 3: 'UR6', 4: 'UR5', 5: 'UR4', 6: 'UR3', 7: 'UR2', 8: 'UR1', 9: 'UL1', 10: 'UL2', 11: 'UL3',
-         12: 'UL4', 13: 'UL5', 14: 'UL6', 15: 'UL7', 16: 'UL8', 17: 'LL8', 18: 'LL7', 19: 'LL6', 20: 'LL5', 21: 'LL4', 22: 'LL3', 
+         12: 'UL4', 13: 'UL5', 14: 'UL6', 15: 'UL7', 16: 'UL8', 17: 'LL8', 18: 'LL7', 19: 'LL6', 20: 'LL5', 21: 'LL4', 22: 'LL3',
          23: 'LL2', 24: 'LL1', 25: 'LR1', 26: 'LR2', 27: 'LR3', 28: 'LR4', 29: 'LR5', 30: 'LR6', 31: 'LR7', 32: 'LR8'}
         if isinstance(tooth,int):
             tooth = dic[tooth]

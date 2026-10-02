@@ -7,7 +7,7 @@ can be stacked in a single session. The state is written to disk after every
 scan, which makes an interrupted run resumable.
 """
 
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict
 from pathlib import Path
 import json
 import logging
@@ -43,9 +43,9 @@ def volumeStem(path):
     return Path(name).stem
 
 
-def expectedOutputPath(inputPath, outputDir):
+def expectedOutputPath(input_path, output_dir):
     """Path of the NIfTI written by the widget for a given input scan."""
-    return Path(outputDir).joinpath(f"{volumeStem(inputPath)}_Segmentation.nii.gz")
+    return Path(output_dir).joinpath(f"{volumeStem(input_path)}_Segmentation.nii.gz")
 
 
 @dataclass
@@ -75,17 +75,17 @@ class SegmentationQueue:
 
     # ─── Building ──────────────────────────────────────────────────────────────
 
-    def addFolder(self, inputFolder, outputDir, model, device, skipExisting=True):
+    def addFolder(self, input_folder, output_dir, model, device, skipExisting=True):
         """Append every volume of a folder. Returns (added, skipped)."""
         added = skipped = 0
-        for filePath in listVolumes(inputFolder):
-            if skipExisting and expectedOutputPath(filePath, outputDir).exists():
+        for file_path in listVolumes(input_folder):
+            if skipExisting and expectedOutputPath(file_path, output_dir).exists():
                 skipped += 1
                 continue
-            if any(item.inputPath == str(filePath) for item in self.items):
+            if any(item.inputPath == str(file_path) for item in self.items):
                 skipped += 1
                 continue
-            self.items.append(QueueItem(str(filePath), str(outputDir), model, device))
+            self.items.append(QueueItem(str(file_path), str(output_dir), model, device))
             added += 1
         self.save()
         return added, skipped
@@ -123,12 +123,12 @@ class SegmentationQueue:
     def current(self):
         return self.items[self.index] if self.index < len(self.items) else None
 
-    def advance(self, status, error="", durationSec=0.0):
+    def advance(self, status, error="", duration_sec=0.0):
         item = self.current()
         if item is not None:
             item.status = status
             item.error = error
-            item.durationSec = durationSec
+            item.durationSec = duration_sec
         self.index += 1
         self.save()
         return item

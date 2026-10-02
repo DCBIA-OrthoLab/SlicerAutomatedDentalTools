@@ -1,27 +1,30 @@
 #!/usr/bin/env python-real
 
 import os
-import argparse, shutil, itertools
-from nnunetv2.inference.predict_from_raw_data import predict_entry_point
+import argparse, itertools
 from typing import Optional
 from pathlib import Path
 import numpy as np
 import nibabel as nib
 
 import sys
-import logging
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_CLI_TMJ_Crop")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("MRI2CBCT_CLI_TMJ_Crop")
+
 
 # realpath, not __file__: this CLI sits in a sub-folder, so it is registered
 # through a flat folder of symlinks into the source tree. __file__ then names
@@ -87,8 +90,9 @@ def process_patient(cbct_path: Path, mri_path: Path, seg_path: Optional[Path], t
         mask_img = nib.Nifti1Image(mask.astype(np.uint8), cbct_half.affine)
         _save(mask_img, f"{name}_Mask_TMJ_{side}.nii.gz", "Mask")
     except Exception:
-        # best-effort save, do not fail the pipeline
-        pass
+        # Inspection save: it must not stop the processing, but its failure
+        # has to stay readable.
+        logger.debug("Masque TMJ non enregistre", exc_info=True)
     if mask.sum() == 0:
         logger.info("No voxel ignored")
         return
@@ -150,7 +154,7 @@ def process_patient(cbct_path: Path, mri_path: Path, seg_path: Optional[Path], t
             mask_on_mri = resample_from_to(mask_img, (mri_crop.shape, mri_crop.affine), order=0)
             _save(mask_on_mri, f"{name}_Mask_TMJ_crop{side}.nii.gz","CBCT seg")
         except Exception:
-            pass
+            logger.debug("Masque TMJ recale non enregistre", exc_info=True)
 
 
 # ── MAIN ────────────────────────────────────────────────────────────

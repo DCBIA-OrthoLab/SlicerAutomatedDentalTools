@@ -7,12 +7,24 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 import qt
-import glob
-import numpy as np
 from qt import QFileDialog,QMessageBox,QGridLayout,QWidget
 from functools import partial
-import SimpleITK as sitk
 
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+# This has to run before the first import of anything local, not just before
+# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+from ADTLib.logging_setup import get_logger
 
 from AutoMatrix_Method.General_tools import search
 
@@ -22,24 +34,15 @@ from AutoMatrix_Method.Progress import Display
 
 
 
-import time
-import threading
 import io
 
-import logging
-import sys
+
+from ADTLib.theming import apply_dark_mode, update_line_edit_and_combo_box
+from ADTLib.format import format_timer
+from ADTLib.model_registry import AUTOMATRIX_MIRROR, SLICER_TESTING_DATA
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("AutoMatrix")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("AutoMatrix")
 
 
 #
@@ -53,16 +56,16 @@ class AutoMatrix(ScriptedLoadableModule):
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "AutoMatrix"  # TODO: make this more human readable by adding spaces
-        self.parent.categories = ["Automated Dental Tools"]  # TODO: set categories (folders where the module shows up in the module selector)
-        self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = ["Leroux Gaelle"]  # TODO: replace with "Firstname Lastname (Organization)"
-        # TODO: update with short description of the module and a link to online module documentation
+        self.parent.title = "AutoMatrix"
+        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.dependencies = []
+        self.parent.contributors = ["Leroux Gaelle"]
+        
         self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#AutoMatrix">module documentation</a>.
+See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools#AutoMatrix">module documentation</a>.
 """
-        # TODO: replace with organization, grant and thanks
+        
         self.parent.acknowledgementText = """
 This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
 and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
@@ -84,7 +87,7 @@ def registerSampleData():
     # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
 
     import SampleData
-    iconsPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
+    icons_path = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
 
     # To ensure that the source code repository remains small (can be downloaded and installed quickly)
     # it is recommended to store data sets that are larger than a few MB in a Github release.
@@ -96,9 +99,9 @@ def registerSampleData():
         sampleName='AutoMatrix1',
         # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
         # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, 'AutoMatrix1.png'),
+        thumbnailFileName=os.path.join(icons_path, 'AutoMatrix1.png'),
         # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+        uris=f"{SLICER_TESTING_DATA}/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
         fileNames='AutoMatrix1.nrrd',
         # Checksum to ensure file integrity. Can be computed by this command:
         #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
@@ -112,9 +115,9 @@ def registerSampleData():
         # Category and sample name displayed in Sample Data module
         category='AutoMatrix',
         sampleName='AutoMatrix2',
-        thumbnailFileName=os.path.join(iconsPath, 'AutoMatrix2.png'),
+        thumbnailFileName=os.path.join(icons_path, 'AutoMatrix2.png'),
         # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+        uris=f"{SLICER_TESTING_DATA}/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
         fileNames='AutoMatrix2.nrrd',
         checksums='SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
         # This node name will be used when the data set is loaded
@@ -192,9 +195,9 @@ class PopUpWindow(qt.QDialog):
             button.setChecked(False)
 
     def onClickedCheckbox(self):
-        TrueFalse = [button.isChecked() for button in self.ListButtons]
+        true_false = [button.isChecked() for button in self.ListButtons]
         self.checked = [
-            self.listename[i] for i in range(len(self.listename)) if TrueFalse[i]
+            self.listename[i] for i in range(len(self.listename)) if true_false[i]
         ]
         self.accept()
 
@@ -241,14 +244,14 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath('UI/AutoMatrix.ui'))
-        self.layout.addWidget(uiWidget)
-        self.uiWidget = uiWidget  # Store reference for styling
-        self.ui = slicer.util.childWidgetVariables(uiWidget)
+        ui_widget = slicer.util.loadUI(self.resourcePath('UI/AutoMatrix.ui'))
+        self.layout.addWidget(ui_widget)
+        self.uiWidget = ui_widget  # Store reference for styling
+        self.ui = slicer.util.childWidgetVariables(ui_widget)
 
         # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
         # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
-        uiWidget.setMRMLScene(slicer.mrmlScene)
+        ui_widget.setMRMLScene(slicer.mrmlScene)
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
@@ -379,11 +382,11 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     def DownloadMirror(self) -> None:
-        url = "https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixMirror/Mirror.zip"
+        url = f"{AUTOMATRIX_MIRROR}/Mirror.zip"
         name = "Mirror_matrix"
 
-        documentsLocation = qt.QStandardPaths.DocumentsLocation
-        self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        documents_location = qt.QStandardPaths.DocumentsLocation
+        self.documents = qt.QStandardPaths.writableLocation(documents_location)
         self.SlicerDownloadPath = os.path.join(
             self.documents,
             slicer.app.applicationName + "Downloads",
@@ -432,201 +435,12 @@ class AutoMatrixWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.LineEditReference.setText(surface_folder)
 
     def applyDarkModeStyles(self):
-        """Apply dark mode styling to the widget if needed"""
-        app = qt.QApplication.instance()
-        palette = app.palette()
-        bg_color = palette.color(qt.QPalette.Window)
-        if bg_color.lightness() < 128:
-            # Complete dark mode stylesheet
-            dark_stylesheet = """
-QLineEdit, QTextEdit {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 6px;
-  color: #ffffff;
-  selection-background-color: #5dade2;
-}
-QLineEdit:focus, QTextEdit:focus {
-  border: 2px solid #5dade2;
-}
-QComboBox {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #ffffff;
-}
-QComboBox:focus {
-  border: 2px solid #5dade2;
-}
-QComboBox::drop-down {
-  width: 20px;
-  border: none;
-}
-QComboBox QAbstractItemView {
-  background-color: #3c3c3c;
-  color: #ffffff;
-  selection-background-color: #5dade2;
-}
-QLabel {
-  color: #ffffff;
-  font-weight: 500;
-  background-color: transparent;
-}
-QPushButton {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 10pt;
-  padding: 8px;
-  margin-top: 4px;
-}
-QPushButton:hover:!pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7bbcef, stop:1 #5dade2);
-}
-QPushButton:pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1e638d);
-}
-QPushButton:disabled {
-  background-color: #555555;
-  color: #888888;
-}
-QCheckBox {
-  color: #ffffff;
-  font-weight: 500;
-  spacing: 6px;
-  background-color: transparent;
-}
-QCheckBox::indicator {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #555555;
-  border-radius: 3px;
-  background-color: #3c3c3c;
-}
-QCheckBox::indicator:hover {
-  border: 1px solid #5dade2;
-}
-QCheckBox::indicator:checked {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #5dade2;
-  border-radius: 3px;
-  background-color: #5dade2;
-  image: url(:/Icons/SmallCheckMark.png);
-}
-QCheckBox::indicator:checked:hover {
-  border: 1px solid #7bbcef;
-  background-color: #7bbcef;
-}
-QProgressBar {
-  border: 1px solid #555555;
-  border-radius: 4px;
-  background-color: #3c3c3c;
-  padding: 2px;
-  color: #ffffff;
-}
-QProgressBar::chunk {
-  background-color: #5dade2;
-  border-radius: 3px;
-}
-QSpinBox, QDoubleSpinBox {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #ffffff;
-}
-QSpinBox:focus, QDoubleSpinBox:focus {
-  border: 2px solid #5dade2;
-}
-QSlider::groove:horizontal {
-  background-color: #555555;
-  border-radius: 4px;
-}
-QSlider::handle:horizontal {
-  background-color: #5dade2;
-  width: 12px;
-  margin: -4px 0;
-  border-radius: 6px;
-}
-QSlider::handle:horizontal:hover {
-  background-color: #7bbcef;
-}
-            """
-            self.uiWidget.setStyleSheet(dark_stylesheet)
-            
-            # Update QLineEdit, QComboBox, and QLabel for dark mode
-            self._updateLineEditAndComboBoxDarkMode(self.uiWidget)
+        """Give this module's widget the palette shared by the extension."""
+        apply_dark_mode(self.uiWidget)
 
     def _updateLineEditAndComboBoxDarkMode(self, parent):
-        """
-        Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
-        """
-        # Update QLabel
-        if isinstance(parent, qt.QLabel):
-            try:
-                parent.setStyleSheet("""
-                    QLabel {
-                      color: #ffffff;
-                      font-weight: 500;
-                    }
-                """)
-            except:
-                pass
-        
-        # Update QLineEdit
-        if isinstance(parent, qt.QLineEdit):
-            try:
-                parent.setStyleSheet("""
-                    QLineEdit {
-                      background-color: #3c3c3c;
-                      border: 1px solid #555555;
-                      border-radius: 4px;
-                      padding: 6px;
-                      color: #ffffff;
-                    }
-                    QLineEdit:focus {
-                      border: 2px solid #5dade2;
-                    }
-                """)
-            except:
-                pass
-        
-        # Update QComboBox
-        if isinstance(parent, qt.QComboBox):
-            try:
-                parent.setStyleSheet("""
-                    QComboBox {
-                      background-color: #3c3c3c;
-                      border: 1px solid #555555;
-                      border-radius: 4px;
-                      padding: 4px 6px;
-                      color: #ffffff;
-                    }
-                    QComboBox:focus {
-                      border: 2px solid #5dade2;
-                    }
-                    QComboBox::drop-down {
-                      width: 20px;
-                      border: none;
-                    }
-                    QComboBox QAbstractItemView {
-                      background-color: #3c3c3c;
-                      color: #ffffff;
-                      selection-background-color: #5dade2;
-                    }
-                """)
-            except:
-                pass
-        
-        # Recursively update all children
-        if hasattr(parent, 'children'):
-            for child in parent.children():
-                self._updateLineEditAndComboBoxDarkMode(child)
+        """Shared recursive pass, kept as a method for the existing call sites."""
+        update_line_edit_and_combo_box(parent)
 
     def cleanup(self):
         """
@@ -674,25 +488,25 @@ QSlider::handle:horizontal:hover {
 
         # Select default input nodes if nothing is selected yet to save a few clicks for the user
         if not self._parameterNode.GetNodeReference("InputVolume"):
-            firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-            if firstVolumeNode:
-                self._parameterNode.SetNodeReferenceID("InputVolume", firstVolumeNode.GetID())
+            first_volume_node = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+            if first_volume_node:
+                self._parameterNode.SetNodeReferenceID("InputVolume", first_volume_node.GetID())
 
-    def setParameterNode(self, inputParameterNode):
+    def setParameterNode(self, input_parameter_node):
         """
         Set and observe parameter node.
         Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
         """
 
-        if inputParameterNode:
-            self.logic.setDefaultParameters(inputParameterNode)
+        if input_parameter_node:
+            self.logic.setDefaultParameters(input_parameter_node)
 
         # Unobserve previously selected parameter node and add an observer to the newly selected.
         # Changes of parameter node are observed so that whenever parameters are changed by a script or any other module
         # those are reflected immediately in the GUI.
         if self._parameterNode is not None:
             self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-        self._parameterNode = inputParameterNode
+        self._parameterNode = input_parameter_node
         if self._parameterNode is not None:
             self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
 
@@ -728,7 +542,7 @@ QSlider::handle:horizontal:hover {
         if self._parameterNode is None or self._updatingGUIFromParameterNode:
             return
 
-        wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
+        was_modified = self._parameterNode.StartModify()  # Modify all properties in a single batch
 
         self._parameterNode.SetNodeReferenceID("InputVolume", self.ui.inputSelector.currentNodeID)
         self._parameterNode.SetNodeReferenceID("OutputVolume", self.ui.outputSelector.currentNodeID)
@@ -736,7 +550,7 @@ QSlider::handle:horizontal:hover {
         self._parameterNode.SetParameter("Invert", "true" if self.ui.invertOutputCheckBox.checked else "false")
         self._parameterNode.SetNodeReferenceID("OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID)
 
-        self._parameterNode.EndModify(wasModified)
+        self._parameterNode.EndModify(was_modified)
 
 
 
@@ -778,7 +592,7 @@ QSlider::handle:horizontal:hover {
             log_path=self.log_path,
             is_seg=self.ui.CheckBoxSegmentation.isChecked(),
         )
-        self.nb_scans = self.ActualMeth.NbScan(self.ui.LineEditPatient.text, self.ui.LineEditMatrix.text)
+        self.nb_scans = self.ActualMeth.NumberScan(self.ui.LineEditPatient.text, self.ui.LineEditMatrix.text)
         
         self.nb_extension_launch = len(self.list_Processes_Parameters)
         self.onProcessStarted()
@@ -805,22 +619,17 @@ QSlider::handle:horizontal:hover {
         
     def onProcessUpdate(self, caller, event):
         currentTime = time.time() - self.startTime
-        if currentTime < 60:
-            timer = f"Time : {int(currentTime)}s"
-        elif currentTime < 3600:
-            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-        else:
-            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+        timer = format_timer(currentTime)
 
         self.ui.label_time.setText(timer)
         progress = caller.GetProgress()
         self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
         
         if progress == 0:
-            self.updateProgessBar = False
+            self.updateProgressBar = False
             
         if self.displayModule.isProgress(
-            progress=progress, updateProgessBar=self.updateProgessBar
+            progress=progress, updateProgressBar=self.updateProgressBar
         ):
             progress_bar, message = self.displayModule()
             self.ui.progressBar.setValue(progress_bar)
@@ -834,8 +643,8 @@ QSlider::handle:horizontal:hover {
 
                 logger.error(self.process.GetOutputText())
                 logger.error("\n\n ========= ERROR ========= \n")
-                errorText = self.process.GetErrorText()
-                logger.error("CLI execution failed: \n \n" + errorText)
+                error_text = self.process.GetErrorText()
+                logger.error("CLI execution failed: \n \n" + error_text)
                 self.onCancel()
 
             else:
@@ -857,21 +666,6 @@ QSlider::handle:horizontal:hover {
                     del self.list_Processes_Parameters[0]
                 except IndexError:
                     self.OnEndProcess()
-
-    def saveOutput(self, outputVolumeNode, outputFilePath)->None:
-        """
-        Saves the output volume in the specified file with the .nii.gz extension.
-
-        :param outputVolumeNode: The output volume node in Slicer MRML scene.
-        :param outputFilePath: The full path where the file is to be saved.
-        """
-        if not os.path.exists(os.path.dirname(outputFilePath)):
-            os.makedirs(os.path.dirname(outputFilePath))
-
-        slicer.util.exportNode(outputVolumeNode, outputFilePath,world=True)
-
-
-
 
     def UpdateTime(self)->None:
         '''
@@ -964,9 +758,9 @@ QSlider::handle:horizontal:hover {
         )
         self.RunningUI(False)
 
-        stopTime = time.time()
+        stop_time = time.time()
 
-        logger.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+        logger.info(f"Processing completed in {stop_time-self.startTime:.2f} seconds")
 
         s = PopUpWindow(
             title="Process Done",
@@ -1018,7 +812,7 @@ QSlider::handle:horizontal:hover {
                 try :
                     fname, extension2 = os.path.splitext(os.path.basename(fname))
                     extension = extension2+extension
-                except :
+                except Exception:
                     logger.warning("The file is not a .nii.gz")
                 if extension != ".vtk" and extension != ".vtp" and extension != ".stl" and extension != ".off" and extension != ".obj" and extension != ".nii.gz" and extension != ".nrrd" and extension != ".mrk.json":
                         warning_text = warning_text + "Wrong type of file patient detected" + "\n"
@@ -1082,14 +876,14 @@ class AutoMatrixLogic(ScriptedLoadableModuleLogic):
         self.installCliNode = None
 
 
-    def setDefaultParameters(self, parameterNode):
+    def setDefaultParameters(self, parameter_node):
         """
         Initialize parameter node with default settings.
         """
-        if not parameterNode.GetParameter("Threshold"):
-            parameterNode.SetParameter("Threshold", "100.0")
-        if not parameterNode.GetParameter("Invert"):
-            parameterNode.SetParameter("Invert", "false")
+        if not parameter_node.GetParameter("Threshold"):
+            parameter_node.SetParameter("Threshold", "100.0")
+        if not parameter_node.GetParameter("Invert"):
+            parameter_node.SetParameter("Invert", "false")
 
     def process(self)->None:
         """
@@ -1097,6 +891,21 @@ class AutoMatrixLogic(ScriptedLoadableModuleLogic):
         """
 
         pass
+    def saveOutput(self, output_volume_node, output_file_path)->None:
+        """
+        Saves the output volume in the specified file with the .nii.gz extension.
+
+        :param outputVolumeNode: The output volume node in Slicer MRML scene.
+        :param outputFilePath: The full path where the file is to be saved.
+        """
+        if not os.path.exists(os.path.dirname(output_file_path)):
+            os.makedirs(os.path.dirname(output_file_path))
+
+        slicer.util.exportNode(output_volume_node, output_file_path,world=True)
+
+
+
+
 
 
 

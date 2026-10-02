@@ -1,0 +1,43 @@
+# Quality tooling for the repository. No build dependency: Slicer builds the
+# extension through CMake, and this file only serves the development tools.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"          # the version Slicer 5.13 ships
+extend-exclude = ["**/__pycache__"]
+
+# RATCHET: only the rules the repository passes today are enabled, so the CI is
+# green on day one and stays that way. Each rule in the backlog below is turned
+# on by the branch that fixes its violations -- never all at once, or the CI
+# becomes background noise that everyone learns to ignore.
+[tool.ruff.lint]
+select = [
+  "E9",     # syntax and runtime errors
+  "F6",     # bad literals: repeated dictionary key, and the like
+  "F7",     # break/continue/return outside their block
+  "B002",   # ++x, which does nothing
+  "B012",   # break/return inside a finally, which swallows the exception
+  "B018",   # expression with no effect: the "f.close" without parentheses
+  "PLE",    # pylint errors: logging arguments, invalid characters
+  "F811",   # silent redefinition: the second one wins
+  "F821",   # undefined name: a guaranteed NameError if the line is reached
+  "E722",   # bare except: also swallows Ctrl-C and deliberate exits
+  "F401",   # unused import
+  "S110",   # try/except/pass on Exception: the error vanishes without a trace
+  "S112",   # try/except/continue on Exception: same, inside a loop
+]
+
+# BACKLOG, in the order it will be worked through. Counts taken on 2026-09-16.
+#   B006  (18) mutable default value
+#   B023   (4) closure capturing the loop variable -- changes the semantics, one case at a time
+#   E501 (3540) line too long -- for a formatting pass, not by hand
+
+[tool.ruff.lint.per-file-ignores]
+"*/Testing/*" = ["E501"]
+
+# An __init__.py often does nothing but re-export: its imports are its purpose,
+# not an oversight.
+"**/__init__.py" = ["F401"]
+
+# No exception to F821 is left: the last undefined name, ALI_IOS's OFFReader,
+# went with the move of ReadSurf into ADTLib.io.surface.

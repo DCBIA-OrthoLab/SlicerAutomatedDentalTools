@@ -488,52 +488,6 @@ scripts:
         default: "None"
         description: "Optional lower-arch surface to transform alongside the main surface (icp type only), or 'None'."
 
-  - name: medx_dashboard
-    path: "MedX_Dashboard.py"
-    description: "MedX Dashboard - Interactive visualization of medical data and analysis summaries. Generates HTML dashboards for visual exploration of clinical outcomes, measurements, and longitudinal study results."
-    tags: [dashboard, visualization, medx, summarization, html, clinical, web, reporting, analytics]
-    priority: 12
-
-    cli_style: positional
-    parameters:
-      - name: summary_folder
-        type: path
-        required: true
-        description: "Folder containing summary files."
-
-      - name: output_folder
-        type: path
-        required: true
-        description: "Output folder for dashboard HTML."
-
-  - name: medx_summarize
-    path: "MedX_Summarize.py"
-    description: "MedX Summarize - Automatic medical text summarization using transformers. Generates concise clinical summaries from patient notes (PDF, DOCX, TXT) using transformer-based NLP models for quick clinical review."
-    tags: [nlp, summarization, medx, pdf, docx, transformers, text, clinical, ai, document]
-    priority: 13
-
-    cli_style: positional
-    parameters:
-      - name: input_notes
-        type: path
-        required: true
-        description: "Folder containing patient notes (PDF/DOCX/TXT)."
-
-      - name: input_model
-        type: str
-        default: "t5-base"
-        description: "Huggingface model for summarization."
-
-      - name: output_folder
-        type: path
-        required: true
-        description: "Output folder for summaries."
-
-      - name: log_path
-        type: path
-        required: true
-        description: "Log file path."
-
   - name: mri2cbct_approx
     path: "MRI2CBCT_APPROX.py"
     description: "MRI to CBCT approximation and preprocessing for multimodal registration. Preprocesses MRI and CBCT scans with intensity normalization and spatial reorientation for subsequent multimodal registration and fusion."

@@ -7,7 +7,6 @@ set(MODULE_PYTHON_SCRIPTS
   AREG_Method/__init__.py
   AREG_Method/ADTEnvSetup.py
   AREG_Method/CBCT.py
-  AREG_Method/install_pytorch.py
   AREG_Method/IOS.py
   AREG_Method/IOSCBCT.py
   AREG_Method/Method.py

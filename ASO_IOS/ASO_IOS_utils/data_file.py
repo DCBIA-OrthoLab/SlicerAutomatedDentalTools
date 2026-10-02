@@ -1,25 +1,16 @@
 from dataclasses import dataclass, field, asdict
-from typing import Tuple, Union, List
+from typing import Union, List
 import os
-import glob
 from itertools import chain
 
 from ASO_IOS_utils.utils import JawFromFileName, StripJawFromFileName
+from ADTLib.io.fs import search
 
-import logging
-import sys
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("ASO_IOS_datafile")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ASO_IOS_datafile")
 
 
 @dataclass(init=True)
@@ -170,43 +161,12 @@ class Files:
         return asdict(self.list_file[self.iter])
 
     def search(self, path, *args):
+        """The files under `path` by extension, directories excluded.
+
+        The `files_only` filter is what set this variant apart from the
+        fourteen others: see `ADTLib.io.fs`.
         """
-        Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
-
-        Example:
-        args = ('json',['.nii.gz','.nrrd'])
-        return:
-            {
-                'json' : ['path/a.json', 'path/b.json','path/c.json'],
-                '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
-                '.nrrd.gz' : ['path/c.nrrd']
-            }
-        """
-        arguments = []
-        for arg in args:
-            if type(arg) == list:
-                arguments.extend(arg)
-            else:
-                arguments.append(arg)
-        out = {
-            key: [
-                i
-                for i in glob.iglob(
-                    os.path.normpath("/".join([path, "**", "*"])), recursive=True
-                )
-                if i.endswith(key)
-            ]
-            for key in arguments
-        }
-
-        for key, values in out.items():
-            lst = []
-            for value in values:
-                if os.path.isfile(value):
-                    lst.append(value)
-            out[key] = lst
-
-        return out
+        return search(path, *args, files_only=True)
 
 
 class Files_vtk_link(Files):

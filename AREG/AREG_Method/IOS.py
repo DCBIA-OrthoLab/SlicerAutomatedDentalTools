@@ -2,27 +2,18 @@ from AREG_Method.Method import Method, FindDentalModelSeg
 from AREG_Method import Review
 from AREG_Method.Progress import DisplayAREGIOS, DisplayCrownSeg, DisplayASOIOS, DisplayALIIOS
 import slicer
-import webbrowser
-import glob
 import os
 import vtk
 import shutil
 import platform
 import csv
 
-import logging
-import sys
+from ADTLib.env.conda import windows_to_linux_path as windows_to_linux_path_shared
 # ===== Logging Configuration =====
-logger = logging.getLogger("AREG_Method_CBCT")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+from ADTLib.model_registry import ALI_IOS_MODELS, AREG_IOS_MODELS, ASO_IOS_GOLD
+
+logger = get_logger("AREG_Method_CBCT")
 
 
 # The 13 MG landmarks, in arch order. Must match MG_OUTPUT_NAME in
@@ -37,7 +28,7 @@ SEGMENTATION_EXTENSION = "SlicerDentalModelSeg"
 SEGMENTATION_MODULE = "CrownSegmentationcli"
 
 
-def MGLProcess(method, numberscan, areg_mode, **kwargs):
+def MGLProcess(method, numberscan, areg_mode, request):
     """Processes registering the lower arches on the mucogingival band.
 
     ALI predicts the landmarks for both timepoints unless the user points at a
@@ -49,7 +40,7 @@ def MGLProcess(method, numberscan, areg_mode, **kwargs):
     read the segmentation folders, which are still empty while this list is
     being built, and a progress bar dividing by that zero stops the run.
     """
-    landmarks_folder = kwargs.get("mgl_landmarks", "").strip()
+    landmarks_folder = request.mgl_landmarks.strip()
     predict = not landmarks_folder
 
     if predict:
@@ -62,8 +53,8 @@ def MGLProcess(method, numberscan, areg_mode, **kwargs):
         # Key order matters: the values are passed positionally to the ALI_IOS CLI
         for time in ("T1", "T2"):
             parameter_ali = {
-                "input": kwargs[f"input_{time.lower()}_folder"],
-                "dir_models": kwargs["model_folder_3"],
+                "input": getattr(request, f'input_{time.lower()}_folder'),
+                "dir_models": request.model_folder_3,
                 "lm_type": "None",
                 "teeth": "None",
                 "teeth_mg": MGL_TEETH,
@@ -71,7 +62,7 @@ def MGLProcess(method, numberscan, areg_mode, **kwargs):
                 "image_size": "224",
                 "blur_radius": "0",
                 "faces_per_pixel": "1",
-                "log_path": kwargs["logPath"],
+                "log_path": request.log_path,
             }
             logger.info(f"Parameter ALI_IOS {time}: {parameter_ali}")
             list_process.append({
@@ -80,21 +71,21 @@ def MGLProcess(method, numberscan, areg_mode, **kwargs):
                 "Module": f"ALI_IOS {time}",
                 "ReviewId": f"ios_landmarks_{time.lower()}",
                 "ReviewFolder": landmarks_folder,
-                "ReviewReferenceFolder": kwargs[f"input_{time.lower()}_folder"],
+                "ReviewReferenceFolder": getattr(request, f'input_{time.lower()}_folder'),
                 "Display": DisplayALIIOS(13, numberscan),
             })
 
     # Key order matters: the values are passed positionally to the AREG_IOS CLI
     parameter_reg = {
-        "T1": kwargs["input_t1_folder"],
-        "T2": kwargs["input_t2_folder"],
-        "output": kwargs["folder_output"],
+        "T1": request.input_t1_folder,
+        "T2": request.input_t2_folder,
+        "output": request.output_folder,
         "model": "None",                       # the palatal model is not used
-        "suffix": kwargs["add_in_namefile"],
-        "log_path": kwargs["logPath"],
+        "suffix": request.add_in_namefile,
+        "log_path": request.log_path,
         "areg_mode": areg_mode,
         "reg_type": "MGL",
-        "patch_radius": kwargs.get("patch_radius", "5.0"),
+        "patch_radius": request.patch_radius,
         "lm_T1": landmarks_folder,
         "lm_T2": landmarks_folder,
     }
@@ -104,15 +95,19 @@ def MGLProcess(method, numberscan, areg_mode, **kwargs):
         "Parameter": parameter_reg,
         "Module": "AREG_IOS",
         "ReviewId": "ios_registration",
-        "ReviewFolder": kwargs["folder_output"],
-        "ReviewReferenceFolder": kwargs["input_t1_folder"],
-        "Display": DisplayAREGIOS(numberscan, kwargs["logPath"]),
+        "ReviewFolder": request.output_folder,
+        "ReviewReferenceFolder": request.input_t1_folder,
+        "Display": DisplayAREGIOS(numberscan, request.log_path),
     })
 
     return list_process
 
 
 class Auto_IOS(Method):
+    # --- interface description (see `Method`) ---
+    stacked_page = 3
+    scan_type = "IOS"
+    model_label = "Segmentation Model Folder"
     def __init__(self, widget):
         super().__init__(widget)
 
@@ -175,17 +170,17 @@ class Auto_IOS(Method):
             out = None
         return out
 
-    def TestModel(self, model_folder: str, lineEditName) -> str:
+    def TestModel(self, model_folder: str, line_edit_name) -> str:
         out = None
         if model_folder == "":
             out = "Please five folder with one .pht file"
         else:
-            if "lineEditModel1" == lineEditName:
+            if "lineEditModel1" == line_edit_name:
                 files = self.search(model_folder, ".pth")[".pth"]
                 if len(files) != 1:
                     out = "Please give folder with only one .pth file \n"
 
-            elif "lineEditModel3" == lineEditName:
+            elif "lineEditModel3" == line_edit_name:
                 files = self.search(model_folder, ".ckpt")[".ckpt"]
                 if len(files) != 1:
                     out = "Please give folder with only one .ckpt file \n"
@@ -214,19 +209,9 @@ class Auto_IOS(Method):
                             writer.writerow([self.windows_to_linux_path(norm_file_path)])
         return csv_file
     
-    def windows_to_linux_path(self,windows_path):
-        '''
-        Convert a windows path to a wsl path
-        '''
-        windows_path = windows_path.strip()
-
-        path = windows_path.replace('\\', '/')
-
-        if ':' in path:
-            drive, path_without_drive = path.split(':', 1)
-            path = "/mnt/" + drive.lower() + path_without_drive
-
-        return path
+    def windows_to_linux_path(self, windows_path):
+        """A Windows path as WSL sees it."""
+        return windows_to_linux_path_shared(windows_path)
 
     def TestReference(self, ref_folder: str):
 
@@ -260,7 +245,7 @@ class Auto_IOS(Method):
     def getTestFileList(self):
         return (
             "AREG_test_scan",
-            "https://github.com/HUTIN1/AREG/releases/download/v1.0.0/AREG_test_scans.zip",
+            f"{AREG_IOS_MODELS}/AREG_test_scans.zip",
         )
 
     def getModel(self, path, extension="ckpt"):
@@ -271,30 +256,30 @@ class Auto_IOS(Method):
 
     def getModelUrl(self):
         return {
-            "Registration": "https://github.com/HUTIN1/AREG/releases/download/v1.0.0/AREG_model.zip",
-            "Reference": "https://github.com/HUTIN1/ASO/releases/download/v1.0.0/Gold_file.zip",
-            "Segmentation": "https://github.com/HUTIN1/ASO/releases/download/v1.0.0/segmentation_model.zip",
+            "Registration": f"{AREG_IOS_MODELS}/AREG_model.zip",
+            "Reference": f"{ASO_IOS_GOLD}/Gold_file.zip",
+            "Segmentation": f"{ASO_IOS_GOLD}/segmentation_model.zip",
             # MGL reads its landmarks from the ALI models, not from a palatal checkpoint
-            "ALI": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/ALI_IOS_models/Models.zip",
+            "ALI": f"{ALI_IOS_MODELS}/Models.zip",
         }
 
     def getReferenceList(self):
         return {
-            "Gold_Files": "https://github.com/HUTIN1/ASO/releases/download/v1.0.0/Gold_file.zip"
+            "Gold_Files": f"{ASO_IOS_GOLD}/Gold_file.zip"
         }
 
     def getALIModelList(self):
         return super().getALIModelList()
 
 
-    def TestSegmentationAvailable(self, **kwargs) -> str:
+    def TestSegmentationAvailable(self, request) -> str:
         """Make sure the scans can be segmented, offering the extension if not.
 
         ALI aims its cameras tooth by tooth and places nothing on a scan with
         no teeth labels, so the run would end on an empty output folder.
         """
         files = []
-        for folder in (kwargs.get("input_t1_folder", ""), kwargs.get("input_t2_folder", "")):
+        for folder in (request.input_t1_folder, request.input_t2_folder):
             if folder:
                 found = self.search(folder, ".vtk", ".stl")
                 files += found[".vtk"] + found[".stl"]
@@ -357,43 +342,43 @@ class Auto_IOS(Method):
             slicer.util.restart()
         return False
 
-    def TestMGLModel(self, **kwargs) -> str:
+    def TestMGLModel(self, request) -> str:
         """Validate what MGL needs instead of the palatal checkpoint."""
-        segmentation = self.TestSegmentationAvailable(**kwargs)
+        segmentation = self.TestSegmentationAvailable(request)
         if segmentation:
             return segmentation
 
-        if kwargs.get("mgl_landmarks", "").strip():
-            folder = kwargs["mgl_landmarks"].strip()
+        if request.mgl_landmarks.strip():
+            folder = request.mgl_landmarks.strip()
             if len(self.search(folder, ".json")[".json"]) == 0:
                 return "The MGL landmarks folder holds no json file\n"
             return ""
 
-        if kwargs["model_folder_3"] == "":
+        if request.model_folder_3 == "":
             return "Please select the ALI models folder holding the MGL model\n"
-        if not [f for f in self.search(kwargs["model_folder_3"], ".pth")[".pth"]
+        if not [f for f in self.search(request.model_folder_3, ".pth")[".pth"]
                 if os.path.basename(f).split("_")[1:2] == ["MG"]]:
             return ('No MGL model found in the models folder, a file named '
                     '"Lower_MG_*.pth" is expected\n')
         return ""
 
-    def TestProcess(self, **kwargs) -> str:
+    def TestProcess(self, request) -> str:
         out = ""
 
-        scan = self.TestScan(kwargs["input_t1_folder"], kwargs["input_t2_folder"], None)
+        scan = self.TestScan(request.input_t1_folder, request.input_t2_folder, None)
         if isinstance(scan, str):
             out = out + f"{scan}\n"
 
-        if kwargs["folder_output"] == "":
+        if request.output_folder == "":
             out = out + "Please select output folder\n"
 
         # MGL builds its patch from the landmarks, so it needs neither the
         # palatal orientation reference nor a registration checkpoint.
-        if kwargs.get("reg_type") == "MGL":
-            out = out + self.TestMGLModel(**kwargs)
+        if request.reg_type == "MGL":
+            out = out + self.TestMGLModel(request)
 
         else:
-            reference = self.TestReference(kwargs["model_folder_2"])
+            reference = self.TestReference(request.model_folder_2)
             if isinstance(reference, str):
                 out = out + f"{reference}\n"
 
@@ -401,16 +386,19 @@ class Auto_IOS(Method):
             # The order used to be the other way round, and counting the
             # checkpoints in a folder nobody chose is what sent the search
             # across the whole disk.
-            if kwargs["model_folder_1"] == "":
+            if request.model_folder_1 == "":
                 out = out + "Please select folder for the registration model\n"
-            elif len(self.search(kwargs["model_folder_1"], ".pth")[".pth"]) != 1:
+            elif len(self.search(request.model_folder_1, ".pth")[".pth"]) != 1:
                 out = (
                     out + "Please select folder with only one model for the segmentation\n"
                 )
 
-            if kwargs["model_folder_3"] == "":
+            if request.model_folder_3 == "":
                 out = out + "Please select folder for the segmentation model\n"
-            elif len(self.search(kwargs["model_folder_3"], ".ckpt")[".ckpt"]) != 1:
+            elif len(self.search(request.model_folder_3, ".ckpt")[".ckpt"]) != 1:
+                out = (
+                    out + "Please select folder with only one model for the registration\n"
+                )
                 out = (
                     out + "Please select folder with only one model for the registration\n"
                 )
@@ -464,7 +452,7 @@ class Auto_IOS(Method):
         list_label = [point_data.GetArrayName(i) for i in range(point_data.GetNumberOfArrays())]
         return any(label in properties for label in list_label if label is not None)
 
-    def SegmentTeeth(self, **kwargs):
+    def SegmentTeeth(self, request):
         """Steps segmenting the scans of both timepoints, and where they land.
 
         Scans already carrying Universal_ID are copied straight to the
@@ -475,80 +463,80 @@ class Auto_IOS(Method):
         """
         path_tmp = slicer.util.tempDirectory()
         path_input = os.path.join(path_tmp, "input_seg")
-        path_input_T1 = os.path.join(path_input, "T1")
-        path_input_T2 = os.path.join(path_input, "T2")
+        path_input_t1 = os.path.join(path_input, "T1")
+        path_input_t2 = os.path.join(path_input, "T2")
         path_seg = os.path.join(path_tmp, "seg")
-        path_seg_T1 = os.path.join(path_seg, "T1")
-        path_seg_T2 = os.path.join(path_seg, "T2")
+        path_seg_t1 = os.path.join(path_seg, "T1")
+        path_seg_t2 = os.path.join(path_seg, "T2")
 
-        for folder in (path_seg, path_seg_T1, path_seg_T2,
-                       path_input, path_input_T1, path_input_T2):
+        for folder in (path_seg, path_seg_t1, path_seg_t2,
+                       path_input, path_input_t1, path_input_t2):
             os.makedirs(folder, exist_ok=True)
-        os.makedirs(kwargs["folder_output"], exist_ok=True)
+        os.makedirs(request.output_folder, exist_ok=True)
 
-        number_scan_toseg_T1 = self.__BypassCrownseg__(
-            kwargs["input_t1_folder"], path_input_T1, path_seg_T1
+        number_scan_toseg_t1 = self.__BypassCrownseg__(
+            request.input_t1_folder, path_input_t1, path_seg_t1
         )
-        number_scan_toseg_T2 = self.__BypassCrownseg__(
-            kwargs["input_t2_folder"], path_input_T2, path_seg_T2
+        number_scan_toseg_t2 = self.__BypassCrownseg__(
+            request.input_t2_folder, path_input_t2, path_seg_t2
         )
         dentalmodelseg_path = FindDentalModelSeg()
 
-        surf_T1 = "None"
-        input_csv_T1 = "None"
-        vtk_folder_T1 = "None"
-        if os.path.isfile(path_input_T1):
-            extension = os.path.splitext(path_input_T1)[1]
+        surf_t1 = "None"
+        input_csv_t1 = "None"
+        vtk_folder_t1 = "None"
+        if os.path.isfile(path_input_t1):
+            extension = os.path.splitext(path_input_t1)[1]
             if extension == ".vtk" or extension == ".stl":
-              surf_T1 = path_input_T1
+              surf_t1 = path_input_t1
 
-        elif os.path.isdir(path_input_T1):
-          input_csv_T1 = self.create_csv(path_input_T1,"liste_csv_file_T1")
-          vtk_folder_T1 = path_input_T1
+        elif os.path.isdir(path_input_t1):
+          input_csv_t1 = self.create_csv(path_input_t1,"liste_csv_file_T1")
+          vtk_folder_t1 = path_input_t1
 
-        parameter_segteeth_T1 = {
-            "surf": surf_T1,
-            "input_csv": input_csv_T1,
-            "out": path_seg_T1,
+        parameter_segteeth_t1 = {
+            "surf": surf_t1,
+            "input_csv": input_csv_t1,
+            "out": path_seg_t1,
             "overwrite": "0",
             "model": "latest",
             "crown_segmentation": "0",
             "array_name": "Universal_ID",
             "fdi": 0,
             "suffix": "Seg",
-            "vtk_folder": vtk_folder_T1,
+            "vtk_folder": vtk_folder_t1,
             "dentalmodelseg_path": dentalmodelseg_path
         }
 
-        surf_T2 = "None"
-        input_csv_T2 = "None"
-        vtk_folder_T2 = "None"
-        if os.path.isfile(path_input_T2):
-            extension = os.path.splitext(path_input_T2)[1]
+        surf_t2 = "None"
+        input_csv_t2 = "None"
+        vtk_folder_t2 = "None"
+        if os.path.isfile(path_input_t2):
+            extension = os.path.splitext(path_input_t2)[1]
             if extension == ".vtk" or extension == ".stl":
-              surf_T2 = path_input_T2
+              surf_t2 = path_input_t2
 
-        elif os.path.isdir(path_input_T2):
-          input_csv_T2 = self.create_csv(path_input_T2,"liste_csv_file_T2")
-          vtk_folder_T2 = path_input_T2
+        elif os.path.isdir(path_input_t2):
+          input_csv_t2 = self.create_csv(path_input_t2,"liste_csv_file_T2")
+          vtk_folder_t2 = path_input_t2
 
-        parameter_segteeth_T2 = {
-            "surf": surf_T2,
-            "input_csv": input_csv_T2,
-            "out": path_seg_T2,
+        parameter_segteeth_t2 = {
+            "surf": surf_t2,
+            "input_csv": input_csv_t2,
+            "out": path_seg_t2,
             "overwrite": "0",
             "model": "latest",
             "crown_segmentation": "0",
             "array_name": "Universal_ID",
             "fdi": 0,
             "suffix": "Seg",
-            "vtk_folder": vtk_folder_T2,
+            "vtk_folder": vtk_folder_t2,
             "dentalmodelseg_path": dentalmodelseg_path
         }
 
         to_segment = []
-        for timepoint, number, parameter in (("T1", number_scan_toseg_T1, parameter_segteeth_T1),
-                                             ("T2", number_scan_toseg_T2, parameter_segteeth_T2)):
+        for timepoint, number, parameter in (("T1", number_scan_toseg_t1, parameter_segteeth_t1),
+                                             ("T2", number_scan_toseg_t2, parameter_segteeth_t2)):
             if number == 0:
                 # Every scan of this timepoint already carries its labels.
                 # Running the CLI on the empty folder left behind would only
@@ -561,23 +549,23 @@ class Auto_IOS(Method):
             # Nothing to segment, so nothing to ask of SlicerDentalModelSeg:
             # a Slicer without that extension still registers scans that are
             # already labelled.
-            return [], path_tmp, path_seg_T1, path_seg_T2
+            return [], path_tmp, path_seg_t1, path_seg_t2
 
-        SegProcess = slicer.modules.crownsegmentationcli
+        seg_process = slicer.modules.crownsegmentationcli
         processes = [{
-            "Process": SegProcess,
+            "Process": seg_process,
             "Parameter": parameter,
             "Module": f"CrownSegmentationcli {timepoint}",
             "ReviewId": "ios_segmented",
             "ReviewFolder": parameter["out"],
-            "Display": DisplayCrownSeg(number, kwargs["logPath"], f"{timepoint} Scan"),
+            "Display": DisplayCrownSeg(number, request.log_path, f"{timepoint} Scan"),
         } for timepoint, number, parameter in to_segment]
 
-        return processes, path_tmp, path_seg_T1, path_seg_T2
+        return processes, path_tmp, path_seg_t1, path_seg_t2
 
-    def getReviewSteps(self, **kwargs) -> list:
+    def getReviewSteps(self, request) -> list:
         """Pauses this mode can offer, in the order the run reaches them."""
-        if kwargs.get("reg_type") == "MGL":
+        if request.reg_type == "MGL":
             # MGL places landmarks instead of orienting the palate
             return Review.stepsFor([
                 "ios_segmented",
@@ -592,102 +580,104 @@ class Auto_IOS(Method):
             "ios_registration",
         ])
 
-    def Process(self, **kwargs):
+    def Process(self, request):
 
-        seg_processes, path_tmp, path_seg_T1, path_seg_T2 = self.SegmentTeeth(**kwargs)
+        seg_processes, path_tmp, path_seg_t1, path_seg_t2 = self.SegmentTeeth(request)
 
         path_or = os.path.join(path_tmp, "Or")
-        path_or_T1 = os.path.join(path_or, "T1")
-        path_or_T2 = os.path.join(path_or, "T2")
-        for folder in (path_or, path_or_T1, path_or_T2):
+        path_or_t1 = os.path.join(path_or, "T1")
+        path_or_t2 = os.path.join(path_or, "T2")
+        for folder in (path_or, path_or_t1, path_or_t2):
             os.makedirs(folder, exist_ok=True)
 
-        path_error = os.path.join(kwargs["folder_output"], "Error")
+        path_error = os.path.join(request.output_folder, "Error")
 
         numberscan = self.NumberScan(
-            kwargs["input_t1_folder"], kwargs["input_t2_folder"]
+            request.input_t1_folder, request.input_t2_folder
         )
 
-        if kwargs.get("reg_type") == "MGL":
+        if request.reg_type == "MGL":
             # The mucogingival band needs the teeth segmentation, not the palatal
             # orientation: the landmarks carry the pose the patch is built on.
             # MGL works on the mandibles, so the progress counts those, on the
             # folders the user selected rather than on the segmented copies that
             # do not exist yet.
             numberlower = self.NumberScanLower(
-                kwargs["input_t1_folder"], kwargs["input_t2_folder"]
+                request.input_t1_folder, request.input_t2_folder
             )
-            mgl_kwargs = dict(kwargs)
-            mgl_kwargs["input_t1_folder"] = path_seg_T1
-            mgl_kwargs["input_t2_folder"] = path_seg_T2
-            return seg_processes + MGLProcess(self, numberlower, "Auto_IOS", **mgl_kwargs)
+            # Registration on the mucogingival band starts again from the
+            # segmented arches, not from the original scans: same request, two
+            # input folders swapped.
+            mgl_request = request.with_(input_t1_folder=path_seg_t1,
+                                        input_t2_folder=path_seg_t2)
+            return seg_processes + MGLProcess(self, numberlower, "Auto_IOS", mgl_request)
 
-        parameter_pre_aso_T1 = {
-            "input": path_seg_T1,
-            "gold_folder": kwargs["model_folder_2"],
-            "output_folder": path_or_T1,
+        parameter_pre_aso_t1 = {
+            "input": path_seg_t1,
+            "gold_folder": request.model_folder_2,
+            "output_folder": path_or_t1,
             "add_inname": "Or",
             "list_teeth": "UR6,UR4,UL4,UL6",
-            "occlusion": "true" if self.IsLower(kwargs["input_t1_folder"]) else "false",
+            "occlusion": "true" if self.IsLower(request.input_t1_folder) else "false",
             "jaw": "Upper",
             "folder_error": path_error,
-            "log_path": kwargs["logPath"],
+            "log_path": request.log_path,
         }
 
-        parameter_pre_aso_T2 = {
-            "input": path_seg_T2,
-            "gold_folder": kwargs["model_folder_2"],
-            "output_folder": path_or_T2,
+        parameter_pre_aso_t2 = {
+            "input": path_seg_t2,
+            "gold_folder": request.model_folder_2,
+            "output_folder": path_or_t2,
             "add_inname": "Or",
             "list_teeth": "UR6,UR4,UL4,UL6",
-            "occlusion": "true" if self.IsLower(kwargs["input_t2_folder"]) else "false",
+            "occlusion": "true" if self.IsLower(request.input_t2_folder) else "false",
             "jaw": "Upper",
             "folder_error": path_error,
-            "log_path": kwargs["logPath"],
+            "log_path": request.log_path,
         }
 
         parameter_reg = {
-            "T1": path_or_T1,
-            "T2": path_or_T2,
-            "output": kwargs["folder_output"],
-            "model": self.getModel(kwargs["model_folder_3"], extension="ckpt"),
-            "suffix": kwargs["add_in_namefile"],
-            "log_path": kwargs["logPath"],
+            "T1": path_or_t1,
+            "T2": path_or_t2,
+            "output": request.output_folder,
+            "model": self.getModel(request.model_folder_3, extension="ckpt"),
+            "suffix": request.add_in_namefile,
+            "log_path": request.log_path,
             "areg_mode": "Auto_IOS",
         }
 
-        logger.info(f"Parameter pre_aso1 : {parameter_pre_aso_T1}")
-        logger.info(f"Parameter pre_aso2 : {parameter_pre_aso_T2}")
+        logger.info(f"Parameter pre_aso1 : {parameter_pre_aso_t1}")
+        logger.info(f"Parameter pre_aso2 : {parameter_pre_aso_t2}")
         logger.info(f"Parameter reg: {parameter_reg}")
 
-        PreOrientProcess = slicer.modules.pre_aso_ios
-        RegProcess = slicer.modules.areg_ios
+        pre_orient_process = slicer.modules.pre_aso_ios
+        reg_process = slicer.modules.areg_ios
 
         list_process = seg_processes + [
             {
-                "Process": PreOrientProcess,
-                "Parameter": parameter_pre_aso_T1,
+                "Process": pre_orient_process,
+                "Parameter": parameter_pre_aso_t1,
                 "Module": "PRE_ASO_IOS T1",
                 "ReviewId": "ios_oriented_t1",
-                "ReviewFolder": path_or_T1,
-                "Display": DisplayASOIOS(numberscan, kwargs["logPath"], "T1 Patient"),
+                "ReviewFolder": path_or_t1,
+                "Display": DisplayASOIOS(numberscan, request.log_path, "T1 Patient"),
             },
             {
-                "Process": PreOrientProcess,
-                "Parameter": parameter_pre_aso_T2,
+                "Process": pre_orient_process,
+                "Parameter": parameter_pre_aso_t2,
                 "Module": "PRE_ASO_IOS T2",
                 "ReviewId": "ios_oriented_t2",
-                "ReviewFolder": path_or_T2,
-                "Display": DisplayASOIOS(numberscan, kwargs["logPath"], "T2 Patient"),
+                "ReviewFolder": path_or_t2,
+                "Display": DisplayASOIOS(numberscan, request.log_path, "T2 Patient"),
             },
             {
-                "Process": RegProcess,
+                "Process": reg_process,
                 "Parameter": parameter_reg,
                 "Module": "AREG_IOS",
                 "ReviewId": "ios_registration",
-                "ReviewFolder": kwargs["folder_output"],
-                "ReviewReferenceFolder": path_or_T1,
-                "Display": DisplayAREGIOS(numberscan, kwargs["logPath"]),
+                "ReviewFolder": request.output_folder,
+                "ReviewReferenceFolder": path_or_t1,
+                "Display": DisplayAREGIOS(numberscan, request.log_path),
             },
         ]
 
@@ -702,24 +692,27 @@ class Auto_IOS(Method):
 
 
 class Semi_IOS(Auto_IOS):
-    def TestProcess(self, **kwargs) -> str:
+    # --- interface description (see `Method`) ---
+    # `Semi_IOS` inherits from `Auto_IOS`: only the label does not apply.
+    model_label = None
+    def TestProcess(self, request) -> str:
         out = ""
 
-        scan = self.TestScan(kwargs["input_t1_folder"], kwargs["input_t2_folder"], None)
+        scan = self.TestScan(request.input_t1_folder, request.input_t2_folder, None)
         if isinstance(scan, str):
             out = out + f"{scan}\n"
 
-        if kwargs["folder_output"] == "":
+        if request.output_folder == "":
             out = out + "Please select output folder\n"
 
-        if kwargs.get("reg_type") == "MGL":
-            out = out + self.TestMGLModel(**kwargs)
+        if request.reg_type == "MGL":
+            out = out + self.TestMGLModel(request)
 
         else:
-            if kwargs["model_folder_3"] == "":
+            if request.model_folder_3 == "":
                 out = out + "Please select folder for the registration model\n"
 
-            if len(self.search(kwargs["model_folder_3"], ".ckpt")[".ckpt"]) != 1:
+            if len(self.search(request.model_folder_3, ".ckpt")[".ckpt"]) != 1:
                 out = (
                     out + "Please select folder with only one model for the registration\n"
                 )
@@ -731,9 +724,9 @@ class Semi_IOS(Auto_IOS):
 
         return out
 
-    def getReviewSteps(self, **kwargs) -> list:
+    def getReviewSteps(self, request) -> list:
         """Pauses this mode can offer, in the order the run reaches them."""
-        if kwargs.get("reg_type") == "MGL":
+        if request.reg_type == "MGL":
             return Review.stepsFor([
                 "ios_landmarks_t1",
                 "ios_landmarks_t2",
@@ -741,48 +734,50 @@ class Semi_IOS(Auto_IOS):
             ])
         return Review.stepsFor(["ios_registration"])
 
-    def Process(self, **kwargs):
+    def Process(self, request):
 
         numberscan = self.NumberScan(
-            kwargs["input_t1_folder"], kwargs["input_t2_folder"]
+            request.input_t1_folder, request.input_t2_folder
         )
 
-        if kwargs.get("reg_type") == "MGL":
+        if request.reg_type == "MGL":
             # ALI aims its cameras tooth by tooth, so it places nothing on a
             # scan carrying no teeth labels: without the segmentation the run
             # ends with no landmark file and an empty output folder. Registering
             # on the mucogingival line therefore segments what needs it here
             # too, and scans already labelled go through untouched.
             numberlower = self.NumberScanLower(
-                kwargs["input_t1_folder"], kwargs["input_t2_folder"]
+                request.input_t1_folder, request.input_t2_folder
             )
-            seg_processes, _path_tmp, path_seg_T1, path_seg_T2 = self.SegmentTeeth(**kwargs)
-            mgl_kwargs = dict(kwargs)
-            mgl_kwargs["input_t1_folder"] = path_seg_T1
-            mgl_kwargs["input_t2_folder"] = path_seg_T2
-            return seg_processes + MGLProcess(self, numberlower, "Semi_IOS", **mgl_kwargs)
+            seg_processes, _path_tmp, path_seg_t1, path_seg_t2 = self.SegmentTeeth(request)
+            # Registration on the mucogingival band starts again from the
+            # segmented arches, not from the original scans: same request, two
+            # input folders swapped.
+            mgl_request = request.with_(input_t1_folder=path_seg_t1,
+                                        input_t2_folder=path_seg_t2)
+            return seg_processes + MGLProcess(self, numberlower, "Semi_IOS", mgl_request)
 
         parameter_reg = {
-            "T1": kwargs["input_t1_folder"],
-            "T2": kwargs["input_t2_folder"],
-            "output": kwargs["folder_output"],
-            "model": self.getModel(kwargs["model_folder_3"], extension="ckpt"),
-            "suffix": kwargs["add_in_namefile"],
-            "log_path": kwargs["logPath"],
+            "T1": request.input_t1_folder,
+            "T2": request.input_t2_folder,
+            "output": request.output_folder,
+            "model": self.getModel(request.model_folder_3, extension="ckpt"),
+            "suffix": request.add_in_namefile,
+            "log_path": request.log_path,
             "areg_mode": "Semi_IOS",
         }
 
         logger.info(f"Parameter AREG_IOS: {parameter_reg}")
-        RegProcess = slicer.modules.areg_ios
+        reg_process = slicer.modules.areg_ios
         processus = [
             {
-                "Process": RegProcess,
+                "Process": reg_process,
                 "Parameter": parameter_reg,
                 "Module": "AREG_IOS",
                 "ReviewId": "ios_registration",
-                "ReviewFolder": kwargs["folder_output"],
-                "ReviewReferenceFolder": kwargs["input_t1_folder"],
-                "Display": DisplayAREGIOS(numberscan, kwargs["logPath"]),
+                "ReviewFolder": request.output_folder,
+                "ReviewReferenceFolder": request.input_t1_folder,
+                "Display": DisplayAREGIOS(numberscan, request.log_path),
             }
         ]
         return processus

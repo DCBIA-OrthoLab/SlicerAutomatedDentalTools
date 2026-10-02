@@ -1,23 +1,15 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 import os
 import glob
-import json
 import re
 import shutil
 
-import logging
-import sys
 # ===== Logging Configuration =====
-logger = logging.getLogger("AREG_Method")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+from ADTLib.method import ADTMethod, LandmarkMethod, CheckboxMethod, DicomMethod
+import platform
+
+logger = get_logger("AREG_Method")
 
 
 # Name of the conda environment SlicerDentalModelSeg installs its tools into.
@@ -49,7 +41,6 @@ def FindDentalModelSeg():
 
     try:
         from CondaSetUp import CondaSetUpCall, CondaSetUpCallWsl
-        import platform
         conda = (CondaSetUpCallWsl() if platform.system() == "Windows"
                  else CondaSetUpCall())
         answer = conda.condaRunCommand(["which", SEGMENTATION_EXECUTABLE],
@@ -83,27 +74,26 @@ def FindDentalModelSeg():
     return historical
 
 
-class Method(ABC):
-    def __init__(self, widget):
-        self.widget = widget
-        self.diccheckbox = {}
-        self.diccheckbox2 = {}
+class Method(ADTMethod, LandmarkMethod, CheckboxMethod, DicomMethod):
+    # --- interface description, read by the widget ------------------------
+    # These three attributes used to have their say in a chain of `if/elif` on
+    # combo box indices, spread over three branches of `AREGWidget.SwitchType`.
+    # They are data: the method describes, the widget applies. Nothing here
+    # imports `qt`.
 
+    #: page of the `stackedWidget` to show
+    stacked_page = 0
+    #: what the widget stores in `self.type`
+    scan_type = "CBCT"
+    #: text of `labelModelFolder`, or None to leave whatever is already there
+    model_label = None
+    # The input folders depend on the tool: one for ASO and ALI, two timepoints
+    # for AREG and MRI2CBCT, patients and matrices for AutoMatrix. The variadic
+    # form says so without lying about the arity -- the MRI2CBCT ABC announced
+    # two where its six subclasses take one. Each implementation declares the
+    # arity it really expects.
     @abstractmethod
-    def NumberScan(self, scan_folder_t1: str, scan_folder_t2: str):
-        """
-            Count the number of patient in folder
-        Args:
-            scan_folder_t1 (str): folder path with Scan for T1
-            scan_folder_t2 (str): folder path with Scan for T2
-
-        Return:
-            int : return the number of patient.
-        """
-        pass
-
-    @abstractmethod
-    def TestScan(self, scan_folder_t1: str, scan_folder_t2) -> str:
+    def TestScan(self, *scan_folders) -> str:
         """Verify if the input folder seems good (have everything required to run the mode selected), if something is wrong the function return string with error message
 
         This function is called when the user want to import scan
@@ -117,20 +107,7 @@ class Method(ABC):
         """
 
     @abstractmethod
-    def TestReference(self, ref_folder: str) -> str:
-        """Verify if the reference folder contains reference gold files with landmarks and scans, if True return None and if False return str with error message to user
-
-        Args:
-            ref_folder (str): folder path with gold landmark
-
-        Return :
-            str or None : display str to user like warning
-        """
-
-        pass
-
-    @abstractmethod
-    def TestModel(self, model_folder: str, lineEditName) -> str:
+    def TestModel(self, model_folder: str, line_edit_name) -> str:
         """Verify whether the model folder contains the right models used for ALI and other AI tool
 
         Args:
@@ -140,73 +117,6 @@ class Method(ABC):
             str or None : display str to user like warning
         """
 
-        pass
-
-    @abstractmethod
-    def TestCheckbox(self) -> str:
-        pass
-
-    @abstractmethod
-    def TestProcess(self, **kwargs) -> str:
-        """Check if everything is OK before launching the process, if something is wrong return string with all error
-
-
-
-        Returns:
-            str or None: return None if there no problem with input of the process, else return str with all error
-        """
-        pass
-
-    @abstractmethod
-    def Process(self, **kwargs):
-        """Launch extension"""
-
-        pass
-
-    @abstractmethod
-    def DicLandmark(self):
-        """
-        return dic landmark like this:
-        dic = {'teeth':{
-                        'Lower':['LR6','LR5',...],
-                        'Upper':['UR6',...]
-                        },
-                'Landmark':{
-                        'Occlusual':['O',...],
-                        'Cervical':['R',...]
-                        }
-                }
-        """
-
-        pass
-
-    @abstractmethod
-    def existsLandmark(self, pathfile: str, pathref: str, pathmodel: str):
-        """return dictionnary. when the value of the landmark in dictionnary is true, the landmark is in input folder and in gold folder
-        Args:
-            pathfile (str): path
-
-        Return :
-        dict : exemple dic = {'O':True,'UL6':False,'UR1':False,...}
-        """
-        pass
-
-    @abstractmethod
-    def getTestFileList(self):
-        """Return a tuple with both the name and the Download link of the test files
-
-        tuple = ('name','link')
-        """
-        pass
-
-    @abstractmethod
-    def getReferenceList(self):
-        """
-        Return a dictionnary with both the name and the Download link of the references
-
-        dict = {'name1':'link1','name2':'link2',...}
-
-        """
         pass
 
     @abstractmethod
@@ -221,19 +131,7 @@ class Method(ABC):
         """
         pass
 
-    @abstractmethod
-    def getALIModelList(self):
-        """
-                Return a tuple with both the name and the Download link for ALI model
-        else:
-                    name, url = self.ActualMeth.getTestFileList()
-
-                tuple = ('name','link')
-
-        """
-        pass
-
-    def getReviewSteps(self, **kwargs) -> list:
+    def getReviewSteps(self, request) -> list:
         """Pauses this mode can offer, in the order the run reaches them.
 
         Declared without running Process(): the widget needs the list to build
@@ -244,93 +142,3 @@ class Method(ABC):
             list: catalogue entries, each carrying its id
         """
         return []
-
-    def getcheckbox(self):
-        return self.diccheckbox
-
-    def setcheckbox(self, dicccheckbox):
-        self.diccheckbox = dicccheckbox
-
-    def getcheckbox2(self):
-        return self.diccheckbox2
-
-    def setcheckbox2(self, dicccheckbox):
-        self.diccheckbox2 = dicccheckbox
-
-    def search(self, path, *args):
-        """
-        Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
-
-        Example:
-        args = ('json',['.nii.gz','.nrrd'])
-        return:
-            {
-                'json' : ['path/a.json', 'path/b.json','path/c.json'],
-                '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
-                '.nrrd.gz' : ['path/c.nrrd']
-            }
-        """
-        arguments = []
-        for arg in args:
-            if type(arg) == list:
-                arguments.extend(arg)
-            else:
-                arguments.append(arg)
-        # An empty path makes the pattern "/**/*", which walks the WHOLE
-        # filesystem recursively: minutes at 100% of a core, silent, with
-        # the panel frozen. Measured on AREG IOS, where the field-is-empty
-        # message is only produced after this call -- so the user waited a
-        # quarter of an hour to be told to pick a folder.
-        if not isinstance(path, str) or not path.strip():
-            return {key: [] for key in arguments}
-        # Walk once, not once per extension. The comprehension below used
-        # to re-run the whole recursive scan for every key, so asking for
-        # ".vtk" and ".stl" together cost twice what it needed to.
-        found = {key: [] for key in arguments}
-        for i in glob.iglob(
-            os.path.normpath("/".join([path, "**", "*"])), recursive=True
-        ):
-            for key in arguments:
-                if i.endswith(key):
-                    found[key].append(i)
-        return found
-
-    def ListLandmarksJson(self, json_file):
-        with open(json_file) as f:
-            data = json.load(f)
-
-        return [
-            data["markups"][0]["controlPoints"][i]["label"]
-            for i in range(len(data["markups"][0]["controlPoints"]))
-        ]
-
-    def getTestFileListDCM(self):
-        """Return a tuple with both the name and the Download link of the test files but only for DCM files (AREG CBCT)
-        tuple = ('name','link')
-        """
-        pass
-
-    def TestScanDCM(self, scan_folder_t1: str, scan_folder_t2) -> str:
-        """Verify if the input folder seems good (have everything required to run the mode selected), if something is wrong the function return string with error message for DCM as input
-
-        This function is called when the user want to import scan
-
-        Args:
-            scan_folder (str): path of folder with scan
-
-        Returns:
-            str or None: Return str with error message if something is wrong, else return None
-        """
-        pass
-
-    def NumberScanDCM(self, scan_folder_t1: str, scan_folder_t2: str):
-        """
-            Count the number of patient in folder for DCM as input
-        Args:
-            scan_folder_t1 (str): folder path with Scan for T1
-            scan_folder_t2 (str): folder path with Scan for T2
-
-        Return:
-            int : return the number of patient.
-        """
-        pass

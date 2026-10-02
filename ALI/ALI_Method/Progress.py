@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import os
 from typing import Tuple
+from ADTLib.progress_protocol import PATIENT_DONE, STEP_DONE, is_event
 
 
 class Display(ABC):
@@ -63,7 +64,7 @@ class DisplayALIIOS(Display):
 
     def isProgress(self, **kwds) -> bool:
         out = False
-        if kwds["progress"] == 100 and kwds["updateProgessBar"] == False:
+        if is_event(kwds["progress"], STEP_DONE) and kwds["updateProgressBar"] == False:
             out = True
         return out
 
@@ -76,7 +77,12 @@ class DisplayALICBCT(Display):
         super().__init__()
 
     def __call__(self) -> Tuple[float, str]:
-        self.progress += 0.39
+        # One per landmark, like DisplayALIIOS just above. The 0.39 that stood
+        # here was tuned against the percentages ALI CBCT used to print on this
+        # channel, which the widget never understood: it received 500, 2000, up
+        # to 10000, and `isProgress` only answers to 100 and 200. The CLI now
+        # sends one STEP_DONE per landmark, so one is what is counted.
+        self.progress += 1
         self.progress_bar = (
             self.progress / max(1, (self.nb_landmark * self.nb_scan_total))
         ) * 100
@@ -86,9 +92,12 @@ class DisplayALICBCT(Display):
 
     def isProgress(self, **kwds) -> bool:
         out = False
-        if kwds["progress"] == 200:
+        if is_event(kwds["progress"], PATIENT_DONE):
             self.pred_step += 1
-        if kwds["progress"] == 100 and kwds["updateProgessBar"] == False:
-            if self.pred_step > 3:
-                out = True
+        # `self.pred_step > 3` stood here, so nothing moved until a FOURTH
+        # patient was finished -- on a one-patient run, never. It was another
+        # reading of a channel that carried nothing legible; the condition is
+        # the one its working neighbour uses.
+        if is_event(kwds["progress"], STEP_DONE) and kwds["updateProgressBar"] == False:
+            out = True
         return out

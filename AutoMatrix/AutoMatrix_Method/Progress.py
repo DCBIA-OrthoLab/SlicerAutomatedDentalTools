@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import os
 from typing import Tuple
+from ADTLib.progress_protocol import PATIENT_DONE, is_event
 
 
 class Display(ABC):
@@ -41,7 +42,7 @@ class DisplayAutomatrix(Display):
         if os.path.isfile(self.log_path):
             path_time = os.path.getmtime(self.log_path)
             if path_time != self.time_log:
-                if kwds["progress"] == 200 and kwds["updateProgessBar"] == False:
+                if is_event(kwds["progress"], PATIENT_DONE) and kwds["updateProgressBar"] == False:
                     self.time_log = path_time
                     out = True
 

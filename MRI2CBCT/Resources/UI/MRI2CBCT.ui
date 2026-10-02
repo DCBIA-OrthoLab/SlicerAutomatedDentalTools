@@ -304,6 +304,16 @@ qMRMLNodeComboBox:focus {
           <item row="1" column="1">
            <widget class="QLineEdit" name="lineEditResampleT2CBCT" />
           </item>
+          <item row="0" column="3">
+           <widget class="QPushButton" name="pushButtonTestFileResample">
+            <property name="text">
+             <string>TestFile</string>
+            </property>
+            <property name="toolTip">
+             <string>Fill this step with the published test files. The CBCT and the MRI only: the dataset carries no original segmentation, and no second time point.</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </item>
        </layout>
@@ -779,6 +789,16 @@ qMRMLNodeComboBox:focus {
           <item row="2" column="1">
            <widget class="QLineEdit" name="lineEditSepSeg" />
           </item>
+          <item row="0" column="3">
+           <widget class="QPushButton" name="pushButtonTestFileSep">
+            <property name="text">
+             <string>TestFile</string>
+            </property>
+            <property name="toolTip">
+             <string>Fill this step with the published test files: the preprocessed CBCT, MRI and segmentation.</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </item>
        </layout>
@@ -904,6 +924,16 @@ qMRMLNodeComboBox:focus {
            <widget class="QPushButton" name="SearchButtonOutputApprox">
             <property name="text">
              <string>Search</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="5">
+           <widget class="QPushButton" name="pushButtonTestFileApprox">
+            <property name="text">
+             <string>TestFile</string>
+            </property>
+            <property name="toolTip">
+             <string>Fill this step with the published test files: the preprocessed CBCT and MRI.</string>
             </property>
            </widget>
           </item>
@@ -1050,6 +1080,16 @@ qMRMLNodeComboBox:focus {
           </item>
           <item row="2" column="1">
            <widget class="QLineEdit" name="lineEditCropTMJSeg" />
+          </item>
+          <item row="0" column="3">
+           <widget class="QPushButton" name="pushButtonTestFileTMJ">
+            <property name="text">
+             <string>TestFile</string>
+            </property>
+            <property name="toolTip">
+             <string>Fill this step with the published test files: the preprocessed CBCT, MRI and segmentation, plus the nnU-Net model this step needs.</string>
+            </property>
+           </widget>
           </item>
          </layout>
         </item>

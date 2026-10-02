@@ -1,33 +1,33 @@
 from ASO_Method.Method import Method
-from ASO_Method.Progress import DisplayALIIOS, DisplayASOIOS, DisplayCrownSeg
+from ASO_Method.Progress import DisplayASOIOS, DisplayCrownSeg
 from ASO_Method.IOS_utils.Reader import ReadSurf, WriteSurf
 import slicer
-import webbrowser
-import glob
 import os
-import re
 import csv
 import platform
 import vtk
 import shutil
 from itertools import chain
-import logging
-import sys
+from ADTLib.env.conda import windows_to_linux_path as windows_to_linux_path_shared
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("ASO_Method_IOS")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+from ADTLib.model_registry import (
+    ASO_IOS_GOLD,
+    ASO_IOS_TEST_AUTO,
+    ASO_IOS_TEST_SEMI,
+)
+
+logger = get_logger("ASO_Method_IOS")
 
 
 class Auto_IOS(Method):
+    # --- interface description (see `Method`) ---
+    stacked_page = 3
+    scan_type = "IOS"
+    shows_cbct_input = False
+    model_label = "Segmentation Model Folder"
+    uses_segmentation_model = True
     def __init__(self, widget):
         super().__init__(widget)
 
@@ -82,14 +82,14 @@ class Auto_IOS(Method):
             out = "Please select folder with vkt or stl files"
         return out
 
-    def TestModel(self, model_folder: str, lineEditName) -> str:
+    def TestModel(self, model_folder: str, line_edit_name) -> str:
         out = None
         if model_folder == "":
             out = "Please select folder with one .pht file"
         else:
             files = self.search(model_folder, ".pth")[".pth"]
 
-            if "lineEditModelSegOr" == lineEditName:
+            if "lineEditModelSegOr" == line_edit_name:
                 if len(files) != 1:
                     out = "Please select folder with only one .pth file"
 
@@ -144,45 +144,45 @@ class Auto_IOS(Method):
     def getTestFileList(self):
         return (
             "Fully-Automated",
-            "https://github.com/HUTIN1/ASO/releases/download/v1.0.1/Test_file_Full-IOS.zip",
+            f"{ASO_IOS_TEST_AUTO}/Test_file_Full-IOS.zip",
         )
 
     def getSegOrModelList(self):
         return (
             "PreASOModel",
-            "https://github.com/HUTIN1/ASO/releases/download/v1.0.0/segmentation_model.zip",
+            f"{ASO_IOS_GOLD}/segmentation_model.zip",
         )
 
     def getReferenceList(self):
         return {
-            "Gold_Files": "https://github.com/HUTIN1/ASO/releases/download/v1.0.0/Gold_file.zip"
+            "Gold_Files": f"{ASO_IOS_GOLD}/Gold_file.zip"
         }
 
     def getALIModelList(self):
         return (
             "ALIModels",
-            "https://github.com/HUTIN1/ASO/releases/download/v1.0.0/identification_landmark_ios_model.zip",
+            f"{ASO_IOS_GOLD}/identification_landmark_ios_model.zip",
         )
 
-    def TestProcess(self, **kwargs) -> str:
+    def TestProcess(self, request) -> str:
         out = ""
 
-        scan = self.TestScan(kwargs["input_folder"])
+        scan = self.TestScan(request.input_folder)
         if isinstance(scan, str):
             out = out + f"{scan},"
 
-        reference = self.TestReference(kwargs["gold_folder"])
+        reference = self.TestReference(request.gold_folder)
         if isinstance(reference, str):
             out = out + f"{reference},"
 
-        if kwargs["folder_output"] == "":
+        if request.output_folder == "":
             out = out + "Please select output folder,"
 
-        testcheckbox = self.TestCheckbox(kwargs["dic_checkbox"])
+        testcheckbox = self.TestCheckbox(request.dic_checkbox)
         if isinstance(testcheckbox, str):
             out = out + f"{testcheckbox},"
 
-        if kwargs["add_in_namefile"] == "":
+        if request.add_in_namefile == "":
             out = out + "Please select write suffix ,"
 
         if out != "":
@@ -207,7 +207,9 @@ class Auto_IOS(Method):
             else:
                 if extension != ".vtk" and extension != ".stl":
                     surf = ReadSurf(file)
-                    WriteSurf(surf, folder_toseg, file)
+                    # The conversion exists to produce a .vtk: this is where
+                    # that is said, not inside WriteSurf.
+                    WriteSurf(surf, folder_toseg, f"{name}.vtk")
                 else:
                     shutil.copy(file, os.path.join(folder_toseg, basename))
                 toseg += 1
@@ -238,8 +240,8 @@ class Auto_IOS(Method):
         logger.info(f"File segmented in {path}")
         return out
 
-    def Process(self, **kwargs):
-        list_teeth, jaw, occlusion = self.__CheckboxisChecked(kwargs["dic_checkbox"])
+    def Process(self, request):
+        list_teeth, jaw, occlusion = self.__CheckboxisChecked(request.dic_checkbox)
 
         path_tmp = slicer.util.tempDirectory()
         path_input = os.path.join(path_tmp, "input_seg")
@@ -249,12 +251,12 @@ class Auto_IOS(Method):
         os.makedirs(path_input, exist_ok=True)
         os.makedirs(path_seg, exist_ok=True)
         os.makedirs(path_preor, exist_ok=True)
-        os.makedirs(kwargs["folder_output"], exist_ok=True)
+        os.makedirs(request.output_folder, exist_ok=True)
 
-        path_error = os.path.join(kwargs["folder_output"], "Error")
+        path_error = os.path.join(request.output_folder, "Error")
 
         number_scan_toseg = self.__BypassCrownseg__(
-            kwargs["input_folder"], path_input, path_seg
+            request.input_folder, path_input, path_seg
         )
         slicer_path = slicer.app.applicationDirPath()
         dentalmodelseg_path = os.path.join(slicer_path,"..","lib","Python","bin","dentalmodelseg")
@@ -288,40 +290,40 @@ class Auto_IOS(Method):
         
         parameter_pre_aso = {
             "input": path_seg,
-            "gold_folder": kwargs["gold_folder"],
-            "output_folder": kwargs["folder_output"],
-            "add_inname": kwargs["add_in_namefile"],
+            "gold_folder": request.gold_folder,
+            "output_folder": request.output_folder,
+            "add_inname": request.add_in_namefile,
             "list_teeth": ",".join(list_teeth),
             "occlusion": occlusion,
             "jaw": "/".join(jaw),
             "folder_error": path_error,
-            "log_path": kwargs["logPath"],
+            "log_path": request.log_path,
         }
         logger.info(f"Parameter pre aso: {parameter_pre_aso}")
         logger.info(f"Parameter seg: {parameter_seg}")
 
-        PreOrientProcess = slicer.modules.pre_aso_ios
-        SegProcess = slicer.modules.crownsegmentationcli
+        pre_orient_process = slicer.modules.pre_aso_ios
+        seg_process = slicer.modules.crownsegmentationcli
         
-        numberscan = self.NumberScan(kwargs["input_folder"])
+        numberscan = self.NumberScan(request.input_folder)
         
         list_process = [
             {
-                "Process": SegProcess,
+                "Process": seg_process,
                 "Parameter": parameter_seg,
                 "Module": "CrownSegmentationcli",
                 "Display": DisplayCrownSeg(
-                    number_scan_toseg, kwargs["logPath"]
+                    number_scan_toseg, request.log_path
                 ),
             },
             {
-                "Process": PreOrientProcess,
+                "Process": pre_orient_process,
                 "Parameter": parameter_pre_aso,
                 "Module": "PRE_ASO_IOS",
                 "Display": DisplayASOIOS(
                     numberscan if len(jaw) == 1 else int(numberscan / 2),
                     jaw,
-                    kwargs["logPath"],
+                    request.log_path,
                 ),
             },
         ]
@@ -456,19 +458,9 @@ class Auto_IOS(Method):
     def is_wsl(self):
         return platform.system() == "Linux" and "microsoft" in platform.release().lower()
     
-    def windows_to_linux_path(self,windows_path):
-        '''
-        convert a windows path to a wsl path
-        '''
-        windows_path = windows_path.strip()
-
-        path = windows_path.replace('\\', '/')
-
-        if ':' in path:
-            drive, path_without_drive = path.split(':', 1)
-            path = "/mnt/" + drive.lower() + path_without_drive
-
-        return path
+    def windows_to_linux_path(self, windows_path):
+        """A Windows path as WSL sees it."""
+        return windows_to_linux_path_shared(windows_path)
     
     def create_csv(self,input_dir,name_csv):
         '''
@@ -482,12 +474,12 @@ class Auto_IOS(Method):
             writer = csv.writer(fichier)
             writer.writerow(["surf"])
 
-            # Parcourir le dossier et ses sous-dossiers
+            # Walk the folder and its subfolders
             for root, dirs, files in os.walk(input_dir):
                 for file in files:
                     if file.endswith(".vtk") or file.endswith(".stl"):
                         # Write full path in .csv
-                        if platform.system() != "Windows" and not self.is_wsl():    
+                        if platform.system() != "Windows" and not self.is_wsl():
                             writer.writerow([os.path.join(root, file)])
                         else:
                             file_path = os.path.join(root, file)
@@ -499,10 +491,14 @@ class Auto_IOS(Method):
 
 
 class Semi_IOS(Auto_IOS):
+    # --- interface description (see `Method`) ---
+    # `Semi_IOS` inherits from `Auto_IOS`: only the page and the label change.
+    stacked_page = 2
+    model_label = None
     def getTestFileList(self):
         return (
             "Semi-Automated",
-            "https://github.com/HUTIN1/ASO/releases/download/v1.0.2/Test_file_Semi-IOS.zip",
+            f"{ASO_IOS_TEST_SEMI}/Test_file_Semi-IOS.zip",
         )
 
     def TestScan(self, scan_folder: str):
@@ -533,25 +529,25 @@ class Semi_IOS(Auto_IOS):
 
         return out
 
-    def TestProcess(self, **kwargs) -> str:
+    def TestProcess(self, request) -> str:
         out = ""
 
-        scan = self.TestScan(kwargs["input_folder"])
+        scan = self.TestScan(request.input_folder)
         if isinstance(scan, str):
             out = out + f"{scan},"
 
-        reference = self.TestReference(kwargs["gold_folder"])
+        reference = self.TestReference(request.gold_folder)
         if isinstance(reference, str):
             out = out + f"{reference},"
 
-        if kwargs["folder_output"] == "":
+        if request.output_folder == "":
             out = out + "Give output folder,"
 
-        testcheckbox = self.TestCheckbox(kwargs["dic_checkbox"])
+        testcheckbox = self.TestCheckbox(request.dic_checkbox)
         if isinstance(testcheckbox, str):
             out = out + f"{testcheckbox},"
 
-        if kwargs["add_in_namefile"] == "":
+        if request.add_in_namefile == "":
             out = out + "Please write something in suffix space,"
 
         if out != "":
@@ -592,36 +588,36 @@ class Semi_IOS(Auto_IOS):
 
         return teeth, landmarks, mix, jaw, occlsuion
 
-    def Process(self, **kwargs):
+    def Process(self, request):
         teeth, landmark, mix, jaw, occlusion = self.__CheckboxisChecked(
-            kwargs["dic_checkbox"]
+            request.dic_checkbox
         )
-        path_error = os.path.join(kwargs["folder_output"], "Error")
+        path_error = os.path.join(request.output_folder, "Error")
 
         parameter = {
-            "input": kwargs["input_folder"],
-            "gold_folder": kwargs["gold_folder"],
-            "output_folder": kwargs["folder_output"],
-            "add_inname": kwargs["add_in_namefile"],
+            "input": request.input_folder,
+            "gold_folder": request.gold_folder,
+            "output_folder": request.output_folder,
+            "add_inname": request.add_in_namefile,
             "list_landmark": ",".join(mix),
             "occlusion": occlusion,
             "jaw": "/".join(jaw),
             "folder_error": path_error,
-            "log_path": kwargs["logPath"],
+            "log_path": request.log_path,
         }
 
         logger.info(f"SEMI_ASO_IOS parameter: {parameter}")
-        OrientProcess = slicer.modules.semi_aso_ios
-        numberscan = self.NumberScan(kwargs["input_folder"])
+        orient_process = slicer.modules.semi_aso_ios
+        numberscan = self.NumberScan(request.input_folder)
         list_process = [
             {
-                "Process": OrientProcess,
+                "Process": orient_process,
                 "Parameter": parameter,
                 "Module": "SEMI_ASO_IOS",
                 "Display": DisplayASOIOS(
                     numberscan if len(jaw) == 1 else int(numberscan / 2),
                     jaw,
-                    kwargs["logPath"],
+                    request.log_path,
                 ),
             },
         ]

@@ -4,33 +4,41 @@
 2025-07-14 → patch 2025-07-15 : batch Conda, anti-dead-lock
 """
 
-import os, sys, glob, queue, time, threading, subprocess, urllib.request
+import os, sys, queue, time, threading
 from pathlib import Path
-from typing import Optional, List
+from typing import List
 
 # Slicer / Qt
 import slicer, qt
-from slicer.ScriptedLoadableModule import ScriptedLoadableModule, ScriptedLoadableModuleWidget
+from slicer.ScriptedLoadableModule import ScriptedLoadableModule, ScriptedLoadableModuleWidget, ScriptedLoadableModuleLogic
 from slicer.util import VTKObservationMixin
 import json
 
 # Slicer-Conda helper
 from CondaSetUp import CondaSetUpCall
 
-import sys
-import logging
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+# This has to run before the first import of anything local, not just before
+# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+from ADTLib.logging_setup import get_logger
+from ADTLib.env.cuda import select_channel
+
+from ADTLib.theming import apply_dark_mode, update_line_edit_and_combo_box
+import shutil
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("CLIC")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("CLIC")
 
 # ───────────────────────────────────────────────────────────────────────────
 def _ui_log(q: queue.Queue, msg: str):
@@ -61,12 +69,16 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         VTKObservationMixin.__init__(self)
         self.conda = CondaSetUpCall()
         
-        # Patch: Fix conda executable path (remove duplicate /bin/bin) or use system conda
-        original_getCondaExecutable = self.conda.getCondaExecutable
-        original_getCondaPath = self.conda.getCondaPath
-        
+        # Workaround for the SlicerConda shipped with the 5.13 nightly, which keeps
+        # one conda path for the whole machine and hands it out without checking it
+        # is still on disk: another Slicer overwrites it, and this module then runs
+        # a conda that is not there. The branch already in the 5.12 release keys the
+        # path per installation and guards it with executableExists(), which makes
+        # this dead weight - drop it once the nightly carries that version.
+        original_get_conda_executable = self.conda.getCondaExecutable
+
         def fixed_getCondaExecutable():
-            path = original_getCondaExecutable()
+            path = original_get_conda_executable()
             logger.debug(f"[DEBUG] original getCondaExecutable returned: {path!r}")
             
             # Fix duplicate /bin/bin
@@ -80,36 +92,15 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 return path
             
             # Try to find conda in PATH
-            import shutil
             conda_in_path = shutil.which("conda")
             if conda_in_path and os.path.exists(conda_in_path):
                 logger.debug(f"[DEBUG] Using system conda from PATH: {conda_in_path}")
                 return conda_in_path
             
-            # Last resort: try common anaconda location
-            common_conda = "/home/luciacev/anaconda3/bin/conda"
-            if os.path.exists(common_conda):
-                logger.debug(f"[DEBUG] Using anaconda conda: {common_conda}")
-                return common_conda
-            
             logger.warning(f"[WARNING] Could not find working conda, falling back to: {path}")
             return path
         
-        def fixed_getCondaPath():
-            """Return conda base directory - patch Slicer bug and use system conda"""
-            path = original_getCondaPath()
-            logger.debug(f"[DEBUG] original getCondaPath returned: {path!r}")
-            
-            # If we found anaconda, use its path
-            common_conda_path = "/home/luciacev/anaconda3"
-            if os.path.exists(common_conda_path):
-                logger.debug(f"[DEBUG] Using anaconda conda path: {common_conda_path}")
-                return common_conda_path
-            
-            return path
-        
         self.conda.getCondaExecutable = fixed_getCondaExecutable
-        self.conda.getCondaPath = fixed_getCondaPath
         
         self.ui_q          = queue.Queue()
         self.input_path    = None
@@ -121,6 +112,9 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def setup(self):
         super().setup()
+
+        # Whatever does not touch the interface lives in the Logic.
+        self.logic = CLICLogic()
         w = slicer.util.loadUI(self.resourcePath("UI/CLIC.ui"))
         self.layout.addWidget(w)
         self.uiWidget = w  # Store reference for styling
@@ -177,13 +171,27 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.sig.log.emit(f"env '{self.name_env}' exists")
             logger.debug(f"[DEBUG] env '{self.name_env}' already exists, skipping creation")
 
-        # 2) install torch/cu118 first
-        logger.debug("[DEBUG] about to install torch/cu118 via condaRunCommand")
+        # 2) install the torch build this GPU can run, first
+        #
+        # cu118 and torch 2.2.0 were hardcoded here. That wheel's kernels stop
+        # at sm_90, so on an RTX 50 series it installed cleanly, reported CUDA
+        # as available and then failed every launch with "no kernel image is
+        # available". The channel is chosen from the GPU's compute capability
+        # instead; the environment this installs into is a conda one, but the
+        # card it has to serve is the same.
+        channel = select_channel()
+        if channel is None:
+            logger.info("no GPU to serve, or none any published wheel covers")
+            torch_packages = ["torch", "torchvision", "torchaudio"]
+            index = []
+        else:
+            torch_packages = channel.requirements()
+            index = ["--index-url=" + channel.index_url,
+                     "--extra-index-url=https://pypi.org/simple"]
+        logger.debug("[DEBUG] about to install %s via condaRunCommand", torch_packages)
         rc = self.conda.condaRunCommand([
             "python", "-m", "pip", "install", "--no-cache-dir",
-            "--index-url=https://download.pytorch.org/whl/cu118",
-            "torch==2.2.0", "torchvision==0.17.0", "torchaudio==2.2.0"
-        ], self.name_env)
+        ] + index + torch_packages, self.name_env)
         self.sig.log.emit(f"[DEBUG] torch pip rc={rc!r}")
         logger.debug(f"[DEBUG] torch install returned → {rc!r}")
         if isinstance(rc, int) and rc != 0:
@@ -234,7 +242,7 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not self._ensure_env():
             self._toggle_ui(False)
             return
-        scans = self._collect_scans(self.input_path)
+        scans = self.logic._collect_scans(self.input_path)
         if not scans:
             qt.QMessageBox.warning(self.parent, "Input", "No scan found.")
             self._toggle_ui(False)
@@ -263,7 +271,7 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     [f"--params_json={tmp}"],
                     self.name_env
                 )
-                            # debug sortie brute
+                # debug: raw output
                 self.sig.log.emit(f"[DEBUG] condaRunFilePython output: {out!r}")
                 for ln in str(out).splitlines():
                     if ln.startswith("[PROGRESS]"):
@@ -313,21 +321,6 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             setattr(self, attr, p)
             getattr(self.ui, le_name).setText(p)
 
-    def _collect_scans(self, root) -> List[Path]:
-        p = Path(root)
-        exts = (".nii", ".nii.gz", ".nrrd", ".mha", ".mhd")
-        
-        def is_valid_scan(f):
-            """Check if file has valid scan extension (including multi-part like .nii.gz)"""
-            name_lower = f.name.lower()
-            return any(name_lower.endswith(ext) for ext in exts)
-        
-        if p.is_dir():
-            # Look for subdirs containing valid scans
-            dcm = [d for d in p.iterdir() if d.is_dir() and any(is_valid_scan(f) for f in d.iterdir())]
-            return sorted(dcm) if dcm else sorted(f for f in p.iterdir() if is_valid_scan(f))
-        return [p]
-
     def _download_model(self):
         import requests
         url = (
@@ -368,7 +361,7 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for i in range(ids.GetNumberOfValues()):
             seg.GetSegment(ids.GetValue(i)).SetColor(*cols.get(i+1,(1,1,1)))
         lm = slicer.app.layoutManager()
-        for vn in ("Red","Yellow","Green"):  
+        for vn in ("Red","Yellow","Green"):
             try:
                 view = lm.sliceWidget(vn).sliceView()
                 ren  = view.renderWindow().GetRenderers().GetFirstRenderer()
@@ -381,8 +374,9 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     t.GetPositionCoordinate().SetCoordinateSystemToNormalizedDisplay()
                     t.SetPosition(0.77, y0-(k-1)*dy); ren.AddActor2D(t)
                 view.forceRender()
-            except Exception:
-                pass
+            except (AttributeError, RuntimeError):
+                # A view missing from the current layout returns None.
+                logger.debug("Legend not placed on view %s", vn, exc_info=True)
 
     def _on_sh_modified(self, caller, event):
         sh = caller; nid = sh.GetActiveItemID()
@@ -392,207 +386,19 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.currentSegNode = n; self._legend()
 
     def applyDarkModeStyles(self):
-        """Apply comprehensive dark mode styling to the widget"""
-        app = qt.QApplication.instance()
-        palette = app.palette()
-        bg_color = palette.color(qt.QPalette.Window)
-        if bg_color.lightness() < 128:
-            # Complete dark mode stylesheet
-            dark_stylesheet = """
-QLineEdit, QTextEdit {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 6px;
-  color: #ffffff;
-  selection-background-color: #5dade2;
-}
-QLineEdit:focus, QTextEdit:focus {
-  border: 2px solid #5dade2;
-}
-QComboBox {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #ffffff;
-}
-QComboBox:focus {
-  border: 2px solid #5dade2;
-}
-QComboBox::drop-down {
-  width: 20px;
-  border: none;
-}
-QComboBox QAbstractItemView {
-  background-color: #3c3c3c;
-  color: #ffffff;
-  selection-background-color: #5dade2;
-}
-QLabel {
-  color: #ffffff;
-  font-weight: 500;
-  background-color: transparent;
-}
-QPushButton {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 10pt;
-  padding: 8px;
-  margin-top: 4px;
-}
-QPushButton:hover:!pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7bbcef, stop:1 #5dade2);
-}
-QPushButton:pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1e638d);
-}
-QPushButton:disabled {
-  background-color: #555555;
-  color: #888888;
-}
-QCheckBox {
-  color: #ffffff;
-  font-weight: 500;
-  spacing: 6px;
-  background-color: transparent;
-}
-QCheckBox::indicator {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #555555;
-  border-radius: 3px;
-  background-color: #3c3c3c;
-}
-QCheckBox::indicator:hover {
-  border: 1px solid #5dade2;
-}
-QCheckBox::indicator:checked {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #5dade2;
-  border-radius: 3px;
-  background-color: #5dade2;
-  image: url(:/Icons/SmallCheckMark.png);
-}
-QCheckBox::indicator:checked:hover {
-  border: 1px solid #7bbcef;
-  background-color: #7bbcef;
-}
-QProgressBar {
-  border: 1px solid #555555;
-  border-radius: 4px;
-  background-color: #3c3c3c;
-  padding: 2px;
-  color: #ffffff;
-}
-QProgressBar::chunk {
-  background-color: #5dade2;
-  border-radius: 3px;
-}
-QSpinBox, QDoubleSpinBox {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #ffffff;
-}
-QSpinBox:focus, QDoubleSpinBox:focus {
-  border: 2px solid #5dade2;
-}
-QSlider::groove:horizontal {
-  background-color: #555555;
-  border-radius: 4px;
-}
-QSlider::handle:horizontal {
-  background-color: #5dade2;
-  width: 12px;
-  margin: -4px 0;
-  border-radius: 6px;
-}
-QSlider::handle:horizontal:hover {
-  background-color: #7bbcef;
-}
-            """
-            self.uiWidget.setStyleSheet(dark_stylesheet)
-            
-            # Update QLineEdit, QComboBox, and QLabel for dark mode
-            self._updateLineEditAndComboBoxDarkMode(self.uiWidget)
+        """Give this module's widget the palette shared by the extension."""
+        apply_dark_mode(self.uiWidget)
 
     def _updateLineEditAndComboBoxDarkMode(self, parent):
-        """
-        Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
-        """
-        # Update QLabel
-        if isinstance(parent, qt.QLabel):
-            try:
-                parent.setStyleSheet("""
-                    QLabel {
-                      color: #ffffff;
-                      font-weight: 500;
-                    }
-                """)
-            except:
-                pass
-        
-        # Update QLineEdit
-        if isinstance(parent, qt.QLineEdit):
-            try:
-                parent.setStyleSheet("""
-                    QLineEdit {
-                      background-color: #3c3c3c;
-                      border: 1px solid #555555;
-                      border-radius: 4px;
-                      padding: 6px;
-                      color: #ffffff;
-                    }
-                    QLineEdit:focus {
-                      border: 2px solid #5dade2;
-                    }
-                """)
-            except:
-                pass
-        
-        # Update QComboBox
-        if isinstance(parent, qt.QComboBox):
-            try:
-                parent.setStyleSheet("""
-                    QComboBox {
-                      background-color: #3c3c3c;
-                      border: 1px solid #555555;
-                      border-radius: 4px;
-                      padding: 4px 6px;
-                      color: #ffffff;
-                    }
-                    QComboBox:focus {
-                      border: 2px solid #5dade2;
-                    }
-                    QComboBox::drop-down {
-                      width: 20px;
-                      border: none;
-                    }
-                    QComboBox QAbstractItemView {
-                      background-color: #3c3c3c;
-                      color: #ffffff;
-                      selection-background-color: #5dade2;
-                    }
-                """)
-            except:
-                pass
-        
-        # Recursively update all children
-        if hasattr(parent, 'children'):
-            for child in parent.children():
-                self._updateLineEditAndComboBoxDarkMode(child)
+        """Shared recursive pass, kept as a method for the existing call sites."""
+        update_line_edit_and_combo_box(parent)
 
     def _updateAllLabelsColor(self, parent, color):
         if isinstance(parent, qt.QLabel):
             try:
                 parent.setStyleSheet(f"color: #{color.name().lstrip('#')};")
-            except:
+            except (AttributeError, RuntimeError):
+                # A widget without that method, or whose C++ object is already gone.
                 pass
         if hasattr(parent, 'children'):
             for child in parent.children():
@@ -602,7 +408,7 @@ QSlider::handle:horizontal:hover {
         if isinstance(parent, (qt.QCheckBox, qt.QPushButton)):
             try:
                 parent.setStyleSheet("color: #ffffff;")
-            except:
+            except (AttributeError, RuntimeError):
                 pass
         if hasattr(parent, 'children'):
             for child in parent.children():
@@ -612,7 +418,7 @@ QSlider::handle:horizontal:hover {
         try:
             if 'qMRMLNodeComboBox' in parent.__class__.__name__:
                 parent.setStyleSheet("qMRMLNodeComboBox {color: #ffffff;}")
-        except:
+        except (AttributeError, RuntimeError):
             pass
         if hasattr(parent, 'children'):
             for child in parent.children():
@@ -620,3 +426,28 @@ QSlider::handle:horizontal:hover {
 
     def initializeParameterNode(self):
         pass
+
+
+class CLICLogic(ScriptedLoadableModuleLogic):
+    """What CLIC does, independently of its interface.
+
+    The class did not exist: Slicer requires the Widget / Logic / Test triad
+    and CLIC only had the widget. It is created here to hold whatever does not
+    need Qt, starting with the discovery of the scans -- which thereby becomes
+    testable without launching Slicer.
+    """
+    def _collect_scans(self, root) -> List[Path]:
+        p = Path(root)
+        exts = (".nii", ".nii.gz", ".nrrd", ".mha", ".mhd")
+        
+        def is_valid_scan(f):
+            """Check if file has valid scan extension (including multi-part like .nii.gz)"""
+            name_lower = f.name.lower()
+            return any(name_lower.endswith(ext) for ext in exts)
+        
+        if p.is_dir():
+            # Look for subdirs containing valid scans
+            dcm = [d for d in p.iterdir() if d.is_dir() and any(is_valid_scan(f) for f in d.iterdir())]
+            return sorted(dcm) if dcm else sorted(f for f in p.iterdir() if is_valid_scan(f))
+        return [p]
+

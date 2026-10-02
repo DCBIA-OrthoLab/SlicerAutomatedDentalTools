@@ -255,7 +255,28 @@ qMRMLNodeComboBox:focus {
          </widget>
         </item>
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_11"><property name="spacing"><number>6</number></property></layout>
+         <layout class="QHBoxLayout" name="horizontalLayout_11"><property name="spacing"><number>6</number></property>
+          <item>
+           <widget class="QPushButton" name="testFilesButton">
+            <property name="text">
+             <string>Test Files</string>
+            </property>
+            <property name="toolTip">
+             <string>Unpack the sample scan and ROI shipped with the module and fill the fields with them. The ROI is a single generic one, so the ROI selector is set to File.</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="testFilesSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size><width>40</width><height>20</height></size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
         </item>
        </layout>
       </item>

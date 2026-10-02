@@ -1,0 +1,42 @@
+name: CI
+
+# The harness had been there for a long time -- 141 synthetic tests, no scan,
+# no model, no GPU, done in seconds -- but nothing ran it: two of them stayed
+# broken on main from commit ad5d96f until an audit ran them by hand. That is
+# what this file fixes.
+
+on:
+  push:
+    branches: ["main", "adt/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v3
+        with:
+          args: check --output-format github
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The suites are synthetic but lean on the mesh libraries; they need
+      # neither Slicer, nor a GPU, nor any data.
+      - run: python -m pip install --upgrade pip numpy vtk pyvista SimpleITK
+      - name: unittest
+        run: |
+          status=0
+          for d in ALI_IOS AREG_IOS AREG_IOSCBCT ASO_IOS FlexReg; do
+            [ -d "$d/Testing/Python" ] || continue
+            echo "::group::$d"
+            ( cd "$d/Testing/Python" && python -m unittest discover -v . ) || status=1
+            echo "::endgroup::"
+          done
+          exit $status

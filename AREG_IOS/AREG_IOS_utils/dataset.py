@@ -8,19 +8,10 @@ from AREG_IOS_utils.transformation import ScaleSurf
 from AREG_IOS_utils.vtkSegTeeth import ToothNoExist, NoSegmentationSurf
 import glob
 
-import logging
-import sys
 # ===== Logging Configuration =====
-logger = logging.getLogger("AREG_IOS_dataset")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("AREG_IOS_dataset")
 
 
 class DatasetPatch(Dataset):
@@ -115,59 +106,59 @@ def Sort(T1: str, T2: str) -> tuple[list, list]:
             {'T1':'path/PX_LowerT1.vtk', 'T2':'path/PX_LowerT2.vtk'}]
     """
     # Get all files and filter to only surface files (exclude .tfm transformation files)
-    all_T1_files = glob.glob(os.path.join(T1, "*"))
-    all_T2_files = glob.glob(os.path.join(T2, "*"))
+    all_t1_files = glob.glob(os.path.join(T1, "*"))
+    all_t2_files = glob.glob(os.path.join(T2, "*"))
     
     # Filter to only include surface files (.vtk, .vtp, .stl, .obj), exclude .tfm
     surface_extensions = ('.vtk', '.vtp', '.stl', '.obj')
-    T1_files = [f for f in all_T1_files if f.lower().endswith(surface_extensions)]
-    T2_files = [f for f in all_T2_files if f.lower().endswith(surface_extensions)]
+    t1_files = [f for f in all_t1_files if f.lower().endswith(surface_extensions)]
+    t2_files = [f for f in all_t2_files if f.lower().endswith(surface_extensions)]
 
-    if not insideLower(T1_files):  # check if there are Lower arches in list of file
+    if not insideLower(t1_files):  # check if there are Lower arches in list of file
         # if there are not lower arches
-        list_reg_Upper = sort(T1_files, T2_files)
-        list_reg_Lower = None
+        list_reg_upper = sort(t1_files, t2_files)
+        list_reg_lower = None
 
     else:  # if there are lower arches
 
-        T1_Uppers = []
-        T1_Lowers = []
-        T2_Uppers = []
-        T2_Lowers = []
+        t1_uppers = []
+        t1_lowers = []
+        t2_uppers = []
+        t2_lowers = []
 
-        for file in T1_files:
+        for file in t1_files:
             if isLowerUpper(file, choice="Upper"):
-                T1_Uppers.append(file)
+                t1_uppers.append(file)
             else:
-                T1_Lowers.append(file)
+                t1_lowers.append(file)
 
-        for file in T2_files:
+        for file in t2_files:
             if isLowerUpper(file, choice="Upper"):
-                T2_Uppers.append(file)
+                t2_uppers.append(file)
             else:
-                T2_Lowers.append(file)
+                t2_lowers.append(file)
 
-        list_reg_Upper_tmp = sort(T1_Uppers, T2_Uppers)
-        list_reg_Lower_tmp = sort(T1_Lowers, T2_Lowers)
+        list_reg_upper_tmp = sort(t1_uppers, t2_uppers)
+        list_reg_lower_tmp = sort(t1_lowers, t2_lowers)
 
         # organize Lower and Upper list, to have the order of file
-        list_reg_Upper = []
-        list_reg_Lower = []
+        list_reg_upper = []
+        list_reg_lower = []
 
-        for Upper in list_reg_Upper_tmp:
-            Upper_name = os.path.basename(Upper["T1"]).replace("T1", "")
-            Upper_name = removeLowerUpper(Upper_name, choice="Upper")
+        for upper in list_reg_upper_tmp:
+            upper_name = os.path.basename(upper["T1"]).replace("T1", "")
+            upper_name = removeLowerUpper(upper_name, choice="Upper")
 
-            for Lower in list_reg_Lower_tmp:
-                Lower_name = os.path.basename(Lower["T1"]).replace("T1", "")
-                Lower_name = removeLowerUpper(Lower_name, choice="Lower")
+            for lower in list_reg_lower_tmp:
+                lower_name = os.path.basename(lower["T1"]).replace("T1", "")
+                lower_name = removeLowerUpper(lower_name, choice="Lower")
 
-                if Upper_name == Lower_name:
-                    list_reg_Upper.append(Upper)
-                    list_reg_Lower.append(Lower)
+                if upper_name == lower_name:
+                    list_reg_upper.append(upper)
+                    list_reg_lower.append(lower)
                     continue
 
-    return list_reg_Upper, list_reg_Lower
+    return list_reg_upper, list_reg_lower
 
 
 def SortLower(T1: str, T2: str) -> list:
@@ -272,20 +263,20 @@ def sort(T1_files: list, T2_files: list) -> list[dict]:
         T2_files (list): contain list of T2 files
 
     Returns:
-        list[dict]: exemple : [{'T1':'path/patient5T1.vtk','T2':'path/patient5T2},...,{'T1':'path/patient90T1.vtk','T2':'path/patient90T2}]
+        list[dict]: example: [{'T1':'path/patient5T1.vtk','T2':'path/patient5T2},...,{'T1':'path/patient90T1.vtk','T2':'path/patient90T2}]
     """
     list_reg = []
 
-    for T1_file in T1_files:
-        T1_name = os.path.basename(T1_file)
-        T1_name = T1_name.replace("T1", "")
+    for t1_file in T1_files:
+        t1_name = os.path.basename(t1_file)
+        t1_name = t1_name.replace("T1", "")
 
-        for T2_file in T2_files:
-            T2_name = os.path.basename(T2_file)
-            T2_name = T2_name.replace("T2", "")
+        for t2_file in T2_files:
+            t2_name = os.path.basename(t2_file)
+            t2_name = t2_name.replace("T2", "")
 
-            if T2_name == T1_name:
-                list_reg.append({"T1": T1_file, "T2": T2_file})
+            if t2_name == t1_name:
+                list_reg.append({"T1": t1_file, "T2": t2_file})
                 continue
 
     return list_reg

@@ -7,7 +7,6 @@ import shutil
 import tempfile
 import argparse
 import subprocess
-import logging
 
 import numpy as np
 
@@ -21,17 +20,22 @@ except ImportError:
           file=sys.stderr, flush=True)
     sys.exit(1)
 
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
 # ===== Logging Configuration =====
-logger = logging.getLogger("GreedyReg_CLI")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+from ADTLib.progress_protocol import emit_fraction
+
+logger = get_logger("GreedyReg_CLI")
 
 # Matches a leading letter(s)+number(s) patient ID, ignoring everything after
 ID_PATTERN = re.compile(r'^([A-Za-z]+\d+)', re.IGNORECASE)
@@ -61,20 +65,20 @@ def findMatFiles(folder):
     return ids
 
 
-def findPairs(t1Folder, t2Folder, maskFolder, initFolder):
-    t1s = findNiftiFiles(t1Folder)
-    t2s = findNiftiFiles(t2Folder)
+def findPairs(t1_folder, t2_folder, maskFolder, initFolder):
+    t1s = findNiftiFiles(t1_folder)
+    t2s = findNiftiFiles(t2_folder)
     masks = findNiftiFiles(maskFolder) if maskFolder else {}
     inits = findMatFiles(initFolder) if initFolder else {}
 
     pairs = []
-    for patientId in sorted(set(t1s.keys()) & set(t2s.keys())):
+    for patient_id in sorted(set(t1s.keys()) & set(t2s.keys())):
         pairs.append((
-            patientId,
-            t1s[patientId],
-            t2s[patientId],
-            masks.get(patientId),
-            inits.get(patientId),
+            patient_id,
+            t1s[patient_id],
+            t2s[patient_id],
+            masks.get(patient_id),
+            inits.get(patient_id),
         ))
     return pairs
 
@@ -89,26 +93,26 @@ def writeIdentityInit(initPath):
             f.write(' '.join(str(v) for v in row) + '\n')
 
 
-def binarizeMaskFile(srcPath, destPath):
-    maskImg = nib.load(srcPath)
-    maskData = (maskImg.get_fdata() > 0).astype(np.float32)
-    newMask = nib.Nifti1Image(maskData, maskImg.affine)
-    newMask.header.set_data_dtype(np.float32)
-    nib.save(newMask, destPath)
+def binarizeMaskFile(src_path, dest_path):
+    mask_img = nib.load(src_path)
+    mask_data = (mask_img.get_fdata() > 0).astype(np.float32)
+    new_mask = nib.Nifti1Image(mask_data, mask_img.affine)
+    new_mask.header.set_data_dtype(np.float32)
+    nib.save(new_mask, dest_path)
 
 
-def buildRegistrationCommand(greedyBinary, fixedPath, movingPath, warpPath, initPath,
-                              metric, transformType, maskPath=None):
-    dof = "6" if transformType == "Rigid" else "12"
+def buildRegistrationCommand(greedy_binary, fixedPath, movingPath, warpPath, initPath,
+                              metric, transform_type, maskPath=None):
+    dof = "6" if transform_type == "Rigid" else "12"
     if metric == "NMI":
-        metricArgs = ["-m", "NMI"]
+        metric_args = ["-m", "NMI"]
     elif metric == "NCC":
-        metricArgs = ["-m", "NCC", "4x4x4"]
+        metric_args = ["-m", "NCC", "4x4x4"]
     else:
-        metricArgs = ["-m", "SSD"]
-    cmd = [greedyBinary]
+        metric_args = ["-m", "SSD"]
+    cmd = [greedy_binary]
     cmd.extend(["-d", "3", "-a"])
-    cmd.extend(metricArgs)
+    cmd.extend(metric_args)
     cmd.extend(["-i", fixedPath, movingPath])
     cmd.extend(["-o", warpPath])
     cmd.extend(["-n", "100x100x50x25"])
@@ -121,19 +125,19 @@ def buildRegistrationCommand(greedyBinary, fixedPath, movingPath, warpPath, init
     return cmd
 
 
-def runGreedyCase(greedyBinary, fixedPath, movingPath, outputPath, warpPath, initPath,
-                   metric, transformType, maskPath, timeout=600):
+def runGreedyCase(greedy_binary, fixedPath, movingPath, outputPath, warpPath, initPath,
+                   metric, transform_type, maskPath, timeout=600):
     cmd = buildRegistrationCommand(
-        greedyBinary, fixedPath, movingPath, warpPath, initPath, metric, transformType, maskPath)
+        greedy_binary, fixedPath, movingPath, warpPath, initPath, metric, transform_type, maskPath)
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "Greedy affine registration failed")
 
-    resampleCmd = [greedyBinary, "-d", "3",
+    resample_cmd = [greedy_binary, "-d", "3",
                    "-rf", fixedPath,
                    "-rm", movingPath, outputPath,
                    "-r", warpPath]
-    result2 = subprocess.run(resampleCmd, capture_output=True, text=True, timeout=timeout)
+    result2 = subprocess.run(resample_cmd, capture_output=True, text=True, timeout=timeout)
     if result2.returncode != 0:
         raise RuntimeError(result2.stderr.strip() or "Greedy resampling failed")
 
@@ -153,39 +157,39 @@ def main(args):
     total = len(pairs)
     logger.info(f"Found {total} pair(s): {', '.join(p[0] for p in pairs)}")
 
-    for i, (patientId, fixedPath, movingPath, maskPath, initPath) in enumerate(pairs):
+    for i, (patient_id, fixed_path, moving_path, mask_path, init_path) in enumerate(pairs):
         progress = i / total
-        print(f"<filter-progress>{progress:.2f}</filter-progress>", flush=True)
-        print(f"<filter-comment>Registering {patientId} ({i + 1}/{total})...</filter-comment>", flush=True)
-        logger.info(f"Processing {patientId} ({i + 1}/{total})")
+        emit_fraction(progress)
+        print(f"<filter-comment>Registering {patient_id} ({i + 1}/{total})...</filter-comment>", flush=True)
+        logger.info(f"Processing {patient_id} ({i + 1}/{total})")
 
-        caseTmpDir = tempfile.mkdtemp(prefix=f"greedyreg_{patientId}_")
+        case_tmp_dir = tempfile.mkdtemp(prefix=f"greedyreg_{patient_id}_")
         try:
-            outputPath = os.path.join(args.outputFolder, f"{patientId}_registered.nii.gz")
-            warpPath = os.path.join(args.outputFolder, f"{patientId}_warp.mat")
+            output_path = os.path.join(args.outputFolder, f"{patient_id}_registered.nii.gz")
+            warp_path = os.path.join(args.outputFolder, f"{patient_id}_warp.mat")
 
-            resolvedInitPath = initPath
-            if not resolvedInitPath:
-                resolvedInitPath = os.path.join(caseTmpDir, "init.mat")
-                writeIdentityInit(resolvedInitPath)
+            resolved_init_path = init_path
+            if not resolved_init_path:
+                resolved_init_path = os.path.join(case_tmp_dir, "init.mat")
+                writeIdentityInit(resolved_init_path)
 
-            resolvedMaskPath = None
-            if maskPath:
-                resolvedMaskPath = os.path.join(caseTmpDir, "mask.nii.gz")
-                binarizeMaskFile(maskPath, resolvedMaskPath)
+            resolved_mask_path = None
+            if mask_path:
+                resolved_mask_path = os.path.join(case_tmp_dir, "mask.nii.gz")
+                binarizeMaskFile(mask_path, resolved_mask_path)
 
             runGreedyCase(
-                args.greedyBinary, fixedPath, movingPath, outputPath, warpPath,
-                resolvedInitPath, args.metric, args.transformType, resolvedMaskPath)
+                args.greedyBinary, fixed_path, moving_path, output_path, warp_path,
+                resolved_init_path, args.metric, args.transformType, resolved_mask_path)
 
-            logger.info(f"{patientId} done -> {outputPath}")
+            logger.info(f"{patient_id} done -> {output_path}")
         except Exception as e:
-            logger.error(f"FAILED on {patientId}: {e}")
+            logger.error(f"FAILED on {patient_id}: {e}")
             sys.exit(1)
         finally:
-            shutil.rmtree(caseTmpDir, ignore_errors=True)
+            shutil.rmtree(case_tmp_dir, ignore_errors=True)
 
-    print("<filter-progress>1.00</filter-progress>", flush=True)
+    emit_fraction(1.00)
     print(f"<filter-comment>Batch complete! {total} case(s) registered.</filter-comment>", flush=True)
     logger.info(f"Batch complete! {total} case(s) registered.")
 

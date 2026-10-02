@@ -23,21 +23,12 @@
 #
 # Not at the ends of the arch: the curve through the others does not reach
 # them, and following it out that far is extrapolation.
-import logging
-import sys
 
 import numpy as np
 
-logger = logging.getLogger("ALI_IOS_smooth")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ALI_IOS_smooth")
 
 # The 13 MG points, in arch order.
 MGL_ORDER = ['LL6MG', 'LL5MG', 'LL4MG', 'LL3MG', 'LL2MG', 'LL1MG', 'L0MG',

@@ -10,7 +10,6 @@ Authors :
 #pytorch3d : need version 0.6.2
 #monai : need version 0.7.0
 #IMPORT DE BASE
-import time
 import os
 import glob
 import sys
@@ -22,33 +21,34 @@ import platform
 import argparse
 import numpy as np
 import torch
-import logging
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
 
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("ALI_IOS")
-logger.setLevel(logging.INFO)
+from ADTLib.logging_setup import get_logger
 
-logger.propagate = False
-
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("ALI_IOS")
 
 from monai.networks.nets import UNet
 from monai.transforms import AsDiscrete
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import TexturesVertex
 
+
 # realpath, not __file__: a CLI registered through a symlink - the flat dev
 # folder of links into the source tree - leaves __file__ on the link, whose
 # parent holds no ALI_IOS_utils. Resolving first lands beside the package.
 fpath = os.path.dirname(os.path.realpath(__file__))
+
 sys.path.append(fpath)
 
 def check_platform():
@@ -96,7 +96,15 @@ else :
     from ALI_IOS_utils.paint_scan import PaintScan
     from ALI_IOS_utils.smooth import DEFAULT_STRENGTH as SMOOTH_STRENGTH
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from ADTLib.env.cuda import preferred_device
+
+# preferred_device rather than `cuda if is_available()`: that test answers for
+# the driver and the runtime, not for the wheel. On a GPU the installed torch
+# carries no kernels for it says True, every launch afterwards fails, and the
+# agents reported the result as "landmark not found" -- seven times out of
+# seven, with nothing naming the cause. The probe runs one real kernel and
+# falls back to the CPU, slowly but visibly, when it cannot.
+DEVICE = preferred_device()
 
 # How far the second look at a tooth may move its landmark before the first
 # answer is kept instead, in millimetres. On scans like the ones the network
@@ -165,23 +173,25 @@ def EstimateMissingArchPositions(lst_teeth, RI, V):
     return estimated
 
 
-def main(args):
-    """Main function with comprehensive error handling."""
-    logger.info(f"Starting ALI_IOS with args: {args}")
-    
-    # Setup log file
+def _prepare_log_file(args):
+    """Empty the progress file the GUI reads to show how far the run is."""
     try:
         log_dir = os.path.split(args.log_path)[0]
         if not os.path.exists(log_dir):
             os.makedirs(log_dir, exist_ok=True)
-            
+
         with open(args.log_path, "w") as log_f:
             log_f.truncate(0)
     except Exception as e:
         logger.error(f"Failed to setup log file: {e}")
         sys.exit(1)
-    
-    # Parse arguments
+
+def _selected_landmarks(args):
+    """The requested landmarks, read from the three lists given as arguments.
+
+    An ordinary landmark is a tooth x type pair (`LR6` + `O` -> `LR6O`);
+    the mucogingival ones already carry their output name and are taken as
+    they are."""
     try:
         def clean_list(raw):
             items = [item.strip().replace("'", "").replace('"', '') for item in raw.split(" ")]
@@ -202,8 +212,10 @@ def main(args):
     except Exception as e:
         logger.error(f"Error parsing arguments: {e}")
         sys.exit(1)
+    return landmarks_selected, lm_types, teeth, teeth_mg
 
-    # Translate labels
+def _translate_tooth_labels(teeth, teeth_mg):
+    """The requested tooth numbers, grouped by jaw."""
     try:
         dic_teeth = TradLabel(teeth)
         dic_teeth_mg = TradLabelMG(teeth_mg)
@@ -211,16 +223,22 @@ def main(args):
     except Exception as e:
         logger.error(f"Failed to translate tooth labels: {e}")
         sys.exit(1)
-    
-    # Find available models in folder
+    return dic_teeth, dic_teeth_mg
+
+def _discover_models(args, dic_teeth_mg, lm_types):
+    """The `.pth` weights present in the folder, and the ones that will serve.
+
+    A model only serves if one of the requested landmark types depends on
+    it. The MG model is a case apart: it concerns the lower arch only, and
+    its absence is an error as soon as an MG tooth is requested."""
     try:
         available_models = {}
         models_to_use = {}
-        
+
         if not os.path.exists(args.dir_models):
             logger.error(f"Models directory not found: {args.dir_models}")
             raise FileNotFoundError(f"Directory does not exist: {args.dir_models}")
-        
+
         normpath = os.path.normpath("/".join([args.dir_models, '**', '']))
         # sorted() so that two checkpoints competing for the same slot resolve the
         # same way every run: an older model left in the folder must not silently
@@ -269,19 +287,24 @@ def main(args):
         if not models_to_use:
             logger.error("No suitable models found for the specified landmark types")
             raise RuntimeError("No matching models found")
-            
+
     except Exception as e:
         logger.error(f"Error discovering models: {e}")
         sys.exit(1)
+    return models_to_use
 
+def _discover_patients(args):
+    """The scans to process, whether the input is a file or a folder.
 
+    A folder with no `.vtk` is an error: the message says what is there
+    instead, because the common case is a folder of `.stl`."""
     dic_patients = {}
-    
+
     try:
         if not os.path.exists(args.input):
             logger.error(f"Input path not found: {args.input}")
             raise FileNotFoundError(f"Input path does not exist: {args.input}")
-        
+
         if os.path.isfile(args.input):
             logger.info(f"Loading single scan: {args.input}")
             basename = os.path.basename(args.input).split('.')[0]
@@ -296,7 +319,7 @@ def main(args):
                     basename = os.path.basename(vtkfile).split('.')[0]
                     if basename not in dic_patients.keys():
                         dic_patients[basename] = vtkfile
-        
+
         if not dic_patients:
             # A .stl is a common thing to point this at, and the reason it is
             # not read is worth saying: the landmarks are placed tooth by
@@ -314,565 +337,677 @@ def main(args):
             else:
                 logger.error("No valid medical imaging files found. Use .vtk format")
             raise FileNotFoundError("No .vtk files found in input path")
-        
+
         logger.info(f'Loaded {len(dic_patients)} patient(s)')
-        
+
     except Exception as e:
         logger.error(f"Error loading patient data: {e}")
         sys.exit(1)
+    return dic_patients
 
-    total_landmarks = 0
-    for jaw_teeth in dic_teeth.values():
-        total_landmarks += len(jaw_teeth)
-    total_landmarks *= len(dic_patients)
+def _cleanup_scratch(back_to_file, path_vtk, segmented_folder, unified_folder):
+    """Delete the temporary folders created for this jaw."""
+    if back_to_file is not None:
+        # The oriented copy has served its purpose.
+        shutil.rmtree(os.path.dirname(path_vtk), ignore_errors=True)
+    if unified_folder is not None:
+        shutil.rmtree(unified_folder, ignore_errors=True)
+    if segmented_folder is not None:
+        shutil.rmtree(segmented_folder, ignore_errors=True)
 
+def _apply_and_write(args, back_to_file, group_data, jaw, landmarks_selected, models_type, patient_id, patient_path, segmented_path):
+    """Put the points back in the original file's frame, then write them.
+
+    Painting the scan is optional and touches nothing but the output file."""
+    if back_to_file is not None:
+        # The prediction ran on the oriented copy; what is
+        # written has to be in the coordinates of the file
+        # the user gave, or nothing lines up with it.
+        for entry in group_data.values():
+            x, y, z = TransformPoint(
+                (entry["x"], entry["y"], entry["z"]), back_to_file)
+            entry["x"], entry["y"], entry["z"] = x, y, z
+
+    if models_type == "MG" and args.paint_scan and group_data:
+        # On the file the user gave, in its own coordinates:
+        # the landmarks have just been transformed back into
+        # them. Only two arrays are added, so the scan stays
+        # the scan -- and a failure here costs the drawing,
+        # never the landmarks.
+        labels = None
+        if segmented_path is not None:
+            try:
+                labelled = ReadSurf(segmented_path)
+                array = labelled.GetPointData().GetArray("Universal_ID")
+                if array is not None:
+                    labels = vtk_to_numpy(array)
+            except Exception as error:
+                logger.warning(f"Could not read the segmentation back: {error}")
+        positions = {name: (entry["x"], entry["y"], entry["z"])
+                     for name, entry in group_data.items()}
+        descriptions = {name: entry.get("desc")
+                        for name, entry in group_data.items()}
+        PaintScan(patient_path, positions, labels=labels,
+                  descriptions=descriptions)
+
+    if len(group_data.keys()) > 0:
+        try:
+            lm_lst = GenControlPoint(group_data, landmarks_selected)
+            output_file = os.path.join(args.output_dir, f"{patient_id}_{jaw}_{models_type}_Pred.json")
+            WriteJson(lm_lst, output_file)
+            logger.info(f"Saved predictions to {output_file}")
+        except Exception as e:
+            logger.error(f"Error saving predictions for {patient_id}_{jaw}_{models_type}: {e}")
+
+def _refine_mg_group(LABEL, args, group_data, lst_teeth, mg_aims, mg_pitch, mg_scale_factor, models_type, path_vtk, patient_id):
+    """The MG-only fix-ups, in the order in which they complete each other.
+
+    Duplicates separated, gaps filled, stranded points dealt with, the line
+    completed, smoothed, then laid back onto the surface. Each is driven by
+    its own option and does nothing without it."""
+    if models_type == "MG":
+        # A skipped tooth is easy to miss in the log stream:
+        # say in one line how much of the line is missing.
+        requested = [LABEL[str(label)][MODELS_DICT['MG']['MG']] for label in lst_teeth]
+        missing = [name for name in requested if name not in group_data]
+        if missing:
+            logger.warning(
+                f"{patient_id}: only {len(requested) - len(missing)} of the "
+                f"{len(requested)} requested MG landmarks were placed. Missing: "
+                f"{', '.join(missing)} — their teeth are not in the segmentation "
+                "(Universal_ID / PredictedID). The curve spans the gap; pass "
+                "--estimate_missing to place a point there anyway, 4 to 21 mm "
+                "off in the scans this was measured on")
+
+    if models_type == "MG" and args.pick_patch:
+        # Two landmarks on one spot: the network found the
+        # same mucogingival point twice. Decide which tooth
+        # it belongs to and record the other as doubtful,
+        # so the hole-filling below rebuilds it instead of
+        # leaving a duplicate.
+        pitch = next(iter(mg_pitch.values()), None)
+        ResolveCollisions(group_data, mg_aims,
+                          pitch / mg_scale_factor
+                          if pitch and mg_scale_factor else None,
+                          note=OFF_AIM_NOTE)
+
+    # A hole in the line is awkward to work with, and the
+    # curve through the points that are trusted goes as
+    # close to a missing one as the network itself does.
+    if models_type == "MG" and args.fill_gaps:
+        FillGaps(group_data)
+
+    if models_type == "MG" and args.pick_patch:
+        # A point that is on its neighbour's spot and could
+        # not be rebuilt is left out rather than written
+        # where it is: it is a duplicate of the landmark
+        # beside it, and the same rule already applies to
+        # the tooth a scan does not have -- a point nobody
+        # can stand behind is worse than a hole, which the
+        # curve spans.
+        stranded = [name for name, entry in group_data.items()
+                    if OFF_AIM_NOTE in (entry.get("desc") or "")]
+        for name in stranded:
+            del group_data[name]
+        if stranded:
+            logger.info(
+                f"{patient_id}: leaving out {len(stranded)} landmark(s) "
+                f"found on a neighbouring tooth's point and impossible to "
+                f"rebuild: {', '.join(sorted(stranded))}")
+
+    if models_type == "MG" and args.complete_line:
+        # Whatever is still missing gets a position, marked
+        # as extrapolated. It is there so the line always
+        # has its 13 points; the note keeps it out of the
+        # band AREG registers on.
+        #
+        # The scan goes with it: an end of the arch is then
+        # placed off its own tooth's gingival collar rather
+        # than by running the spline past its support, and
+        # every answer is put back on the mesh. Measured on
+        # scans held back from the choosing, that is 1.44 mm
+        # instead of 5.11, and 70% within 2 mm instead of 6%.
+        # It is `path_vtk`, not the file the user gave: the
+        # landmarks are still in the oriented frame here,
+        # and the back-transform below is what moves them.
+        CompleteLine(group_data, surf=ReadSurf(path_vtk))
+
+    # last, once every point is there: the line as a whole
+    # knows more about any one point than that point does
+    if models_type == "MG" and args.smooth:
+        SmoothAlongArch(group_data, args.smooth_strength
+                        if args.smooth_strength is not None
+                        else SMOOTH_STRENGTH)
+
+    if models_type == "MG" and args.snap_to_surface:
+        # Last of all, and after the smoothing: a
+        # mucogingival point is on the mucosa, and the
+        # spline through a hole's neighbours and the pull
+        # toward the line both leave the surface.
+        SnapAll(group_data, ReadSurf(path_vtk))
+
+def _place_one_landmark(F, V, agent, args, estimated, face_ids, first_aim, first_point, forced_conf, group_data, label, land_name, locator, mean_arr, mg_aims, mg_scale_factor, models_type, off_aim, pass_index, refine, scale_factor, surf_unit, won_conf):
+    """The point kept on the surface, for one given landmark.
+
+    The mean of the vertices of the kept faces, brought back onto the mesh
+    by the locator, then scaled back to the file. On the second pass, a
+    point that has moved too far is discarded: where the first prediction
+    was already wrong, aiming at it sends the second further still."""
+    logger.debug(f'Processing landmark: {land_name}')
+    try:
+        all_verts = [int(F[0][int(face.item())][i].item()) for face in face_ids for i in range(3)]
+        if all_verts:
+            if models_type == "MG":
+                # Tensor mean, matching the MG reference implementation
+                # (sequential summation rounds differently in float32)
+                landmark_pos = V[0][all_verts].mean(dim=0)
+            else:
+                vert_coord = sum(V[0][v] for v in all_verts)
+                landmark_pos = vert_coord / len(all_verts)
+            pid = locator.FindClosestPoint(landmark_pos.cpu().numpy())
+            closest_pos = torch.tensor(surf_unit.GetPoint(pid))
+            if refine and pass_index == 0:
+                first_aim[int(label)] = closest_pos.view(1, 3).to(
+                    DEVICE, dtype=torch.float32)
+            upscale_pos = Upscale(closest_pos, mean_arr, scale_factor)
+            final = upscale_pos.detach().cpu().numpy()
+
+            # The second look is only worth having when it agrees
+            # roughly with the first. Where the first prediction was
+            # already off, aiming the cameras at it sends the second
+            # further astray -- on scans unlike the training ones a
+            # third of the points jumped more than this, some of them
+            # clean off the arch. Past the limit the first answer stands.
+            if pass_index == 1 and int(label) in first_point:
+                jumped = float(np.linalg.norm(final - first_point[int(label)]))
+                if jumped > REFINE_LIMIT:
+                    logger.info(
+                        f"{land_name}: the second look moved it {jumped:.1f} mm, "
+                        f"further than {REFINE_LIMIT:.0f} mm, keeping the first")
+                    return mg_scale_factor
+            if refine and pass_index == 0:
+                first_point[int(label)] = final
+
+            if models_type == "MG" and getattr(agent, "aim_points", None) is not None:
+                # Where this tooth's cameras were aimed, in the same
+                # frame as the point, for deciding later which of two
+                # landmarks on one spot is really this one's. Recorded
+                # after the point is settled and guarded on its own:
+                # this is a note about the answer, and failing to take
+                # it must never cost the answer.
+                try:
+                    aim = Upscale(agent.aim_points[0].detach().cpu(),
+                                  mean_arr, scale_factor)
+                    mg_aims[land_name] = np.asarray(aim, dtype=float)
+                    mg_scale_factor = scale_factor
+                except Exception as error:
+                    logger.warning(f"Could not record the aim of {land_name}: {error}")
+
+            entry = {"x": final[0], "y": final[1], "z": final[2]}
+            # Flag degraded points in the json: they need a clinical review
+            notes = []
+            if estimated is not None:
+                notes.append("cameras aimed from an arch fit, tooth not segmented")
+            if forced_conf is not None:
+                notes.append(f"forced (confidence {forced_conf:.3f})")
+            elif won_conf is not None:
+                notes.append(f"confidence {won_conf:.3f}")
+            if off_aim:
+                # The network marked a mucogingival point, but
+                # not one this tooth's cameras were aimed at:
+                # its neighbour's, in the same picture. Said
+                # here so nothing downstream reads it as a
+                # measurement of this tooth.
+                notes.append(OFF_AIM_NOTE)
+            if notes:
+                entry["desc"] = "; ".join(notes)
+            group_data[land_name] = entry
+        elif models_type == "MG" and args.force_landmarks:
+            # Last resort: not one predicted pixel landed on the mesh.
+            # Anchor the point on the tooth itself, lowered toward the
+            # gum by the offset the cameras already aim at (0.2 in
+            # unit-sphere space), then snapped to the surface.
+            anchor = agent.positions.view(-1, 3)[0].clone()
+            anchor[2] -= 0.2
+            pid = locator.FindClosestPoint(anchor.detach().cpu().numpy())
+            pos = Upscale(torch.tensor(surf_unit.GetPoint(pid)), mean_arr, scale_factor).detach().cpu().numpy()
+            group_data[land_name] = {
+                "x": pos[0], "y": pos[1], "z": pos[2],
+                "desc": "fallback (nothing predicted on the mesh)"}
+            logger.info(f"FALLBACK landmark for label {label} anchored on the tooth")
+        else:
+            logger.warning(f"No vertices found for landmark {land_name}")
+    except Exception as e:
+        logger.error(f"Error processing landmark {land_name}: {e}")
+        return mg_scale_factor
+    return mg_scale_factor
+
+def _faces_per_landmark(F, LABEL, RI, V, agent, args, label, logits, mg_pitch, models_type, patient_id, pred_data, surf_unit, tens_pix_to_face_model):
+    """Which faces of the mesh carry each predicted landmark.
+
+    When the landmark class wins nowhere, nothing would be written for that
+    tooth. `--force_landmarks` then keeps the pixels where it is the most
+    likely, and the confidence is recorded in the json: a forced point is
+    markedly less sure than a won one."""
+    index_label_land_r = (pred_data == 1.).nonzero(as_tuple=False)
+
+    # Fallback: the landmark class won nowhere, so nothing would be
+    # written for this tooth. Keep the pixels where that class is the
+    # most likely anyway, so a point is always placed. Confidence is
+    # reported and stored in the json, because a forced point is
+    # markedly less accurate than a won one.
+    # How sure the network was, over the pixels it chose. It
+    # costs nothing to keep and it is the only thing that says,
+    # on a dataset with no annotation to check against, whether
+    # the model recognises what it is looking at.
+    won_conf = None
+    if models_type == "MG":
+        prob1_all = torch.softmax(logits, dim=1)[:, 1]
+        if len(index_label_land_r) > 0:
+            chosen = [float(prob1_all[idx[1], idx[3], idx[4]])
+                      for idx in index_label_land_r]
+            won_conf = float(np.mean(chosen))
+
+    forced_conf = None
+    if models_type == "MG" and args.force_landmarks and len(index_label_land_r) == 0:
+        prob1 = torch.softmax(logits, dim=1)[:, 1]
+        k = min(args.force_topk, prob1.numel())
+        if k > 0:
+            conf, flat_idx = prob1.reshape(-1).topk(k)
+            cam, yy, xx = np.unravel_index(flat_idx.numpy(), tuple(prob1.shape))
+            index_label_land_r = torch.tensor(
+                [[0, int(c), 0, int(y), int(x)] for c, y, x in zip(cam, yy, xx)])
+            forced_conf = float(conf.max())
+            logger.info(f"FORCED landmark for label {label} | max confidence {forced_conf:.3f}")
+
+    def collect_faces(index_list):
+        return [tens_pix_to_face_model[idx[0], idx[1], idx[2], idx[3], idx[4]] for idx in index_list]
+
+    # recover the face in my mesh
+    num_faces_r = collect_faces(index_label_land_r)
+
+    dico_rgb = {}
+    off_aim = False
+    if models_type == "MG":
+        # The MG landmark lies on the gingiva, not on the tooth
+        # crown: keep every rendered face instead of filtering by
+        # the tooth region id (RemoveExtraFaces would drop them all)
+        last_num_faces_r = [face for face in num_faces_r if int(face.item()) >= 0]
+        # Which is why MG needs its own filter: with none at all,
+        # a neighbour's mucogingival point marked in the same
+        # picture is averaged into this tooth's answer.
+        if args.pick_patch and getattr(agent, "aim_points", None) is not None:
+            vertices_np = V[0].detach().cpu().numpy()
+            if patient_id not in mg_pitch:
+                mg_pitch[patient_id] = ToothPitch(
+                    RI.squeeze(0).detach().cpu().numpy(), vertices_np)
+            pitch = mg_pitch[patient_id]
+            last_num_faces_r, off_aim = PickNearAim(
+                last_num_faces_r,
+                F[0].detach().cpu().numpy(),
+                vertices_np,
+                agent.aim_points[0].detach().cpu().numpy(),
+                radius=pitch / 2 if pitch else None,
+                name=f"label {label}")
+        dico_rgb[LABEL[str(label)][MODELS_DICT['MG']['MG']]] = last_num_faces_r
+    else:
+        index_label_land_g = (pred_data == 2.).nonzero(as_tuple=False)
+        index_label_land_b = (pred_data == 3.).nonzero(as_tuple=False)
+
+        num_faces_g = collect_faces(index_label_land_g)
+        num_faces_b = collect_faces(index_label_land_b)
+
+        last_num_faces_r = RemoveExtraFaces(F, num_faces_r, RI, int(label))
+        last_num_faces_g = RemoveExtraFaces(F, num_faces_g, RI, int(label))
+        last_num_faces_b = RemoveExtraFaces(F, num_faces_b, RI, int(label))
+
+        if models_type == "O":
+            logger.debug(f"Processing Occlusal model, label: {LABEL[str(label)]}")
+            dico_rgb[LABEL[str(label)][MODELS_DICT['O']['O']]] = last_num_faces_r
+            dico_rgb[LABEL[str(label)][MODELS_DICT['O']['MB']]] = last_num_faces_g
+            dico_rgb[LABEL[str(label)][MODELS_DICT['O']['DB']]] = last_num_faces_b
+
+        else:
+            dico_rgb[LABEL[str(label)][MODELS_DICT['C']['CL']]] = last_num_faces_r
+            dico_rgb[LABEL[str(label)][MODELS_DICT['C']['CB']]] = last_num_faces_g
+
+    locator = vtk.vtkOctreePointLocator()
+    locator.SetDataSet(surf_unit)
+    locator.BuildLocator()
+    return dico_rgb, forced_conf, locator, off_aim, won_conf
+
+def _run_network(agent, meshe, model, models_type):
+    """The rasterised views of the mesh, passed to the network.
+
+    The MG network and the others have neither the same number of input
+    channels nor the same number of output classes: that is the only
+    difference."""
+    images_model, tens_pix_to_face_model = agent.get_view_rasterize(meshe)
+    tens_pix_to_face_model = tens_pix_to_face_model.permute(1, 0, 4, 2, 3)
+
+    if models_type == "MG":
+        # MG network: 12 channels (3 cameras x RGB+Z) stacked
+        # in a single input, 3 output classes
+        net = UNet(
+            spatial_dims=2,
+            in_channels=12,
+            out_channels=3,
+            channels=(16, 32, 64, 128, 256, 512),
+            strides=(2, 2, 2, 2, 2),
+            num_res_units=4
+        ).to(DEVICE)
+
+        b, cam, c, h, w = images_model.shape
+        inputs = images_model.reshape(b, cam * c, h, w).to(dtype=torch.float32).to(DEVICE)
+    else:
+        net = UNet(
+            spatial_dims=2,
+            in_channels=4,
+            out_channels=4,
+            channels=(16, 32, 64, 128, 256, 512),
+            strides=(2, 2, 2, 2, 2),
+            num_res_units=4
+        ).to(DEVICE)
+
+        inputs = torch.cat([batch.to(DEVICE) for batch in images_model], dim=0).float()
+
+    net.load_state_dict(torch.load(model, map_location=DEVICE))
+    images_pred = net(inputs)
+
+    # Only the MG branch produces -- and only the MG branch reads -- the raw
+    # scores. Inline in one function this name simply stayed unused elsewhere;
+    # behind a return it has to exist, or every non-MG label dies on an
+    # UnboundLocalError before a single landmark is placed.
+    logits = None
+
+    if models_type != "MG":
+        post_pred = AsDiscrete(argmax=True, to_onehot=4)
+
+        val_pred = torch.empty((0)).to(DEVICE)
+        for image in images_pred:
+            val_pred = torch.cat((val_pred, post_pred(image).unsqueeze(0).to(DEVICE)), dim=0)
+
+    if models_type == "MG":
+        # argmax on the raw scores, NOT on an int16 cast of them:
+        # truncating the logits to integers merges classes that are
+        # close and, on a tie, argmax falls back to index 0
+        # (background), silently dropping pixels
+        logits = images_pred.detach().cpu().float()
+        pred_data = torch.argmax(logits, dim=1).unsqueeze(0).unsqueeze(2)
+    else:
+        pred_data = images_pred.detach().cpu().unsqueeze(0).type(torch.int16)
+        pred_data = torch.argmax(pred_data, dim=2).unsqueeze(2)
+    return logits, pred_data, tens_pix_to_face_model
+
+def _predict_one_landmark(LABEL, args, camera_position, first_aim, first_point, group_data, jaw, label, mg_aims, mg_estimated, mg_pitch, mg_scale, mg_scale_factor, model, models_type, pass_index, path_vtk, patient_id, refine, sphere_radius):
+    """One landmark: views rendered, network run, position on the surface.
+
+    A tooth absent from the segmentation is not an error -- it is only
+    absent -- and the message says so along with the reason."""
+    try:
+        logger.debug(f"Loading model for patient {patient_id}, label {label}, jaw {jaw}")
+
+        phong_renderer, mask_renderer = GenPhongRenderer(
+            int(args.image_size), int(args.blur_radius), int(args.faces_per_pixel), DEVICE
+        )
+
+        agent = Agent(
+            renderer=phong_renderer,
+            renderer2=mask_renderer,
+            radius=sphere_radius,
+            camera_position=camera_position,
+            lm_type=models_type
+        )
+
+        SURF = ReadSurf(path_vtk)
+        surf_unit, mean_arr, scale_factor = ScaleSurf(
+            SURF, scale_factor=mg_scale if models_type == "MG" else None)
+        (V, F, CN, RI) = GetSurfProp(surf_unit, mean_arr, scale_factor)
+
+        estimated = mg_estimated.get(int(label)) if models_type == "MG" else None
+        if int(label) in RI.squeeze(0) or estimated is not None:
+            if estimated is None:
+                agent.position_agent(RI, V, label)
+            else:
+                agent.position_agent_estimated(V, estimated[0], estimated[1], label)
+                logger.info(
+                    f"Label {label} is not in the segmentation of {patient_id}: "
+                    "cameras aimed at its position estimated from the arch")
+            if pass_index == 1 and int(label) in first_aim:
+                agent.aim_points = first_aim[int(label)]
+
+            textures = TexturesVertex(verts_features=CN)
+            meshe = Meshes(verts=V, faces=F, textures=textures).to(DEVICE)
+
+            try:
+                logits, pred_data, tens_pix_to_face_model = _run_network(agent, meshe, model, models_type)
+
+                # recover where there is the landmark in the image
+                dico_rgb, forced_conf, locator, off_aim, won_conf = _faces_per_landmark(F, LABEL, RI, V, agent, args, label, logits, mg_pitch, models_type, patient_id, pred_data, surf_unit, tens_pix_to_face_model)
+
+                for land_name, face_ids in dico_rgb.items():
+                    mg_scale_factor = _place_one_landmark(F, V, agent, args, estimated, face_ids, first_aim, first_point, forced_conf, group_data, label, land_name, locator, mean_arr, mg_aims, mg_scale_factor, models_type, off_aim, pass_index, refine, scale_factor, surf_unit, won_conf)
+            except Exception as e:
+                logger.error(f"Error during neural network inference for label {label}: {e}")
+                return mg_scale_factor
+        else:
+            reason = ("too few teeth are segmented to estimate it"
+                      if args.estimate_missing else
+                      "a point aimed at a guessed position lands 4 to 21 mm "
+                      "away, so it is left out (--estimate_missing places it)")
+            logger.warning(
+                f"Label {label} is not in the segmentation of {patient_id} "
+                f"and {reason}: the landmark(s) {LABEL[str(label)]} "
+                "are not placed")
+
+    except Exception as e:
+        logger.error(f"Error processing label {label} for patient {patient_id}: {e}")
+        return mg_scale_factor
+    return mg_scale_factor
+
+def _prepare_mg_context(args, lst_teeth, models_type, path_vtk, patient_id):
+    """What the MG model asks for on top, and the others ignore.
+
+    Three things, each driven by an option: straighten the arch, scale it,
+    and estimate the position of the teeth absent from the segmentation.
+    Also returns the inverse transform, to be applied to the points before
+    writing them in the frame of the original file."""
+    back_to_file = None
+    if models_type == "MG":
+        matrix = LowerArchMatrix(ReadSurf(path_vtk))
+        if matrix is not None:
+            oriented = os.path.join(
+                tempfile.mkdtemp(prefix="ALI_IOS_oriented_"),
+                os.path.basename(path_vtk))
+            writer = vtk.vtkPolyDataWriter()
+            writer.SetFileName(oriented)
+            writer.SetInputData(TransformSurf(ReadSurf(path_vtk), matrix))
+            writer.SetFileTypeToBinary()
+            writer.Write()
+            path_vtk = oriented
+            back_to_file = np.linalg.inv(matrix)
+            logger.info(f"{patient_id}: oriented on its four lower teeth "
+                        "for the mucogingival prediction")
+
+    # The cameras are placed at a fixed distance in the
+    # normalised space, so what that space measures decides
+    # how they frame the gum. Read off the arch, it follows
+    # the jaw; read off the scan extent, it follows how much
+    # vestibule was captured.
+    mg_scale = None
+    if models_type == "MG" and args.arch_scale:
+        mg_scale = (ArchScale(ReadSurf(path_vtk), args.arch_ratio)
+                    if args.arch_ratio else ArchScale(ReadSurf(path_vtk)))
+        if mg_scale is not None:
+            logger.info(f"{patient_id}: scaled on the arch "
+                        f"(1 unit = {1 / mg_scale:.1f} mm)")
+
+    # The MG cameras need a position per tooth. For the
+    # teeth the segmentation does not know, estimate one
+    # from the arch of the teeth it does know, instead of
+    # skipping their landmark.
+    mg_estimated = {}
+    if models_type == "MG" and args.estimate_missing:
+        surf_est = ReadSurf(path_vtk)
+        unit_est, mean_est, scale_est = ScaleSurf(surf_est, scale_factor=mg_scale)
+        (v_est, _f_est, _cn_est, ri_est) = GetSurfProp(unit_est, mean_est, scale_est)
+        mg_estimated = EstimateMissingArchPositions(lst_teeth, ri_est, v_est)
+    return back_to_file, mg_estimated, mg_scale, path_vtk
+
+def _unify_arch_labels(path_vtk, patient_path):
+    """Renumber the arch if the segmentation named it in both jaws.
+
+    Nothing in a neighbourhood says which jaw a scan comes from: a maxilla
+    and an upside-down mandible have the same shape. When the segmentation
+    hesitates, it splits each tooth between its own number and the same
+    rank in the other arch, and the landmark is never written.
+    The corrected mesh goes to a temporary folder: the user's file is not
+    touched."""
+    unified_folder = None
+    scan_jaw = ScanJawFromName(patient_path)
+    surf_labels = ReadSurf(path_vtk)
+    if UnifyArchLabels(surf_labels, scan_jaw):
+        unified_folder = tempfile.mkdtemp(prefix="ALI_IOS_unified_")
+        unified = os.path.join(unified_folder, os.path.basename(path_vtk))
+        writer = vtk.vtkPolyDataWriter()
+        writer.SetFileName(unified)
+        writer.SetInputData(surf_labels)
+        writer.SetFileTypeToBinary()
+        writer.Write()
+        path_vtk = unified
+    del surf_labels
+    return unified_folder
+
+def _process_jaw(LABEL, args, jaw, landmarks_selected, lst_teeth, models_to_use, models_type, patient_id, patient_path, sphere_radius):
+    """One jaw, for a given model type.
+
+    Prepares the mesh, places each landmark, applies the fix-ups proper to
+    the MG model, writes the result, then deletes what was created along
+    the way."""
+    if models_type == "MG" and jaw != "Lower":
+        return
+    if not lst_teeth:
+        return
+
+    group_data = {}
+
+    try:
+        path_vtk = patient_path
+
+        # The cameras are aimed tooth by tooth, off a
+        # Universal_ID array. A scan that has none gets it here
+        # rather than being turned away, which is also what
+        # turns an .stl into the .vtk the rest of this reads.
+        # The segmentation leaves the points where they are, so
+        # the landmarks stay valid in the file the user gave.
+        segmented_folder = None
+        segmented_path = None
+        unified_folder = None
+        if not IsSegmented(path_vtk):
+            segmented_folder = tempfile.mkdtemp(prefix="ALI_IOS_segmented_")
+            segmented = SegmentSurface(path_vtk, folder=segmented_folder)
+            if segmented is None:
+                shutil.rmtree(segmented_folder, ignore_errors=True)
+                logger.error(f"{patient_id} cannot be segmented, no landmark "
+                             "can be placed on it")
+                return
+            path_vtk = segmented
+            segmented_path = segmented
+
+        # The segmentation names each point on its own, and
+        # nothing in a neighbourhood says which jaw the scan is:
+        # a maxilla and a mirrored mandible have the same shape,
+        # only the palate tells them apart. On an arch it cannot
+        # place, it splits every tooth between its own number and
+        # the same rank in the other arch -- and the occlusal cap,
+        # which is exactly where the occlusal landmark sits, tends
+        # to take the upper number. RemoveExtraFaces then finds no
+        # face carrying the label it was asked for and the landmark
+        # is never written, while the wrong model answers on the
+        # same scan and names its file after both.
+        unified_folder = _unify_arch_labels(path_vtk, patient_path)
+
+        model = models_to_use[models_type]['Lower'] if jaw == 'Lower' else models_to_use[models_type]['Upper']
+        camera_position = dic_cam[models_type]['L'] if jaw == 'Lower' else dic_cam[models_type]['U']
+
+        # The MG cameras are built on a vertical axis taken to
+        # be Z, so the scan is brought into that frame before
+        # anything is predicted on it and the landmarks are
+        # sent back to the coordinates of the file afterwards.
+        # A scan left as it came off the scanner puts its arch
+        # on another axis, and the cameras then frame the
+        # crowns instead of the gingival margin.
+        back_to_file, mg_estimated, mg_scale, path_vtk = _prepare_mg_context(args, lst_teeth, models_type, path_vtk, patient_id)
+
+        # A second look, aimed at what the first one found. The
+        # cameras are otherwise pointed at an anatomical prior,
+        # the same offset for every patient, so the landmark
+        # sits off-centre whenever that prior is off -- and the
+        # network was taught on images where it is centred.
+        refine = models_type == "MG" and args.refine
+        first_aim, first_point = {}, {}
+        mg_pitch = {}      # tooth spacing, measured once per scan
+        mg_aims = {}       # where each landmark's cameras were aimed
+        mg_scale_factor = None
+        rounds = ([(0, label) for label in lst_teeth]
+                  + ([(1, label) for label in lst_teeth] if refine else []))
+
+        for pass_index, label in rounds:
+            mg_scale_factor = _predict_one_landmark(LABEL, args, camera_position, first_aim, first_point, group_data, jaw, label, mg_aims, mg_estimated, mg_pitch, mg_scale, mg_scale_factor, model, models_type, pass_index, path_vtk, patient_id, refine, sphere_radius)
+
+        _refine_mg_group(LABEL, args, group_data, lst_teeth, mg_aims, mg_pitch, mg_scale_factor, models_type, path_vtk, patient_id)
+
+        _apply_and_write(args, back_to_file, group_data, jaw, landmarks_selected, models_type, patient_id, patient_path, segmented_path)
+
+        _cleanup_scratch(back_to_file, path_vtk, segmented_folder, unified_folder)
+
+    except Exception as e:
+        logger.error(f"Error processing jaw {jaw} for patient {patient_id}, model {models_type}: {e}")
+        return
+
+def _process_model(args, dic_teeth, dic_teeth_mg, landmarks_selected, models_to_use, models_type, patient_id, patient_path):
+    """One model type, for one patient: the two jaws it covers.
+
+    An error here moves on to the next type rather than stopping the
+    patient -- the landmark types are independent."""
+    try:
+        LABEL = dic_label[models_type]
+        sphere_radius = 0.2 if models_type in ("O", "MG") else 0.3
+
+        logger.debug(f"Processing model type: {models_type}")
+
+        teeth_for_model = dic_teeth_mg if models_type == "MG" else dic_teeth
+        for jaw, lst_teeth in teeth_for_model.items():
+            _process_jaw(LABEL, args, jaw, landmarks_selected, lst_teeth, models_to_use, models_type, patient_id, patient_path, sphere_radius)
+
+    except Exception as e:
+        logger.error(f"Error processing model type {models_type} for patient {patient_id}: {e}")
+        return
+
+def main(args):
+    """Main function with comprehensive error handling."""
+    logger.info(f"Starting ALI_IOS with args: {args}")
+    
+    # Setup log file
+    _prepare_log_file(args)
+    
+    # Parse arguments
+    landmarks_selected, lm_types, teeth, teeth_mg = _selected_landmarks(args)
+
+    # Translate labels
+    dic_teeth, dic_teeth_mg = _translate_tooth_labels(teeth, teeth_mg)
+    
+    # Find available models in folder
+    models_to_use = _discover_models(args, dic_teeth_mg, lm_types)
+
+
+    dic_patients = _discover_patients(args)
 
     for idx, (patient_id, patient_path) in enumerate(dic_patients.items()):
         logger.info(f"Processing patient {idx + 1}/{len(dic_patients)}: {patient_id}")
         
         for models_type in models_to_use.keys():
-            try:
-                LABEL = dic_label[models_type]
-                sphere_radius = 0.2 if models_type in ("O", "MG") else 0.3
-
-                logger.debug(f"Processing model type: {models_type}")
-
-                teeth_for_model = dic_teeth_mg if models_type == "MG" else dic_teeth
-                for jaw, lst_teeth in teeth_for_model.items():
-                    if models_type == "MG" and jaw != "Lower":
-                        continue
-                    if not lst_teeth:
-                        continue
-
-                    group_data = {}
-
-                    try:
-                        path_vtk = patient_path
-
-                        # The cameras are aimed tooth by tooth, off a
-                        # Universal_ID array. A scan that has none gets it here
-                        # rather than being turned away, which is also what
-                        # turns an .stl into the .vtk the rest of this reads.
-                        # The segmentation leaves the points where they are, so
-                        # the landmarks stay valid in the file the user gave.
-                        segmented_folder = None
-                        segmented_path = None
-                        unified_folder = None
-                        if not IsSegmented(path_vtk):
-                            segmented_folder = tempfile.mkdtemp(prefix="ALI_IOS_segmented_")
-                            segmented = SegmentSurface(path_vtk, folder=segmented_folder)
-                            if segmented is None:
-                                shutil.rmtree(segmented_folder, ignore_errors=True)
-                                logger.error(f"{patient_id} cannot be segmented, no landmark "
-                                             "can be placed on it")
-                                continue
-                            path_vtk = segmented
-                            segmented_path = segmented
-
-                        # The segmentation names each point on its own, and
-                        # nothing in a neighbourhood says which jaw the scan is:
-                        # a maxilla and a mirrored mandible have the same shape,
-                        # only the palate tells them apart. On an arch it cannot
-                        # place, it splits every tooth between its own number and
-                        # the same rank in the other arch -- and the occlusal cap,
-                        # which is exactly where the occlusal landmark sits, tends
-                        # to take the upper number. RemoveExtraFaces then finds no
-                        # face carrying the label it was asked for and the landmark
-                        # is never written, while the wrong model answers on the
-                        # same scan and names its file after both.
-                        unified_folder = None
-                        scan_jaw = ScanJawFromName(patient_path)
-                        surf_labels = ReadSurf(path_vtk)
-                        if UnifyArchLabels(surf_labels, scan_jaw):
-                            unified_folder = tempfile.mkdtemp(prefix="ALI_IOS_unified_")
-                            unified = os.path.join(unified_folder, os.path.basename(path_vtk))
-                            writer = vtk.vtkPolyDataWriter()
-                            writer.SetFileName(unified)
-                            writer.SetInputData(surf_labels)
-                            writer.SetFileTypeToBinary()
-                            writer.Write()
-                            path_vtk = unified
-                        del surf_labels
-
-                        model = models_to_use[models_type]['Lower'] if jaw == 'Lower' else models_to_use[models_type]['Upper']
-                        camera_position = dic_cam[models_type]['L'] if jaw == 'Lower' else dic_cam[models_type]['U']
-
-                        # The MG cameras are built on a vertical axis taken to
-                        # be Z, so the scan is brought into that frame before
-                        # anything is predicted on it and the landmarks are
-                        # sent back to the coordinates of the file afterwards.
-                        # A scan left as it came off the scanner puts its arch
-                        # on another axis, and the cameras then frame the
-                        # crowns instead of the gingival margin.
-                        back_to_file = None
-                        if models_type == "MG":
-                            matrix = LowerArchMatrix(ReadSurf(path_vtk))
-                            if matrix is not None:
-                                oriented = os.path.join(
-                                    tempfile.mkdtemp(prefix="ALI_IOS_oriented_"),
-                                    os.path.basename(path_vtk))
-                                writer = vtk.vtkPolyDataWriter()
-                                writer.SetFileName(oriented)
-                                writer.SetInputData(TransformSurf(ReadSurf(path_vtk), matrix))
-                                writer.SetFileTypeToBinary()
-                                writer.Write()
-                                path_vtk = oriented
-                                back_to_file = np.linalg.inv(matrix)
-                                logger.info(f"{patient_id}: oriented on its four lower teeth "
-                                            "for the mucogingival prediction")
-
-                        # The cameras are placed at a fixed distance in the
-                        # normalised space, so what that space measures decides
-                        # how they frame the gum. Read off the arch, it follows
-                        # the jaw; read off the scan extent, it follows how much
-                        # vestibule was captured.
-                        mg_scale = None
-                        if models_type == "MG" and args.arch_scale:
-                            mg_scale = (ArchScale(ReadSurf(path_vtk), args.arch_ratio)
-                                        if args.arch_ratio else ArchScale(ReadSurf(path_vtk)))
-                            if mg_scale is not None:
-                                logger.info(f"{patient_id}: scaled on the arch "
-                                            f"(1 unit = {1 / mg_scale:.1f} mm)")
-
-                        # The MG cameras need a position per tooth. For the
-                        # teeth the segmentation does not know, estimate one
-                        # from the arch of the teeth it does know, instead of
-                        # skipping their landmark.
-                        mg_estimated = {}
-                        if models_type == "MG" and args.estimate_missing:
-                            surf_est = ReadSurf(path_vtk)
-                            unit_est, mean_est, scale_est = ScaleSurf(surf_est, scale_factor=mg_scale)
-                            (V_est, _f_est, _cn_est, RI_est) = GetSurfProp(unit_est, mean_est, scale_est)
-                            mg_estimated = EstimateMissingArchPositions(lst_teeth, RI_est, V_est)
-
-                        # A second look, aimed at what the first one found. The
-                        # cameras are otherwise pointed at an anatomical prior,
-                        # the same offset for every patient, so the landmark
-                        # sits off-centre whenever that prior is off -- and the
-                        # network was taught on images where it is centred.
-                        refine = models_type == "MG" and args.refine
-                        first_aim, first_point = {}, {}
-                        mg_pitch = {}      # tooth spacing, measured once per scan
-                        mg_aims = {}       # where each landmark's cameras were aimed
-                        mg_scale_factor = None
-                        rounds = ([(0, label) for label in lst_teeth]
-                                  + ([(1, label) for label in lst_teeth] if refine else []))
-
-                        for pass_index, label in rounds:
-                            try:
-                                logger.debug(f"Loading model for patient {patient_id}, label {label}, jaw {jaw}")
-                                
-                                phong_renderer, mask_renderer = GenPhongRenderer(
-                                    int(args.image_size), int(args.blur_radius), int(args.faces_per_pixel), DEVICE
-                                )
-
-                                agent = Agent(
-                                    renderer=phong_renderer,
-                                    renderer2=mask_renderer,
-                                    radius=sphere_radius,
-                                    camera_position=camera_position,
-                                    lm_type=models_type
-                                )
-
-                                SURF = ReadSurf(path_vtk)
-                                surf_unit, mean_arr, scale_factor = ScaleSurf(
-                                    SURF, scale_factor=mg_scale if models_type == "MG" else None)
-                                (V, F, CN, RI) = GetSurfProp(surf_unit, mean_arr, scale_factor)
-
-                                estimated = mg_estimated.get(int(label)) if models_type == "MG" else None
-                                if int(label) in RI.squeeze(0) or estimated is not None:
-                                    if estimated is None:
-                                        agent.position_agent(RI, V, label)
-                                    else:
-                                        agent.position_agent_estimated(V, estimated[0], estimated[1], label)
-                                        logger.info(
-                                            f"Label {label} is not in the segmentation of {patient_id}: "
-                                            "cameras aimed at its position estimated from the arch")
-                                    if pass_index == 1 and int(label) in first_aim:
-                                        agent.aim_points = first_aim[int(label)]
-
-                                    textures = TexturesVertex(verts_features=CN)
-                                    meshe = Meshes(verts=V, faces=F, textures=textures).to(DEVICE)
-
-                                    try:
-                                        images_model, tens_pix_to_face_model = agent.get_view_rasterize(meshe)
-                                        tens_pix_to_face_model = tens_pix_to_face_model.permute(1, 0, 4, 2, 3)
-
-                                        if models_type == "MG":
-                                            # MG network: 12 channels (3 cameras x RGB+Z) stacked
-                                            # in a single input, 3 output classes
-                                            net = UNet(
-                                                spatial_dims=2,
-                                                in_channels=12,
-                                                out_channels=3,
-                                                channels=(16, 32, 64, 128, 256, 512),
-                                                strides=(2, 2, 2, 2, 2),
-                                                num_res_units=4
-                                            ).to(DEVICE)
-
-                                            b, cam, c, h, w = images_model.shape
-                                            inputs = images_model.reshape(b, cam * c, h, w).to(dtype=torch.float32).to(DEVICE)
-                                        else:
-                                            net = UNet(
-                                                spatial_dims=2,
-                                                in_channels=4,
-                                                out_channels=4,
-                                                channels=(16, 32, 64, 128, 256, 512),
-                                                strides=(2, 2, 2, 2, 2),
-                                                num_res_units=4
-                                            ).to(DEVICE)
-
-                                            inputs = torch.cat([batch.to(DEVICE) for batch in images_model], dim=0).float()
-
-                                        net.load_state_dict(torch.load(model, map_location=DEVICE))
-                                        images_pred = net(inputs)
-
-                                        if models_type != "MG":
-                                            post_pred = AsDiscrete(argmax=True, to_onehot=4)
-
-                                            val_pred = torch.empty((0)).to(DEVICE)
-                                            for image in images_pred:
-                                                val_pred = torch.cat((val_pred, post_pred(image).unsqueeze(0).to(DEVICE)), dim=0)
-
-                                        if models_type == "MG":
-                                            # argmax on the raw scores, NOT on an int16 cast of them:
-                                            # truncating the logits to integers merges classes that are
-                                            # close and, on a tie, argmax falls back to index 0
-                                            # (background), silently dropping pixels
-                                            logits = images_pred.detach().cpu().float()
-                                            pred_data = torch.argmax(logits, dim=1).unsqueeze(0).unsqueeze(2)
-                                        else:
-                                            pred_data = images_pred.detach().cpu().unsqueeze(0).type(torch.int16)
-                                            pred_data = torch.argmax(pred_data, dim=2).unsqueeze(2)
-
-                                        # recover where there is the landmark in the image
-                                        index_label_land_r = (pred_data == 1.).nonzero(as_tuple=False)
-
-                                        # Fallback: the landmark class won nowhere, so nothing would be
-                                        # written for this tooth. Keep the pixels where that class is the
-                                        # most likely anyway, so a point is always placed. Confidence is
-                                        # reported and stored in the json, because a forced point is
-                                        # markedly less accurate than a won one.
-                                        # How sure the network was, over the pixels it chose. It
-                                        # costs nothing to keep and it is the only thing that says,
-                                        # on a dataset with no annotation to check against, whether
-                                        # the model recognises what it is looking at.
-                                        won_conf = None
-                                        if models_type == "MG":
-                                            prob1_all = torch.softmax(logits, dim=1)[:, 1]
-                                            if len(index_label_land_r) > 0:
-                                                chosen = [float(prob1_all[idx[1], idx[3], idx[4]])
-                                                          for idx in index_label_land_r]
-                                                won_conf = float(np.mean(chosen))
-
-                                        forced_conf = None
-                                        if models_type == "MG" and args.force_landmarks and len(index_label_land_r) == 0:
-                                            prob1 = torch.softmax(logits, dim=1)[:, 1]
-                                            k = min(args.force_topk, prob1.numel())
-                                            if k > 0:
-                                                conf, flat_idx = prob1.reshape(-1).topk(k)
-                                                cam, yy, xx = np.unravel_index(flat_idx.numpy(), tuple(prob1.shape))
-                                                index_label_land_r = torch.tensor(
-                                                    [[0, int(c), 0, int(y), int(x)] for c, y, x in zip(cam, yy, xx)])
-                                                forced_conf = float(conf.max())
-                                                logger.info(f"FORCED landmark for label {label} | max confidence {forced_conf:.3f}")
-
-                                        def collect_faces(index_list):
-                                            return [tens_pix_to_face_model[idx[0], idx[1], idx[2], idx[3], idx[4]] for idx in index_list]
-
-                                        # recover the face in my mesh
-                                        num_faces_r = collect_faces(index_label_land_r)
-
-                                        dico_rgb = {}
-                                        off_aim = False
-                                        if models_type == "MG":
-                                            # The MG landmark lies on the gingiva, not on the tooth
-                                            # crown: keep every rendered face instead of filtering by
-                                            # the tooth region id (RemoveExtraFaces would drop them all)
-                                            last_num_faces_r = [face for face in num_faces_r if int(face.item()) >= 0]
-                                            # Which is why MG needs its own filter: with none at all,
-                                            # a neighbour's mucogingival point marked in the same
-                                            # picture is averaged into this tooth's answer.
-                                            if args.pick_patch and getattr(agent, "aim_points", None) is not None:
-                                                vertices_np = V[0].detach().cpu().numpy()
-                                                if patient_id not in mg_pitch:
-                                                    mg_pitch[patient_id] = ToothPitch(
-                                                        RI.squeeze(0).detach().cpu().numpy(), vertices_np)
-                                                pitch = mg_pitch[patient_id]
-                                                last_num_faces_r, off_aim = PickNearAim(
-                                                    last_num_faces_r,
-                                                    F[0].detach().cpu().numpy(),
-                                                    vertices_np,
-                                                    agent.aim_points[0].detach().cpu().numpy(),
-                                                    radius=pitch / 2 if pitch else None,
-                                                    name=f"label {label}")
-                                            dico_rgb[LABEL[str(label)][MODELS_DICT['MG']['MG']]] = last_num_faces_r
-                                        else:
-                                            index_label_land_g = (pred_data == 2.).nonzero(as_tuple=False)
-                                            index_label_land_b = (pred_data == 3.).nonzero(as_tuple=False)
-
-                                            num_faces_g = collect_faces(index_label_land_g)
-                                            num_faces_b = collect_faces(index_label_land_b)
-
-                                            last_num_faces_r = RemoveExtraFaces(F, num_faces_r, RI, int(label))
-                                            last_num_faces_g = RemoveExtraFaces(F, num_faces_g, RI, int(label))
-                                            last_num_faces_b = RemoveExtraFaces(F, num_faces_b, RI, int(label))
-
-                                            if models_type == "O":
-                                                logger.debug(f"Processing Occlusal model, label: {LABEL[str(label)]}")
-                                                dico_rgb[LABEL[str(label)][MODELS_DICT['O']['O']]] = last_num_faces_r
-                                                dico_rgb[LABEL[str(label)][MODELS_DICT['O']['MB']]] = last_num_faces_g
-                                                dico_rgb[LABEL[str(label)][MODELS_DICT['O']['DB']]] = last_num_faces_b
-
-                                            else:
-                                                dico_rgb[LABEL[str(label)][MODELS_DICT['C']['CL']]] = last_num_faces_r
-                                                dico_rgb[LABEL[str(label)][MODELS_DICT['C']['CB']]] = last_num_faces_g
-
-                                        locator = vtk.vtkOctreePointLocator()
-                                        locator.SetDataSet(surf_unit)
-                                        locator.BuildLocator()
-
-                                        for land_name, face_ids in dico_rgb.items():
-                                            logger.debug(f'Processing landmark: {land_name}')
-                                            try:
-                                                all_verts = [int(F[0][int(face.item())][i].item()) for face in face_ids for i in range(3)]
-                                                if all_verts:
-                                                    if models_type == "MG":
-                                                        # Tensor mean, matching the MG reference implementation
-                                                        # (sequential summation rounds differently in float32)
-                                                        landmark_pos = V[0][all_verts].mean(dim=0)
-                                                    else:
-                                                        vert_coord = sum(V[0][v] for v in all_verts)
-                                                        landmark_pos = vert_coord / len(all_verts)
-                                                    pid = locator.FindClosestPoint(landmark_pos.cpu().numpy())
-                                                    closest_pos = torch.tensor(surf_unit.GetPoint(pid))
-                                                    if refine and pass_index == 0:
-                                                        first_aim[int(label)] = closest_pos.view(1, 3).to(
-                                                            DEVICE, dtype=torch.float32)
-                                                    upscale_pos = Upscale(closest_pos, mean_arr, scale_factor)
-                                                    final = upscale_pos.detach().cpu().numpy()
-
-                                                    # The second look is only worth having when it agrees
-                                                    # roughly with the first. Where the first prediction was
-                                                    # already off, aiming the cameras at it sends the second
-                                                    # further astray -- on scans unlike the training ones a
-                                                    # third of the points jumped more than this, some of them
-                                                    # clean off the arch. Past the limit the first answer stands.
-                                                    if pass_index == 1 and int(label) in first_point:
-                                                        jumped = float(np.linalg.norm(final - first_point[int(label)]))
-                                                        if jumped > REFINE_LIMIT:
-                                                            logger.info(
-                                                                f"{land_name}: the second look moved it {jumped:.1f} mm, "
-                                                                f"further than {REFINE_LIMIT:.0f} mm, keeping the first")
-                                                            continue
-                                                    if refine and pass_index == 0:
-                                                        first_point[int(label)] = final
-
-                                                    if models_type == "MG" and getattr(agent, "aim_points", None) is not None:
-                                                        # Where this tooth's cameras were aimed, in the same
-                                                        # frame as the point, for deciding later which of two
-                                                        # landmarks on one spot is really this one's. Recorded
-                                                        # after the point is settled and guarded on its own:
-                                                        # this is a note about the answer, and failing to take
-                                                        # it must never cost the answer.
-                                                        try:
-                                                            aim = Upscale(agent.aim_points[0].detach().cpu(),
-                                                                          mean_arr, scale_factor)
-                                                            mg_aims[land_name] = np.asarray(aim, dtype=float)
-                                                            mg_scale_factor = scale_factor
-                                                        except Exception as error:
-                                                            logger.warning(f"Could not record the aim of {land_name}: {error}")
-
-                                                    entry = {"x": final[0], "y": final[1], "z": final[2]}
-                                                    # Flag degraded points in the json: they need a clinical review
-                                                    notes = []
-                                                    if estimated is not None:
-                                                        notes.append("cameras aimed from an arch fit, tooth not segmented")
-                                                    if forced_conf is not None:
-                                                        notes.append(f"forced (confidence {forced_conf:.3f})")
-                                                    elif won_conf is not None:
-                                                        notes.append(f"confidence {won_conf:.3f}")
-                                                    if off_aim:
-                                                        # The network marked a mucogingival point, but
-                                                        # not one this tooth's cameras were aimed at:
-                                                        # its neighbour's, in the same picture. Said
-                                                        # here so nothing downstream reads it as a
-                                                        # measurement of this tooth.
-                                                        notes.append(OFF_AIM_NOTE)
-                                                    if notes:
-                                                        entry["desc"] = "; ".join(notes)
-                                                    group_data[land_name] = entry
-                                                elif models_type == "MG" and args.force_landmarks:
-                                                    # Last resort: not one predicted pixel landed on the mesh.
-                                                    # Anchor the point on the tooth itself, lowered toward the
-                                                    # gum by the offset the cameras already aim at (0.2 in
-                                                    # unit-sphere space), then snapped to the surface.
-                                                    anchor = agent.positions.view(-1, 3)[0].clone()
-                                                    anchor[2] -= 0.2
-                                                    pid = locator.FindClosestPoint(anchor.detach().cpu().numpy())
-                                                    pos = Upscale(torch.tensor(surf_unit.GetPoint(pid)), mean_arr, scale_factor).detach().cpu().numpy()
-                                                    group_data[land_name] = {
-                                                        "x": pos[0], "y": pos[1], "z": pos[2],
-                                                        "desc": "fallback (nothing predicted on the mesh)"}
-                                                    logger.info(f"FALLBACK landmark for label {label} anchored on the tooth")
-                                                else:
-                                                    logger.warning(f"No vertices found for landmark {land_name}")
-                                            except Exception as e:
-                                                logger.error(f"Error processing landmark {land_name}: {e}")
-                                                continue
-                                    except Exception as e:
-                                        logger.error(f"Error during neural network inference for label {label}: {e}")
-                                        continue
-                                else:
-                                    reason = ("too few teeth are segmented to estimate it"
-                                              if args.estimate_missing else
-                                              "a point aimed at a guessed position lands 4 to 21 mm "
-                                              "away, so it is left out (--estimate_missing places it)")
-                                    logger.warning(
-                                        f"Label {label} is not in the segmentation of {patient_id} "
-                                        f"and {reason}: the landmark(s) {LABEL[str(label)]} "
-                                        "are not placed")
-                                    
-                            except Exception as e:
-                                logger.error(f"Error processing label {label} for patient {patient_id}: {e}")
-                                continue
-                        
-                        if models_type == "MG":
-                            # A skipped tooth is easy to miss in the log stream:
-                            # say in one line how much of the line is missing.
-                            requested = [LABEL[str(label)][MODELS_DICT['MG']['MG']] for label in lst_teeth]
-                            missing = [name for name in requested if name not in group_data]
-                            if missing:
-                                logger.warning(
-                                    f"{patient_id}: only {len(requested) - len(missing)} of the "
-                                    f"{len(requested)} requested MG landmarks were placed. Missing: "
-                                    f"{', '.join(missing)} — their teeth are not in the segmentation "
-                                    "(Universal_ID / PredictedID). The curve spans the gap; pass "
-                                    "--estimate_missing to place a point there anyway, 4 to 21 mm "
-                                    "off in the scans this was measured on")
-
-                        if models_type == "MG" and args.pick_patch:
-                            # Two landmarks on one spot: the network found the
-                            # same mucogingival point twice. Decide which tooth
-                            # it belongs to and record the other as doubtful,
-                            # so the hole-filling below rebuilds it instead of
-                            # leaving a duplicate.
-                            pitch = next(iter(mg_pitch.values()), None)
-                            ResolveCollisions(group_data, mg_aims,
-                                              pitch / mg_scale_factor
-                                              if pitch and mg_scale_factor else None,
-                                              note=OFF_AIM_NOTE)
-
-                        # A hole in the line is awkward to work with, and the
-                        # curve through the points that are trusted goes as
-                        # close to a missing one as the network itself does.
-                        if models_type == "MG" and args.fill_gaps:
-                            FillGaps(group_data)
-
-                        if models_type == "MG" and args.pick_patch:
-                            # A point that is on its neighbour's spot and could
-                            # not be rebuilt is left out rather than written
-                            # where it is: it is a duplicate of the landmark
-                            # beside it, and the same rule already applies to
-                            # the tooth a scan does not have -- a point nobody
-                            # can stand behind is worse than a hole, which the
-                            # curve spans.
-                            stranded = [name for name, entry in group_data.items()
-                                        if OFF_AIM_NOTE in (entry.get("desc") or "")]
-                            for name in stranded:
-                                del group_data[name]
-                            if stranded:
-                                logger.info(
-                                    f"{patient_id}: leaving out {len(stranded)} landmark(s) "
-                                    f"found on a neighbouring tooth's point and impossible to "
-                                    f"rebuild: {', '.join(sorted(stranded))}")
-
-                        if models_type == "MG" and args.complete_line:
-                            # Whatever is still missing gets a position, marked
-                            # as extrapolated. It is there so the line always
-                            # has its 13 points; the note keeps it out of the
-                            # band AREG registers on.
-                            #
-                            # The scan goes with it: an end of the arch is then
-                            # placed off its own tooth's gingival collar rather
-                            # than by running the spline past its support, and
-                            # every answer is put back on the mesh. Measured on
-                            # scans held back from the choosing, that is 1.44 mm
-                            # instead of 5.11, and 70% within 2 mm instead of 6%.
-                            # It is `path_vtk`, not the file the user gave: the
-                            # landmarks are still in the oriented frame here,
-                            # and the back-transform below is what moves them.
-                            CompleteLine(group_data, surf=ReadSurf(path_vtk))
-
-                        # last, once every point is there: the line as a whole
-                        # knows more about any one point than that point does
-                        if models_type == "MG" and args.smooth:
-                            SmoothAlongArch(group_data, args.smooth_strength
-                                            if args.smooth_strength is not None
-                                            else SMOOTH_STRENGTH)
-
-                        if models_type == "MG" and args.snap_to_surface:
-                            # Last of all, and after the smoothing: a
-                            # mucogingival point is on the mucosa, and the
-                            # spline through a hole's neighbours and the pull
-                            # toward the line both leave the surface.
-                            SnapAll(group_data, ReadSurf(path_vtk))
-
-                        if back_to_file is not None:
-                            # The prediction ran on the oriented copy; what is
-                            # written has to be in the coordinates of the file
-                            # the user gave, or nothing lines up with it.
-                            for entry in group_data.values():
-                                x, y, z = TransformPoint(
-                                    (entry["x"], entry["y"], entry["z"]), back_to_file)
-                                entry["x"], entry["y"], entry["z"] = x, y, z
-
-                        if models_type == "MG" and args.paint_scan and group_data:
-                            # On the file the user gave, in its own coordinates:
-                            # the landmarks have just been transformed back into
-                            # them. Only two arrays are added, so the scan stays
-                            # the scan -- and a failure here costs the drawing,
-                            # never the landmarks.
-                            labels = None
-                            if segmented_path is not None:
-                                try:
-                                    labelled = ReadSurf(segmented_path)
-                                    array = labelled.GetPointData().GetArray("Universal_ID")
-                                    if array is not None:
-                                        labels = vtk_to_numpy(array)
-                                except Exception as error:
-                                    logger.warning(f"Could not read the segmentation back: {error}")
-                            positions = {name: (entry["x"], entry["y"], entry["z"])
-                                         for name, entry in group_data.items()}
-                            descriptions = {name: entry.get("desc")
-                                            for name, entry in group_data.items()}
-                            PaintScan(patient_path, positions, labels=labels,
-                                      descriptions=descriptions)
-
-                        if len(group_data.keys()) > 0:
-                            try:
-                                lm_lst = GenControlPoint(group_data, landmarks_selected)
-                                output_file = os.path.join(args.output_dir, f"{patient_id}_{jaw}_{models_type}_Pred.json")
-                                WriteJson(lm_lst, output_file)
-                                logger.info(f"Saved predictions to {output_file}")
-                            except Exception as e:
-                                logger.error(f"Error saving predictions for {patient_id}_{jaw}_{models_type}: {e}")
-
-                        if back_to_file is not None:
-                            # The oriented copy has served its purpose.
-                            shutil.rmtree(os.path.dirname(path_vtk), ignore_errors=True)
-                        if unified_folder is not None:
-                            shutil.rmtree(unified_folder, ignore_errors=True)
-                        if segmented_folder is not None:
-                            shutil.rmtree(segmented_folder, ignore_errors=True)
-                                
-                    except Exception as e:
-                        logger.error(f"Error processing jaw {jaw} for patient {patient_id}, model {models_type}: {e}")
-                        continue
-                        
-            except Exception as e:
-                logger.error(f"Error processing model type {models_type} for patient {patient_id}: {e}")
-                continue
+            _process_model(args, dic_teeth, dic_teeth_mg, landmarks_selected, models_to_use, models_type, patient_id, patient_path)
         
         # Update log file with progress
         try:

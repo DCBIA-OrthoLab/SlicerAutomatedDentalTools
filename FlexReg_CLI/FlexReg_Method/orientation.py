@@ -3,20 +3,11 @@ import vtk
 from FlexReg_Method.util import vtkMeanTeeth
 from FlexReg_Method.transformation import RotationMatrix, TransformSurf
 
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("FlexReg_CLI_orientation")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("FlexReg_CLI_orientation")
 
 cross = lambda a,b: np.cross(a,b)
 
@@ -48,8 +39,8 @@ def orientation(source,target,landmarks):
     right = landmarks[3]
 
          
-    meanTeeth = vtkMeanTeeth([int(left),int(middle1),int(middle2),int(right)],property='Universal_ID')
-    mean_source = meanTeeth(source)
+    mean_teeth = vtkMeanTeeth([int(left),int(middle1),int(middle2),int(right)],property='Universal_ID')
+    mean_source = mean_teeth(source)
 
     left_source, middle1_source, middle2_source , right_source = mean_source[left], mean_source[middle1], mean_source[middle2],mean_source[right]
     left_target, middle_target , right_target = np.array(target[0]), np.array(target[1]), np.array(target[2])
@@ -94,7 +85,7 @@ def orientation(source,target,landmarks):
 
     matrix = np.matmul(matrix_direction, matrix_normal)
 
-    left_source = np.matmul(matrix,left_source)   
+    left_source = np.matmul(matrix,left_source)
     middle_source = np.matmul(matrix,middle_source)
     right_source = np.matmul(matrix,right_source)
 

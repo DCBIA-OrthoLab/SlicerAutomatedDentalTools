@@ -15,7 +15,7 @@ The stdout messages should start by:
   [SEG]      <chemin_nii_gz>
 """
 
-import argparse, json, glob
+import argparse, json
 from pathlib import Path
 
 import numpy as np
@@ -25,20 +25,11 @@ from torchvision.models.detection import maskrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("CLIC_runner")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("CLIC_runner")
 
 # ───────────────────────── helpers ──────────────────────────────────────────
 def _blank_model(nc: int):

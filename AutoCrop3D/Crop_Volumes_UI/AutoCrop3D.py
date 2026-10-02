@@ -1,4 +1,3 @@
-import logging
 import os,json
 
 
@@ -8,21 +7,40 @@ import SimpleITK as sitk
 
 import slicer
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin,pip_install
+from slicer.util import VTKObservationMixin
 
 import qt
-from qt import QFileDialog, QMessageBox
 
 import glob
-import numpy as np
 from functools import partial
 
-from pathlib import Path
 import time
 import threading
-from queue import Queue
+from queue import Empty, Queue
 import sys
 import io
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+# This has to run before the first import of anything local, not just before
+# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+from ADTLib.logging_setup import get_logger
+
+from ADTLib.theming import apply_dark_mode, update_line_edit_and_combo_box
+from ADTLib.model_registry import SLICER_TESTING_DATA
+from ADTLib.testdata import TestDataError, ensure
+from pathlib import Path
+import tempfile
+import zipfile
 #import Crop_Volumes_CLI.Crop_Volumes_utils as cpu
 
 #
@@ -30,16 +48,13 @@ import io
 #
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("AutoCrop3D_UI")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("AutoCrop3D_UI")
+
+# The test set travels with the module: two archives declared by the
+# manifest, unpacked on demand into the download folder of the user. Nothing
+# to download, so nothing that depends on the network.
+TEST_FILES_SCAN_ARCHIVE = "testfiles/AutoCrop3D/Segmentation.zip"
+TEST_FILES_ROI_ARCHIVE = "testfiles/AutoCrop3D/ROI.mrk.zip"
 
 
 class AutoCrop3D(ScriptedLoadableModule):
@@ -49,16 +64,16 @@ class AutoCrop3D(ScriptedLoadableModule):
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "AutoCrop3D"  # TODO: make this more human readable by adding spaces
-        self.parent.categories = ["Automated Dental Tools"]  # TODO: set categories (folders where the module shows up in the module selector)
-        self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = ["Jeanne Claret (DCBIA lab)"]  # TODO: replace with "Firstname Lastname (Organization)"
-        # TODO: update with short description of the module and a link to online module documentation
+        self.parent.title = "AutoCrop3D"
+        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.dependencies = []
+        self.parent.contributors = ["Jeanne Claret (DCBIA lab)"]
+        
         self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#t_crop_volumes">module documentation</a>.
+See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools#t_crop_volumes">module documentation</a>.
 """
-        # TODO: replace with organization, grant and thanks
+        
         self.parent.acknowledgementText = """
 This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
 and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
@@ -80,7 +95,7 @@ def registerSampleData():
     # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
 
     import SampleData
-    iconsPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
+    icons_path = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
 
     # To ensure that the source code repository remains small (can be downloaded and installed quickly)
     # it is recommended to store data sets that are larger than a few MB in a Github release.
@@ -92,9 +107,9 @@ def registerSampleData():
         sampleName='AutoCrop3D1',
         # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
         # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, 'AutoCrop3D.png'),
+        thumbnailFileName=os.path.join(icons_path, 'AutoCrop3D.png'),
         # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+        uris=f"{SLICER_TESTING_DATA}/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
         fileNames='AutoCrop3D1.nrrd',
         # Checksum to ensure file integrity. Can be computed by this command:
         #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
@@ -108,9 +123,9 @@ def registerSampleData():
         # Category and sample name displayed in Sample Data module
         category='AutoCrop3D',
         sampleName='AutoCrop3D2',
-        thumbnailFileName=os.path.join(iconsPath, 'AutoCrop3D2.png'),
+        thumbnailFileName=os.path.join(icons_path, 'AutoCrop3D2.png'),
         # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+        uris=f"{SLICER_TESTING_DATA}/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
         fileNames='AutoCrop3D2.nrrd',
         checksums='SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
         # This node name will be used when the data set is loaded
@@ -147,15 +162,15 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath('UI/AutoCrop3D.ui'))
-        self.layout.addWidget(uiWidget)
-        self.uiWidget = uiWidget  # Store reference for styling
-        self.ui = slicer.util.childWidgetVariables(uiWidget)
+        ui_widget = slicer.util.loadUI(self.resourcePath('UI/AutoCrop3D.ui'))
+        self.layout.addWidget(ui_widget)
+        self.uiWidget = ui_widget  # Store reference for styling
+        self.ui = slicer.util.childWidgetVariables(ui_widget)
 
         # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
         # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
         # "setMRMLScene(vtkMRMLScene*)" slot.
-        uiWidget.setMRMLScene(slicer.mrmlScene)
+        ui_widget.setMRMLScene(slicer.mrmlScene)
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
@@ -165,7 +180,7 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SearchPathButtonF.connect("clicked(bool)", partial(self.SearchPath,"Folder_file"))
         self.ui.SearchPathButtonV.connect("clicked(bool)", partial(self.SearchPath,"ROI"))
         self.ui.SearchPathButtonOut.connect("clicked(bool)", partial(self.SearchPath,"Output"))
-        #self.ui.TestFiles.connect("clicked(bool)",self.Autofill)
+        self.ui.testFilesButton.connect("clicked(bool)", self.onTestFiles)
         #self.ui.chooseType.connect("clicked(bool)", self.SearchPath)
 
         self.ui.checkBoxCV.toggled.connect(self.optionCheckBox)
@@ -201,207 +216,12 @@ class AutoCrop3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.applyDarkModeStyles()
 
     def applyDarkModeStyles(self):
-        """Apply dark mode styling to the widget if needed"""
-        app = qt.QApplication.instance()
-        palette = app.palette()
-        bg_color = palette.color(qt.QPalette.Window)
-        if bg_color.lightness() < 128:
-            # Complete dark mode stylesheet
-            dark_stylesheet = """
-QLineEdit, QTextEdit {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 6px;
-  color: #ffffff;
-  selection-background-color: #5dade2;
-}
-QLineEdit:focus, QTextEdit:focus {
-  border: 2px solid #5dade2;
-}
-QComboBox {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #ffffff;
-}
-QComboBox:focus {
-  border: 2px solid #5dade2;
-}
-QComboBox::drop-down {
-  width: 20px;
-  border: none;
-}
-QComboBox QAbstractItemView {
-  background-color: #3c3c3c;
-  color: #ffffff;
-  selection-background-color: #5dade2;
-}
-QLabel {
-  color: #ffffff;
-  font-weight: 500;
-  background-color: transparent;
-}
-QPushButton {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 10pt;
-  padding: 8px;
-  margin-top: 4px;
-}
-QPushButton:hover:!pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7bbcef, stop:1 #5dade2);
-}
-QPushButton:pressed {
-  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1e638d);
-}
-QPushButton:disabled {
-  background-color: #555555;
-  color: #888888;
-}
-QCheckBox {
-  color: #ffffff;
-  font-weight: 500;
-  spacing: 6px;
-  background-color: transparent;
-}
-QCheckBox::indicator {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #555555;
-  border-radius: 3px;
-  background-color: #3c3c3c;
-}
-QCheckBox::indicator:hover {
-  border: 1px solid #5dade2;
-}
-QCheckBox::indicator:checked {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #5dade2;
-  border-radius: 3px;
-  background-color: #5dade2;
-  image: url(:/Icons/SmallCheckMark.png);
-}
-QCheckBox::indicator:checked:hover {
-  border: 1px solid #7bbcef;
-  background-color: #7bbcef;
-}
-QProgressBar {
-  border: 1px solid #555555;
-  border-radius: 4px;
-  background-color: #3c3c3c;
-  padding: 2px;
-  color: #ffffff;
-}
-QProgressBar::chunk {
-  background-color: #5dade2;
-  border-radius: 3px;
-}
-QSpinBox, QDoubleSpinBox {
-  background-color: #3c3c3c;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #ffffff;
-}
-QSpinBox:focus, QDoubleSpinBox:focus {
-  border: 2px solid #5dade2;
-}
-QSlider::groove:horizontal {
-  background-color: #555555;
-  border-radius: 4px;
-}
-QSlider::handle:horizontal {
-  background-color: #5dade2;
-  width: 12px;
-  margin: -4px 0;
-  border-radius: 6px;
-}
-QSlider::handle:horizontal:hover {
-  background-color: #7bbcef;
-}
-            """
-            self.uiWidget.setStyleSheet(dark_stylesheet)
-            
-            # Update QLineEdit, QComboBox, and QLabel for dark mode
-            self._updateLineEditAndComboBoxDarkMode(self.uiWidget)
+        """Give this module's widget the palette shared by the extension."""
+        apply_dark_mode(self.uiWidget)
 
     def _updateLineEditAndComboBoxDarkMode(self, parent):
-        """
-        Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
-        """
-        # Update QLabel
-        if isinstance(parent, qt.QLabel):
-            try:
-                parent.setStyleSheet("""
-                    QLabel {
-                      color: #ffffff;
-                      font-weight: 500;
-                    }
-                """)
-            except:
-                pass
-        
-        # Update QLineEdit
-        if isinstance(parent, qt.QLineEdit):
-            try:
-                parent.setStyleSheet("""
-                    QLineEdit {
-                      background-color: #3c3c3c;
-                      border: 1px solid #555555;
-                      border-radius: 4px;
-                      padding: 6px;
-                      color: #ffffff;
-                    }
-                    QLineEdit:focus {
-                      border: 2px solid #5dade2;
-                    }
-                """)
-            except:
-                pass
-        
-        # Update QComboBox
-        if isinstance(parent, qt.QComboBox):
-            try:
-                parent.setStyleSheet("""
-                    QComboBox {
-                      background-color: #3c3c3c;
-                      border: 1px solid #555555;
-                      border-radius: 4px;
-                      padding: 4px 6px;
-                      color: #ffffff;
-                    }
-                    QComboBox:focus {
-                      border: 2px solid #5dade2;
-                    }
-                    QComboBox::drop-down {
-                      width: 20px;
-                      border: none;
-                    }
-                    QComboBox QAbstractItemView {
-                      background-color: #3c3c3c;
-                      color: #ffffff;
-                      selection-background-color: #5dade2;
-                    }
-                """)
-            except:
-                pass
-
-        # Recursively process children
-        for child in parent.children():
-            self._updateLineEditAndComboBoxDarkMode(child)
-
-    def Autofill(self):
-        self.ui.editPathF.setText("/home/luciacev/Desktop/Jeanne/DJD_Data/Input")
-        self.ui.editPathVolume.setText("/home/luciacev/Desktop/Jeanne/DJD_Data/Volume/Crop_Volume_ROI_1.mrk.json")
-        self.ui.editPathOutput.setText("/home/luciacev/Desktop/Jeanne/DJD_Data/Output")
-        self.ui.chooseType.setCurrentIndex(1)
-        self.ui.chooseType_ROI.setCurrentIndex(0)
+        """Shared recursive pass, kept as a method for the existing call sites."""
+        update_line_edit_and_combo_box(parent)
 
     def cleanup(self):
         """
@@ -449,25 +269,25 @@ QSlider::handle:horizontal:hover {
 
         # Select default input nodes if nothing is selected yet to save a few clicks for the user
         if not self._parameterNode.GetNodeReference("InputVolume"):
-            firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-            if firstVolumeNode:
-                self._parameterNode.SetNodeReferenceID("InputVolume", firstVolumeNode.GetID())
+            first_volume_node = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+            if first_volume_node:
+                self._parameterNode.SetNodeReferenceID("InputVolume", first_volume_node.GetID())
 
-    def setParameterNode(self, inputParameterNode):
+    def setParameterNode(self, input_parameter_node):
         """
         Set and observe parameter node.
         Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
         """
 
-        if inputParameterNode:
-            self.logic.setDefaultParameters(inputParameterNode)
+        if input_parameter_node:
+            self.logic.setDefaultParameters(input_parameter_node)
 
         # Unobserve previously selected parameter node and add an observer to the newly selected.
         # Changes of parameter node are observed so that whenever parameters are changed by a script or any other module
         # those are reflected immediately in the GUI.
         if self._parameterNode is not None:
             self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-        self._parameterNode = inputParameterNode
+        self._parameterNode = input_parameter_node
         if self._parameterNode is not None:
             self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
 
@@ -504,9 +324,9 @@ QSlider::handle:horizontal:hover {
         if self._parameterNode is None or self._updatingGUIFromParameterNode:
             return
 
-        wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
+        was_modified = self._parameterNode.StartModify()  # Modify all properties in a single batch
 
-        self._parameterNode.EndModify(wasModified)
+        self._parameterNode.EndModify(was_modified)
 
     def optionCheckBox(self,index):
         '''
@@ -522,8 +342,8 @@ QSlider::handle:horizontal:hover {
         """
         Run process when user clicks "Apply" button.
         """
-        isValid = self.CheckInput()
-        if isValid :
+        is_valid = self.CheckInput()
+        if is_valid :
             if self.ui.checkBoxCV.isChecked():
                 pass
                 self.onProcessStarted()
@@ -538,12 +358,12 @@ QSlider::handle:horizontal:hover {
                                         self.ui.editSuffix.text) # use module Crop Volume of Slicer
 
             else:
-                box_Size =str(self.ui.checkBoxSize.isChecked())
+                box_size =str(self.ui.checkBoxSize.isChecked())
                 self.logic = AutoCrop3DLogic(self.ui.editPathF.text,
                                                 self.ui.editPathVolume.text,
                                                 self.ui.editPathOutput.text,
                                                 self.ui.editSuffix.text,
-                                                box_Size,
+                                                box_size,
                                                 self.log_path)
 
                 self.logic.process()
@@ -596,10 +416,10 @@ QSlider::handle:horizontal:hover {
 
             if self.logic.cliNode.GetStatus() & self.logic.cliNode.ErrorsMask:
                 # error
-                errorText = self.logic.cliNode.GetErrorText()
-                logger.error("CLI execution failed: \n \n" + errorText)
+                error_text = self.logic.cliNode.GetErrorText()
+                logger.error("CLI execution failed: \n \n" + error_text)
                 msg = qt.QMessageBox()
-                msg.setText(f'There was an error during the process:\n \n {errorText} ')
+                msg.setText(f'There was an error during the process:\n \n {error_text} ')
                 msg.setWindowTitle("Error")
                 msg.exec_()
 
@@ -635,9 +455,9 @@ QSlider::handle:horizontal:hover {
                 self.ui.chooseType_ROI.setCurrentIndex(0)
 
 
-                processTime = round(time.time() - self.startTime,3)
+                process_time = round(time.time() - self.startTime,3)
                 self.ui.label_time.setVisible(True)
-                self.ui.label_time.setText("done in "+ str(processTime)+ "s")
+                self.ui.label_time.setText("done in "+ str(process_time)+ "s")
 
 
     def updateProgressCV(self):
@@ -675,9 +495,9 @@ QSlider::handle:horizontal:hover {
                 self.ui.chooseType_ROI.setCurrentIndex(0)
 
 
-                processTime = round(time.time() - self.startTime,3)
+                process_time = round(time.time() - self.startTime,3)
                 self.ui.label_time.setVisible(True)
-                self.ui.label_time.setText("done in "+ str(processTime)+ "s")
+                self.ui.label_time.setText("done in "+ str(process_time)+ "s")
 
             return
         except Exception as e:
@@ -730,6 +550,326 @@ QSlider::handle:horizontal:hover {
 
 
 
+    def testFilesRoot(self):
+        """Where the unpacked sample data set lives, once and for all users."""
+        documents = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
+        return os.path.join(documents, slicer.app.applicationName + "Downloads", "AutoCrop3D")
+
+    def unpackTestFiles(self, root):
+        """The two folders holding the sample scan and the sample ROI.
+
+        The archives travel with the module, so this never touches the network:
+        `ensure` is handed a `file://` URI and does the rest -- it unpacks once,
+        marks the folder complete, and returns it untouched the next time.
+        """
+        folders = []
+        for resource, name in ((TEST_FILES_SCAN_ARCHIVE, "TestScan"),
+                               (TEST_FILES_ROI_ARCHIVE, "TestROI")):
+            archive = self.resourcePath(resource)
+            if not os.path.isfile(archive):
+                raise TestDataError(
+                    "The sample data set is missing from this installation: %s was "
+                    "not installed next to the module." % archive)
+            folders.append(ensure(Path(archive).as_uri(), root, name))
+        return folders
+
+    def onTestFiles(self):
+        """Fill every required field with the sample scan and ROI.
+
+        The input selector keeps whatever the user set it to -- `Search` takes a
+        file as happily as a folder. The ROI selector does not: the single ROI
+        shipped is a generic one, and in Folder mode `ChangeKeyDict` pairs a ROI
+        with a scan by the first part of its file name, which would match no
+        patient. So this sets the ROI selector to File.
+        """
+        root = self.testFilesRoot()
+        try:
+            scan_folder, roi_folder = self.unpackTestFiles(root)
+        except TestDataError as error:
+            qt.QMessageBox.warning(self.parent, "Test files", str(error))
+            return
+        except (OSError, zipfile.BadZipFile) as error:
+            qt.QMessageBox.warning(
+                self.parent, "Test files",
+                "The sample data set could not be unpacked into %s: %s" % (root, error))
+            return
+
+        scans = self.logic.Search(scan_folder, ".nii.gz")[".nii.gz"]
+        rois = self.logic.Search(roi_folder, ".mrk.json")[".mrk.json"]
+        if not scans or not rois:
+            qt.QMessageBox.warning(
+                self.parent, "Test files",
+                "The sample data set unpacked into %s holds no scan or no ROI." % root)
+            return
+
+        # In Folder mode, the field receives the folder that really holds the
+        # scan -- not the root of the set: `saveOutput` rebuilds the output path
+        # by replacing the input folder with the output one, and one more
+        # subfolder would make it write into a folder that does not exist.
+        self.ui.editPathF.setText(
+            scans[0] if self.ui.chooseType.currentIndex == 0 else os.path.dirname(scans[0]))
+        self.ui.chooseType_ROI.setCurrentIndex(0)
+        self.ui.editPathVolume.setText(rois[0])
+
+        if not self.ui.editPathOutput.text:
+            output = os.path.join(root, "TestOutput")
+            os.makedirs(output, exist_ok=True)
+            self.ui.editPathOutput.setText(output)
+
+        self.ui.applyButton.setEnabled(True)
+        logger.info("Test files ready in %s", root)
+
+    def CheckInput(self):
+        """
+        function to check all input and put a pop "error" window
+        Input: /
+        Output: Boolean , Dictionnary with the key and path of the files
+        """
+        warning_text = ""
+        if self.ui.editPathF.text=="":
+            if self.ui.chooseType.currentIndex == 1 : #Folder option
+                warning_text = warning_text + "Enter a Folder in input" + "\n"
+            else:
+                warning_text = warning_text + "Enter a File in input (.nii.gz,.nrrd.gz,.gipl.gz)" + "\n"
+
+        if self.ui.editPathVolume.text=="":
+
+            warning_text = warning_text + "Choose a ROI file (.json)" + "\n"
+
+        else :
+            self.list_roi=self.logic.Search(self.ui.editPathVolume.text,".mrk.json")
+            self.list_patient=self.logic.Search(self.ui.editPathF.text,".nii.gz",".nrrd.gz",".gipl.gz") #dictionnary with all path of file (working on folder or file)
+
+            isfile = False
+            isroi = False
+            if len(self.list_roi['.mrk.json'])!=0 :
+                isroi = True
+
+            for key,data in self.list_patient.items() :
+
+                if len(self.list_patient[key])!=0 :
+                    isfile = True # There are good types of files in the folder
+
+            # Test type of the scans
+            if self.ui.chooseType.currentIndex==1 and not isfile:
+                warning_text = warning_text + "Folder empty or wrong type of patient files " + "\n"
+                warning_text = warning_text + "File authorized : .nii.gz, .nrrd.gz, .gipl.gz" + "\n"
+            elif self.ui.chooseType.currentIndex==0 and not isfile:
+                warning_text = warning_text + "Wrong type of patient file detected" + "\n"
+                warning_text = warning_text + "File authorized : .nii.gz, .nrrd.gz, .gipl.gz" + "\n"
+
+            # Test type of the ROI
+            if self.ui.chooseType_ROI.currentIndex==1 and not isroi:
+                warning_text = warning_text + "Folder empty or wrong type of ROI files" + "\n"
+                warning_text = warning_text + "File authorized : .mrk.json" + "\n"
+            elif self.ui.chooseType_ROI.currentIndex==0 and not isroi:
+                warning_text = warning_text + "Wrong type of ROI file detected" + "\n"
+                warning_text = warning_text + "File authorized : .mrk.json" + "\n"
+
+        if self.ui.editPathOutput.text=="":
+
+            warning_text = warning_text + "Enter the output Folder" + "\n"
+
+
+        if warning_text=="":
+            result = True
+            return result
+
+        else :
+            qt.QMessageBox.warning(self.parent, "Warning", warning_text)
+            result = False
+            return result
+
+    def resetGUI(self):
+        """
+        Reset the GUI elements like progress bar, labels, etc.
+        """
+        self.ui.label_4.setVisible(False)
+        self.ui.progressBar.setVisible(False)
+        self.ui.editPathF.setText("")
+        self.ui.editPathVolume.setText("")
+        self.ui.editPathOutput.setText("")
+        self.ui.checkBoxSize.setChecked(False)
+        self.ui.checkBoxCV.setChecked(False)
+
+    def saveOutput(self, outputQueue,outputVolume,path_input,patient_path,output_dir,suffix):
+        """
+        Save the output volume to a file.
+        """
+        output_filename = os.path.basename(patient_path).replace('.nii.gz',f'_{suffix}.nii.gz')
+        if os.path.isdir(path_input):
+            relative_path= patient_path.replace(path_input,output_dir)
+        else:
+            relative_path= patient_path.replace(os.path.dirname(path_input),output_dir)
+        output_path = relative_path.replace(os.path.basename(patient_path),output_filename)
+        try:
+            slicer.util.saveNode(outputVolume, output_path)
+            success = True
+        except Exception:
+            success = False
+
+        self.processedFiles += 1
+
+        if self.processedFiles%1==0 or self.processedFiles>=self.nbFiles:
+            self.updateProgressCV()
+
+
+        outputQueue.put((success))
+        self.updateProgressCV()
+
+        return success
+
+
+    def processCropVolume(self,path_input,path_roi,output_dir,suffix):
+        index =0
+        scan_list = self.logic.Search(path_input, ".nii.gz",".nii",".nrrd.gz",".nrrd",".gipl.gz",".gipl")
+        if os.path.isdir(path_roi):
+            roi_list = self.logic.Search(path_roi,".mrk.json")
+            roi_dict = self.logic.ChangeKeyDict(roi_list)
+        else:
+            roi_list = None
+
+        idx=0
+        for key,data in scan_list.items():
+            for patient_path in data:
+                patient = os.path.basename(patient_path).split('_Scan')[0].split('_scan')[0].split('_Seg')[0].split('_seg')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0]
+
+                img = sitk.ReadImage(patient_path)
+
+                if roi_list is not None:
+                    try:
+                        roi_path = roi_dict[patient]
+                    except Exception:
+                        logger.warning('No ROI for patient:'+str(patient))
+                        idx+=1
+                        if idx==self.nbFiles:
+                            logger.warning('No ROI for any patient, exiting')
+                            #qmessage box to inform the user that no ROI was found for any patient
+                            msg = qt.QMessageBox()
+                            msg.setIcon(qt.QMessageBox.Warning)
+                            msg.setText("No ROI was found for any patient")
+                            msg.setWindowTitle("Error")
+                            msg.exec_()
+
+                            self.resetGUI()
+                            break
+                        else:
+                            continue
+                else:
+                    roi_path = path_roi
+
+                roi_node = slicer.util.loadMarkups(roi_path)
+
+                # Crop Volume is not working on segmentation so we need to put them as scans :)
+                input_volume = slicer.util.loadVolume(patient_path)
+
+                output_volume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+
+                #Crop Volume being a Loadable module and not a cli, suggestion:
+                crop_volume_logic= slicer.modules.cropvolume.logic()
+
+                parameters = slicer.vtkMRMLCropVolumeParametersNode()
+                parameters.SetInputVolumeNodeID(input_volume.GetID())
+                parameters.SetROINodeID(roi_node.GetID())
+                parameters.SetOutputVolumeNodeID(output_volume.GetID())
+
+                slicer.mrmlScene.AddNode(parameters)
+
+                crop_volume_logic.Apply(parameters)
+
+                output_volume = slicer.mrmlScene.GetNodeByID(parameters.GetOutputVolumeNodeID())
+
+                original_stdin = sys.stdin
+                sys.stdin = DummyFile()
+
+                output_queue = Queue()
+
+                self.thread = threading.Thread(target=self.saveOutput, args=(output_queue,output_volume,path_input,patient_path,output_dir,suffix))
+                self.thread.start()
+
+                while self.thread.is_alive():
+                    slicer.app.processEvents()
+                    self.updateProgressCV()
+                    try:
+                        success = output_queue.get_nowait()
+                        if not success:
+                            logger.error(f"Failed to save volume {patient_path}")
+                            continue
+                    except Empty:
+                        # Nothing in the queue right now: the next turn of the loop
+                        # will try again. This is the only expected error here.
+                        pass
+
+                sys.stdin = original_stdin
+
+                slicer.mrmlScene.RemoveNode(input_volume)
+                slicer.mrmlScene.RemoveNode(output_volume)
+                slicer.mrmlScene.RemoveNode(roi_node)
+                slicer.mrmlScene.Clear(0)
+
+
+
+#
+# AutoCrop3D Logic
+#
+
+class DummyFile(io.IOBase):
+        def close(self):
+            pass
+
+class AutoCrop3DLogic(ScriptedLoadableModuleLogic):
+    """This class should implement all the actual
+    computation done by your module.  The interface
+    should be such that other python code can import
+    this class and make use of the functionality without
+    requiring an instance of the Widget.
+    Uses ScriptedLoadableModuleLogic base class, available at:
+    https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
+    """
+
+    def __init__(self,scan_files_path=None,path_ROI_file=None,output_path=None,suffix=None,box_Size=None,logPath=None):
+        """
+        Called when the logic class is instantiated. Can be used for initializing member variables.
+        """
+        ScriptedLoadableModuleLogic.__init__(self)
+        self.scan_files_path = scan_files_path
+        self.path_ROI_file = path_ROI_file
+        self.output_path = output_path
+        self.suffix = suffix
+        self.box_Size = box_Size
+        self.logPath = logPath
+
+        self.cliNode = None
+        self.installCliNode = None
+
+    def setDefaultParameters(self, parameter_node):
+        """
+        Initialize parameter node with default settings.
+        """
+        if not parameter_node.GetParameter("Threshold"):
+            parameter_node.SetParameter("Threshold", "100.0")
+        if not parameter_node.GetParameter("Invert"):
+            parameter_node.SetParameter("Invert", "false")
+
+
+    def process(self):
+        """
+        Run the processing algorithm.
+        """
+        parameters = {}
+
+        parameters ["scan_files_path"] = self.scan_files_path
+        parameters ["path_ROI_file"] = self.path_ROI_file
+        parameters ["output_path"] = self.output_path
+        parameters ["suffix"] = self.suffix
+        parameters["box_Size"] = self.box_Size
+        parameters ["logPath"] = self.logPath
+
+
+        cli_auto_crop3_d = slicer.modules.autocrop3d_cli
+        self.cliNode = slicer.cli.run(cli_auto_crop3_d,None, parameters)
+
+        return cli_auto_crop3_d
     def Search(self,path : str,*args ) :
         """
         Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
@@ -786,79 +926,6 @@ QSlider::handle:horizontal:hover {
         return result
 
 
-    def CheckInput(self):
-        """
-        function to check all input and put a pop "error" window
-        Input: /
-        Output: Boolean , Dictionnary with the key and path of the files
-        """
-        warning_text = ""
-        if self.ui.editPathF.text=="":
-            if self.ui.chooseType.currentIndex == 1 : #Folder option
-                warning_text = warning_text + "Enter a Folder in input" + "\n"
-            else:
-                warning_text = warning_text + "Enter a File in input (.nii.gz,.nrrd.gz,.gipl.gz)" + "\n"
-
-        if self.ui.editPathVolume.text=="":
-
-            warning_text = warning_text + "Choose a ROI file (.json)" + "\n"
-
-        else :
-            self.list_roi=self.Search(self.ui.editPathVolume.text,".mrk.json")
-            self.list_patient=self.Search(self.ui.editPathF.text,".nii.gz",".nrrd.gz",".gipl.gz") #dictionnary with all path of file (working on folder or file)
-
-            isfile = False
-            isroi = False
-            if len(self.list_roi['.mrk.json'])!=0 :
-                isroi = True
-
-            for key,data in self.list_patient.items() :
-
-                if len(self.list_patient[key])!=0 :
-                    isfile = True # There are good types of files in the folder
-
-            # Test type of the scans
-            if self.ui.chooseType.currentIndex==1 and not isfile:
-                warning_text = warning_text + "Folder empty or wrong type of patient files " + "\n"
-                warning_text = warning_text + "File authorized : .nii.gz, .nrrd.gz, .gipl.gz" + "\n"
-            elif self.ui.chooseType.currentIndex==0 and not isfile:
-                warning_text = warning_text + "Wrong type of patient file detected" + "\n"
-                warning_text = warning_text + "File authorized : .nii.gz, .nrrd.gz, .gipl.gz" + "\n"
-
-            # Test type of the ROI
-            if self.ui.chooseType_ROI.currentIndex==1 and not isroi:
-                warning_text = warning_text + "Folder empty or wrong type of ROI files" + "\n"
-                warning_text = warning_text + "File authorized : .mrk.json" + "\n"
-            elif self.ui.chooseType_ROI.currentIndex==0 and not isroi:
-                warning_text = warning_text + "Wrong type of ROI file detected" + "\n"
-                warning_text = warning_text + "File authorized : .mrk.json" + "\n"
-
-        if self.ui.editPathOutput.text=="":
-
-            warning_text = warning_text + "Enter the output Folder" + "\n"
-
-
-        if warning_text=="":
-            result = True
-            return result
-
-        else :
-            qt.QMessageBox.warning(self.parent, "Warning", warning_text)
-            result = False
-            return result
-
-    def resetGUI(self):
-        """
-        Reset the GUI elements like progress bar, labels, etc.
-        """
-        self.ui.label_4.setVisible(False)
-        self.ui.progressBar.setVisible(False)
-        self.ui.editPathF.setText("")
-        self.ui.editPathVolume.setText("")
-        self.ui.editPathOutput.setText("")
-        self.ui.checkBoxSize.setChecked(False)
-        self.ui.checkBoxCV.setChecked(False)
-
     def ChangeKeyDict(self,list_files : list) -> dict:
         """
         Return a dictionary with the name of the patient being the key and the path of the file being the value.
@@ -884,182 +951,6 @@ QSlider::handle:horizontal:hover {
         return result
 
 
-    def saveOutput(self, outputQueue,outputVolume,path_input,patient_path,output_dir,suffix):
-        """
-        Save the output volume to a file.
-        """
-        output_filename = os.path.basename(patient_path).replace('.nii.gz',f'_{suffix}.nii.gz')
-        if os.path.isdir(path_input):
-            relative_path= patient_path.replace(path_input,output_dir)
-        else:
-            relative_path= patient_path.replace(os.path.dirname(path_input),output_dir)
-        output_path = relative_path.replace(os.path.basename(patient_path),output_filename)
-        try:
-            slicer.util.saveNode(outputVolume, output_path)
-            success = True
-        except:
-            success = False
-
-        self.processedFiles += 1
-
-        if self.processedFiles%1==0 or self.processedFiles>=self.nbFiles:
-            self.updateProgressCV()
-
-
-        outputQueue.put((success))
-        self.updateProgressCV()
-
-        return success
-
-
-    def processCropVolume(self,path_input,path_ROI,output_dir,suffix):
-        index =0
-        ScanList = self.Search(path_input, ".nii.gz",".nii",".nrrd.gz",".nrrd",".gipl.gz",".gipl")
-        if os.path.isdir(path_ROI):
-            ROIList = self.Search(path_ROI,".mrk.json")
-            ROI_dict = self.ChangeKeyDict(ROIList)
-        else:
-            ROIList = None
-
-        idx=0
-        for key,data in ScanList.items():
-            for patient_path in data:
-                patient = os.path.basename(patient_path).split('_Scan')[0].split('_scan')[0].split('_Seg')[0].split('_seg')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0]
-
-                img = sitk.ReadImage(patient_path)
-
-                if ROIList is not None:
-                    try:
-                        ROI_Path = ROI_dict[patient]
-                    except:
-                        logger.warning('No ROI for patient:'+str(patient))
-                        idx+=1
-                        if idx==self.nbFiles:
-                            logger.warning('No ROI for any patient, exiting')
-                            #qmessage box to inform the user that no ROI was found for any patient
-                            msg = qt.QMessageBox()
-                            msg.setIcon(qt.QMessageBox.Warning)
-                            msg.setText("No ROI was found for any patient")
-                            msg.setWindowTitle("Error")
-                            msg.exec_()
-
-                            self.resetGUI()
-                            break
-                        else:
-                            continue
-                else:
-                    ROI_Path = path_ROI
-
-                roiNode = slicer.util.loadMarkups(ROI_Path)
-
-                # Crop Volume is not working on segmentation so we need to put them as scans :)
-                inputVolume = slicer.util.loadVolume(patient_path)
-
-                outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-
-                #Crop Volume being a Loadable module and not a cli, suggestion:
-                cropVolumeLogic= slicer.modules.cropvolume.logic()
-
-                parameters = slicer.vtkMRMLCropVolumeParametersNode()
-                parameters.SetInputVolumeNodeID(inputVolume.GetID())
-                parameters.SetROINodeID(roiNode.GetID())
-                parameters.SetOutputVolumeNodeID(outputVolume.GetID())
-
-                slicer.mrmlScene.AddNode(parameters)
-
-                cropVolumeLogic.Apply(parameters)
-
-                outputVolume = slicer.mrmlScene.GetNodeByID(parameters.GetOutputVolumeNodeID())
-
-                original_stdin = sys.stdin
-                sys.stdin = DummyFile()
-
-                outputQueue = Queue()
-
-                self.thread = threading.Thread(target=self.saveOutput, args=(outputQueue,outputVolume,path_input,patient_path,output_dir,suffix))
-                self.thread.start()
-
-                while self.thread.is_alive():
-                    slicer.app.processEvents()
-                    self.updateProgressCV()
-                    try:
-                        success = outputQueue.get_nowait()
-                        if not success:
-                            logger.error(f"Failed to save volume {patient_path}")
-                            continue
-                    except:
-                        pass
-
-                sys.stdin = original_stdin
-
-                slicer.mrmlScene.RemoveNode(inputVolume)
-                slicer.mrmlScene.RemoveNode(outputVolume)
-                slicer.mrmlScene.RemoveNode(roiNode)
-                slicer.mrmlScene.Clear(0)
-
-
-
-#
-# AutoCrop3D Logic
-#
-
-class DummyFile(io.IOBase):
-        def close(self):
-            pass
-
-class AutoCrop3DLogic(ScriptedLoadableModuleLogic):
-    """This class should implement all the actual
-    computation done by your module.  The interface
-    should be such that other python code can import
-    this class and make use of the functionality without
-    requiring an instance of the Widget.
-    Uses ScriptedLoadableModuleLogic base class, available at:
-    https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
-    """
-
-    def __init__(self,scan_files_path=None,path_ROI_file=None,output_path=None,suffix=None,box_Size=None,logPath=None):
-        """
-        Called when the logic class is instantiated. Can be used for initializing member variables.
-        """
-        ScriptedLoadableModuleLogic.__init__(self)
-        self.scan_files_path = scan_files_path
-        self.path_ROI_file = path_ROI_file
-        self.output_path = output_path
-        self.suffix = suffix
-        self.box_Size = box_Size
-        self.logPath = logPath
-
-        self.cliNode = None
-        self.installCliNode = None
-
-    def setDefaultParameters(self, parameterNode):
-        """
-        Initialize parameter node with default settings.
-        """
-        if not parameterNode.GetParameter("Threshold"):
-            parameterNode.SetParameter("Threshold", "100.0")
-        if not parameterNode.GetParameter("Invert"):
-            parameterNode.SetParameter("Invert", "false")
-
-
-    def process(self):
-        """
-        Run the processing algorithm.
-        """
-        parameters = {}
-
-        parameters ["scan_files_path"] = self.scan_files_path
-        parameters ["path_ROI_file"] = self.path_ROI_file
-        parameters ["output_path"] = self.output_path
-        parameters ["suffix"] = self.suffix
-        parameters["box_Size"] = self.box_Size
-        parameters ["logPath"] = self.logPath
-
-
-        CLI_autoCrop3D = slicer.modules.autocrop3d_cli
-        self.cliNode = slicer.cli.run(CLI_autoCrop3D,None, parameters)
-
-        return CLI_autoCrop3D
 
 #
 # AutoCrop3DTest
@@ -1095,42 +986,40 @@ class AutoCrop3DTest(ScriptedLoadableModuleTest):
         your test should break so they know that the feature is needed.
         """
 def test_AutoCrop3D1(self):
-    # The segmentation (CBCT scan) is in the directory Testing/Test_data/Segmentation.zip
-    # The JSON file is in the directory Testing/Test_data/ROI.mrk.zip
+    # The segmentation (CBCT scan) is in Resources/testfiles/AutoCrop3D/Segmentation.zip
+    # The JSON file is in Resources/testfiles/AutoCrop3D/ROI.mrk.zip
     import os
-    import zipfile
-    import tempfile
     import slicer
     self.delayDisplay("Starting AutoCropCBCT test")
 
     # Test Initialization
     # Load sample CBCT scans and JSON file
     # Unzip files
-    tempDir = tempfile.mkdtemp()
-    segmentationZip = os.path.join(os.path.dirname(__file__), 'Testing', 'Test_data', 'Segmentation.zip')
-    segmentationDir = os.path.join(tempDir, 'Segmentation')
-    os.mkdir(segmentationDir)
-    with zipfile.ZipFile(segmentationZip, 'r') as zip_ref:
-        zip_ref.extractall(segmentationDir)
+    temp_dir = tempfile.mkdtemp()
+    segmentation_zip = os.path.join(os.path.dirname(__file__), 'Resources', 'testfiles', 'AutoCrop3D', 'Segmentation.zip')
+    segmentation_dir = os.path.join(temp_dir, 'Segmentation')
+    os.mkdir(segmentation_dir)
+    with zipfile.ZipFile(segmentation_zip, 'r') as zip_ref:
+        zip_ref.extractall(segmentation_dir)
     #Try Load CBCT scan
     try:
-        segmentationFile = os.path.join(segmentationDir, 'Segmentation.nrrd')
-        segmentationNode = slicer.util.loadVolume(segmentationFile)
-    except:
+        segmentation_file = os.path.join(segmentation_dir, 'Segmentation.nrrd')
+        segmentation_node = slicer.util.loadVolume(segmentation_file)
+    except Exception:
         raise ValueError("CBCT scan could not be loaded")
 
     #Try Load JSON file
-    jsonZip = os.path.join(os.path.dirname(__file__), 'Testing', 'Test_data', 'ROI.mrk.zip')
-    jsonDir = os.path.join(tempDir, 'ROI.mrk')
-    os.mkdir(jsonDir)
-    with zipfile.ZipFile(jsonZip, 'r') as zip_ref:
-        zip_ref.extractall(jsonDir)
+    json_zip = os.path.join(os.path.dirname(__file__), 'Resources', 'testfiles', 'AutoCrop3D', 'ROI.mrk.zip')
+    json_dir = os.path.join(temp_dir, 'ROI.mrk')
+    os.mkdir(json_dir)
+    with zipfile.ZipFile(json_zip, 'r') as zip_ref:
+        zip_ref.extractall(json_dir)
 
-    jsonFile = os.path.join(jsonDir, 'ROI.mrk.json')
+    json_file = os.path.join(json_dir, 'ROI.mrk.json')
     try:
-        with open(jsonFile) as f:
-            jsonROI = json.load(f)
-    except:
+        with open(json_file) as f:
+            json_roi = json.load(f)
+    except Exception:
         raise ValueError("JSON file could not be loaded")
 
     self.delayDisplay("AutoCropCBCT test passed")

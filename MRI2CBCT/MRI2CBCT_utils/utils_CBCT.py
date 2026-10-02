@@ -1,19 +1,11 @@
 import os
-from glob import iglob
-import sys
-import logging
+from ADTLib.naming import patient_id as read_patient_id
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_utils")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+from ADTLib.io.fs import search as search_files
+
+logger = get_logger("MRI2CBCT_utils")
 
 def GetListFiles(folder_path, file_extension):
     """Return a list of files in folder_path finishing by file_extension"""
@@ -38,27 +30,11 @@ def GetPatients(folder_path, time_point="T1", segmentationType=None):
 
     patients = {}
 
-    # TIMEPOINT-SUFFIX: only _T1/_T2 are stripped here, so _T3/_T4 inputs break
-    # patient pairing. See the full note above GetPatients in
-    # AREG_CBCT/AREG_CBCT_utils/utils.py before changing this.
+    # TIMEPOINT-SUFFIX: the chain that builds this id now lives in
+    # ADTLib.naming, together with the note on what it would take.
     for file in file_list:
         basename = os.path.basename(file)
-        patient = (
-            basename.split("_Scan")[0]
-            .split("_scan")[0]
-            .split("_Or")[0]
-            .split("_OR")[0]
-            .split("_MAND")[0]
-            .split("_MD")[0]
-            .split("_MAX")[0]
-            .split("_MX")[0]
-            .split("_CB")[0]
-            .split("_lm")[0]
-            .split("_T2")[0]
-            .split("_T1")[0]
-            .split("_Cl")[0]
-            .split(".")[0]
-        )
+        patient = read_patient_id(basename)
 
         if patient not in patients:
             patients[patient] = {}
@@ -148,33 +124,5 @@ def ModifiedDictPatients(patients, todo_str):
 
 
 def search(path, *args):
-    """
-    Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
-
-    Example:
-    args = ('json',['.nii.gz','.nrrd'])
-    return:
-        {
-            'json' : ['path/a.json', 'path/b.json','path/c.json'],
-            '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
-            '.nrrd.gz' : ['path/c.nrrd']
-        }
-    """
-    arguments = []
-    for arg in args:
-        if type(arg) == list:
-            arguments.extend(arg)
-        else:
-            arguments.append(arg)
-    return {
-        key: sorted(
-            [
-                i
-                for i in iglob(
-                    os.path.normpath("/".join([path, "**", "*"])), recursive=True
-                )
-                if i.endswith(key)
-            ]
-        )
-        for key in arguments
-    }
+    """Delegated to ADTLib. This call site sorts: the patient order depends on it."""
+    return search_files(path, *args, sort=True)

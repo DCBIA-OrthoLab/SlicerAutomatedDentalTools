@@ -11,23 +11,14 @@
 # rotated into that frame before the prediction and the landmarks are brought
 # back afterwards. The rotation is read off four teeth, the way ASO and FlexReg
 # already orient an arch.
-import logging
-import sys
 
 import numpy as np
 import vtk
 from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
 
-logger = logging.getLogger("ALI_IOS_orientation")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ALI_IOS_orientation")
 
 # Universal ids of the lower teeth. The occlusal plane is fitted through the
 # centroids of every one the segmentation knows, rather than four named ones:

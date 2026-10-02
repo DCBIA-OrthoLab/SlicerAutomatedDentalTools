@@ -2,33 +2,20 @@ from ALI_Method.Method import Method
 from ALI_Method.Progress import (
     DisplayALICBCT,
 )
-import os, sys
-import logging
+import os
 
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("ALI_CBCT_Process")
-logger.setLevel(logging.INFO)
+from ADTLib.logging_setup import get_logger
 
-logger.propagate = False
+logger = get_logger("ALI_CBCT_Process")
 
-if logger.handlers:
-    logger.handlers.clear()
 
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
-
-import SimpleITK as sitk
-import numpy as np
-
-from glob import iglob
 import slicer
-import time
-import qt
 import platform
+from ADTLib.model_registry import ADT_MODELS
+from ADTLib.model_registry import (
+    AMASSS_CBCT_UPSTREAM, AMASSS_TEST_SCAN, ASO_CBCT_GOLD)
+import re
 
 
 class Auto_CBCT(Method):
@@ -51,7 +38,6 @@ class Auto_CBCT(Method):
         return len(files)
     
     def NumberLandmark(self, landmarks: str):
-        import re
         cleaned = re.sub(r"[\[\]\"']", "", landmarks)
         teeth_list = re.split(r"[,\s]+", cleaned)
         teeth_list = [t for t in teeth_list if t]
@@ -59,8 +45,8 @@ class Auto_CBCT(Method):
 
     def getReferenceList(self):
         return {
-            "Occlusal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Occlusal_Midsagittal_Plane.zip",
-            "Frankfurt Horizontal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Frankfurt_Horizontal_Midsagittal_Plane.zip",
+            "Occlusal and Midsagittal Plane": f"{ASO_CBCT_GOLD}/Occlusal_Midsagittal_Plane.zip",
+            "Frankfurt Horizontal and Midsagittal Plane": f"{ASO_CBCT_GOLD}/Frankfurt_Horizontal_Midsagittal_Plane.zip",
         }
 
     def TestReference(self, ref_folder: str):
@@ -76,24 +62,24 @@ class Auto_CBCT(Method):
 
         return None
 
-    def TestModel(self, model_folder: str, lineEditName) -> str:
+    def TestModel(self, model_folder: str, line_edit_name) -> str:
 
-        if lineEditName == "lineEditModelPath":
+        if line_edit_name == "lineEditModelPath":
             if len(super().search(model_folder, "pth")["pth"]) == 0:
                 return "Folder must have models for mask segmentation"
             else:
                 return None
 
-    def TestProcess(self, **kwargs) -> str:
+    def TestProcess(self, request) -> str:
         out = ""
         
-        if kwargs["input_folder"] == "":
+        if request.input_folder == "":
             out += "Please select an input folder for T1 scans\n"
 
-        if kwargs["output_dir"] == "":
+        if request.output_folder == "":
             out += "Please select an output folder\n"
 
-        if kwargs["dir_models"] == "":
+        if request.model_folder == "":
             out += "Please select a folder for segmentation models\n"
 
         if out == "":
@@ -104,19 +90,19 @@ class Auto_CBCT(Method):
     def getModelUrl(self):
         return {
             "Segmentation": {
-                "Full Face Models": "https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/AMASSS_Models.zip",
-                "Mask Models": "https://github.com/lucanchling/AMASSS_CBCT/releases/download/v1.0.2/Masks_Models.zip",
+                "Full Face Models": f"{AMASSS_CBCT_UPSTREAM}/AMASSS_Models.zip",
+                "Mask Models": f"{AMASSS_CBCT_UPSTREAM}/Masks_Models.zip",
             },
             
             "Landmark": {
-                "Cranial Base": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Cranial_Base.zip",
-                "Lower Bones 1": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Bones_1.zip",
-                "Lower Bones 2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Bones_2.zip",
-                "Lower Left Teeth": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Left_Teeth.zip",
-                "Lower_Right_Teeth": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Right_Teeth.zip",
-                "Upper Bones v2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Upper_Bones_v2.zip",
-                "Upper Left Teeth v2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Upper_Left_Teeth_v2.zip",
-                "Upper Right Teeth v2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Upper_Right_Teeth_v2.zip",
+                "Cranial Base": f"{ADT_MODELS}/Cranial_Base.zip",
+                "Lower Bones 1": f"{ADT_MODELS}/Lower_Bones_1.zip",
+                "Lower Bones 2": f"{ADT_MODELS}/Lower_Bones_2.zip",
+                "Lower Left Teeth": f"{ADT_MODELS}/Lower_Left_Teeth.zip",
+                "Lower_Right_Teeth": f"{ADT_MODELS}/Lower_Right_Teeth.zip",
+                "Upper Bones v2": f"{ADT_MODELS}/Upper_Bones_v2.zip",
+                "Upper Left Teeth v2": f"{ADT_MODELS}/Upper_Left_Teeth_v2.zip",
+                "Upper Right Teeth v2": f"{ADT_MODELS}/Upper_Right_Teeth_v2.zip",
             }
         }
 
@@ -153,8 +139,8 @@ class Auto_CBCT(Method):
             ],
         }
 
-    def TranslateModels(self, listeModels, mask=False):
-        dicTranslate = {
+    def TranslateModels(self, liste_models, mask=False):
+        dic_translate = {
             "Models": {
                 "Mandible": "MAND",
                 "Maxilla": "MAX",
@@ -173,17 +159,17 @@ class Auto_CBCT(Method):
         }
 
         translate = ""
-        for i, model in enumerate(listeModels):
-            if i < len(listeModels) - 1:
+        for i, model in enumerate(liste_models):
+            if i < len(liste_models) - 1:
                 if mask:
-                    translate += dicTranslate["Masks"][model] + " "
+                    translate += dic_translate["Masks"][model] + " "
                 else:
-                    translate += dicTranslate["Models"][model] + " "
+                    translate += dic_translate["Models"][model] + " "
             else:
                 if mask:
-                    translate += dicTranslate["Masks"][model]
+                    translate += dic_translate["Masks"][model]
                 else:
-                    translate += dicTranslate["Models"][model]
+                    translate += dic_translate["Models"][model]
 
         return translate
 
@@ -191,24 +177,25 @@ class Auto_CBCT(Method):
         return None
 
     def getTestFileList(self):
+        """The test scan: a .nii.gz, not an archive."""
         return (
             "ALI_test_scan",
-            "https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz",
+            AMASSS_TEST_SCAN,
         )
 
-    def Process(self, **kwargs):
+    def Process(self, request):
         
         path_tmp = slicer.util.tempDirectory()
         os.makedirs(path_tmp, exist_ok=True)
-        os.makedirs(kwargs["output_dir"], exist_ok=True)
+        os.makedirs(request.output_folder, exist_ok=True)
         
         parameter_ali = {
-            "input": kwargs["input_folder"],
-            "dir_models": kwargs["dir_models"],
-            "lm_type": kwargs["lm_type"].split(" "),
-            "output_dir": kwargs["output_dir"],
+            "input": request.input_folder,
+            "dir_models": request.model_folder,
+            "lm_type": request.lm_type.split(" "),
+            "output_dir": request.output_folder,
             "temp_fold": path_tmp,
-            "DCMInput": kwargs["DCMInput"],
+            "DCMInput": request.is_dicom_input,
             "spacing": "[1,0.3]",
             "speed_per_scale": "[1,1]",
             "agent_FOV": "[64,64,64]",
@@ -220,19 +207,19 @@ class Auto_CBCT(Method):
         logger.debug(f"Processing parameters: {parameter_ali}")
         logger.debug("=" * 70)
         
-        ALIProcess = slicer.modules.ali_cbct
+        ali_process = slicer.modules.ali_cbct
         
         number_scan = self.NumberScan(
-            kwargs["input_folder"]
+            request.input_folder
         )
         number_lm = self.NumberLandmark(
-            kwargs["lm_type"]
+            request.lm_type
         )
         
         
         list_process = [
             {
-                "Process": ALIProcess,
+                "Process": ali_process,
                 "Parameter": parameter_ali,
                 "Module": "ALI_CBCT",
                 "Display": DisplayALICBCT(

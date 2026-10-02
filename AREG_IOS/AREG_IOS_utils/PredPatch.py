@@ -1,21 +1,12 @@
 from typing import Any
 import torch
-from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
+from vtk.util.numpy_support import numpy_to_vtk
 from AREG_IOS_utils.net import MonaiUNetHRes
 from AREG_IOS_utils.post_process import RemoveIslands, DilateLabel, ErodeLabel
-import logging
-import sys
 # ===== Logging Configuration =====
-logger = logging.getLogger("AREG_IOS_PredPatch")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("AREG_IOS_PredPatch")
 
 
 class PredPatch:
@@ -57,8 +48,8 @@ class PredPatch:
             x, X, PF = self.model((V, F, CN))
             x = self.softmax(x * (PF >= 0))
 
-            P_faces = torch.zeros(out_channels, F.shape[1]).to(self.device)
-            V_labels_prediction = (
+            p_faces = torch.zeros(out_channels, F.shape[1]).to(self.device)
+            v_labels_prediction = (
                 torch.zeros(V.shape[1]).to(self.device).to(torch.int64)
             )
 
@@ -66,34 +57,34 @@ class PredPatch:
             x = x.squeeze(0)
 
             for pf, pred in zip(PF, x):
-                P_faces[:, pf] += pred
+                p_faces[:, pf] += pred
 
-            P_faces = torch.argmax(P_faces, dim=0)
+            p_faces = torch.argmax(p_faces, dim=0)
 
             faces_pid0 = F[0, :, 0]
-            V_labels_prediction[faces_pid0] = P_faces
+            v_labels_prediction[faces_pid0] = p_faces
 
-            V_labels_prediction = torch.where(V_labels_prediction >= 1, 1, 0)
+            v_labels_prediction = torch.where(v_labels_prediction >= 1, 1, 0)
 
-            V_labels_prediction = numpy_to_vtk(V_labels_prediction.cpu().numpy())
-            V_labels_prediction.SetName("Butterfly")
-            surf.GetPointData().AddArray(V_labels_prediction)
+            v_labels_prediction = numpy_to_vtk(v_labels_prediction.cpu().numpy())
+            v_labels_prediction.SetName("Butterfly")
+            surf.GetPointData().AddArray(v_labels_prediction)
 
             # Post Process
             # fill the holes in patch
-            RemoveIslands(surf, V_labels_prediction, 33, 500, ignore_neg1=True)
+            RemoveIslands(surf, v_labels_prediction, 33, 500, ignore_neg1=True)
             for label in range(2):
-                RemoveIslands(surf, V_labels_prediction, label, 200, ignore_neg1=True)
+                RemoveIslands(surf, v_labels_prediction, label, 200, ignore_neg1=True)
 
             for label in range(1, 2):
                 DilateLabel(
                     surf,
-                    V_labels_prediction,
+                    v_labels_prediction,
                     label,
                     iterations=2,
                     dilateOverTarget=False,
                     target=None,
                 )
-                ErodeLabel(surf, V_labels_prediction, label, iterations=2, target=None)
+                ErodeLabel(surf, v_labels_prediction, label, iterations=2, target=None)
 
         return surf

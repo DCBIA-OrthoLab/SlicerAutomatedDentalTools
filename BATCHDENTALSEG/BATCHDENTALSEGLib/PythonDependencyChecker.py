@@ -7,28 +7,21 @@ import qt
 import slicer
 from github import Github, GithubException
 
-import logging
-import sys
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("BatchDentalSeg_pythonDependency")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+import shutil
+import traceback
 
-def hasInternetConnection(timeOut_sec=2) -> bool:
+logger = get_logger("BatchDentalSeg_pythonDependency")
+
+def hasInternetConnection(time_out_sec=2) -> bool:
     """
     Check if user has access to the internet.
     """
     import requests
     try:
-        requests.get("https://www.github.com", timeout=timeOut_sec)
+        requests.get("https://www.github.com", timeout=time_out_sec)
         return True
     except requests.ConnectionError:
         return False
@@ -63,15 +56,15 @@ class PythonDependencyChecker:
     @classmethod
     def areDependenciesSatisfied(cls):
         try:
-            import torch
-            import nnunetv2
+            import torch  # noqa: F401  (sonde de disponibilite)
+            import nnunetv2  # noqa: F401  (sonde de disponibilite)
             return True
         except ImportError:
             return False
 
-    def downloadWeightsIfNeeded(self, progressCallback):
+    def downloadWeightsIfNeeded(self, progress_callback):
         if self.areWeightsMissing():
-            return self.downloadWeights(progressCallback)
+            return self.downloadWeights(progress_callback)
 
         elif self.areWeightsOutdated():
             if qt.QMessageBox.question(
@@ -79,7 +72,7 @@ class PythonDependencyChecker:
                     "New weights are available",
                     "New weights are available. Would you like to download them?"
             ):
-                return self.downloadWeights(progressCallback)
+                return self.downloadWeights(progress_callback)
         return True
 
     def areWeightsMissing(self):
@@ -143,17 +136,16 @@ class PythonDependencyChecker:
         with open(self.getWeightDownloadInfoPath(), "r") as f:
             return json.loads(f.read()).get("download_url")
 
-    def downloadWeights(self, progressCallback) -> bool:
+    def downloadWeights(self, progress_callback) -> bool:
         """
         Removes the weight folder and tries to download the weights from the GitHub page.
         If an internet connection is not available, keeps the current weights unchanged.
 
         :returns: True if download was successful. False in case of no internet or failure during download.
         """
-        import shutil
         import requests
 
-        progressCallback("Downloading model weights...")
+        progress_callback("Downloading model weights...")
         if not self.hasInternetConnectionF():
             self.errorDisplay(
                 "Failed to download weights (no internet connection). "
@@ -174,16 +166,15 @@ class PythonDependencyChecker:
             response.raise_for_status()
 
             file_name = download_url.split("/")[-1]
-            destZipPath = self.destWeightFolder / file_name
-            with open(destZipPath, "wb") as f:
+            dest_zip_path = self.destWeightFolder / file_name
+            with open(dest_zip_path, "wb") as f:
                 for chunk in response.iter_content(1024 * 1024):
                     f.write(chunk)
 
-            self.extractWeightsToWeightsFolder(destZipPath)
+            self.extractWeightsToWeightsFolder(dest_zip_path)
             self.writeDownloadInfoURL(download_url)
             return True
         except Exception:  # noqa
-            import traceback
             self.errorDisplay(
                 "Failed to download weights. Please retry or manually install them to proceed.\n"
                 "To manually install the weights, please refer to the documentation here :\n"
@@ -192,8 +183,8 @@ class PythonDependencyChecker:
             )
             return False
 
-    def extractWeightsToWeightsFolder(self, zipPath):
-        with zipfile.ZipFile(zipPath, "r") as f:
+    def extractWeightsToWeightsFolder(self, zip_path):
+        with zipfile.ZipFile(zip_path, "r") as f:
             f.extractall(self.destWeightFolder)
 
     def writeDownloadInfoURL(self, download_url):

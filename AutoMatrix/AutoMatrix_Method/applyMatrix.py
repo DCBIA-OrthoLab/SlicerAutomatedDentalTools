@@ -2,28 +2,13 @@ from AutoMatrix_Method.Method import Method
 from AutoMatrix_Method.Progress import DisplayAutomatrix
 from AutoMatrix_Method.General_tools import GetPatients
 import slicer
-import webbrowser
-import glob
 import os
-import vtk
-import shutil
-import platform
-import csv
 
-import logging
-import sys
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("AutoMatrix_applymatrix")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("AutoMatrix_applymatrix")
 
 class Automatrix_Method(Method):
     def __init__(self, widget):
@@ -36,7 +21,7 @@ class Automatrix_Method(Method):
             return "Please select a folder with valid scan files"
         return None
     
-    def NbScan(self, input_patient: str, input_matrix: str):
+    def NumberScan(self, input_patient: str, input_matrix: str):
         _, nb_files = GetPatients(input_patient, input_matrix)
         return nb_files
     
@@ -81,16 +66,16 @@ class Automatrix_Method(Method):
         
         logger.info(f"Parameter automatrix :{parameter_automatrix}")
         
-        AutomatrixProcess = slicer.modules.automatrix_cli
+        automatrix_process = slicer.modules.automatrix_cli
 
-        nb_files = self.NbScan(
+        nb_files = self.NumberScan(
             kwargs["input_patient"],
             kwargs["input_matrix"]
         )
         
         list_process = [
             {
-                "Process": AutomatrixProcess,
+                "Process": automatrix_process,
                 "Parameter": parameter_automatrix,
                 "Module": "AutoMatrix",
                 "Display": DisplayAutomatrix(

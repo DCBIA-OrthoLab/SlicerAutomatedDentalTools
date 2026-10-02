@@ -6,19 +6,23 @@ import time
 import SimpleITK as sitk
 import argparse
 
-import logging
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_CLI_Orient")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+from ADTLib.progress_protocol import emit_fraction
+
+logger = get_logger("MRI2CBCT_CLI_Orient")
 
 def extract_id(filename):
     """
@@ -107,7 +111,7 @@ def main(args):
         if total_patients > 0:
             patient_count += 1
             progress = patient_count / total_patients
-            print(f"<filter-progress>{progress}</filter-progress>")
+            emit_fraction(progress)
             sys.stdout.flush()
             time.sleep(0.5)
 

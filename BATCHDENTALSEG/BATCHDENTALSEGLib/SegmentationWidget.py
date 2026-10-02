@@ -7,9 +7,7 @@ import numpy as np
 import qt
 import subprocess
 import sys
-import sys
 import slicer
-import logging
 import os
 from .IconPath import icon, iconPath
 from .PythonDependencyChecker import PythonDependencyChecker, hasInternetConnection
@@ -30,19 +28,23 @@ from .Utils import (
     setBoxAndTextVisibilityOnThreeDViews,
 )
 from collections import deque
-import sys
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("BatchDentalSeg_SegmentationWidget")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+import gc
+import json
+from ADTLib.model_registry import NASOMAXILLA_DENT_SEG, PEDIATRIC_DENTAL_SEG, UNIVERSAL_LAB
+from ADTLib.testdata import TestDataError
+
+logger = get_logger("BatchDentalSeg_SegmentationWidget")
+
+# The test set is the "CBCTDentalSurgery" CBCT published by Slicer, the very
+# one `Testing/Utils.load_test_CT_volume` uses. The TEST_FILES_BATCHDENTALSEG
+# release only carries *segmentations*: those are the expected outputs of the
+# tests, not inputs -- this module segments scans, so its input folder must
+# hold some. The two files of that set are `.gipl.gz`, an extension
+# `listVolumes` already recognises.
+TEST_FILES_SAMPLE_NAME = "CBCTDentalSurgery"
 
 
 vtk.vtkObject.GlobalWarningDisplayOff()
@@ -78,20 +80,20 @@ class ExportFormat(Flag):
     NIFTI = auto()
     GLTF = auto()
     VTK = auto()
-    VTK_MERGED = auto() 
+    VTK_MERGED = auto()
 
 # ─── Segmentation Widget Class ────────────────────────────────────────────────
 
 
 class PipRunner(qt.QObject):
     """
-    Run « pip install … »
+    Run "pip install ..."
     """
     def __init__(self, packages, onLine, onFinished, parent=None):
         super().__init__(parent)
         self._onLine     = onLine
         self._onFinished = onFinished
-        self._proc       = qt.QProcess(self)           # vie = celle du runner
+        self._proc       = qt.QProcess(self)           # lifetime = that of the runner
 
         # — configuration process —
         self._proc.setProgram(sys.executable)          # PythonSlicer
@@ -109,18 +111,18 @@ class PipRunner(qt.QObject):
     def _readLines(self):
         while self._proc.canReadLine():
             # Qt → QByteArray → bytes → str
-            lineBA  = self._proc.readLine()           # QByteArray
-            lineStr = lineBA.data().decode("utf-8", "ignore").rstrip()
-            self._onLine(lineStr)
+            line_ba  = self._proc.readLine()           # QByteArray
+            line_str = line_ba.data().decode("utf-8", "ignore").rstrip()
+            self._onLine(line_str)
 
 
-    def _procFinished(self, exitCode, *args):
+    def _procFinished(self, exit_code, *args):
         """
         Slot called at the end of QProcess.
         Qt5 : finished(int)
         Qt6 : finished(int, QProcess.ExitStatus)
         """
-        self._onFinished(exitCode == 0)
+        self._onFinished(exit_code == 0)
         self.deleteLater()
 
 class SegmentationWidget(qt.QWidget):
@@ -138,15 +140,15 @@ class SegmentationWidget(qt.QWidget):
         self.folderFiles              = []
         self.currentFileIndex         = 0
         self.currentVolumeNode        = None
-        self.fullInfoLogs             = deque(maxlen=200_000)   # journal des messages (borné)
+        self.fullInfoLogs             = deque(maxlen=200_000)   # message log (bounded)
 
         # ------------------------------------------------------------ queue state
         self.queue                    = SegmentationQueue()
         self._queueRunning            = False
-        self._itemFinalized           = True        # garde anti double-avancement
+        self._itemFinalized           = True        # guard against double advance
         self._itemStartTime           = None
-        self._setupDone               = False       # pip / poids : une fois par session
-        self._deviceFallbackAccepted  = None        # réponse CPU mémorisée pour la file
+        self._setupDone               = False       # pip / weights: once per session
+        self._deviceFallbackAccepted  = None        # CPU answer remembered for the queue
 
         # --------------------------------------------------- buffered log output
         self._logBuffer               = []
@@ -161,28 +163,34 @@ class SegmentationWidget(qt.QWidget):
         self.folderPathLineEdit   = qt.QLineEdit(self);  self.folderPathLineEdit.setReadOnly(True)
         self.outputFolderLineEdit = qt.QLineEdit(self);  self.outputFolderLineEdit.setReadOnly(True)
 
-        folderBtn = createButton("Select Folder",        callback=self.selectFolder)
-        outBtn    = createButton("Select Output Folder", callback=self.selectOutputFolder)
+        folder_btn = createButton("Select Folder",        callback=self.selectFolder)
+        out_btn    = createButton("Select Output Folder", callback=self.selectOutputFolder)
+        test_btn   = createButton(
+            "Test Files", callback=self.onTestFiles,
+            toolTip="Fill both folders with Slicer's CBCTDentalSurgery sample "
+                    "(two adult CBCT scans, about 70 MB, downloaded once).",
+            parent=self)
 
         self.inputWidget = qt.QWidget(self)
-        inputLayout      = qt.QFormLayout(self.inputWidget); inputLayout.setContentsMargins(0,0,0,0)
-        inputLayout.addRow("Input Folder:",  self.folderPathLineEdit)
-        inputLayout.addRow("",               folderBtn)
-        inputLayout.addRow("Output Folder:", self.outputFolderLineEdit)
-        inputLayout.addRow("",               outBtn)
+        input_layout      = qt.QFormLayout(self.inputWidget); input_layout.setContentsMargins(0,0,0,0)
+        input_layout.addRow("Input Folder:",  self.folderPathLineEdit)
+        input_layout.addRow("",               folder_btn)
+        input_layout.addRow("Output Folder:", self.outputFolderLineEdit)
+        input_layout.addRow("",               out_btn)
+        input_layout.addRow("",               test_btn)
 
         # ========================================================================
         # 2)  EXPORT FORMATS
         # ========================================================================
-        exportWidget = qt.QWidget()
-        exportLayout = qt.QFormLayout(exportWidget)
+        export_widget = qt.QWidget()
+        export_layout = qt.QFormLayout(export_widget)
 
-        self.stlCheckBox       = qt.QCheckBox(exportWidget); self.stlCheckBox.setChecked(True)
-        self.objCheckBox       = qt.QCheckBox(exportWidget)
-        self.niftiCheckBox     = qt.QCheckBox(exportWidget)
-        self.gltfCheckBox      = qt.QCheckBox(exportWidget)
-        self.vtkCheckBox       = qt.QCheckBox(exportWidget)
-        self.vtkmergedCheckBox = qt.QCheckBox(exportWidget)
+        self.stlCheckBox       = qt.QCheckBox(export_widget); self.stlCheckBox.setChecked(True)
+        self.objCheckBox       = qt.QCheckBox(export_widget)
+        self.niftiCheckBox     = qt.QCheckBox(export_widget)
+        self.gltfCheckBox      = qt.QCheckBox(export_widget)
+        self.vtkCheckBox       = qt.QCheckBox(export_widget)
+        self.vtkmergedCheckBox = qt.QCheckBox(export_widget)
 
         self.reductionFactorSlider = ctk.ctkSliderWidget()
         self.reductionFactorSlider.maximum     = 1.0
@@ -190,16 +198,16 @@ class SegmentationWidget(qt.QWidget):
         self.reductionFactorSlider.singleStep  = 0.01
         self.reductionFactorSlider.toolTip     = "Decimation factor for glTF export."
 
-        exportLayout.addRow("Export STL",           self.stlCheckBox)
-        exportLayout.addRow("Export OBJ",           self.objCheckBox)
-        exportLayout.addRow("Export NIFTI",         self.niftiCheckBox)
-        exportLayout.addRow("Export glTF",          self.gltfCheckBox)
-        exportLayout.addRow("Export VTK",           self.vtkCheckBox)
-        exportLayout.addRow("Export VTK (merged)",  self.vtkmergedCheckBox)
-        exportLayout.addRow("glTF reduction factor:", self.reductionFactorSlider)
+        export_layout.addRow("Export STL",           self.stlCheckBox)
+        export_layout.addRow("Export OBJ",           self.objCheckBox)
+        export_layout.addRow("Export NIFTI",         self.niftiCheckBox)
+        export_layout.addRow("Export glTF",          self.gltfCheckBox)
+        export_layout.addRow("Export VTK",           self.vtkCheckBox)
+        export_layout.addRow("Export VTK (merged)",  self.vtkmergedCheckBox)
+        export_layout.addRow("glTF reduction factor:", self.reductionFactorSlider)
 
         # Add to the layout the export formats widget
-        inputLayout.addRow("Export formats :", exportWidget)
+        input_layout.addRow("Export formats :", export_widget)
 
         # ========================================================================
         # 3)  DEVICE & MODEL
@@ -244,15 +252,15 @@ class SegmentationWidget(qt.QWidget):
 
         # surface smoothing slider with Show-3D
         self.show3DButton = slicer.util.findChild(self.segmentEditorWidget, "Show3DButton")
-        smoothingSlider = self.show3DButton.findChild("ctkSliderWidget")
+        smoothing_slider = self.show3DButton.findChild("ctkSliderWidget")
 
         self.surfaceSmoothingSlider = ctk.ctkSliderWidget(self)
         self.surfaceSmoothingSlider.decimals   = 2
         self.surfaceSmoothingSlider.maximum    = 1
         self.surfaceSmoothingSlider.singleStep = 0.1
-        self.surfaceSmoothingSlider.setValue(smoothingSlider.value)
+        self.surfaceSmoothingSlider.setValue(smoothing_slider.value)
         self.surfaceSmoothingSlider.tracking   = False
-        self.surfaceSmoothingSlider.valueChanged.connect(smoothingSlider.setValue)
+        self.surfaceSmoothingSlider.valueChanged.connect(smoothing_slider.setValue)
 
         # ========================================================================
         # 5)  MAIN LAYOUT
@@ -261,11 +269,11 @@ class SegmentationWidget(qt.QWidget):
 
         # bloc haut : dossiers + formats + device/model
         self.mainInputWidget = qt.QWidget(self)
-        mainInputLayout = qt.QFormLayout(self.mainInputWidget); mainInputLayout.setContentsMargins(0,0,0,0)
-        mainInputLayout.addRow(self.inputWidget)
-        mainInputLayout.addRow(self.segmentationNodeSelector)
-        mainInputLayout.addRow("Device:", self.deviceComboBox)
-        mainInputLayout.addRow("Model:",  self.modelComboBox)
+        main_input_layout = qt.QFormLayout(self.mainInputWidget); main_input_layout.setContentsMargins(0,0,0,0)
+        main_input_layout.addRow(self.inputWidget)
+        main_input_layout.addRow(self.segmentationNodeSelector)
+        main_input_layout.addRow("Device:", self.deviceComboBox)
+        main_input_layout.addRow("Model:",  self.modelComboBox)
         layout.addWidget(self.mainInputWidget)
 
         self._addModelScopeDescription()
@@ -284,7 +292,7 @@ class SegmentationWidget(qt.QWidget):
         self.currentInfoTextEdit.setLineWrapMode(qt.QTextEdit.NoWrap)
         # Rolling window: a multi-hour run would otherwise grow the Qt document
         # without bound and slow every insertion down. Full history stays in
-        # fullInfoLogs, reachable through the « info » button.
+        # fullInfoLogs, reachable through the "info" button.
         # PythonQt exposes Qt getters as properties: document, not document().
         self.currentInfoTextEdit.document.setMaximumBlockCount(5000)
 
@@ -293,14 +301,14 @@ class SegmentationWidget(qt.QWidget):
         self.loading.frameChanged.connect(self._updateStopIcon); self.loading.start()
 
         self.applyWidget = qt.QWidget(self)
-        applyLayout = qt.QHBoxLayout(self.applyWidget); applyLayout.setContentsMargins(0,0,0,0)
-        applyLayout.addWidget(self.applyButton, 1)
-        applyLayout.addWidget(createButton("", callback=self.showInfoLogs,
+        apply_layout = qt.QHBoxLayout(self.applyWidget); apply_layout.setContentsMargins(0,0,0,0)
+        apply_layout.addWidget(self.applyButton, 1)
+        apply_layout.addWidget(createButton("", callback=self.showInfoLogs,
                                         icon=icon("info.png"), toolTip="Show logs."))
 
         self.stopWidgetContainer = qt.QWidget(self)
-        stopLayout = qt.QVBoxLayout(self.stopWidgetContainer); stopLayout.setContentsMargins(0,0,0,0)
-        stopLayout.addWidget(self.stopButton); stopLayout.addWidget(self.currentInfoTextEdit)
+        stop_layout = qt.QVBoxLayout(self.stopWidgetContainer); stop_layout.setContentsMargins(0,0,0,0)
+        stop_layout.addWidget(self.stopButton); stop_layout.addWidget(self.currentInfoTextEdit)
         self.stopWidgetContainer.setVisible(False)
 
         layout.addWidget(self.applyWidget)
@@ -308,7 +316,7 @@ class SegmentationWidget(qt.QWidget):
         self.batchCounterLabel = qt.QLabel("", self)
         self.batchCounterLabel.setAlignment(qt.Qt.AlignCenter)
         self.batchCounterLabel.setStyleSheet("color: #666; font-style: italic; margin-top:2px;")
-        self.batchCounterLabel.setVisible(False)  # visible seulement pendant batch
+        self.batchCounterLabel.setVisible(False)  # visible only during a batch
         layout.addWidget(self.batchCounterLabel)
         layout.addWidget(self.stopWidgetContainer)
         layout.addWidget(self.resolveMirroringButton)
@@ -319,9 +327,9 @@ class SegmentationWidget(qt.QWidget):
 
         # 3-D + smoothing slider
         layout.addWidget(self.segmentEditorWidget)
-        surfLayout = qt.QFormLayout(); surfLayout.setContentsMargins(0,0,0,0)
-        surfLayout.addRow("Surface smoothing :", self.surfaceSmoothingSlider)
-        layout.addLayout(surfLayout)
+        surf_layout = qt.QFormLayout(); surf_layout.setContentsMargins(0,0,0,0)
+        surf_layout.addRow("Surface smoothing :", self.surfaceSmoothingSlider)
+        layout.addLayout(surf_layout)
 
         layout.addStretch()
 
@@ -454,42 +462,42 @@ class SegmentationWidget(qt.QWidget):
             "Errors and export confirmations go to the log instead of a modal dialog, "
             "so the queue never waits for a click.")
 
-        buttonsWidget = qt.QWidget(self)
-        buttonsLayout = qt.QHBoxLayout(buttonsWidget)
-        buttonsLayout.setContentsMargins(0, 0, 0, 0)
-        buttonsLayout.addWidget(createButton(
+        buttons_widget = qt.QWidget(self)
+        buttons_layout = qt.QHBoxLayout(buttons_widget)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.addWidget(createButton(
             "Add input folder", callback=self.onAddFolderToQueue,
             toolTip="Queue every scan of the selected input folder with the current "
                     "model / device / output folder.", parent=self))
-        buttonsLayout.addWidget(createButton(
+        buttons_layout.addWidget(createButton(
             "Remove selected", callback=self.onRemoveSelectedFromQueue,
             toolTip="Remove the selected pending scans.", parent=self))
-        buttonsLayout.addWidget(createButton(
+        buttons_layout.addWidget(createButton(
             "Retry failed", callback=self.onRetryFailed,
             toolTip="Append every failed scan back at the end of the queue.", parent=self))
-        buttonsLayout.addWidget(createButton(
+        buttons_layout.addWidget(createButton(
             "Clear", callback=self.onClearQueue,
             toolTip="Empty the queue.", parent=self))
-        buttonsLayout.addWidget(createButton(
+        buttons_layout.addWidget(createButton(
             "Free memory", callback=self.onFreeMemoryClicked,
             toolTip="Kill nnUNet processes left behind by a crashed scan and run a "
                     "deep cleanup. Use it when the RAM stays full after a failure.",
             parent=self))
 
-        queueWidget = qt.QWidget(self)
-        queueLayout = qt.QFormLayout(queueWidget)
-        queueLayout.setContentsMargins(0, 0, 0, 0)
-        queueLayout.addRow(buttonsWidget)
-        queueLayout.addRow(self.queueTable)
-        queueLayout.addRow(self.queueSummaryLabel)
-        queueLayout.addRow("Deep cleanup every:", self.chunkSizeSpinBox)
-        queueLayout.addRow("Timeout per scan:", self.itemTimeoutSpinBox)
-        queueLayout.addRow("RAM limit:", self.ramLimitSpinBox)
-        queueLayout.addRow(self.ramPreflightCheckBox)
-        queueLayout.addRow(self.skipExistingCheckBox)
-        queueLayout.addRow(self.unattendedCheckBox)
+        queue_widget = qt.QWidget(self)
+        queue_layout = qt.QFormLayout(queue_widget)
+        queue_layout.setContentsMargins(0, 0, 0, 0)
+        queue_layout.addRow(buttons_widget)
+        queue_layout.addRow(self.queueTable)
+        queue_layout.addRow(self.queueSummaryLabel)
+        queue_layout.addRow("Deep cleanup every:", self.chunkSizeSpinBox)
+        queue_layout.addRow("Timeout per scan:", self.itemTimeoutSpinBox)
+        queue_layout.addRow("RAM limit:", self.ramLimitSpinBox)
+        queue_layout.addRow(self.ramPreflightCheckBox)
+        queue_layout.addRow(self.skipExistingCheckBox)
+        queue_layout.addRow(self.unattendedCheckBox)
 
-        addInCollapsibleLayout(queueWidget, layout, "Processing queue", isCollapsed=False)
+        addInCollapsibleLayout(queue_widget, layout, "Processing queue", isCollapsed=False)
 
     # ─── Queue edition ─────────────────────────────────────────────────────────
 
@@ -556,17 +564,17 @@ class SegmentationWidget(qt.QWidget):
         return answer == qt.QMessageBox.Yes
 
     def onRetryFailed(self):
-        ramFailures = [item for item in self.queue.items
+        ram_failures = [item for item in self.queue.items
                        if item.status == STATUS_FAILED and self._isRamFailure(item.error)]
-        autoCrop = bool(ramFailures) and self._askAutoCropConfirmation(ramFailures)
+        auto_crop = bool(ram_failures) and self._askAutoCropConfirmation(ram_failures)
 
         requeued = self.queue.retryFailed(
-            shouldAutoCrop=(lambda item: self._isRamFailure(item.error)) if autoCrop else None)
+            shouldAutoCrop=(lambda item: self._isRamFailure(item.error)) if auto_crop else None)
         self._rebuildQueueTable()
-        if autoCrop:
+        if auto_crop:
             self.onProgressInfo(
                 f"Queue: {requeued} failed scan(s) re-queued, "
-                f"{len(ramFailures)} of them with automatic crop.")
+                f"{len(ram_failures)} of them with automatic crop.")
         else:
             self.onProgressInfo(f"Queue: {requeued} failed scan(s) re-queued.")
 
@@ -629,8 +637,8 @@ class SegmentationWidget(qt.QWidget):
                 self.queueTable.setItem(row, column, cell)
             cell.setText(value)
             cell.setToolTip(item.inputPath if column == 0 else value)
-        statusCell = self.queueTable.item(row, 2)
-        statusCell.setForeground(qt.QBrush(qt.QColor(self._STATUS_COLORS.get(item.status, "#666666"))))
+        status_cell = self.queueTable.item(row, 2)
+        status_cell.setForeground(qt.QBrush(qt.QColor(self._STATUS_COLORS.get(item.status, "#666666"))))
 
     def _updateQueueSummary(self):
         if self.queue.isEmpty():
@@ -643,12 +651,12 @@ class SegmentationWidget(qt.QWidget):
     def _isUnattended(self):
         return self.unattendedCheckBox.isChecked()
 
-    def _notify(self, message, isError=False):
+    def _notify(self, message, is_error=False):
         """Log; only interrupt the user when not running unattended."""
         self.onProgressInfo(message)
         if self._isUnattended():
             return
-        if isError:
+        if is_error:
             slicer.util.errorDisplay(message)
         else:
             slicer.util.infoDisplay(message)
@@ -661,7 +669,7 @@ class SegmentationWidget(qt.QWidget):
         if self.queue.isFinished():
             slicer.util.errorDisplay(
                 "Every scan of the queue has already been processed.\n"
-                "Use « Retry failed » or « Clear » to start over.")
+                'Use "Retry failed" or "Clear" to start over.')
             self._setApplyVisible(True)
             return
 
@@ -702,18 +710,18 @@ class SegmentationWidget(qt.QWidget):
 
             self._itemWatchdog.start(self.itemTimeoutSpinBox.value * 60_000)
 
-            loadedVolume = slicer.util.loadVolume(item.inputPath)
+            loaded_volume = slicer.util.loadVolume(item.inputPath)
             self._releaseCropNodes()
             if getattr(item, "autoCrop", False):
-                loadedVolume = self._applyAutoCrop(loadedVolume)
-            self.currentVolumeNode = loadedVolume
-            self.onInputChangedForLoadedVolume(loadedVolume)
+                loaded_volume = self._applyAutoCrop(loaded_volume)
+            self.currentVolumeNode = loaded_volume
+            self.onInputChangedForLoadedVolume(loaded_volume)
 
-            if not self._ramPreflightOk(loadedVolume, item):
+            if not self._ramPreflightOk(loaded_volume, item):
                 return
             self._memWatchdogStart()
 
-            self.onApplyClickedForVolume(loadedVolume)
+            self.onApplyClickedForVolume(loaded_volume)
 
         except Exception as e:
             logger.error(f"Failed to start {item.inputPath}: {e}", exc_info=True)
@@ -721,10 +729,10 @@ class SegmentationWidget(qt.QWidget):
             self._finishCurrentItem(STATUS_FAILED, f"start failed: {e}")
 
     @staticmethod
-    def _selectComboItem(comboBox, text):
-        index = comboBox.findText(text)
-        if index >= 0 and index != comboBox.currentIndex:
-            comboBox.setCurrentIndex(index)
+    def _selectComboItem(combo_box, text):
+        index = combo_box.findText(text)
+        if index >= 0 and index != combo_box.currentIndex:
+            combo_box.setCurrentIndex(index)
 
     def _finishCurrentItem(self, status, error=""):
         """Single exit point for a scan: records the result and schedules the next."""
@@ -892,7 +900,7 @@ class SegmentationWidget(qt.QWidget):
         except Exception:
             return False
 
-    def _killInferenceTree(self, timeoutSec=10):
+    def _killInferenceTree(self, timeout_sec=10):
         """
         Kill nnUNet *and every descendant*.
 
@@ -917,7 +925,7 @@ class SegmentationWidget(qt.QWidget):
                         pass
                     except Exception as e:
                         logger.error(f"Could not kill pid {proc.pid}: {e}")
-                psutil.wait_procs(victims, timeout=timeoutSec)
+                psutil.wait_procs(victims, timeout=timeout_sec)
             except psutil.NoSuchProcess:
                 pass
             except Exception as e:
@@ -927,7 +935,7 @@ class SegmentationWidget(qt.QWidget):
             self.logic.stopSegmentation()
             self.logic.waitForSegmentationFinished()
         except Exception:
-            pass
+            logger.debug("Could not stop the segmentation after the kill", exc_info=True)
 
         return killed + self._reclaimStrayProcesses()
 
@@ -945,7 +953,7 @@ class SegmentationWidget(qt.QWidget):
 
         try:
             me = psutil.Process()
-            ownPids = {me.pid} | {child.pid for child in me.children(recursive=True)}
+            own_pids = {me.pid} | {child.pid for child in me.children(recursive=True)}
         except Exception:
             return 0
 
@@ -958,9 +966,9 @@ class SegmentationWidget(qt.QWidget):
                 cmdline = " ".join(info.get("cmdline") or []).lower()
                 if not any(marker in cmdline for marker in self._NNUNET_PROCESS_MARKERS):
                     continue
-                isOurs = proc.pid in ownPids
-                isOrphan = info.get("ppid") == 1 and info.get("username") == me.username()
-                if not (isOurs or isOrphan):
+                is_ours = proc.pid in own_pids
+                is_orphan = info.get("ppid") == 1 and info.get("username") == me.username()
+                if not (is_ours or is_orphan):
                     continue
                 proc.kill()
                 killed += 1
@@ -994,7 +1002,7 @@ class SegmentationWidget(qt.QWidget):
 
     # ─── Automatic crop (RAM retry) ────────────────────────────────────────────
     #
-    # Opt-in, per scan, set by « Retry failed » after an explicit confirmation.
+    # Opt-in, per scan, set by "Retry failed" after an explicit confirmation.
     # The crop is an axis-aligned voxel subset: same spacing, same axes, only the
     # origin moves. Nothing is interpolated, so the label map is pasted back on
     # the original grid with a plain index offset and the exported NIfTI still
@@ -1032,14 +1040,14 @@ class SegmentationWidget(qt.QWidget):
                 return volumeNode
 
             spacing = volumeNode.GetSpacing()                          # (I, J, K)
-            marginVox = [max(int(round(self._CROP_MARGIN_MM / s)), 1) for s in spacing]
+            margin_vox = [max(int(round(self._CROP_MARGIN_MM / s)), 1) for s in spacing]
 
             bounds = []
-            for axis, axisMargin in enumerate((marginVox[2], marginVox[1], marginVox[0])):
+            for axis, axis_margin in enumerate((margin_vox[2], margin_vox[1], margin_vox[0])):
                 projected = mask.any(axis=tuple(a for a in (0, 1, 2) if a != axis))
                 indices = np.where(projected)[0]
-                low = max(int(indices[0]) - axisMargin, 0)
-                high = min(int(indices[-1]) + 1 + axisMargin, mask.shape[axis])
+                low = max(int(indices[0]) - axis_margin, 0)
+                high = min(int(indices[-1]) + 1 + axis_margin, mask.shape[axis])
                 bounds.append((low, high))
 
             kept = 1.0
@@ -1052,28 +1060,28 @@ class SegmentationWidget(qt.QWidget):
                 return volumeNode
 
             (k0, k1), (j0, j1), (i0, i1) = bounds
-            croppedArray = array[k0:k1, j0:j1, i0:i1]
+            cropped_array = array[k0:k1, j0:j1, i0:i1]
 
             cropped = slicer.mrmlScene.AddNewNodeByClass(
                 "vtkMRMLScalarVolumeNode", f"{volumeNode.GetName()}_cropped")
-            slicer.util.updateVolumeFromArray(cropped, croppedArray)
+            slicer.util.updateVolumeFromArray(cropped, cropped_array)
 
             # Keep spacing and axes, move the origin to the new first voxel.
-            ijkToRas = vtk.vtkMatrix4x4()
-            volumeNode.GetIJKToRASMatrix(ijkToRas)
-            newOrigin = [0.0, 0.0, 0.0, 1.0]
-            ijkToRas.MultiplyPoint([i0, j0, k0, 1.0], newOrigin)
-            croppedIjkToRas = vtk.vtkMatrix4x4()
-            croppedIjkToRas.DeepCopy(ijkToRas)
+            ijk_to_ras = vtk.vtkMatrix4x4()
+            volumeNode.GetIJKToRASMatrix(ijk_to_ras)
+            new_origin = [0.0, 0.0, 0.0, 1.0]
+            ijk_to_ras.MultiplyPoint([i0, j0, k0, 1.0], new_origin)
+            cropped_ijk_to_ras = vtk.vtkMatrix4x4()
+            cropped_ijk_to_ras.DeepCopy(ijk_to_ras)
             for row in range(3):
-                croppedIjkToRas.SetElement(row, 3, newOrigin[row])
-            cropped.SetIJKToRASMatrix(croppedIjkToRas)
+                cropped_ijk_to_ras.SetElement(row, 3, new_origin[row])
+            cropped.SetIJKToRASMatrix(cropped_ijk_to_ras)
 
             self._uncroppedVolumeNode = volumeNode
             self._cropOffsetIJK = (i0, j0, k0)
             self.onProgressInfo(
                 f"[CROP] {array.shape[2]}x{array.shape[1]}x{array.shape[0]} -> "
-                f"{croppedArray.shape[2]}x{croppedArray.shape[1]}x{croppedArray.shape[0]} "
+                f"{cropped_array.shape[2]}x{cropped_array.shape[1]}x{cropped_array.shape[0]} "
                 f"({kept * 100:.0f}% of the voxels kept, {self._CROP_MARGIN_MM:.0f} mm margin)")
             return cropped
 
@@ -1084,7 +1092,7 @@ class SegmentationWidget(qt.QWidget):
             self._cropOffsetIJK = None
             return volumeNode
 
-    def _restoreCropToOriginalGrid(self, labelArray, croppedNode):
+    def _restoreCropToOriginalGrid(self, labelArray, cropped_node):
         """
         Paste a label array computed on the cropped grid back into the original.
 
@@ -1093,7 +1101,7 @@ class SegmentationWidget(qt.QWidget):
         original = self._uncroppedVolumeNode
         offset = self._cropOffsetIJK
         if original is None or offset is None:
-            return labelArray, croppedNode
+            return labelArray, cropped_node
 
         try:
             dims = original.GetImageData().GetDimensions()             # (I, J, K)
@@ -1108,7 +1116,7 @@ class SegmentationWidget(qt.QWidget):
             # Better a segmentation on the cropped grid than none at all.
             logger.error(f"Could not restore the crop: {e}", exc_info=True)
             self.onProgressInfo(f"[CROP][WARN] Output kept on the cropped grid: {e}")
-            return labelArray, croppedNode
+            return labelArray, cropped_node
 
     def _releaseCropNodes(self):
         node = self._uncroppedVolumeNode
@@ -1119,8 +1127,9 @@ class SegmentationWidget(qt.QWidget):
         try:
             if slicer.mrmlScene.GetNodeByID(node.GetID()):
                 slicer.mrmlScene.RemoveNode(node)
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError):
+            # The node has already been removed from the scene elsewhere.
+            logger.debug("Node already released", exc_info=True)
 
     # ─── RAM pre-flight estimate ───────────────────────────────────────────────
 
@@ -1139,13 +1148,13 @@ class SegmentationWidget(qt.QWidget):
         return resources
 
     @staticmethod
-    def _configurationFolder(basePath, maxDepth=3):
+    def _configurationFolder(basePath, max_depth=3):
         """
         Folder holding dataset.json, searched the way nnUNet itself does it:
         shallowest match wins (see Parameter._getFirstFolderWithDatasetFile).
         """
         pattern = "dataset.json"
-        for _ in range(maxDepth):
+        for _ in range(max_depth):
             match = next(Path(basePath).glob(pattern), None)
             if match is not None:
                 return match.parent
@@ -1154,7 +1163,6 @@ class SegmentationWidget(qt.QWidget):
 
     @staticmethod
     def _readJson(path):
-        import json
         try:
             with open(path, "r") as handle:
                 return json.load(handle)
@@ -1172,35 +1180,35 @@ class SegmentationWidget(qt.QWidget):
         simply fovVolume / targetVoxelVolume.
         """
         try:
-            imageData = volumeNode.GetImageData()
-            if imageData is None:
+            image_data = volumeNode.GetImageData()
+            if image_data is None:
                 return None
-            dims = imageData.GetDimensions()
+            dims = image_data.GetDimensions()
             spacing = volumeNode.GetSpacing()
-            fovMm3 = (dims[0] * spacing[0]) * (dims[1] * spacing[1]) * (dims[2] * spacing[2])
+            fov_mm3 = (dims[0] * spacing[0]) * (dims[1] * spacing[1]) * (dims[2] * spacing[2])
 
             # Both files must come from the same configuration folder, otherwise
             # a spacing and a label count from two different models get mixed.
-            configFolder = self._configurationFolder(self._modelBasePath(modelName))
-            if configFolder is None:
+            config_folder = self._configurationFolder(self._modelBasePath(modelName))
+            if config_folder is None:
                 return None
-            plans = self._readJson(configFolder.joinpath("plans.json"))
-            dataset = self._readJson(configFolder.joinpath("dataset.json"))
+            plans = self._readJson(config_folder.joinpath("plans.json"))
+            dataset = self._readJson(config_folder.joinpath("dataset.json"))
             if not plans or not dataset:
                 return None
 
-            targetSpacing = plans.get("configurations", {}).get("3d_fullres", {}).get("spacing")
+            target_spacing = plans.get("configurations", {}).get("3d_fullres", {}).get("spacing")
             labels = dataset.get("labels") or {}
-            if not targetSpacing or not labels:
+            if not target_spacing or not labels:
                 return None
 
-            targetVoxelMm3 = float(targetSpacing[0]) * float(targetSpacing[1]) * float(targetSpacing[2])
-            if targetVoxelMm3 <= 0:
+            target_voxel_mm3 = float(target_spacing[0]) * float(target_spacing[1]) * float(target_spacing[2])
+            if target_voxel_mm3 <= 0:
                 return None
 
-            originalVoxels = float(dims[0]) * dims[1] * dims[2]
-            resampledVoxels = fovMm3 / targetVoxelMm3
-            numClasses = len(labels)
+            original_voxels = float(dims[0]) * dims[1] * dims[2]
+            resampled_voxels = fov_mm3 / target_voxel_mm3
+            num_classes = len(labels)
 
             # Peak is reached in resample_data_or_seg, called on the way out
             # through convert_predicted_logits_to_segmentation_with_correct_shape.
@@ -1210,14 +1218,14 @@ class SegmentationWidget(qt.QWidget):
             #   - its float64 copy: `data = data.astype(float)` casts the whole
             #     4D array at once, before the per-class loop   -> 8 bytes
             #   - reshaped_final, torch.half on the original grid -> 2 bytes
-            logitsGb = (10.0 * numClasses * resampledVoxels
-                        + 2.0 * numClasses * originalVoxels) / 2 ** 30
+            logits_gb = (10.0 * num_classes * resampled_voxels
+                        + 2.0 * num_classes * original_voxels) / 2 ** 30
             # Per-class transients of skimage resize (spline coefficients and
             # output buffer, float64).
-            imagesGb = 8.0 * (originalVoxels + resampledVoxels) / 2 ** 30
+            images_gb = 8.0 * (original_voxels + resampled_voxels) / 2 ** 30
             # torch, the weights and the worker processes cost the same on every
             # scan; the arrays are what makes one scan explode.
-            return logitsGb + imagesGb + self._RAM_FIXED_OVERHEAD_GB
+            return logits_gb + images_gb + self._RAM_FIXED_OVERHEAD_GB
         except Exception as e:
             logger.debug(f"RAM estimate unavailable: {e}")
             return None
@@ -1233,13 +1241,13 @@ class SegmentationWidget(qt.QWidget):
         if estimate is None or vm is None:
             return True
 
-        availableGb = vm.available / 2 ** 30
-        budgetGb = availableGb * (self.ramLimitSpinBox.value / 100.0)
+        available_gb = vm.available / 2 ** 30
+        budget_gb = available_gb * (self.ramLimitSpinBox.value / 100.0)
         self.onProgressInfo(
-            f"[RAM] Estimated peak: {estimate:.1f} GB — free: {availableGb:.1f} GB, "
-            f"budget: {budgetGb:.1f} GB")
-        if estimate <= budgetGb or not self.ramPreflightCheckBox.isChecked():
-            if estimate > budgetGb:
+            f"[RAM] Estimated peak: {estimate:.1f} GB — free: {available_gb:.1f} GB, "
+            f"budget: {budget_gb:.1f} GB")
+        if estimate <= budget_gb or not self.ramPreflightCheckBox.isChecked():
+            if estimate > budget_gb:
                 self.onProgressInfo(
                     "[RAM] Over budget, but the pre-flight skip is disabled — "
                     "the runtime guard stays armed.")
@@ -1247,8 +1255,8 @@ class SegmentationWidget(qt.QWidget):
 
         self.onProgressInfo(
             f"[RAM] Skipping {item.name}: needs ~{estimate:.0f} GB, "
-            f"only {budgetGb:.0f} GB usable. Crop the field of view or free memory "
-            f"and use « Retry failed ».")
+            f"only {budget_gb:.0f} GB usable. Crop the field of view or free memory "
+            f'and use "Retry failed".')
         self._memWatchdogStop()
         self._inferenceFinalized = True
         try:
@@ -1257,7 +1265,7 @@ class SegmentationWidget(qt.QWidget):
             logger.error(f"Cleanup after pre-flight skip failed: {e}", exc_info=True)
         self._finishCurrentItem(
             STATUS_FAILED,
-            f"skipped: needs ~{estimate:.0f} GB RAM, {availableGb:.0f} GB free")
+            f"skipped: needs ~{estimate:.0f} GB RAM, {available_gb:.0f} GB free")
         return False
 
     def _coolDown(self):
@@ -1269,9 +1277,10 @@ class SegmentationWidget(qt.QWidget):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()
-        except Exception:
-            pass
-        import gc
+        except (ImportError, RuntimeError):
+            # torch may be missing, and empty_cache fails if the CUDA context
+            # has already been destroyed.
+            logger.debug("CUDA cache not emptied", exc_info=True)
         gc.collect()
         self.onProgressInfo(
             f"Deep cleanup done ({removed} orphan node(s) removed). "
@@ -1288,17 +1297,17 @@ class SegmentationWidget(qt.QWidget):
             ) if node is not None
         }
         removed = 0
-        for className in ("vtkMRMLSegmentationNode",
+        for class_name in ("vtkMRMLSegmentationNode",
                           "vtkMRMLLabelMapVolumeNode",
                           "vtkMRMLScalarVolumeNode"):
-            for node in slicer.util.getNodesByClass(className):
+            for node in slicer.util.getNodesByClass(class_name):
                 if id(node) in keep:
                     continue
                 try:
                     slicer.mrmlScene.RemoveNode(node)
                     removed += 1
-                except Exception:
-                    pass
+                except (AttributeError, RuntimeError):
+                    logger.debug("Noeud orphelin non retire", exc_info=True)
         self.processedVolumes = {}
         return removed
 
@@ -1324,9 +1333,9 @@ class SegmentationWidget(qt.QWidget):
         self.mirroringProgressBar.setValue(0)
         slicer.app.processEvents()
 
-        segmentationNode = self.getCurrentSegmentationNode()
-        volumeNode       = self.getCurrentVolumeNode()
-        if not segmentationNode or not volumeNode:
+        segmentation_node = self.getCurrentSegmentationNode()
+        volume_node       = self.getCurrentVolumeNode()
+        if not segmentation_node or not volume_node:
             slicer.util.warningDisplay("Missing volume or segmentation.")
             return
 
@@ -1364,10 +1373,10 @@ class SegmentationWidget(qt.QWidget):
         # Single export + LUT remap (see _buildLabelArray), instead of one
         # full-extent export per segment. The array is rasterized on the volume
         # grid, so the geometry is taken from the volume itself.
-        labelArray = self._buildLabelArray(segmentationNode, volumeNode, full_label_map)
+        label_array = self._buildLabelArray(segmentation_node, volume_node, full_label_map)
 
-        ijkToRAS = vtk.vtkMatrix4x4(); volumeNode.GetIJKToRASMatrix(ijkToRAS)
-        spacing, origin = volumeNode.GetSpacing(), volumeNode.GetOrigin()
+        ijk_to_ras = vtk.vtkMatrix4x4(); volume_node.GetIJKToRASMatrix(ijk_to_ras)
+        spacing, origin = volume_node.GetSpacing(), volume_node.GetOrigin()
 
         # ─── 3. Protected mask & mirror table ───────────────────────────────
         protected_vals = {53, 54, 55}
@@ -1391,26 +1400,26 @@ class SegmentationWidget(qt.QWidget):
         # RAS "R" coordinate with numpy. The previous version called
         # vtkMatrix4x4.MultiplyPoint once per voxel from Python, for every label:
         # tens of millions of VTK calls on a full-mouth CBCT.
-        fgMask   = labelArray > 0
-        fgCoords = np.argwhere(fgMask)            # (M, 3) as (z, y, x)
-        fgValues = labelArray[fgMask]             # (M,)
+        fg_mask   = label_array > 0
+        fg_coords = np.argwhere(fg_mask)            # (M, 3) as (z, y, x)
+        fg_values = label_array[fg_mask]             # (M,)
 
-        if fgCoords.size == 0:
+        if fg_coords.size == 0:
             slicer.util.warningDisplay("Segmentation is empty.")
             self.mirroringProgressBar.setVisible(False)
             return
 
         # RAS_R = m00*x + m01*y + m02*z + m03
-        m00 = ijkToRAS.GetElement(0, 0)
-        m01 = ijkToRAS.GetElement(0, 1)
-        m02 = ijkToRAS.GetElement(0, 2)
-        m03 = ijkToRAS.GetElement(0, 3)
-        fgRasX = (m00 * fgCoords[:, 2] + m01 * fgCoords[:, 1] + m02 * fgCoords[:, 0] + m03)
+        m00 = ijk_to_ras.GetElement(0, 0)
+        m01 = ijk_to_ras.GetElement(0, 1)
+        m02 = ijk_to_ras.GetElement(0, 2)
+        m03 = ijk_to_ras.GetElement(0, 3)
+        fg_ras_x = (m00 * fg_coords[:, 2] + m01 * fg_coords[:, 1] + m02 * fg_coords[:, 0] + m03)
 
         incisive_vals = (8, 9, 24, 25)
         inc_centroids = []
         for val in incisive_vals:
-            selected = fgRasX[fgValues == val]
+            selected = fg_ras_x[fg_values == val]
             if selected.size == 0:
                 slicer.util.warningDisplay("Missing central incisors, unable to calculate mirror plane.")
                 self.mirroringProgressBar.setVisible(False)
@@ -1420,8 +1429,8 @@ class SegmentationWidget(qt.QWidget):
 
         # ─── 5. Perform mirror correction ────────────────────────────────────
         changed = []
-        fgProtected = np.isin(fgValues, list(protected_vals))
-        unique_vals = np.unique(fgValues)
+        fg_protected = np.isin(fg_values, list(protected_vals))
+        unique_vals = np.unique(fg_values)
         for i, val in enumerate(unique_vals):
             self.mirroringProgressBar.setValue(int(100 * (i + 1) / len(unique_vals)))
             slicer.app.processEvents()
@@ -1434,64 +1443,64 @@ class SegmentationWidget(qt.QWidget):
             mirror_val  = mirror_label_map[val]
             is_left     = "left" in name.lower()
 
-            indices = np.flatnonzero((fgValues == val) & ~fgProtected)
+            indices = np.flatnonzero((fg_values == val) & ~fg_protected)
             if indices.size == 0:
                 continue
 
-            rasX    = fgRasX[indices]
-            wrongSide = rasX > mirror_x_ras if is_left else rasX < mirror_x_ras
-            indices = indices[wrongSide]
+            ras_x    = fg_ras_x[indices]
+            wrong_side = ras_x > mirror_x_ras if is_left else ras_x < mirror_x_ras
+            indices = indices[wrong_side]
             if indices.size == 0:
                 continue
 
-            coords = fgCoords[indices]
-            labelArray[coords[:, 0], coords[:, 1], coords[:, 2]] = mirror_val
+            coords = fg_coords[indices]
+            label_array[coords[:, 0], coords[:, 1], coords[:, 2]] = mirror_val
             # Keep the working copy in sync, so a later label sees the same state
             # the original per-voxel loop would have seen.
-            fgValues[indices] = mirror_val
+            fg_values[indices] = mirror_val
             changed.append(
                 f"{name} → {reverse_full_map.get(mirror_val, mirror_val)} ({indices.size} vox)")
 
         self.mirroringProgressBar.setValue(100)
 
         # ─── 6. Rebuild corrected segmentation ──────────────────────────────
-        correctedLM = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
-        slicer.util.updateVolumeFromArray(correctedLM, labelArray)
-        correctedLM.SetSpacing(spacing)
-        correctedLM.SetOrigin(origin)
-        correctedLM.SetIJKToRASMatrix(ijkToRAS)
+        corrected_lm = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+        slicer.util.updateVolumeFromArray(corrected_lm, label_array)
+        corrected_lm.SetSpacing(spacing)
+        corrected_lm.SetOrigin(origin)
+        corrected_lm.SetIJKToRASMatrix(ijk_to_ras)
 
         # New name: original segmentation name + suffix
-        baseName = segmentationNode.GetName() if segmentationNode else "Segmentation"
+        base_name = segmentation_node.GetName() if segmentation_node else "Segmentation"
         suffix   = "_Mirrored"                           # choose your suffix here
-        correctedSeg = slicer.mrmlScene.AddNewNodeByClass(
+        corrected_seg = slicer.mrmlScene.AddNewNodeByClass(
             "vtkMRMLSegmentationNode",
-            baseName + suffix
+            base_name + suffix
         )
 
-        correctedSeg.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
-        logic.ImportLabelmapToSegmentationNode(correctedLM, correctedSeg)
-        correctedSeg.CreateClosedSurfaceRepresentation()
+        corrected_seg.SetReferenceImageGeometryParameterFromVolumeNode(volume_node)
+        logic.ImportLabelmapToSegmentationNode(corrected_lm, corrected_seg)
+        corrected_seg.CreateClosedSurfaceRepresentation()
 
         # (Optional) Automatically select corrected node
-        self.segmentationNodeSelector.setCurrentNode(correctedSeg)
+        self.segmentationNodeSelector.setCurrentNode(corrected_seg)
 
         # ─── 7. Rename + tag segments (by creation order) ──────────────────
-        finalValues      = [int(v) for v in np.unique(fgValues)]              # [1,2,…,55]
-        segIds_sorted    = list(correctedSeg.GetSegmentation().GetSegmentIDs())
+        final_values      = [int(v) for v in np.unique(fg_values)]              # [1,2,…,55]
+        seg_ids_sorted    = list(corrected_seg.GetSegmentation().GetSegmentIDs())
 
-        if len(finalValues) != len(segIds_sorted):
-            self.onProgressInfo("[WARN] Number of values ​​≠ number of segments — check import.")
+        if len(final_values) != len(seg_ids_sorted):
+            self.onProgressInfo("[WARN] Number of values \u200b\u200b≠ number of segments — check import.")
 
-        for val, segId in zip(finalValues, segIds_sorted):
-            segment = correctedSeg.GetSegmentation().GetSegment(segId)
+        for val, seg_id in zip(final_values, seg_ids_sorted):
+            segment = corrected_seg.GetSegmentation().GetSegment(seg_id)
             segment.SetName(reverse_full_map.get(val, f"label_{val}"))
             segment.SetTag("LabelValue", str(val))
 
-        self.onProgressInfo(f"Unique labels AFTER correction: {finalValues}")
+        self.onProgressInfo(f"Unique labels AFTER correction: {final_values}")
 
         # Cleanup
-        slicer.mrmlScene.RemoveNode(correctedLM)
+        slicer.mrmlScene.RemoveNode(corrected_lm)
         self.mirroringProgressBar.setVisible(False)
 
         msg = ("Corrected voxels:\n" + "\n".join(changed)) if changed else "No mirrored voxels detected."
@@ -1513,11 +1522,15 @@ class SegmentationWidget(qt.QWidget):
     # ─── Folder and output selection ───────────────────────────────────────────
 
     def selectOutputFolder(self):
-        folderPath = qt.QFileDialog.getExistingDirectory(self, "Select Folder to Save Segmentations")
-        if folderPath:
-            self.outputFolderPath = folderPath
-            self.outputFolderLineEdit.setText(folderPath)
-            self._restoreQueueFromDisk()
+        folder_path = qt.QFileDialog.getExistingDirectory(self, "Select Folder to Save Segmentations")
+        if folder_path:
+            self.setOutputFolder(folder_path)
+
+    def setOutputFolder(self, folder_path):
+        """Take a folder as the output, as picking it in the dialog would."""
+        self.outputFolderPath = folder_path
+        self.outputFolderLineEdit.setText(folder_path)
+        self._restoreQueueFromDisk()
 
     # ──────────────────────────────────────────────────────────────────────────────
     # 3)  _saveSegmentationAsNifti
@@ -1531,23 +1544,23 @@ class SegmentationWidget(qt.QWidget):
         if volumeNode:
             segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
 
-        labelmapVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+        labelmap_volume_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
         success = slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
-            segmentationNode, labelmapVolumeNode, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY)
+            segmentationNode, labelmap_volume_node, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY)
 
         if not success:
             self.onProgressInfo("ERROR: Exporting segments to the labelmap failed.")
             return
 
         output_path = os.path.join(self.outputFolderPath, segmentationNode.GetName() + ".nii.gz")
-        saved = slicer.util.saveNode(labelmapVolumeNode, output_path)
+        saved = slicer.util.saveNode(labelmap_volume_node, output_path)
         if saved:
             self.onProgressInfo(f"Segmentation saved in {output_path}")
         else:
             self.onProgressInfo(f"Failed to save segmentation in {output_path}")
 
         # Clean
-        slicer.mrmlScene.RemoveNode(labelmapVolumeNode)
+        slicer.mrmlScene.RemoveNode(labelmap_volume_node)
 
 
     def __del__(self):
@@ -1555,13 +1568,94 @@ class SegmentationWidget(qt.QWidget):
         super().__del__()
 
     def selectFolder(self):
-        folderPath = qt.QFileDialog.getExistingDirectory(self, "Select Folder Containing Volumes")
-        if folderPath:
-            self.folderPath = folderPath
-            self.folderPathLineEdit.text = folderPath
-            self.folderFiles = listVolumes(folderPath)
-            self.currentFileIndex = 0
-            self.onProgressInfo(f"Found {len(self.folderFiles)} file(s) in the folder.")
+        folder_path = qt.QFileDialog.getExistingDirectory(self, "Select Folder Containing Volumes")
+        if folder_path:
+            self.setInputFolder(folder_path)
+
+    def setInputFolder(self, folder_path):
+        """Take a folder as the input, as picking it in the dialog would."""
+        self.folderPath = folder_path
+        self.folderPathLineEdit.text = folder_path
+        self.folderFiles = listVolumes(folder_path)
+        self.currentFileIndex = 0
+        self.onProgressInfo(f"Found {len(self.folderFiles)} file(s) in the folder.")
+
+    # ─── Test files ────────────────────────────────────────────────────────────
+
+    def testFilesRoot(self):
+        """Where the sample data set lives, once and for all models."""
+        documents = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
+        return os.path.join(documents, slicer.app.applicationName + "Downloads", "BATCHDENTALSEG")
+
+    def _sampleDataLog(self, message, log_level=None):
+        """Show SampleData's download progress in this module's own log."""
+        document = qt.QTextDocument()
+        document.setHtml(message)      # SampleData formats its messages in HTML
+        self.onProgressInfo(document.toPlainText())
+        slicer.app.processEvents()
+
+    def downloadTestScans(self, scans_dir):
+        """The folder holding the sample CBCTs, fetched only if they are missing.
+
+        Slicer's own fetcher is used rather than the extension's: it is what
+        publishes this data set, it knows its URLs and its SHA256, and it keeps
+        the published file names -- which `listVolumes` needs, since it matches
+        on the extension. A file already there whose checksum matches is reused;
+        one left half-written by an interrupted download does not match, and is
+        fetched again.
+        """
+        import SampleData
+        logic = SampleData.SampleDataLogic(logMessage=self._sampleDataLog)
+        source = logic.sourceForSampleName(TEST_FILES_SAMPLE_NAME)
+        if source is None:
+            raise TestDataError(
+                "This Slicer installation does not publish the %s sample data set."
+                % TEST_FILES_SAMPLE_NAME)
+
+        os.makedirs(scans_dir, exist_ok=True)
+        for uri, name, checksum in zip(source.uris, source.fileNames, source.checksums):
+            try:
+                path = logic.downloadFile(uri, scans_dir, name, checksum)
+            except (OSError, ValueError) as error:
+                raise TestDataError("%s could not be downloaded from %s: %s"
+                                    % (name, uri, error))
+            # Checksum refused: downloadFile deletes the file and returns its
+            # path all the same. Without this check, the input folder would be
+            # filled with a scan that does not exist.
+            if not os.path.isfile(path):
+                raise TestDataError(
+                    "%s was downloaded from %s but its checksum did not match."
+                    % (name, uri))
+        return scans_dir
+
+    def onTestFiles(self):
+        """Fill the input and output folders with a data set ready to segment.
+
+        Every model in the list segments a CBCT, so the same scans serve them
+        all; the weights are downloaded on their own when the run starts.
+        """
+        root = self.testFilesRoot()
+        scans_dir = os.path.join(root, "Scans")
+        failure = None
+        qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
+        try:
+            self.downloadTestScans(scans_dir)
+        except TestDataError as error:
+            failure = str(error)
+        except OSError as error:
+            failure = ("The sample data set could not be written into %s: %s"
+                       % (scans_dir, error))
+        finally:
+            qt.QApplication.restoreOverrideCursor()
+        if failure:
+            qt.QMessageBox.warning(self, "Test files", failure)
+            return
+
+        self.setInputFolder(scans_dir)
+        if not self.outputFolderLineEdit.text:
+            output_dir = os.path.join(root, "Output")
+            os.makedirs(output_dir, exist_ok=True)
+            self.setOutputFolder(output_dir)
 
     # ──────────────────────────────────────────────────────────────────────────────
     # 2)  onSceneChanged
@@ -1638,7 +1732,7 @@ class SegmentationWidget(qt.QWidget):
             if self.queue.isFinished():
                 slicer.util.errorDisplay(
                     "Every scan of the input folder is already segmented in the output folder.\n"
-                    "Uncheck « Skip scans already segmented » to process them again."
+                    'Uncheck "Skip scans already segmented" to process them again.'
                 )
                 return
 
@@ -1725,8 +1819,8 @@ class SegmentationWidget(qt.QWidget):
             self._restoreProcessedSegmentationForVolume(volumeNode)
 
     def _restoreProcessedSegmentationForVolume(self, volumeNode):
-        segmentationNode = self.processedVolumes.get(volumeNode)
-        self.segmentationNodeSelector.setCurrentNode(segmentationNode)
+        segmentation_node = self.processedVolumes.get(volumeNode)
+        self.segmentationNodeSelector.setCurrentNode(segmentation_node)
 
 # ─── Apply segmentation for a given volume ────────────────────────────────
 
@@ -1736,111 +1830,111 @@ class SegmentationWidget(qt.QWidget):
         self._doneVolumeSeen = False
         self._fallbackCheckAttempts = 0
         self._fallbackLastOutputSize = None
-        selectedModel = self.modelComboBox.currentText
-        if selectedModel == "PediatricDentalsegmentator":
-            self.onProgressInfo(f"Selected Model: {selectedModel}")
+        selected_model = self.modelComboBox.currentText
+        if selected_model == "PediatricDentalsegmentator":
+            self.onProgressInfo(f"Selected Model: {selected_model}")
 
             # Base path where full model must be installed
-            basePath = Path(__file__).parent.joinpath("..", "Resources", "ML", "Dataset001_380CT", "nnUNetTrainer__nnUNetPlans__3d_fullres").resolve()
+            base_path = Path(__file__).parent.joinpath("..", "Resources", "ML", "Dataset001_380CT", "nnUNetTrainer__nnUNetPlans__3d_fullres").resolve()
             # Choose fold_0 (you can adapt for fold_1 if needed)
-            fold_path = basePath.joinpath("fold_0")
+            fold_path = base_path.joinpath("fold_0")
             if not fold_path.exists():
                 fold_path.mkdir(parents=True, exist_ok=True)
             # Checkpoint path inside fold_0
-            pediatricCheckpoint = fold_path.joinpath("checkpoint_final.pth")
+            pediatric_checkpoint = fold_path.joinpath("checkpoint_final.pth")
             # If checkpoint doesn't exist, download checkpoint and dataset.json and plans.json inside basePath
-            if not pediatricCheckpoint.exists():
-                url_checkpoint = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/PEDIATRICDENTALSEG_MODEL/checkpoint_final.pth"
-                url_dataset = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/PEDIATRICDENTALSEG_MODEL/dataset.json"
-                url_plans = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/PEDIATRICDENTALSEG_MODEL/plans.json"
+            if not pediatric_checkpoint.exists():
+                url_checkpoint = f"{PEDIATRIC_DENTAL_SEG}/checkpoint_final.pth"
+                url_dataset = f"{PEDIATRIC_DENTAL_SEG}/dataset.json"
+                url_plans = f"{PEDIATRIC_DENTAL_SEG}/plans.json"
                 self.onProgressInfo("Downloading pediatricdentalseg model...")
                 # Download checkpoint; convert Path to string for downloadFile
-                slicer.util.downloadFile(url_checkpoint, str(pediatricCheckpoint))
+                slicer.util.downloadFile(url_checkpoint, str(pediatric_checkpoint))
                 # Download dataset.json and plans.json in basePath
-                slicer.util.downloadFile(url_dataset, str(basePath.joinpath("dataset.json")))
-                slicer.util.downloadFile(url_plans, str(basePath.joinpath("plans.json")))
+                slicer.util.downloadFile(url_dataset, str(base_path.joinpath("dataset.json")))
+                slicer.util.downloadFile(url_plans, str(base_path.joinpath("plans.json")))
             # For nnUNet, modelPath must point to folder containing dataset.json and fold_x
-            parameter = Parameter(folds="0", modelPath=basePath, device=self.deviceComboBox.currentText)
+            parameter = Parameter(folds="0", modelPath=base_path, device=self.deviceComboBox.currentText)
 
-        elif selectedModel == "NasoMaxillaDentSeg":
-            self.onProgressInfo(f"Selected Model: {selectedModel}")
+        elif selected_model == "NasoMaxillaDentSeg":
+            self.onProgressInfo(f"Selected Model: {selected_model}")
 
             # Base path where full model must be installed
-            basePath = Path(__file__).parent.joinpath("..", "Resources", "ML", "Dataset001_max4", "nnUNetTrainer__nnUNetPlans__3d_fullres").resolve()
+            base_path = Path(__file__).parent.joinpath("..", "Resources", "ML", "Dataset001_max4", "nnUNetTrainer__nnUNetPlans__3d_fullres").resolve()
             # Choose fold_0 (you can adapt for fold_1 if needed)
-            fold_path = basePath.joinpath("fold_0")
+            fold_path = base_path.joinpath("fold_0")
             if not fold_path.exists():
                 fold_path.mkdir(parents=True, exist_ok=True)
             # Checkpoint path inside fold_0
-            NasoMaxillaDentSegCheckpoint = fold_path.joinpath("checkpoint_final.pth")
+            naso_maxilla_dent_seg_checkpoint = fold_path.joinpath("checkpoint_final.pth")
             # If checkpoint doesn't exist, download checkpoint and dataset.json and plans.json inside basePath
-            if not NasoMaxillaDentSegCheckpoint .exists():
-                url_checkpoint = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENTSEG_MODEL/checkpoint_final.pth"
-                url_dataset = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENTSEG_MODEL/dataset.json"
-                url_plans = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/NASOMAXILLADENTSEG_MODEL/plans.json"
+            if not naso_maxilla_dent_seg_checkpoint .exists():
+                url_checkpoint = f"{NASOMAXILLA_DENT_SEG}/checkpoint_final.pth"
+                url_dataset = f"{NASOMAXILLA_DENT_SEG}/dataset.json"
+                url_plans = f"{NASOMAXILLA_DENT_SEG}/plans.json"
                 self.onProgressInfo("Downloading NasoMaxillaDentSeg model...")
                 # Download checkpoint; convert Path to string for downloadFile
-                slicer.util.downloadFile(url_checkpoint, str(NasoMaxillaDentSegCheckpoint))
+                slicer.util.downloadFile(url_checkpoint, str(naso_maxilla_dent_seg_checkpoint))
                 # Download dataset.json and plans.json in basePath
-                slicer.util.downloadFile(url_dataset, str(basePath.joinpath("dataset.json")))
-                slicer.util.downloadFile(url_plans, str(basePath.joinpath("plans.json")))
+                slicer.util.downloadFile(url_dataset, str(base_path.joinpath("dataset.json")))
+                slicer.util.downloadFile(url_plans, str(base_path.joinpath("plans.json")))
             # For nnUNet, modelPath must point to folder containing dataset.json and fold_x
-            parameter = Parameter(folds="0", modelPath=basePath, device=self.deviceComboBox.currentText)
+            parameter = Parameter(folds="0", modelPath=base_path, device=self.deviceComboBox.currentText)
 
 
-        elif selectedModel == "UniversalLabDentalsegmentator":
-            self.onProgressInfo(f"Selected Model: {selectedModel}")
+        elif selected_model == "UniversalLabDentalsegmentator":
+            self.onProgressInfo(f"Selected Model: {selected_model}")
 
             # Base path where full model must be installed
-            basePath = Path(__file__).parent.joinpath("..", "Resources", "ML", "Dataset002_380CT", "nnUNetTrainer__nnUNetPlans__3d_fullres").resolve()
+            base_path = Path(__file__).parent.joinpath("..", "Resources", "ML", "Dataset002_380CT", "nnUNetTrainer__nnUNetPlans__3d_fullres").resolve()
             # Choose fold_0 (you can adapt for fold_1 if needed)
-            fold_path = basePath.joinpath("fold_0")
+            fold_path = base_path.joinpath("fold_0")
             if not fold_path.exists():
                 fold_path.mkdir(parents=True, exist_ok=True)
             # Checkpoint path inside fold_0
-            pediatricCheckpoint = fold_path.joinpath("checkpoint_final.pth")
+            pediatric_checkpoint = fold_path.joinpath("checkpoint_final.pth")
             # If checkpoint doesn't exist, download checkpoint and dataset.json and plans.json inside basePath
-            if not pediatricCheckpoint.exists():
-                url_checkpoint = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/UNIVERSALLAB_MODEL/checkpoint_final.pth"
-                url_dataset = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/UNIVERSALLAB_MODEL/dataset.json"
-                url_plans = "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/UNIVERSALLAB_MODEL/plans.json"
+            if not pediatric_checkpoint.exists():
+                url_checkpoint = f"{UNIVERSAL_LAB}/checkpoint_final.pth"
+                url_dataset = f"{UNIVERSAL_LAB}/dataset.json"
+                url_plans = f"{UNIVERSAL_LAB}/plans.json"
                 self.onProgressInfo("Downloading pediatricdentalseg model...")
                 # Download checkpoint; convert Path to string for downloadFile
-                slicer.util.downloadFile(url_checkpoint, str(pediatricCheckpoint))
+                slicer.util.downloadFile(url_checkpoint, str(pediatric_checkpoint))
                 # Download dataset.json and plans.json in basePath
-                slicer.util.downloadFile(url_dataset, str(basePath.joinpath("dataset.json")))
-                slicer.util.downloadFile(url_plans, str(basePath.joinpath("plans.json")))
+                slicer.util.downloadFile(url_dataset, str(base_path.joinpath("dataset.json")))
+                slicer.util.downloadFile(url_plans, str(base_path.joinpath("plans.json")))
             # For nnUNet, modelPath must point to folder containing dataset.json and fold_x
-            parameter = Parameter(folds="0", modelPath=basePath, device=self.deviceComboBox.currentText)
+            parameter = Parameter(folds="0", modelPath=base_path, device=self.deviceComboBox.currentText)
 
 
 
 
         else:
-            self.onProgressInfo(f"Selected Model: {selectedModel}")
+            self.onProgressInfo(f"Selected Model: {selected_model}")
 
             parameter = Parameter(folds="0", modelPath=self.nnUnetFolder(), device=self.deviceComboBox.currentText)
                 
         if not parameter.isSelectedDeviceAvailable():
-            deviceName = parameter.device.upper()
+            device_name = parameter.device.upper()
             # Asked once for the whole queue — never once per scan.
             if self._deviceFallbackAccepted is None:
                 if self._isUnattended():
                     self._deviceFallbackAccepted = True
                     self.onProgressInfo(
-                        f"[WARN] {deviceName} not available — falling back to CPU for the whole queue.")
+                        f"[WARN] {device_name} not available — falling back to CPU for the whole queue.")
                 else:
                     ret = qt.QMessageBox.question(
                         self,
-                        f"{deviceName} device not available",
-                        f"Selected device ({deviceName}) is not available and will default to CPU.\n"
+                        f"{device_name} device not available",
+                        f"Selected device ({device_name}) is not available and will default to CPU.\n"
                         "Running the segmentation may take up to 1 hour per scan.\n"
                         "Would you like to proceed with the whole queue?"
                     )
                     self._deviceFallbackAccepted = (ret == qt.QMessageBox.Yes)
             if not self._deviceFallbackAccepted:
                 self._queueRunning = False
-                self._finishCurrentItem(STATUS_FAILED, f"{deviceName} unavailable, aborted by user")
+                self._finishCurrentItem(STATUS_FAILED, f"{device_name} unavailable, aborted by user")
                 self._setApplyVisible(True)
                 return
         slicer.app.processEvents()
@@ -1884,7 +1978,7 @@ class SegmentationWidget(qt.QWidget):
             return {
                 "Upper Skull": 1,
                 "Mandible": 2,
-                "Maxilla": 3,              
+                "Maxilla": 3,
                 "Upper Teeth": 4,
                 "Lower Teeth": 5,
                 "Mandibular canal": 6,
@@ -1926,35 +2020,35 @@ class SegmentationWidget(qt.QWidget):
         import vtk
 
         segmentation = segNode.GetSegmentation()
-        segIds = list(segmentation.GetSegmentIDs())
-        if not segIds:
+        seg_ids = list(segmentation.GetSegmentIDs())
+        if not seg_ids:
             raise RuntimeError("Segmentation has no segment")
 
         # Passing the IDs explicitly pins the mapping: exported value i+1 <-> segIds[i].
         ids = vtk.vtkStringArray()
-        for segId in segIds:
-            ids.InsertNextValue(segId)
+        for seg_id in seg_ids:
+            ids.InsertNextValue(seg_id)
 
-        tmpLM = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+        tmp_lm = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
         try:
             success = slicer.modules.segmentations.logic().ExportSegmentsToLabelmapNode(
-                segNode, ids, tmpLM, volNode, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY
+                segNode, ids, tmp_lm, volNode, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY
             )
             if not success:
                 raise RuntimeError("ExportSegmentsToLabelmapNode failed")
-            exported = slicer.util.arrayFromVolume(tmpLM)
+            exported = slicer.util.arrayFromVolume(tmp_lm)
         finally:
-            slicer.mrmlScene.RemoveNode(tmpLM)
+            slicer.mrmlScene.RemoveNode(tmp_lm)
 
-        maxExported = int(exported.max()) if exported.size else 0
-        lut = np.zeros(max(len(segIds), maxExported) + 1, dtype=np.uint16)
-        for exportedValue, segId in enumerate(segIds, start=1):
-            segment = segmentation.GetSegment(segId)
+        max_exported = int(exported.max()) if exported.size else 0
+        lut = np.zeros(max(len(seg_ids), max_exported) + 1, dtype=np.uint16)
+        for exported_value, seg_id in enumerate(seg_ids, start=1):
+            segment = segmentation.GetSegment(seg_id)
             value = self._segmentLabelValue(segment, full_label_map)
             if value is None:
-                self.onProgressInfo(f"[WARN] Unknown label for segment «{segment.GetName()}» — skipped")
+                self.onProgressInfo(f"[WARN] Unknown label for segment \"{segment.GetName()}\" - skipped")
                 continue
-            lut[exportedValue] = value
+            lut[exported_value] = value
 
         return lut[exported]
 
@@ -1980,8 +2074,8 @@ class SegmentationWidget(qt.QWidget):
             self._setApplyVisible(True)
             return
 
-        segNode = volNode = None
-        status, errorDetail = STATUS_DONE, ""
+        seg_node = vol_node = None
+        status, error_detail = STATUS_DONE, ""
         try:
             # === Step 1: Initialization ===
             self.onProgressInfo("Processing results in progress...")
@@ -1989,23 +2083,23 @@ class SegmentationWidget(qt.QWidget):
             # === Step 2: Load results ===
             try:
                 self._loadSegmentationResults()
-                segNode = self.getCurrentSegmentationNode()
-                volNode = self.getCurrentVolumeNode()
-                if not segNode:
+                seg_node = self.getCurrentSegmentationNode()
+                vol_node = self.getCurrentVolumeNode()
+                if not seg_node:
                     raise RuntimeError("No segmentation node found")
-                if not volNode:
+                if not vol_node:
                     raise RuntimeError("No volume node found")
 
-                segmentation = segNode.GetSegmentation()
+                segmentation = seg_node.GetSegmentation()
                 full_label_map = self._get_active_label_map()
 
                 # Normalize the LabelValue tags once (cheap: one pass over segments).
                 raw_values = []
-                for segId in segmentation.GetSegmentIDs():
-                    segment = segmentation.GetSegment(segId)
+                for seg_id in segmentation.GetSegmentIDs():
+                    segment = segmentation.GetSegment(seg_id)
                     value = self._segmentLabelValue(segment, full_label_map)
                     if value is None:
-                        self.onProgressInfo(f"[WARN] unexpected segment «{segment.GetName()}» — ignored")
+                        self.onProgressInfo(f"[WARN] unexpected segment \"{segment.GetName()}\" - ignored")
                         continue
                     segment.SetTag("LabelValue", str(value))
                     raw_values.append(value)
@@ -2018,25 +2112,25 @@ class SegmentationWidget(qt.QWidget):
             # === PHASE 3: NIfTI export ===
             import vtk as _vtk
 
-            label_arr = self._buildLabelArray(segNode, volNode, full_label_map)
+            label_arr = self._buildLabelArray(seg_node, vol_node, full_label_map)
             # After an automatic crop the result goes back on the grid of the
             # scan as acquired, so the output matches what the clinician sent.
-            label_arr, geometryNode = self._restoreCropToOriginalGrid(label_arr, volNode)
+            label_arr, geometry_node = self._restoreCropToOriginalGrid(label_arr, vol_node)
 
-            tmpOut = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+            tmp_out = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
             try:
-                slicer.util.updateVolumeFromArray(tmpOut, label_arr)
-                tmpOut.SetSpacing(geometryNode.GetSpacing())
-                tmpOut.SetOrigin(geometryNode.GetOrigin())
+                slicer.util.updateVolumeFromArray(tmp_out, label_arr)
+                tmp_out.SetSpacing(geometry_node.GetSpacing())
+                tmp_out.SetOrigin(geometry_node.GetOrigin())
                 ijk2ras = _vtk.vtkMatrix4x4()
-                geometryNode.GetIJKToRASMatrix(ijk2ras)
-                tmpOut.SetIJKToRASMatrix(ijk2ras)
+                geometry_node.GetIJKToRASMatrix(ijk2ras)
+                tmp_out.SetIJKToRASMatrix(ijk2ras)
 
                 output_path = str(Path(self.outputFolderPath).joinpath(
                     f"{self._currentCaseName()}_Segmentation.nii.gz"))
-                saved = slicer.util.saveNode(tmpOut, output_path)
+                saved = slicer.util.saveNode(tmp_out, output_path)
             finally:
-                slicer.mrmlScene.RemoveNode(tmpOut)
+                slicer.mrmlScene.RemoveNode(tmp_out)
 
             if saved:
                 self.onProgressInfo(f"Segmentation saved in {output_path}")
@@ -2044,15 +2138,15 @@ class SegmentationWidget(qt.QWidget):
                 raise RuntimeError(f"saveNode failed for {output_path}")
 
             # Other formats (STL / OBJ / VTK / glTF), without any modal dialog.
-            errorDetail = self._exportSegmentation(segNode, silent=True)
+            error_detail = self._exportSegmentation(seg_node, silent=True)
 
             # === Step 4: Success ===
             self.onProgressInfo("Processing completed successfully")
-            logger.info(f"Volume processed: {volNode.GetName() if volNode else 'unknown'}")
+            logger.info(f"Volume processed: {vol_node.GetName() if vol_node else 'unknown'}")
 
         except Exception as e:
             # === Error handling ===
-            status, errorDetail = STATUS_FAILED, str(e)
+            status, error_detail = STATUS_FAILED, str(e)
             error_msg = f"ERROR: {str(e)}"
             logger.critical(error_msg, exc_info=True)
             self.onProgressInfo(f"PROCESSING FAILURE:\n{error_msg}")
@@ -2063,12 +2157,12 @@ class SegmentationWidget(qt.QWidget):
         finally:
             # === PHASE 5: cleanup, then hand over to the queue ===
             try:
-                self._cleanupAfterCase(volNode, segNode)
+                self._cleanupAfterCase(vol_node, seg_node)
             except Exception as cleanup_error:
                 logger.critical(f"Final cleaning failure: {cleanup_error}", exc_info=True)
                 self.onProgressInfo(f"CLEANING ERROR: {cleanup_error}")
 
-            self._finishCurrentItem(status, errorDetail)
+            self._finishCurrentItem(status, error_detail)
 
 
 
@@ -2086,31 +2180,31 @@ class SegmentationWidget(qt.QWidget):
 
             try:
                 self.segmentEditorWidget.blockSignals(True)
-                # aussi neutraliser le MRML node interne
+                # also neutralise the internal MRML node
                 if hasattr(self, 'segmentEditorNode'):
                     self.segmentEditorWidget.setSegmentationNode(None)
                     self.segmentEditorWidget.setSourceVolumeNode(None)
-            except Exception:
-                pass
+            except (AttributeError, RuntimeError):
+                logger.debug("Segment editor not neutralised", exc_info=True)
 
-            # 2) Supprimer le display-node de la segmentation
+            # 2) Remove the display node of the segmentation
             if segmentationNode and is_node_in_scene(segmentationNode):
-                segDisp = segmentationNode.GetDisplayNode()
-                if segDisp and is_node_in_scene(segDisp):
-                    slicer.mrmlScene.RemoveNode(segDisp)
+                seg_disp = segmentationNode.GetDisplayNode()
+                if seg_disp and is_node_in_scene(seg_disp):
+                    slicer.mrmlScene.RemoveNode(seg_disp)
 
-            # 3) Retirer l'entrée de la subject hierarchy PUIS le nœud lui-même.
-            #    Le RemoveNode était auparavant indenté dans le bloc « except », donc
-            #    jamais exécuté : chaque scan laissait sa segmentation dans la scène.
+            # 3) Remove the subject hierarchy entry THEN the node itself.
+            #    RemoveNode used to be indented inside the "except" block, so it
+            #    never ran: every scan left its segmentation in the scene.
             if segmentationNode:
                 try:
-                    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-                    if shNode and shNode.GetScene():
-                        itemID = shNode.GetItemByDataNode(segmentationNode)
-                        if itemID and itemID != shNode.GetInvalidItemID():
-                            shNode.RemoveItem(itemID)
-                except Exception:
-                    pass
+                    sh_node = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+                    if sh_node and sh_node.GetScene():
+                        item_id = sh_node.GetItemByDataNode(segmentationNode)
+                        if item_id and item_id != sh_node.GetInvalidItemID():
+                            sh_node.RemoveItem(item_id)
+                except (AttributeError, RuntimeError):
+                    logger.debug("Hierarchy item not removed", exc_info=True)
 
                 if is_node_in_scene(segmentationNode):
                     slicer.mrmlScene.RemoveNode(segmentationNode)
@@ -2120,20 +2214,20 @@ class SegmentationWidget(qt.QWidget):
 
             try:
                 self.segmentEditorWidget.blockSignals(False)
-            except Exception:
-                pass
+            except (AttributeError, RuntimeError):
+                logger.debug("Editor signals not restored", exc_info=True)
 
             if volumeNode and is_node_in_scene(volumeNode):
-                volDisp = volumeNode.GetDisplayNode()
-                if volDisp and is_node_in_scene(volDisp):
-                    slicer.mrmlScene.RemoveNode(volDisp)
+                vol_disp = volumeNode.GetDisplayNode()
+                if vol_disp and is_node_in_scene(vol_disp):
+                    slicer.mrmlScene.RemoveNode(vol_disp)
                 slicer.mrmlScene.RemoveNode(volumeNode)
 
             if self.currentVolumeNode is volumeNode:
                 self.currentVolumeNode = None
 
-            # 6) Ne pas garder de référence Python sur des nœuds supprimés, sinon
-            #    le gc.collect() ci-dessous ne peut rien libérer.
+            # 6) Keep no Python reference on deleted nodes, otherwise the
+            #    gc.collect() below can free nothing.
             self.processedVolumes = {}
 
             # 7) CUDA cache
@@ -2146,7 +2240,6 @@ class SegmentationWidget(qt.QWidget):
                 pass
 
             # 8) GC et memory
-            import gc
             gc.collect()
             self.onProgressInfo(f"Cleanup complete. Memory: {self._get_memory_usage()}")
 
@@ -2157,13 +2250,13 @@ class SegmentationWidget(qt.QWidget):
     # ─── Load segmentation results ────────────────────────────────────────────
 
     def _loadSegmentationResults(self):
-        currentSegmentation = self.getCurrentSegmentationNode()
-        segmentationNode = self.logic.loadSegmentation()
-        segmentationNode.SetName(self._currentCaseName() + "_Segmentation")
-        if currentSegmentation is not None:
-            self._copySegmentationResultsToExistingNode(currentSegmentation, segmentationNode)
+        current_segmentation = self.getCurrentSegmentationNode()
+        segmentation_node = self.logic.loadSegmentation()
+        segmentation_node.SetName(self._currentCaseName() + "_Segmentation")
+        if current_segmentation is not None:
+            self._copySegmentationResultsToExistingNode(current_segmentation, segmentation_node)
         else:
-            self.segmentationNodeSelector.setCurrentNode(segmentationNode)
+            self.segmentationNodeSelector.setCurrentNode(segmentation_node)
         slicer.app.processEvents()
         self._updateSegmentationDisplay()
         self._storeProcessedSegmentation()
@@ -2172,25 +2265,25 @@ class SegmentationWidget(qt.QWidget):
 
     @staticmethod
     def _copySegmentationResultsToExistingNode(currentSegmentation, segmentationNode):
-        currentName = currentSegmentation.GetName()
+        current_name = currentSegmentation.GetName()
         currentSegmentation.Copy(segmentationNode)
-        currentSegmentation.SetName(currentName)
+        currentSegmentation.SetName(current_name)
         slicer.mrmlScene.RemoveNode(segmentationNode)
 
     @staticmethod
-    def toRGB(colorString):
-        color = qt.QColor(colorString)
+    def toRGB(color_string):
+        color = qt.QColor(color_string)
         return color.redF(), color.greenF(), color.blueF()
 
     def _updateSegmentationDisplay(self):
-        segmentationNode = self.getCurrentSegmentationNode()
-        if not segmentationNode:
+        segmentation_node = self.getCurrentSegmentationNode()
+        if not segmentation_node:
             return
-        self._initializeSegmentationNodeDisplay(segmentationNode)
-        segmentation = segmentationNode.GetSegmentation()
-        selectedModel = self.modelComboBox.currentText
+        self._initializeSegmentationNodeDisplay(segmentation_node)
+        segmentation = segmentation_node.GetSegmentation()
+        selected_model = self.modelComboBox.currentText
        
-        if selectedModel == "UniversalLabDentalsegmentator":
+        if selected_model == "UniversalLabDentalsegmentator":
             # For UniversalLabDentalsegmentator model,
             # we consider 55 labels (ignore "background")
             UNIVERSAL_LABELS = [
@@ -2372,32 +2465,32 @@ class SegmentationWidget(qt.QWidget):
             colors = UNIVERSAL_COLORS
             opacities = UNIVERSAL_OPACITIES
             # Create segment IDs as before, e.g. "Segment_1", "Segment_2", ...
-            segmentIds = [f"Segment_{i+1}" for i in range(len(labels))]
-            segmentationDisplayNode = segmentationNode.GetDisplayNode()
-            for segmentId, label, color, opacity in zip(segmentIds, labels, colors, opacities):
-                segment = segmentation.GetSegment(segmentId)
+            segment_ids = [f"Segment_{i+1}" for i in range(len(labels))]
+            segmentation_display_node = segmentation_node.GetDisplayNode()
+            for segment_id, label, color, opacity in zip(segment_ids, labels, colors, opacities):
+                segment = segmentation.GetSegment(segment_id)
                 if segment is None:
                     continue
                 segment.SetName(label)
                 segment.SetColor(*self.toRGB(color))
-                segmentationDisplayNode.SetSegmentOpacity3D(segmentId, opacity)
+                segmentation_display_node.SetSegmentOpacity3D(segment_id, opacity)
 
             self.show3DButton.setChecked(True)
             slicer.util.resetThreeDViews()
 
-        elif selectedModel == "NasoMaxillaDentSeg":
+        elif selected_model == "NasoMaxillaDentSeg":
             labels = ["Upper Skull", "Mandible", "Upper Teeth", "Lower Teeth", "Mandibular canal","Maxilla "]
             colors = [self.toRGB(c) for c in ["#E3DD90", "#D4A1E6","#DC9565", "#EBDFB4", "#D8654F", "#6AC4A4"]]
             opacities = [0.65, 0.65,1.0, 1.0, 1.0, 0.65]
-            segmentIds = [f"Segment_{i + 1}" for i in range(len(labels))]
-            segmentationDisplayNode = self.getCurrentSegmentationNode().GetDisplayNode()
-            for segmentId, label, color, opacity in zip(segmentIds, labels, colors, opacities):
-                segment = segmentation.GetSegment(segmentId)
+            segment_ids = [f"Segment_{i + 1}" for i in range(len(labels))]
+            segmentation_display_node = self.getCurrentSegmentationNode().GetDisplayNode()
+            for segment_id, label, color, opacity in zip(segment_ids, labels, colors, opacities):
+                segment = segmentation.GetSegment(segment_id)
                 if segment is None:
                     continue
                 segment.SetName(label)
                 segment.SetColor(*color)
-                segmentationDisplayNode.SetSegmentOpacity3D(segmentId, opacity)
+                segmentation_display_node.SetSegmentOpacity3D(segment_id, opacity)
             self.show3DButton.setChecked(True)
             slicer.util.resetThreeDViews()
 
@@ -2405,15 +2498,15 @@ class SegmentationWidget(qt.QWidget):
             labels = ["Upper Skull", "Mandible", "Upper Teeth", "Lower Teeth", "Mandibular canal"]
             colors = [self.toRGB(c) for c in ["#E3DD90", "#D4A1E6","#DC9565", "#EBDFB4", "#D8654F"]]
             opacities = [0.65, 0.65,1.0, 1.0, 1.0]
-            segmentIds = [f"Segment_{i + 1}" for i in range(len(labels))]
-            segmentationDisplayNode = self.getCurrentSegmentationNode().GetDisplayNode()
-            for segmentId, label, color, opacity in zip(segmentIds, labels, colors, opacities):
-                segment = segmentation.GetSegment(segmentId)
+            segment_ids = [f"Segment_{i + 1}" for i in range(len(labels))]
+            segmentation_display_node = self.getCurrentSegmentationNode().GetDisplayNode()
+            for segment_id, label, color, opacity in zip(segment_ids, labels, colors, opacities):
+                segment = segmentation.GetSegment(segment_id)
                 if segment is None:
                     continue
                 segment.SetName(label)
                 segment.SetColor(*color)
-                segmentationDisplayNode.SetSegmentOpacity3D(segmentId, opacity)
+                segmentation_display_node.SetSegmentOpacity3D(segment_id, opacity)
             self.show3DButton.setChecked(True)
             slicer.util.resetThreeDViews()
 
@@ -2425,9 +2518,9 @@ class SegmentationWidget(qt.QWidget):
             segmentationNode.CreateDefaultDisplayNodes()
             slicer.app.processEvents()
         segmentationNode.SetDisplayVisibility(True)
-        layoutManager = slicer.app.layoutManager()
-        threeDWidget = layoutManager.threeDWidget(0)
-        threeDWidget.threeDView().rotateToViewAxis(3)
+        layout_manager = slicer.app.layoutManager()
+        three_d_widget = layout_manager.threeDWidget(0)
+        three_d_widget.threeDView().rotateToViewAxis(3)
         slicer.util.resetThreeDViews()
 
     def _postProcessSegments(self):
@@ -2450,18 +2543,18 @@ class SegmentationWidget(qt.QWidget):
             return
         self.onProgressInfo(f"Remove small voxels for {segment.GetName()}...")
         self.segmentEditorWidget.setCurrentSegmentID(segmentId)
-        voxelSize_mm3 = np.cumprod(self.getCurrentVolumeNode().GetSpacing())[-1]
-        minimumIslandSize = int(np.ceil(self._minimumIslandSize_mm3 / voxelSize_mm3))
+        voxel_size_mm3 = np.cumprod(self.getCurrentVolumeNode().GetSpacing())[-1]
+        minimum_island_size = int(np.ceil(self._minimumIslandSize_mm3 / voxel_size_mm3))
         effect = self.segmentEditorWidget.effectByName("Islands")
         effect.setParameter("Operation", SegmentEditorEffects.REMOVE_SMALL_ISLANDS)
-        effect.setParameter("MinimumSize", minimumIslandSize)
+        effect.setParameter("MinimumSize", minimum_island_size)
         effect.self().onApply()
 
     def _getSegment(self, segmentId):
-        segmentationNode = self.getCurrentSegmentationNode()
-        if not segmentationNode:
+        segmentation_node = self.getCurrentSegmentationNode()
+        if not segmentation_node:
             return
-        return segmentationNode.GetSegmentation().GetSegment(segmentId)
+        return segmentation_node.GetSegmentation().GetSegment(segmentId)
 
     def onInferenceError(self, errorMsg):
         logger.error(f"[SegWidget] onInferenceError: {errorMsg}")
@@ -2483,12 +2576,12 @@ class SegmentationWidget(qt.QWidget):
             logger.error(f"Cleanup after inference error failed: {e}", exc_info=True)
         self._finishCurrentItem(STATUS_FAILED, f"inference error: {errorMsg}")
 
-    def onProgressInfo(self, infoMsg):
-        infoMsg = self.removeImageIOError(infoMsg)
-        if not infoMsg:
+    def onProgressInfo(self, info_msg):
+        info_msg = self.removeImageIOError(info_msg)
+        if not info_msg:
             return
-        self._appendLog(infoMsg)
-        if "done with volume" in infoMsg.lower():
+        self._appendLog(info_msg)
+        if "done with volume" in info_msg.lower():
             self._doneVolumeSeen = True
             self._fallbackCheckAttempts = 0
             self._fallbackLastOutputSize = None
@@ -2521,31 +2614,31 @@ class SegmentationWidget(qt.QWidget):
 
         self._fallbackCheckAttempts += 1
 
-        outFilePath = None
-        outFileSize = None
+        out_file_path = None
+        out_file_size = None
         try:
-            outFilePath = self.logic._outFile
-            outFileSize = Path(outFilePath).stat().st_size
+            out_file_path = self.logic._outFile
+            out_file_size = Path(out_file_path).stat().st_size
         except Exception:
-            outFilePath = None
+            out_file_path = None
 
-        processState = None
+        process_state = None
         try:
-            processState = self.logic.inferenceProcess.process.state()
+            process_state = self.logic.inferenceProcess.process.state()
         except Exception:
-            processState = None
+            process_state = None
 
         self.onProgressInfo(
             f"[DEBUG][SegWidget] Fallback check #{self._fallbackCheckAttempts}: "
-            f"state={processState}, outFile={outFilePath}, size={outFileSize}"
+            f"state={process_state}, outFile={out_file_path}, size={out_file_size}"
         )
 
-        if outFilePath and outFileSize is not None and outFileSize > 0:
-            if self._fallbackLastOutputSize == outFileSize:
+        if out_file_path and out_file_size is not None and out_file_size > 0:
+            if self._fallbackLastOutputSize == out_file_size:
                 self.onProgressInfo("[DEBUG][SegWidget] Output file stable, forcing finalization")
                 qt.QTimer.singleShot(0, self.onInferenceFinished)
                 return
-            self._fallbackLastOutputSize = outFileSize
+            self._fallbackLastOutputSize = out_file_size
 
         if self._fallbackCheckAttempts < 40:
             qt.QTimer.singleShot(1500, self._checkInferenceCompletionFallback)
@@ -2553,22 +2646,22 @@ class SegmentationWidget(qt.QWidget):
             self.onProgressInfo("[DEBUG][SegWidget] Fallback completion check timeout (no stable output file)")
 
     @staticmethod
-    def removeImageIOError(infoMsg):
-        return "\n".join([msg for msg in infoMsg.strip().splitlines() if "Error ImageIO factory" not in msg])
+    def removeImageIOError(info_msg):
+        return "\n".join([msg for msg in info_msg.strip().splitlines() if "Error ImageIO factory" not in msg])
 
-    def insertDatedInfoLogs(self, infoMsg):
+    def insertDatedInfoLogs(self, info_msg):
         now = qt.QDateTime.currentDateTime().toString("yyyy/MM/dd hh:mm:ss.zzz")
-        self.fullInfoLogs.extend([f"{now} :: {msgLine}" for msgLine in infoMsg.splitlines()])
+        self.fullInfoLogs.extend([f"{now} :: {msg_line}" for msg_line in info_msg.splitlines()])
 
     def showInfoLogs(self):
         dialog = qt.QDialog()
         layout = qt.QVBoxLayout(dialog)
-        textEdit = qt.QTextEdit()
-        textEdit.setReadOnly(True)
-        textEdit.append("\n".join(self.fullInfoLogs))
-        textEdit.setLineWrapMode(qt.QTextEdit.NoWrap)
-        self.moveTextEditToEnd(textEdit)
-        layout.addWidget(textEdit)
+        text_edit = qt.QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.append("\n".join(self.fullInfoLogs))
+        text_edit.setLineWrapMode(qt.QTextEdit.NoWrap)
+        self.moveTextEditToEnd(text_edit)
+        layout.addWidget(text_edit)
         dialog.setWindowFlags(qt.Qt.WindowCloseButtonHint)
         dialog.resize(slicer.util.mainWindow().size * 0.7)
         dialog.exec()
@@ -2578,13 +2671,13 @@ class SegmentationWidget(qt.QWidget):
     def moveTextEditToEnd(textEdit):
         textEdit.verticalScrollBar().setValue(textEdit.verticalScrollBar().maximum)
 
-    def _setApplyVisible(self, isVisible):
-        self.applyWidget.setVisible(isVisible)
-        self.stopWidgetContainer.setVisible(not isVisible)
-        self.inputWidget.setEnabled(isVisible)
+    def _setApplyVisible(self, is_visible):
+        self.applyWidget.setVisible(is_visible)
+        self.stopWidgetContainer.setVisible(not is_visible)
+        self.inputWidget.setEnabled(is_visible)
 
-        self.batchCounterLabel.setVisible(not isVisible)
-        if not isVisible:
+        self.batchCounterLabel.setVisible(not is_visible)
+        if not is_visible:
             self._updateBatchCounter(show_file_name=True)
 
 
@@ -2595,41 +2688,41 @@ class SegmentationWidget(qt.QWidget):
         return self.segmentationNodeSelector.currentNode()
 
     def _storeProcessedSegmentation(self):
-        volumeNode = self.getCurrentVolumeNode()
-        segmentationNode = self.getCurrentSegmentationNode()
-        if volumeNode and segmentationNode:
-            self.processedVolumes[volumeNode] = segmentationNode
+        volume_node = self.getCurrentVolumeNode()
+        segmentation_node = self.getCurrentSegmentationNode()
+        if volume_node and segmentation_node:
+            self.processedVolumes[volume_node] = segmentation_node
     def updateSegmentEditorWidget(self, *_):
 
         # Hide previous node
         if self._prevSegmentationNode:
             try:
                 self._prevSegmentationNode.SetDisplayVisibility(False)
-            except Exception:
-                pass
+            except (AttributeError, RuntimeError):
+                logger.debug("Visibility of the previous segmentation unchanged", exc_info=True)
 
-        segmentationNode = self.getCurrentSegmentationNode()
+        segmentation_node = self.getCurrentSegmentationNode()
 
         # If no segmentation or deleted node, we stop here
-        if not segmentationNode or not slicer.mrmlScene.IsNodePresent(segmentationNode):
+        if not segmentation_node or not slicer.mrmlScene.IsNodePresent(segmentation_node):
             return
 
         # Initialization and display
-        self._initializeSegmentationNodeDisplay(segmentationNode)
-        self.segmentEditorWidget.setSegmentationNode(segmentationNode)
+        self._initializeSegmentationNodeDisplay(segmentation_node)
+        self.segmentEditorWidget.setSegmentationNode(segmentation_node)
         slicer.app.processEvents()
 
-        volumeNode = self.getCurrentVolumeNode()
-        if volumeNode and slicer.mrmlScene.IsNodePresent(volumeNode):
-            self.segmentEditorWidget.setSourceVolumeNode(volumeNode)
+        volume_node = self.getCurrentVolumeNode()
+        if volume_node and slicer.mrmlScene.IsNodePresent(volume_node):
+            self.segmentEditorWidget.setSourceVolumeNode(volume_node)
             slicer.app.processEvents()
 
-        self._prevSegmentationNode = segmentationNode
+        self._prevSegmentationNode = segmentation_node
 
 
     def getSelectedExportFormats(self):
-        selectedFormats = ExportFormat(0)
-        checkBoxes = {
+        selected_formats = ExportFormat(0)
+        check_boxes = {
             self.objCheckBox: ExportFormat.OBJ,
             self.stlCheckBox: ExportFormat.STL,
             self.niftiCheckBox: ExportFormat.NIFTI,
@@ -2638,10 +2731,10 @@ class SegmentationWidget(qt.QWidget):
             self.vtkmergedCheckBox  : ExportFormat.VTK_MERGED
 
         }
-        for checkBox, exportFormat in checkBoxes.items():
-            if checkBox.isChecked():
-                selectedFormats |= exportFormat
-        return selectedFormats
+        for check_box, export_format in check_boxes.items():
+            if check_box.isChecked():
+                selected_formats |= export_format
+        return selected_formats
 
     def onExportClicked(self):
         self._exportSegmentation(silent=False)
@@ -2663,8 +2756,8 @@ class SegmentationWidget(qt.QWidget):
             slicer.util.warningDisplay(message)
             return ""
 
-        selectedFormats = self.getSelectedExportFormats()
-        if selectedFormats == ExportFormat(0):
+        selected_formats = self.getSelectedExportFormats()
+        if selected_formats == ExportFormat(0):
             if silent:
                 self.onProgressInfo("No additional export format selected — NIfTI only.")
                 return ""
@@ -2673,7 +2766,7 @@ class SegmentationWidget(qt.QWidget):
 
         if silent:
             try:
-                self.exportSegmentation(segmentationNode, self.outputFolderPath, selectedFormats)
+                self.exportSegmentation(segmentationNode, self.outputFolderPath, selected_formats)
                 self.onProgressInfo(f"Export successful to {self.outputFolderPath}.")
                 return ""
             except Exception as e:
@@ -2684,7 +2777,7 @@ class SegmentationWidget(qt.QWidget):
                 return f"export warning: {e}"
 
         with slicer.util.tryWithErrorDisplay(f"Export to {self.outputFolderPath} failed.", waitCursor=True):
-            self.exportSegmentation(segmentationNode, self.outputFolderPath, selectedFormats)
+            self.exportSegmentation(segmentationNode, self.outputFolderPath, selected_formats)
             slicer.util.infoDisplay(f"Export successful to {self.outputFolderPath}.")
         return ""
 
@@ -2721,7 +2814,7 @@ class SegmentationWidget(qt.QWidget):
         from vtk.util.numpy_support import vtk_to_numpy
         vtk.vtkObject.GlobalWarningDisplayOff()
         self.onProgressInfo("MergedVTK: Start")
-        refVol = self.getCurrentVolumeNode()
+        ref_vol = self.getCurrentVolumeNode()
         labelmap = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
         slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(segNode, labelmap)
         img = labelmap.GetImageData()
@@ -2733,10 +2826,10 @@ class SegmentationWidget(qt.QWidget):
         # normals before being thrown away by the per-label thresholding below.
         self.onProgressInfo("MergedVTK: MarchingCubes")
         mc = vtk.vtkDiscreteMarchingCubes(); mc.SetInputData(img)
-        foregroundLabels = [int(l) for l in np.unique(vtk_to_numpy(img.GetPointData().GetScalars())) if l]
-        mc.SetNumberOfContours(len(foregroundLabels))
-        for contourIndex, labelValue in enumerate(foregroundLabels):
-            mc.SetValue(contourIndex, labelValue)
+        foreground_labels = [int(l) for l in np.unique(vtk_to_numpy(img.GetPointData().GetScalars())) if l]
+        mc.SetNumberOfContours(len(foreground_labels))
+        for contour_index, label_value in enumerate(foreground_labels):
+            mc.SetValue(contour_index, label_value)
         mc.Update()
 
         # Clean + smooth
@@ -2749,29 +2842,29 @@ class SegmentationWidget(qt.QWidget):
 
         # Normales
         self.onProgressInfo("MergedVTK: Computing normals")
-        flatN = vtk.vtkPolyDataNormals(); flatN.SetInputConnection(ws.GetOutputPort())
-        flatN.ComputePointNormalsOff(); flatN.ComputeCellNormalsOn()
-        flatN.SplittingOff(); flatN.AutoOrientNormalsOn()
-        flatN.ConsistencyOn(); flatN.SetFeatureAngle(180); flatN.Update()
+        flat_n = vtk.vtkPolyDataNormals(); flat_n.SetInputConnection(ws.GetOutputPort())
+        flat_n.ComputePointNormalsOff(); flat_n.ComputeCellNormalsOn()
+        flat_n.SplittingOff(); flat_n.AutoOrientNormalsOn()
+        flat_n.ConsistencyOn(); flat_n.SetFeatureAngle(180); flat_n.Update()
 
-        rawPoly   = flatN.GetOutput()
-        labelArray = rawPoly.GetCellData().GetScalars()
-        labels     = np.unique(vtk_to_numpy(labelArray))
+        raw_poly   = flat_n.GetOutput()
+        label_array = raw_poly.GetCellData().GetScalars()
+        labels     = np.unique(vtk_to_numpy(label_array))
         append     = vtk.vtkAppendPolyData()
 
-        # Parcours des labels
-        for i, labelValue in enumerate(labels, start=1):
-            if labelValue == 0:
+        # Walk the labels
+        for i, label_value in enumerate(labels, start=1):
+            if label_value == 0:
                 continue
-            self.onProgressInfo(f"MergedVTK: Processing label {int(labelValue)} ({i}/{len(labels)})")
+            self.onProgressInfo(f"MergedVTK: Processing label {int(label_value)} ({i}/{len(labels)})")
 
             thresh = vtk.vtkThreshold()
-            thresh.SetInputData(rawPoly)
+            thresh.SetInputData(raw_poly)
             thresh.SetInputArrayToProcess(0,0,0,
                 vtk.vtkDataObject.FIELD_ASSOCIATION_CELLS,
-                labelArray.GetName())
-            thresh.SetLowerThreshold(labelValue)
-            thresh.SetUpperThreshold(labelValue)
+                label_array.GetName())
+            thresh.SetLowerThreshold(label_value)
+            thresh.SetUpperThreshold(label_value)
             thresh.SetThresholdFunction(vtk.vtkThreshold.THRESHOLD_BETWEEN)
             thresh.Update()
 
@@ -2784,11 +2877,11 @@ class SegmentationWidget(qt.QWidget):
 
             out = dec.GetOutput()
             from vtk.util.numpy_support import numpy_to_vtk
-            constLabel = numpy_to_vtk(
-                np.full(out.GetNumberOfCells(), int(labelValue), dtype=np.int32), deep=True)
-            constLabel.SetName("Label")
-            out.GetCellData().AddArray(constLabel)
-            out.GetCellData().SetScalars(constLabel)
+            const_label = numpy_to_vtk(
+                np.full(out.GetNumberOfCells(), int(label_value), dtype=np.int32), deep=True)
+            const_label.SetName("Label")
+            out.GetCellData().AddArray(const_label)
+            out.GetCellData().SetScalars(const_label)
 
             append.AddInputData(out)
 
@@ -2798,44 +2891,44 @@ class SegmentationWidget(qt.QWidget):
         # Transform + Write
         self.onProgressInfo("MergedVTK: Transform & Write")
         ijk2ras = vtk.vtkMatrix4x4(); labelmap.GetIJKToRASMatrix(ijk2ras)
-        parentMat = vtk.vtkMatrix4x4(); parentMat.Identity()
-        if refVol and refVol.GetParentTransformNode():
-            refVol.GetParentTransformNode().GetMatrixTransformToWorld(parentMat)
-        rasMat = vtk.vtkMatrix4x4(); vtk.vtkMatrix4x4.Multiply4x4(parentMat, ijk2ras, rasMat)
+        parent_mat = vtk.vtkMatrix4x4(); parent_mat.Identity()
+        if ref_vol and ref_vol.GetParentTransformNode():
+            ref_vol.GetParentTransformNode().GetMatrixTransformToWorld(parent_mat)
+        ras_mat = vtk.vtkMatrix4x4(); vtk.vtkMatrix4x4.Multiply4x4(parent_mat, ijk2ras, ras_mat)
 
-        rasT = vtk.vtkTransform(); rasT.SetMatrix(rasMat)
-        rasF = vtk.vtkTransformPolyDataFilter()
-        rasF.SetTransform(rasT); rasF.SetInputConnection(append.GetOutputPort()); rasF.Update()
-        lpsT = vtk.vtkTransform(); lpsT.Scale(-1,-1,1)
-        lpsF = vtk.vtkTransformPolyDataFilter(); lpsF.SetTransform(lpsT)
-        lpsF.SetInputConnection(rasF.GetOutputPort()); lpsF.Update()
+        ras_t = vtk.vtkTransform(); ras_t.SetMatrix(ras_mat)
+        ras_f = vtk.vtkTransformPolyDataFilter()
+        ras_f.SetTransform(ras_t); ras_f.SetInputConnection(append.GetOutputPort()); ras_f.Update()
+        lps_t = vtk.vtkTransform(); lps_t.Scale(-1,-1,1)
+        lps_f = vtk.vtkTransformPolyDataFilter(); lps_f.SetTransform(lps_t)
+        lps_f.SetInputConnection(ras_f.GetOutputPort()); lps_f.Update()
 
-        outPath = os.path.join(folderPath, f"{segNode.GetName()}_merged.vtk")
-        w = vtk.vtkPolyDataWriter(); w.SetFileName(outPath)
-        w.SetInputData(lpsF.GetOutput()); w.SetFileTypeToBinary(); w.Write()
+        out_path = os.path.join(folderPath, f"{segNode.GetName()}_merged.vtk")
+        w = vtk.vtkPolyDataWriter(); w.SetFileName(out_path)
+        w.SetInputData(lps_f.GetOutput()); w.SetFileTypeToBinary(); w.Write()
         slicer.mrmlScene.RemoveNode(labelmap)
 
         self.onProgressInfo("MergedVTK: Done")
 
 
     def _exportVTKPerLabel(self, segNode, folderPath):
-        """export un fichier VTK par segment + log via onProgressInfo."""
+        """Export one VTK file per segment, logging through onProgressInfo."""
         import vtk, os, re
         vtk.vtkObject.GlobalWarningDisplayOff()
         segNode.CreateClosedSurfaceRepresentation()
         seg       = segNode.GetSegmentation()
-        segSafe   = re.sub(r"[^0-9A-Za-z_-]+","_", segNode.GetName())
+        seg_safe   = re.sub(r"[^0-9A-Za-z_-]+","_", segNode.GetName())
         tr        = segNode.GetParentTransformNode()
-        parentMat = vtk.vtkMatrix4x4(); parentMat.Identity()
+        parent_mat = vtk.vtkMatrix4x4(); parent_mat.Identity()
         if tr:
-            tr.GetMatrixTransformToWorld(parentMat)
+            tr.GetMatrixTransformToWorld(parent_mat)
 
-        segmentIDs = seg.GetSegmentIDs()
-        total = len(segmentIDs)
-        for idx, segId in enumerate(segmentIDs, start=1):
+        segment_i_ds = seg.GetSegmentIDs()
+        total = len(segment_i_ds)
+        for idx, seg_id in enumerate(segment_i_ds, start=1):
             self.onProgressInfo(f"PerLabelVTK: Segment {idx}/{total}")
 
-            s    = seg.GetSegment(segId)
+            s    = seg.GetSegment(seg_id)
             poly = s.GetRepresentation("Closed surface")
             if not poly or poly.GetNumberOfPoints()==0:
                 continue
@@ -2848,29 +2941,29 @@ class SegmentationWidget(qt.QWidget):
             ws.NonManifoldSmoothingOn(); ws.NormalizeCoordinatesOn(); ws.Update()
 
             # Normales
-            flatN = vtk.vtkPolyDataNormals(); flatN.SetInputConnection(ws.GetOutputPort())
-            flatN.ComputePointNormalsOff(); flatN.ComputeCellNormalsOn()
-            flatN.SplittingOff(); flatN.AutoOrientNormalsOn()
-            flatN.ConsistencyOn(); flatN.SetFeatureAngle(180); flatN.Update()
+            flat_n = vtk.vtkPolyDataNormals(); flat_n.SetInputConnection(ws.GetOutputPort())
+            flat_n.ComputePointNormalsOff(); flat_n.ComputeCellNormalsOn()
+            flat_n.SplittingOff(); flat_n.AutoOrientNormalsOn()
+            flat_n.ConsistencyOn(); flat_n.SetFeatureAngle(180); flat_n.Update()
 
             # Decimation
             self.onProgressInfo(f"PerLabelVTK: Decimating {s.GetName()}")
             dec = vtk.vtkQuadricDecimation()
-            dec.SetInputConnection(flatN.GetOutputPort()); dec.SetTargetReduction(0.4); dec.Update()
+            dec.SetInputConnection(flat_n.GetOutputPort()); dec.SetTargetReduction(0.4); dec.Update()
 
             # Transform & Write
-            rasT = vtk.vtkTransform(); rasT.SetMatrix(parentMat)
-            rasF = vtk.vtkTransformPolyDataFilter(); rasF.SetTransform(rasT)
-            rasF.SetInputConnection(dec.GetOutputPort()); rasF.Update()
-            lpsT = vtk.vtkTransform(); lpsT.Scale(-1,-1,1)
-            lpsF = vtk.vtkTransformPolyDataFilter(); lpsF.SetTransform(lpsT)
-            lpsF.SetInputConnection(rasF.GetOutputPort()); lpsF.Update()
+            ras_t = vtk.vtkTransform(); ras_t.SetMatrix(parent_mat)
+            ras_f = vtk.vtkTransformPolyDataFilter(); ras_f.SetTransform(ras_t)
+            ras_f.SetInputConnection(dec.GetOutputPort()); ras_f.Update()
+            lps_t = vtk.vtkTransform(); lps_t.Scale(-1,-1,1)
+            lps_f = vtk.vtkTransformPolyDataFilter(); lps_f.SetTransform(lps_t)
+            lps_f.SetInputConnection(ras_f.GetOutputPort()); lps_f.Update()
 
-            labelSafe = re.sub(r"[^0-9A-Za-z_-]+","_", s.GetName())
-            outPath   = os.path.join(folderPath, f"{segSafe}_{labelSafe}.vtk")
-            self.onProgressInfo(f"PerLabelVTK: Writing {labelSafe}.vtk")
+            label_safe = re.sub(r"[^0-9A-Za-z_-]+","_", s.GetName())
+            out_path   = os.path.join(folderPath, f"{seg_safe}_{label_safe}.vtk")
+            self.onProgressInfo(f"PerLabelVTK: Writing {label_safe}.vtk")
             writer = vtk.vtkPolyDataWriter()
-            writer.SetFileName(outPath); writer.SetInputData(lpsF.GetOutput())
+            writer.SetFileName(out_path); writer.SetInputData(lps_f.GetOutput())
             writer.SetFileTypeToBinary(); writer.Write()
 
         self.onProgressInfo("PerLabelVTK: Done")
@@ -2880,9 +2973,9 @@ class SegmentationWidget(qt.QWidget):
         try:
             from OpenAnatomyExport import OpenAnatomyExportLogic
             logic = OpenAnatomyExportLogic()
-            shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-            segmentationItem = shNode.GetItemByDataNode(self.segmentationNodeSelector.currentNode())
-            logic.exportModel(segmentationItem, folderPath, self.reductionFactorSlider.value, "glTF")
+            sh_node = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+            segmentation_item = sh_node.GetItemByDataNode(self.segmentationNodeSelector.currentNode())
+            logic.exportModel(segmentation_item, folderPath, self.reductionFactorSlider.value, "glTF")
         except ImportError:
             if not tryInstall or not hasInternetConnection():
                 slicer.util.errorDisplay(
@@ -2894,26 +2987,26 @@ class SegmentationWidget(qt.QWidget):
 
     @classmethod
     def _installOpenAnatomyExtension(cls):
-        extensionManager = slicer.app.extensionsManagerModel()
-        extensionManager.setInteractive(False)
-        extName = "SlicerOpenAnatomy"
-        if extensionManager.isExtensionInstalled(extName):
+        extension_manager = slicer.app.extensionsManagerModel()
+        extension_manager.setInteractive(False)
+        ext_name = "SlicerOpenAnatomy"
+        if extension_manager.isExtensionInstalled(ext_name):
             return
 
-        success = extensionManager.installExtensionFromServer(extName, False, False)
+        success = extension_manager.installExtensionFromServer(ext_name, False, False)
         if not success:
             return
 
-        moduleName = "OpenAnatomyExport"
-        modulePath = extensionManager.extensionModulePaths(extName)[0] + f"/{moduleName}.py"
+        module_name = "OpenAnatomyExport"
+        module_path = extension_manager.extensionModulePaths(ext_name)[0] + f"/{module_name}.py"
         factory = slicer.app.moduleManager().factoryManager()
-        factory.registerModule(qt.QFileInfo(modulePath))
-        factory.loadModules([moduleName])
+        factory.registerModule(qt.QFileInfo(module_path))
+        factory.loadModules([module_name])
 
     @staticmethod
     def isNNUNetModuleInstalled():
         try:
-            import SlicerNNUNetLib
+            import SlicerNNUNetLib  # noqa: F401  (sonde de disponibilite)
             return True
         except ImportError:
             return False
@@ -2940,5 +3033,5 @@ class SegmentationWidget(qt.QWidget):
 
     @classmethod
     def nnUnetFolder(cls) -> Path:
-        fileDir = Path(__file__).parent
-        return fileDir.joinpath("..", "Resources", "ML").resolve()
+        file_dir = Path(__file__).parent
+        return file_dir.joinpath("..", "Resources", "ML").resolve()

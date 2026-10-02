@@ -26,9 +26,16 @@ ASO_IOS = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, ASO_IOS)
 sys.path.insert(0, os.path.join(ASO_IOS, "PRE_ASO_IOS"))
 
+# ADTLib, which the packages now import: a test suite is an entry point
+# like any other, nothing has put it on sys.path before it runs.
+_ADT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "ADT")
+if os.path.isdir(_ADT):
+    sys.path.insert(0, _ADT)
+
 from ASO_IOS_utils.utils import (  # noqa: E402
-    JawFromFileName, StripJawFromFileName, UpperOrLower)
+    JawFromFileName, PatientNumber, StripJawFromFileName, UpperOrLower)
 from ASO_IOS_utils.data_file import Files_vtk_link  # noqa: E402
+from ASO_IOS_utils.icp import npSameNumberPoint  # noqa: E402
 import PRE_ASO_IOS  # noqa: E402
 
 
@@ -258,6 +265,61 @@ class OrientationTest(unittest.TestCase):
         self.assertEqual(report["failed"], 1)
         self.assertEqual(report["errors"][0]["stage"], "teeth_for_jaw")
         self.assertIn("Lower teeth", report["errors"][0]["message"])
+
+
+class PatientNumberTest(unittest.TestCase):
+    """What PatientNumber answers, pinned because the name meant two things.
+
+    The module defined it twice. The first returned the first run of digits in
+    the name, as an int; the second returned the name with the jaw marker and
+    the extension cut off, as a str. Python keeps the last definition, so the
+    first was unreachable and the callers had always been getting the string.
+    Removing the dead one changes nothing -- these cases say what "nothing" is,
+    so the two never silently trade places again.
+    """
+
+    def test_returns_the_name_without_jaw_marker_or_extension(self):
+        self.assertEqual(PatientNumber("/data/P07_Upper.vtk"), "P07")
+        self.assertEqual(PatientNumber("/data/P07_Lower.vtk"), "P07")
+
+    def test_answers_a_string_not_a_number(self):
+        """The definition that returned an int is the one that was dead."""
+        self.assertIsInstance(PatientNumber("/data/P07_Upper.vtk"), str)
+
+    def test_a_name_holding_no_digit_is_still_answered(self):
+        """The int version raised or returned None here; this one does not."""
+        self.assertEqual(PatientNumber("/data/Dupont_Upper.vtk"), "Dupont")
+
+
+class SameNumberOfPointsTest(unittest.TestCase):
+    """Both clouds come back the same length, whichever one was larger.
+
+    The branch that trims the target read a name that was never bound, so it
+    raised NameError as soon as the source held fewer points than the target --
+    half the calls, and the three call sites in icp.py all go through here. The
+    branch that trims the source, right above it, shows what was meant.
+    """
+
+    def test_a_larger_source_is_trimmed(self):
+        source, target = npSameNumberPoint(np.zeros((50, 3)), np.ones((20, 3)))
+        self.assertEqual(source.shape, (20, 3))
+        self.assertEqual(target.shape, (20, 3))
+
+    def test_a_larger_target_is_trimmed(self):
+        """The case that used to raise."""
+        source, target = npSameNumberPoint(np.zeros((20, 3)), np.ones((50, 3)))
+        self.assertEqual(source.shape, (20, 3))
+        self.assertEqual(target.shape, (20, 3))
+
+    def test_the_trimmed_cloud_keeps_its_own_points(self):
+        """Trimming picks rows from the right array, not from the other one."""
+        _, target = npSameNumberPoint(np.zeros((3, 3)), np.ones((9, 3)))
+        self.assertTrue((target == 1).all())
+
+    def test_equal_sizes_are_left_alone(self):
+        source, target = npSameNumberPoint(np.zeros((7, 3)), np.ones((7, 3)))
+        self.assertEqual(source.shape, (7, 3))
+        self.assertEqual(target.shape, (7, 3))
 
 
 if __name__ == "__main__":

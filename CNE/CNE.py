@@ -1,32 +1,32 @@
 import os
 import shutil
-from typing import Annotated
-import urllib.request
 import vtk
 import slicer
 import qt
 from slicer.i18n import tr as _
-from slicer.i18n import translate
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 from slicer.parameterNodeWrapper import parameterNodeWrapper
-from slicer import vtkMRMLScalarVolumeNode
 import importlib
 
 import sys
-import logging
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+from ADTLib.logging_setup import get_logger
+
+
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("CNE")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("CNE")
 
 
 # Library dependency management
@@ -142,10 +142,10 @@ class CNE(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("CNE")
         self.parent.categories = ["Automated Dental Tools" ]
-        self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = ["Paul Dumont, University of North Carolina, Chapell Hill"]  
+        self.parent.dependencies = []
+        self.parent.contributors = ["Paul Dumont, University of North Carolina, Chapell Hill"]
         self.parent.helpText = _("""
-        This tool helps to create summaries of clinical notes. 
+        This tool helps to create summaries of clinical notes.
         See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools">documentation</a>.
         """)
         self.parent.acknowledgementText = _("""
@@ -195,9 +195,9 @@ class CNEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath("UI/CNE.ui"))
-        self.layout.addWidget(uiWidget)
-        self.ui = slicer.util.childWidgetVariables(uiWidget)
+        ui_widget = slicer.util.loadUI(self.resourcePath("UI/CNE.ui"))
+        self.layout.addWidget(ui_widget)
+        self.ui = slicer.util.childWidgetVariables(ui_widget)
 
         # Create logic class.
         self.logic = CNELogic()
@@ -277,7 +277,7 @@ class CNEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.setParameterNode(self.logic.getParameterNode())
 
-    def setParameterNode(self, inputParameterNode: CNEParameterNode | None) -> None:
+    def setParameterNode(self, input_parameter_node: CNEParameterNode | None) -> None:
         """
         Set and observe parameter node.
         Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
@@ -286,7 +286,7 @@ class CNEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self._parameterNode:
             self._parameterNode.disconnectGui(self._parameterNodeGuiTag)
             self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self._checkCanApply)
-        self._parameterNode = inputParameterNode
+        self._parameterNode = input_parameter_node
         if self._parameterNode:
             # Note: in the .ui file, a Qt dynamic property called "SlicerParameterName" is set on each
             # ui element that needs connection.
@@ -304,17 +304,19 @@ class CNEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onRunTestFilesButton(self) -> None:
         """Run test files when user clicks 'Run Test Files' button."""
-        with slicer.util.tryWithErrorDisplay(_("Failed to download test files."), waitCursor=True):
+        with slicer.util.tryWithErrorDisplay(_("Failed to prepare the test files."), waitCursor=True):
             # Get the selected notes type from parameter node
             self._updateParameterNodeFromGUI()
-            notesType = self._parameterNode.notesType
+            notes_type = self._parameterNode.notesType
             
             # Copy test files and get the paths
-            input_path, output_path = self.logic.copyTestFiles(notesType)
+            input_path, output_path = self.logic.copyTestFiles(notes_type)
             
-            # Update the folder paths in the UI
+            # Update the folder paths in the UI. An output already chosen is
+            # the user's own: we do not replace it with ours.
             self.ui.notesFolderLineEdit_input.currentPath = input_path
-            self.ui.notesFolderLineEdit_output.currentPath = output_path
+            if not self.ui.notesFolderLineEdit_output.currentPath:
+                self.ui.notesFolderLineEdit_output.currentPath = output_path
             self._updateParameterNodeFromGUI()
 
 
@@ -329,24 +331,24 @@ class CNEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             logger.info("CNE (Clinical Notes Extraction)")
             self._updateParameterNodeFromGUI()
 
-            notesFolder_input = self._parameterNode.notesFolder_input
-            notesType = self._parameterNode.notesType
-            notesFolder_output = self._parameterNode.notesFolder_output
+            notes_folder_input = self._parameterNode.notesFolder_input
+            notes_type = self._parameterNode.notesType
+            notes_folder_output = self._parameterNode.notesFolder_output
 
-            logger.info(f"Input folder   : {notesFolder_input}")
-            logger.info(f"Output folder  : {notesFolder_output}")
-            logger.info(f"Notes type     : {notesType}")
+            logger.info(f"Input folder   : {notes_folder_input}")
+            logger.info(f"Output folder  : {notes_folder_output}")
+            logger.info(f"Notes type     : {notes_type}")
 
-            cliNode = self.logic.process(
-                notesFolder_input,
-                notesType, notesFolder_output
+            cli_node = self.logic.process(
+                notes_folder_input,
+                notes_type, notes_folder_output
             )
 
-            if cliNode:
-                self.cliProgressBar.setCommandLineModuleNode(cliNode)
+            if cli_node:
+                self.cliProgressBar.setCommandLineModuleNode(cli_node)
                 self.cliProgressBar.visible = True
                 self.cliCancelButton.visible = True
-                self.addObserver(cliNode, slicer.vtkMRMLCommandLineModuleNode.StatusModifiedEvent, self.onCliFinished)
+                self.addObserver(cli_node, slicer.vtkMRMLCommandLineModuleNode.StatusModifiedEvent, self.onCliFinished)
 
 
     def onCancelCliButton(self) -> None:
@@ -369,7 +371,7 @@ class CNEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not self._parameterNode or self._updatingGUIFromParameterNode:
             return
 
-        wasModified = self._parameterNode.StartModify()
+        was_modified = self._parameterNode.StartModify()
 
         self._parameterNode.notesFolder_input = self.ui.notesFolderLineEdit_input.currentPath
         self._parameterNode.notesFolder_output = self.ui.notesFolderLineEdit_output.currentPath
@@ -381,7 +383,7 @@ class CNEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             self._parameterNode.notesType = ""
 
-        self._parameterNode.EndModify(wasModified)
+        self._parameterNode.EndModify(was_modified)
 
 
 
@@ -407,72 +409,62 @@ class CNELogic(ScriptedLoadableModuleLogic):
         return CNEParameterNode(super().getParameterNode())
     
     def copyTestFiles(self, notesType: str) -> tuple:
-        """Copy test files for the selected notes type from Resources/testfiles to SlicerDownloads/CNE/testfiles/{notesType}.
-        
+        """The example notes of this mode, and the folder to write their summaries.
+
+        The notes live in the repository: this is a copy, not a download. It
+        is redone on every call, which makes the button idempotent -- a note
+        erased by an earlier try comes back.
+
+        The output folder, on the other hand, is not in the repository: it is
+        created here, and nothing is copied into it. The previous version
+        looked for it next to the notes, did not find it (`logger.warning`
+        then `continue`), and still put its non-existent path in the field --
+        which the user saw in red without knowing why.
+
         Args:
             notesType: Either 'TMJ' or 'Ortho' to specify which test files to copy
-            
+
         Returns:
             tuple: (input_folder_path, output_folder_path)
         """
+        folders = {
+            "Ortho": ("input_Ortho", "output_Ortho"),
+            "TMJ": ("input_TMJ", "output_TMJ"),
+        }
+        if notesType not in folders:
+            raise ValueError(f"Unknown notes type: {notesType}")
+        input_folder, output_folder = folders[notesType]
+
         # Get the path to the testfiles directory (relative to this module)
-        moduleDir = os.path.dirname(__file__)
-        sourceTestFilesPath = os.path.join(moduleDir, "Resources", "testfiles")
-        
-        if not os.path.exists(sourceTestFilesPath):
-            raise FileNotFoundError(f"Test files directory not found: {sourceTestFilesPath}")
-        
+        module_dir = os.path.dirname(__file__)
+        source_folder = os.path.join(module_dir, "Resources", "testfiles", input_folder)
+
+        if not os.path.isdir(source_folder):
+            raise FileNotFoundError(
+                f"The {notesType} example notes are missing from the module: "
+                f"{source_folder}")
+
         # Define destination path in SlicerDownloads/CNE/testfiles/{notesType}
         documents = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
-        destBasePath = os.path.join(
+        dest_base_path = os.path.join(
             documents,
             slicer.app.applicationName + "Downloads",
             "CNE",
             "testfiles",
             notesType
         )
-        
-        # Create destination directory if it doesn't exist
-        if not os.path.exists(destBasePath):
-            os.makedirs(destBasePath)
-        
-        # Determine which folders to copy based on notesType
-        if notesType == "Ortho":
-            folders_to_copy = ["input_Ortho", "output_Ortho"]
-        elif notesType == "TMJ":
-            folders_to_copy = ["input_TMJ", "output_TMJ"]
-        else:
-            raise ValueError(f"Unknown notes type: {notesType}")
-        
-        # Copy only the relevant folders
-        for folder_name in folders_to_copy:
-            source_folder = os.path.join(sourceTestFilesPath, folder_name)
-            dest_folder = os.path.join(destBasePath, folder_name)
-            
-            if not os.path.exists(source_folder):
-                logger.warning(f"Source folder not found: {source_folder}")
-                continue
-            
-            # Remove destination if it already exists
-            if os.path.exists(dest_folder):
-                shutil.rmtree(dest_folder)
-            
-            # Copy the folder
-            shutil.copytree(source_folder, dest_folder)
-            logger.info(f"Test folder copied from {source_folder} to {dest_folder}")
-            logger.info(f"Test folder download: {dest_folder}")
-        
-        # Determine input and output paths
-        if notesType == "Ortho":
-            input_folder = "input_Ortho"
-            output_folder = "output_Ortho"
-        else:  # TMJ
-            input_folder = "input_TMJ"
-            output_folder = "output_TMJ"
-        
-        input_path = os.path.join(destBasePath, input_folder)
-        output_path = os.path.join(destBasePath, output_folder)
-        
+
+        input_path = os.path.join(dest_base_path, input_folder)
+        output_path = os.path.join(dest_base_path, output_folder)
+
+        # `dirs_exist_ok` puts the notes back without throwing the folder
+        # away: the earlier `rmtree` also erased what the user had put there.
+        shutil.copytree(source_folder, input_path, dirs_exist_ok=True)
+        logger.info(f"Test notes copied from {source_folder} to {input_path}")
+
+        os.makedirs(output_path, exist_ok=True)
+        logger.info(f"Test output folder ready: {output_path}")
+
         return input_path, output_path
     
     def getModelPath(self, notesType: str):
@@ -481,53 +473,53 @@ class CNELogic(ScriptedLoadableModuleLogic):
         # 1. Configuration of the model based on UI selection
         if notesType == "Ortho":
                 repo_id = "dcbia/Meta-Llama-3.1-8B-Instruct-Ortho"
-                fileName = "model-q4_0.gguf" 
-                localModelName = "Meta-Llama-3.1-8B-Ortho.gguf"
-                dialogText = "Downloading Max Ortho AI model (approx. 4.7 GB)..."
+                file_name = "model-q4_0.gguf"
+                local_model_name = "Meta-Llama-3.1-8B-Ortho.gguf"
+                dialog_text = "Downloading Max Ortho AI model (approx. 4.7 GB)..."
 
         # 1. Configuration of the model based on UI selection
         elif notesType == "TMJ":
                 repo_id = "dcbia/Qwen-2.5-7B-Instruct-TMJ"
-                fileName = "qwen-ft-q4_k_m.gguf"
-                localModelName = "Qwen-2.5-7B-TMJ.gguf"
-                dialogText = "Downloading Max TMJ AI model (approx. 4.4 GB)..."
+                file_name = "qwen-ft-q4_k_m.gguf"
+                local_model_name = "Qwen-2.5-7B-TMJ.gguf"
+                dialog_text = "Downloading Max TMJ AI model (approx. 4.4 GB)..."
 
 
-        modelUrl = f"https://huggingface.co/{repo_id}/resolve/main/{fileName}"
+        model_url = f"https://huggingface.co/{repo_id}/resolve/main/{file_name}"
         
         # 2. Directory structure
         documents = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
-        SlicerDownloadPath = os.path.join(
+        slicer_download_path = os.path.join(
             documents,
             slicer.app.applicationName + "Downloads",
             "CNE",
             "model"
         )
         
-        if not os.path.exists(SlicerDownloadPath):
-            os.makedirs(SlicerDownloadPath)
+        if not os.path.exists(slicer_download_path):
+            os.makedirs(slicer_download_path)
             
-        destPath = os.path.join(SlicerDownloadPath, localModelName)
+        dest_path = os.path.join(slicer_download_path, local_model_name)
 
         # 3. Check and download
-        if not os.path.exists(destPath):
-            logger.info(f"Downloading  model to: {destPath}")
+        if not os.path.exists(dest_path):
+            logger.info(f"Downloading  model to: {dest_path}")
             
             # --- Create the popup (QProgressDialog) ---
-            progressDialog = qt.QProgressDialog(dialogText, "Cancel", 0, 100)
-            progressDialog.setWindowTitle(f"CNE - Preparing AI Model")
-            progressDialog.setWindowModality(qt.Qt.WindowModal) 
-            progressDialog.setMinimumDuration(0)
-            progressDialog.show()
+            progress_dialog = qt.QProgressDialog(dialog_text, "Cancel", 0, 100)
+            progress_dialog.setWindowTitle(f"CNE - Preparing AI Model")
+            progress_dialog.setWindowModality(qt.Qt.WindowModal)
+            progress_dialog.setMinimumDuration(0)
+            progress_dialog.show()
 
             # --- Callback function to update the popup ---
             def download_progress(count, block_size, total_size):
-                if progressDialog.wasCanceled:
+                if progress_dialog.wasCanceled:
                     raise Exception("Download cancelled by user.")
                 
                 if total_size > 0:
                     percent = min(int((count * block_size * 100) / total_size), 100)
-                    progressDialog.setValue(percent)
+                    progress_dialog.setValue(percent)
                 
                 # Forces Slicer to refresh the UI (prevents freezing)
                 slicer.app.processEvents()
@@ -535,21 +527,21 @@ class CNELogic(ScriptedLoadableModuleLogic):
             # --- Start the download ---
             import urllib.request
             try:
-                urllib.request.urlretrieve(modelUrl, destPath, reporthook=download_progress)
-                progressDialog.setValue(100)
+                urllib.request.urlretrieve(model_url, dest_path, reporthook=download_progress)
+                progress_dialog.setValue(100)
                 slicer.util.showStatusMessage(f"AI model download completed!", 3000)
                 
             except Exception as e:
-                if os.path.exists(destPath):
-                    os.remove(destPath)
+                if os.path.exists(dest_path):
+                    os.remove(dest_path)
                 slicer.util.errorDisplay(f"Download failed or was cancelled: {e}")
-                progressDialog.close()
-                raise e 
+                progress_dialog.close()
+                raise e
                 
             finally:
-                progressDialog.close()
+                progress_dialog.close()
             
-        return destPath
+        return dest_path
 
     def process(self, notesFolder_input: str,
                 notesType: str, notesFolder_output: str) -> bool:
@@ -570,23 +562,23 @@ class CNELogic(ScriptedLoadableModuleLogic):
             return None
 
         try:
-            modelPath = self.getModelPath(notesType)
+            model_path = self.getModelPath(notesType)
         except Exception as e:
             slicer.util.errorDisplay(f"Failed to load model: {e}")
             return None
 
         os.makedirs(notesFolder_output, exist_ok=True)
 
-        CLI_module = slicer.modules.cne_cli
+        cli_module = slicer.modules.cne_cli
         parameters = {
             "notesFolder_input": notesFolder_input,
             "notesType": notesType,
             "notesFolder_output": notesFolder_output,
-            "modelPath": modelPath,
+            "modelPath": model_path,
         }
 
-        logger.info(f"Launching CLI with model: {modelPath}")
-        self.cliNode = slicer.cli.run(CLI_module, None, parameters)
+        logger.info(f"Launching CLI with model: {model_path}")
+        self.cliNode = slicer.cli.run(cli_module, None, parameters)
         self.cliNode.AddObserver(slicer.vtkMRMLCommandLineModuleNode.StatusModifiedEvent, self.onCliModified)
 
         return self.cliNode

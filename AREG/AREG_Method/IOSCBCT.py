@@ -1,31 +1,24 @@
 from AREG_Method.Method import Method, FindDentalModelSeg
 from AREG_Method import Review
 from AREG_Method.Progress import DisplayAREGIOSCBCT, DisplayALICBCT,DisplayASOIOS,DisplayASOCBCT,DisplayCrownSeg,DisplayALIIOS
-import webbrowser
 import os
 import slicer
-import json
-import time
-import qt
 import csv
 import platform
 
-import logging
-import sys
 # ===== Logging Configuration =====
-logger = logging.getLogger("AREG_Method_IOSCBCT")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+from ADTLib.model_registry import ADT_MODELS
+from ADTLib.naming import patient_id as read_patient_id, AREG_IOSCBCT_MARKERS
+from ADTLib.model_registry import ALIDDM, AREG_IOSCBCT_MODELS, ASO_CBCT_GOLD, ASO_CBCT_PRE, ASO_IOS_GOLD
+
+logger = get_logger("AREG_Method_IOSCBCT")
 
 
 class IOSCBCT(Method):
+    # --- interface description (see `Method`) ---
+    stacked_page = 4
+    scan_type = "IOSCBCT"
     def __init__(self, widget):
         super().__init__(widget)
 
@@ -44,8 +37,7 @@ class IOSCBCT(Method):
             for file in files:
                 file_name = os.path.basename(file).split(".")[0]
                 patient = (
-                    file_name.split("_scan")[0].split("_Scanreg")[0].split("_lm")[0]
-                )
+                    read_patient_id(file_name, AREG_IOSCBCT_MARKERS))
 
                 if patient not in patients.keys():
                     patients[patient] = {"dir": os.path.dirname(file), "lmrk": []}
@@ -58,8 +50,8 @@ class IOSCBCT(Method):
 
     def getReferenceList(self):
         return {
-            "Occlusal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Occlusal_Midsagittal_Plane.zip",
-            "Frankfurt Horizontal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Frankfurt_Horizontal_Midsagittal_Plane.zip",
+            "Occlusal and Midsagittal Plane": f"{ASO_CBCT_GOLD}/Occlusal_Midsagittal_Plane.zip",
+            "Frankfurt Horizontal and Midsagittal Plane": f"{ASO_CBCT_GOLD}/Frankfurt_Horizontal_Midsagittal_Plane.zip",
         }
 
     def TestReference(self, ref_folder: str):
@@ -82,33 +74,33 @@ class IOSCBCT(Method):
             out = "Please select at least 3 landmarks\n"
         return out
 
-    def TestModel(self, model_folder: str, lineEditName) -> str:
+    def TestModel(self, model_folder: str, line_edit_name) -> str:
 
-        if lineEditName == "lineEditModelSegOr":
+        if line_edit_name == "lineEditModelSegOr":
             if len(super().search(model_folder, "ckpt")["ckpt"]) == 0:
                 return "Folder must have Pre ASO models files"
             else:
                 return None
 
-        if lineEditName == "lineEditModelAli":
+        if line_edit_name == "lineEditModelAli":
             if len(super().search(model_folder, "pth")["pth"]) == 0:
                 return "Folder must have ALI models files"
             else:
                 return None
 
-    def TestProcess(self, **kwargs) -> str:
+    def TestProcess(self, request) -> str:
         out = ""
 
-        if kwargs["input_t1_folder"] == "":
+        if request.input_t1_folder == "":
             out += "Please select an input folder for IOS scans\n"
 
-        if kwargs["input_t2_folder"] == "":
+        if request.input_t2_folder == "":
             out += "Please select an input folder for CBCT scans\n"
             
-        if kwargs["folder_output"] == "":
+        if request.output_folder == "":
             out += "Please select an output folder\n"
 
-        if kwargs["add_in_namefile"] == "":
+        if request.add_in_namefile == "":
             out += "Please select a suffix\n"
 
         if out == "":
@@ -119,7 +111,7 @@ class IOSCBCT(Method):
     def getSegOrModelList(self):
         return (
             "PreASOModels",
-            "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_preASOmodels/PreASOModels.zip",
+            f"{ASO_CBCT_PRE}/PreASOModels.zip",
         )
 
     def getALIModelList(self):
@@ -158,7 +150,7 @@ class Semi_IOSCBCT(IOSCBCT):
     def getTestFileList(self):
         return (
             "Semi-Automated-Registration",
-            "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/AREG_IOSCBCT/TestFile.zip",
+            f"{AREG_IOSCBCT_MODELS}/TestFile.zip",
         )
 
     def TestScan(self,scan_folder_t1: str,scan_folder_t2: str,mask_folder_t1: str = None) -> str:
@@ -167,25 +159,25 @@ class Semi_IOSCBCT(IOSCBCT):
     def existsLandmark(self, input_dir, reference_dir, model_dir):
         return None
     
-    def TestProcess(self, **kwargs) -> str:
+    def TestProcess(self, request) -> str:
         out = ""
 
-        if kwargs["input_t1_folder"] == "":
+        if request.input_t1_folder == "":
             out += "Please select an input folder for IOS scans\n"
 
-        if kwargs["input_t2_folder"] == "":
+        if request.input_t2_folder == "":
             out += "Please select an input folder for CBCT scans\n"
             
-        if kwargs["folder_output"] == "":
+        if request.output_folder == "":
             out += "Please select an output folder\n"
 
-        if kwargs["model_folder_2"] == "":
+        if request.model_folder_2 == "":
             out += "Please select a CBCT Landmarks model folder\n"
 
-        if kwargs["model_folder_3"] == "":
+        if request.model_folder_3 == "":
             out += "Please select an IOS Landmarks model folder\n"
 
-        if kwargs["add_in_namefile"] == "":
+        if request.add_in_namefile == "":
             out += "Please select a suffix\n"
 
         if out == "":
@@ -196,16 +188,16 @@ class Semi_IOSCBCT(IOSCBCT):
     def getModelUrl(self):
         return {
             "CBCT": {
-                "Cranial Base": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Cranial_Base.zip",
-                "Lower Bones 1": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Bones_1.zip",
-                "Lower Bones 2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Bones_2.zip",
-                "Lower Left Teeth": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Left_Teeth.zip",
-                "Lower_Right_Teeth": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Right_Teeth.zip",
-                "Upper Bones v2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Upper_Bones_v2.zip",
-                "Upper Left Teeth v2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Upper_Left_Teeth_v2.zip",
-                "Upper Right Teeth v2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Upper_Right_Teeth_v2.zip",
+                "Cranial Base": f"{ADT_MODELS}/Cranial_Base.zip",
+                "Lower Bones 1": f"{ADT_MODELS}/Lower_Bones_1.zip",
+                "Lower Bones 2": f"{ADT_MODELS}/Lower_Bones_2.zip",
+                "Lower Left Teeth": f"{ADT_MODELS}/Lower_Left_Teeth.zip",
+                "Lower_Right_Teeth": f"{ADT_MODELS}/Lower_Right_Teeth.zip",
+                "Upper Bones v2": f"{ADT_MODELS}/Upper_Bones_v2.zip",
+                "Upper Left Teeth v2": f"{ADT_MODELS}/Upper_Left_Teeth_v2.zip",
+                "Upper Right Teeth v2": f"{ADT_MODELS}/Upper_Right_Teeth_v2.zip",
         },
-            "IOS": "https://github.com/baptistebaquero/ALIDDM/releases/download/v1.0.3/Models.zip",
+            "IOS": f"{ALIDDM}/Models.zip",
         }
     
     def getReferenceList(self):
@@ -233,7 +225,7 @@ class Semi_IOSCBCT(IOSCBCT):
                             writer.writerow([self.windows_to_linux_path(norm_file_path)])
         return csv_file
 
-    def getReviewSteps(self, **kwargs) -> list:
+    def getReviewSteps(self, request) -> list:
         """Pauses this mode can offer, in the order the run reaches them."""
         return Review.stepsFor([
             "ios_segmented",
@@ -242,25 +234,25 @@ class Semi_IOSCBCT(IOSCBCT):
             "ioscbct_registration",
         ])
 
-    def Process(self, **kwargs):
+    def Process(self, request):
 
-        nb_scan = self.NumberScan(kwargs["input_t1_folder"],kwargs["input_t2_folder"])
+        nb_scan = self.NumberScan(request.input_t1_folder,request.input_t2_folder)
         
         dentalmodelseg_path = FindDentalModelSeg()
 
         surf = "None"
         input_csv = "None"
         vtk_folder = "None"
-        if os.path.isfile(kwargs["input_t1_folder"]):
-            extension = os.path.splitext(kwargs["input_t1_folder"])[1]
+        if os.path.isfile(request.input_t1_folder):
+            extension = os.path.splitext(request.input_t1_folder)[1]
             if extension == ".vtk" or extension == ".stl":
-              surf = kwargs["input_t1_folder"]
+              surf = request.input_t1_folder
               
-        elif os.path.isdir(kwargs["input_t1_folder"]):
-          input_csv = self.create_csv(kwargs["input_t1_folder"],"liste_csv_file")
-          vtk_folder = kwargs["input_t1_folder"]
+        elif os.path.isdir(request.input_t1_folder):
+          input_csv = self.create_csv(request.input_t1_folder,"liste_csv_file")
+          vtk_folder = request.input_t1_folder
 
-        seg_ios_folder_path = os.path.join(kwargs["folder_output"],"Seg IOS")
+        seg_ios_folder_path = os.path.join(request.output_folder,"Seg IOS")
         os.makedirs(seg_ios_folder_path, exist_ok=True)
 
         parameter_seg = {
@@ -278,31 +270,31 @@ class Semi_IOSCBCT(IOSCBCT):
         }
 
         logger.info(f"Parameter CrownSegmentation :  {parameter_seg}")
-        SegProcess_IOS = slicer.modules.crownsegmentationcli
+        seg_process_ios = slicer.modules.crownsegmentationcli
         
         list_process = [
             {
-                "Process": SegProcess_IOS,
+                "Process": seg_process_ios,
                 "Parameter": parameter_seg,
                 "Module": "CrownSegmentationcli",
                 "ReviewId": "ios_segmented",
                 "ReviewFolder": seg_ios_folder_path,
                 "Display": DisplayCrownSeg(
-                    nb_scan, kwargs["logPath"],"Segmentation Patient"
+                    nb_scan, request.log_path,"Segmentation Patient"
                 ),
             }]
         
         temp_ali_cbct_folder = slicer.util.tempDirectory()
-        cbct_landmarks_folder_path = os.path.join(kwargs["folder_output"],"CBCT Landmarks")
+        cbct_landmarks_folder_path = os.path.join(request.output_folder,"CBCT Landmarks")
         os.makedirs(cbct_landmarks_folder_path, exist_ok=True)
 
         parameter_ali_cbct = {
-            "input": kwargs["input_t2_folder"],
-            "dir_models": kwargs["model_folder_2"],
+            "input": request.input_t2_folder,
+            "dir_models": request.model_folder_2,
             "lm_type": "'LL1O','LL3O','LL6O','LR1O','LR3O','LR6O','UL1O','UL3O','UL6O','UR1O','UR3O','UR6O'",
             "output_dir": cbct_landmarks_folder_path,
             "temp_fold": temp_ali_cbct_folder,
-            "DCMInput": kwargs["isDCMInput"],
+            "DCMInput": request.is_dicom_input,
             "spacing": "[1,0.3]",
             "speed_per_scale": "[1,1]",
             "agent_FOV": "[64,64,64]",
@@ -310,16 +302,16 @@ class Semi_IOSCBCT(IOSCBCT):
         }
         
         logger.info(f"Parameter ALI_CBCT :  {parameter_ali_cbct}")
-        ALIProcess_CBCT = slicer.modules.ali_cbct
+        ali_process_cbct = slicer.modules.ali_cbct
 
         list_process.append(
             {
-                "Process": ALIProcess_CBCT,
+                "Process": ali_process_cbct,
                 "Parameter": parameter_ali_cbct,
                 "Module": "ALI_CBCT",
                 "ReviewId": "cbct_landmarks_registration",
                 "ReviewFolder": cbct_landmarks_folder_path,
-                "ReviewReferenceFolder": kwargs["input_t2_folder"],
+                "ReviewReferenceFolder": request.input_t2_folder,
                 "Display": DisplayALICBCT(
                     12, nb_scan
                 ),
@@ -327,13 +319,13 @@ class Semi_IOSCBCT(IOSCBCT):
         )
         
         temp_ali_ios_folder = os.path.join(slicer.util.tempDirectory(), "process.log")
-        ios_landmarks_folder_path = os.path.join(kwargs["folder_output"],"IOS Landmarks")
+        ios_landmarks_folder_path = os.path.join(request.output_folder,"IOS Landmarks")
         os.makedirs(ios_landmarks_folder_path, exist_ok=True)
 
         # Key order matters: the values are passed positionally to the ALI_IOS CLI
         parameter_ali_ios = {
             "input": seg_ios_folder_path,
-            "dir_models": kwargs["model_folder_3"],
+            "dir_models": request.model_folder_3,
             "lm_type": "'O'",
             "teeth": "LL1 LL3 LL6 LR1 LR3 LR6 UL1 UL3 UL6 UR1 UR3 UR6'",
             "teeth_mg": "None",
@@ -346,10 +338,10 @@ class Semi_IOSCBCT(IOSCBCT):
 
         logger.info(f"Parameter ALI_IOS :  {parameter_ali_ios}")
 
-        ALIProcess_IOS = slicer.modules.ali_ios
+        ali_process_ios = slicer.modules.ali_ios
     
         list_process.append({
-                "Process": ALIProcess_IOS,
+                "Process": ali_process_ios,
                 "Parameter": parameter_ali_ios,
                 "Module": "ALI_IOS",
                 "ReviewId": "ios_landmarks",
@@ -360,28 +352,28 @@ class Semi_IOSCBCT(IOSCBCT):
                 ),
             })
         
-        registered_ios_folder_path = os.path.join(kwargs["folder_output"],"Registered IOS")
+        registered_ios_folder_path = os.path.join(request.output_folder,"Registered IOS")
         os.makedirs(registered_ios_folder_path, exist_ok=True)
 
-        parameter_areg_IOSCBCT = {
+        parameter_areg_ioscbct = {
             "IOS_folder": os.path.join(seg_ios_folder_path,"liste_csv_file_Seg"),
-            "CBCT_folder": kwargs["input_t2_folder"],
+            "CBCT_folder": request.input_t2_folder,
             "IOS_lm_folder": ios_landmarks_folder_path,
             "CBCT_lm_folder": cbct_landmarks_folder_path,
             "output": registered_ios_folder_path
         }
-        logger.info(f"Parameter reg: {parameter_areg_IOSCBCT}")
+        logger.info(f"Parameter reg: {parameter_areg_ioscbct}")
 
-        AREGProcess = slicer.modules.areg_ioscbct
+        areg_process = slicer.modules.areg_ioscbct
 
         list_process.append(
             {
-                "Process": AREGProcess,
-                "Parameter": parameter_areg_IOSCBCT,
+                "Process": areg_process,
+                "Parameter": parameter_areg_ioscbct,
                 "Module": "AREG IOSCBCT",
                 "ReviewId": "ioscbct_registration",
                 "ReviewFolder": registered_ios_folder_path,
-                "ReviewReferenceFolder": kwargs["input_t2_folder"],
+                "ReviewReferenceFolder": request.input_t2_folder,
                 "Display": DisplayAREGIOSCBCT(0),
             }
         )
@@ -392,7 +384,7 @@ class Reg_IOSCBCT(IOSCBCT):
     def getTestFileList(self):
         return (
             "Registration",
-            "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/AREG_IOSCBCT/RegTestFiles.zip",
+            f"{AREG_IOSCBCT_MODELS}/RegTestFiles.zip",
         )
 
     def TestScan(self,scan_folder_t1: str,scan_folder_t2: str,mask_folder_t1: str = None) -> str:
@@ -401,25 +393,25 @@ class Reg_IOSCBCT(IOSCBCT):
     def existsLandmark(self, input_dir, reference_dir, model_dir):
         return None
     
-    def TestProcess(self, **kwargs) -> str:
+    def TestProcess(self, request) -> str:
         out = ""
 
-        if kwargs["input_t1_folder"] == "":
+        if request.input_t1_folder == "":
             out += "Please select an input folder for IOS scans\n"
 
-        if kwargs["input_t2_folder"] == "":
+        if request.input_t2_folder == "":
             out += "Please select an input folder for CBCT scans\n"
 
-        if kwargs["input_t1_mask"] == "":
+        if request.input_t1_mask == "":
             out += "Please select an input folder for IOS Landmarks\n"
 
-        if kwargs["input_t2_landmarks"] == "":
+        if request.input_t2_landmarks == "":
             out += "Please select an input folder for CBCT Landmarks\n"
             
-        if kwargs["folder_output"] == "":
+        if request.output_folder == "":
             out += "Please select an output folder\n"
 
-        if kwargs["add_in_namefile"] == "":
+        if request.add_in_namefile == "":
             out += "Please select a suffix\n"
 
         if out == "":
@@ -433,32 +425,32 @@ class Reg_IOSCBCT(IOSCBCT):
     def getReferenceList(self):
         return None
 
-    def getReviewSteps(self, **kwargs) -> list:
+    def getReviewSteps(self, request) -> list:
         """Pauses this mode can offer, in the order the run reaches them."""
         return Review.stepsFor([
             "ioscbct_registration",
         ])
 
-    def Process(self, **kwargs):
+    def Process(self, request):
 
-        parameter_areg_IOSCBCT = {
-            "IOS_folder": kwargs["input_t1_folder"],
-            "CBCT_folder": kwargs["input_t2_folder"],
-            "IOS_lm_folder": kwargs["input_t1_mask"],
-            "CBCT_lm_folder": kwargs["input_t2_landmarks"],
-            "output": kwargs["folder_output"]
+        parameter_areg_ioscbct = {
+            "IOS_folder": request.input_t1_folder,
+            "CBCT_folder": request.input_t2_folder,
+            "IOS_lm_folder": request.input_t1_mask,
+            "CBCT_lm_folder": request.input_t2_landmarks,
+            "output": request.output_folder
         }
-        logger.info(f"Parameter reg: {parameter_areg_IOSCBCT}")
+        logger.info(f"Parameter reg: {parameter_areg_ioscbct}")
 
-        AREGProcess = slicer.modules.areg_ioscbct
+        areg_process = slicer.modules.areg_ioscbct
 
         list_process = [
             {
-                "Process": AREGProcess,
-                "Parameter": parameter_areg_IOSCBCT,
+                "Process": areg_process,
+                "Parameter": parameter_areg_ioscbct,
                 "Module": "AREG IOSCBCT",
                 "ReviewId": "ioscbct_registration",
-                "ReviewFolder": kwargs["folder_output"],
+                "ReviewFolder": request.output_folder,
                 "Display": DisplayAREGIOSCBCT(0),
             }
         ]
@@ -469,7 +461,7 @@ class Auto_IOSCBCT(IOSCBCT):
     def getTestFileList(self):
         return (
             "Fully-Automated-Registration",
-            "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/AREG_IOSCBCT/TestFile.zip",
+            f"{AREG_IOSCBCT_MODELS}/TestFile.zip",
         )
 
     def TestScan(self,scan_folder_t1: str,scan_folder_t2: str,mask_folder_t1: str = None) -> str:
@@ -478,28 +470,28 @@ class Auto_IOSCBCT(IOSCBCT):
     def existsLandmark(self, input_dir, reference_dir, model_dir):
         return None
     
-    def TestProcess(self, **kwargs) -> str:
+    def TestProcess(self, request) -> str:
         out = ""
 
-        if kwargs["input_t1_folder"] == "":
+        if request.input_t1_folder == "":
             out += "Please select an input folder for IOS scans\n"
 
-        if kwargs["input_t2_folder"] == "":
+        if request.input_t2_folder == "":
             out += "Please select an input folder for CBCT scans\n"
             
-        if kwargs["folder_output"] == "":
+        if request.output_folder == "":
             out += "Please select an output folder\n"
 
-        if kwargs["model_folder_1"] == "":
+        if request.model_folder_1 == "":
             out += "Please select an Orientation model folder\n"
 
-        if kwargs["model_folder_2"] == "":
+        if request.model_folder_2 == "":
             out += "Please select a CBCT Landmarks model folder\n"
 
-        if kwargs["model_folder_3"] == "":
+        if request.model_folder_3 == "":
             out += "Please select an IOS Landmarks model folder\n"
 
-        if kwargs["add_in_namefile"] == "":
+        if request.add_in_namefile == "":
             out += "Please select a suffix\n"
 
         if out == "":
@@ -510,28 +502,28 @@ class Auto_IOSCBCT(IOSCBCT):
     def getModelUrl(self):
         return {
             "Orientation": {
-                "PreASO": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_preASOmodels/PreASOModels.zip",
-                "Occlusal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Occlusal_Midsagittal_Plane.zip",
-                "Frankfurt Horizontal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Frankfurt_Horizontal_Midsagittal_Plane.zip",
-                "IOS":"https://github.com/HUTIN1/ASO/releases/download/v1.0.0/Gold_file.zip"
+                "PreASO": f"{ASO_CBCT_PRE}/PreASOModels.zip",
+                "Occlusal and Midsagittal Plane": f"{ASO_CBCT_GOLD}/Occlusal_Midsagittal_Plane.zip",
+                "Frankfurt Horizontal and Midsagittal Plane": f"{ASO_CBCT_GOLD}/Frankfurt_Horizontal_Midsagittal_Plane.zip",
+                "IOS":f"{ASO_IOS_GOLD}/Gold_file.zip"
             },
             "CBCT": {
-                "Cranial Base": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Cranial_Base.zip",
-                "Lower Bones 1": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Bones_1.zip",
-                "Lower Bones 2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Bones_2.zip",
-                "Lower Left Teeth": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Left_Teeth.zip",
-                "Lower_Right_Teeth": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Right_Teeth.zip",
-                "Upper Bones v2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Upper_Bones_v2.zip",
-                "Upper Left Teeth v2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Upper_Left_Teeth_v2.zip",
-                "Upper Right Teeth v2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Upper_Right_Teeth_v2.zip",
+                "Cranial Base": f"{ADT_MODELS}/Cranial_Base.zip",
+                "Lower Bones 1": f"{ADT_MODELS}/Lower_Bones_1.zip",
+                "Lower Bones 2": f"{ADT_MODELS}/Lower_Bones_2.zip",
+                "Lower Left Teeth": f"{ADT_MODELS}/Lower_Left_Teeth.zip",
+                "Lower_Right_Teeth": f"{ADT_MODELS}/Lower_Right_Teeth.zip",
+                "Upper Bones v2": f"{ADT_MODELS}/Upper_Bones_v2.zip",
+                "Upper Left Teeth v2": f"{ADT_MODELS}/Upper_Left_Teeth_v2.zip",
+                "Upper Right Teeth v2": f"{ADT_MODELS}/Upper_Right_Teeth_v2.zip",
         },
-            "IOS": "https://github.com/baptistebaquero/ALIDDM/releases/download/v1.0.3/Models.zip",
+            "IOS": f"{ALIDDM}/Models.zip",
         }
     
     def getReferenceList(self):
         return {
-            "Occlusal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Occlusal_Midsagittal_Plane.zip",
-            "Frankfurt Horizontal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Frankfurt_Horizontal_Midsagittal_Plane.zip",
+            "Occlusal and Midsagittal Plane": f"{ASO_CBCT_GOLD}/Occlusal_Midsagittal_Plane.zip",
+            "Frankfurt Horizontal and Midsagittal Plane": f"{ASO_CBCT_GOLD}/Frankfurt_Horizontal_Midsagittal_Plane.zip",
         }
 
     def ReferenceLandmarks(self, name_reference):
@@ -572,7 +564,7 @@ class Auto_IOSCBCT(IOSCBCT):
                             writer.writerow([self.windows_to_linux_path(norm_file_path)])
         return csv_file
 
-    def getReviewSteps(self, **kwargs) -> list:
+    def getReviewSteps(self, request) -> list:
         """Pauses this mode can offer, in the order the run reaches them."""
         return Review.stepsFor([
             "cbct_resampled",
@@ -585,17 +577,17 @@ class Auto_IOSCBCT(IOSCBCT):
             "ioscbct_registration",
         ])
 
-    def Process(self, **kwargs):
+    def Process(self, request):
 
-        nb_scan = self.NumberScan(kwargs["input_t1_folder"],kwargs["input_t2_folder"])
+        nb_scan = self.NumberScan(request.input_t1_folder,request.input_t2_folder)
 
-        resample_folder_path = os.path.join(kwargs["folder_output"],"CBCT Resampled")
+        resample_folder_path = os.path.join(request.output_folder,"CBCT Resampled")
         os.makedirs(resample_folder_path, exist_ok=True)
 
         parameter_resample_cbct = {
             "input_folder_MRI": "None",
             "input_folder_T2_MRI": "None",
-            "input_folder_CBCT": kwargs["input_t2_folder"],
+            "input_folder_CBCT": request.input_t2_folder,
             "input_folder_T2_CBCT": "None",
             "input_folder_Seg": "None",
             "input_folder_T2_Seg": "None",
@@ -606,13 +598,13 @@ class Auto_IOSCBCT(IOSCBCT):
         }
 
         logger.info(f"Parameter Resample_CBCT : {parameter_resample_cbct}")
-        ResampleProcess_CBCT = slicer.modules.mri2cbct_resample_cbct_mri
+        resample_process_cbct = slicer.modules.mri2cbct_resample_cbct_mri
 
         
         
         list_process = [
             {
-                "Process": ResampleProcess_CBCT,
+                "Process": resample_process_cbct,
                 "Parameter": parameter_resample_cbct,
                 "Module": "CBCT Resampling",
                 "ReviewId": "cbct_resampled",
@@ -623,25 +615,25 @@ class Auto_IOSCBCT(IOSCBCT):
             }
         ]
 
-        pre_aso_cbct_folder_path = os.path.join(kwargs["folder_output"],"PRE ASO CBCT")
+        pre_aso_cbct_folder_path = os.path.join(request.output_folder,"PRE ASO CBCT")
         os.makedirs(pre_aso_cbct_folder_path, exist_ok=True)
         temp_pre_aso_folder = slicer.util.tempDirectory()
 
         parameter_pre_aso_cbct = {
             "input": os.path.join(resample_folder_path,"CBCT"),
             "output_folder": pre_aso_cbct_folder_path,
-            "model_folder": os.path.join(kwargs["model_folder_1"], "PreASO"),
+            "model_folder": os.path.join(request.model_folder_1, "PreASO"),
             "SmallFOV": False,
             "temp_folder": temp_pre_aso_folder,
-            "DCMInput": kwargs["isDCMInput"],
+            "DCMInput": request.is_dicom_input,
         }
 
-        list_lmrk_str, nb_landmark = self.ReferenceLandmarks(kwargs["OrientReference"])
+        list_lmrk_str, nb_landmark = self.ReferenceLandmarks(request.OrientReference)
         temp_ali_cbct_aso_folder = slicer.util.tempDirectory()
 
         parameter_ali_cbct = {
             "input": pre_aso_cbct_folder_path,
-            "dir_models": kwargs["model_folder_2"],
+            "dir_models": request.model_folder_2,
             "lm_type": self.format_lm_string(list_lmrk_str),
             "output_dir": pre_aso_cbct_folder_path,
             "temp_fold": temp_ali_cbct_aso_folder,
@@ -652,12 +644,12 @@ class Auto_IOSCBCT(IOSCBCT):
             "spawn_radius": "10",
         }
 
-        oriented_cbct_folder_path = os.path.join(kwargs["folder_output"],"Oriented CBCT")
+        oriented_cbct_folder_path = os.path.join(request.output_folder,"Oriented CBCT")
         os.makedirs(oriented_cbct_folder_path, exist_ok=True)
 
         parameter_semi_aso_cbct = {
             "input": pre_aso_cbct_folder_path,
-            "gold_folder": os.path.join(kwargs["model_folder_1"], kwargs["OrientReference"]),
+            "gold_folder": os.path.join(request.model_folder_1, request.OrientReference),
             "output_folder": oriented_cbct_folder_path,
             "add_inname": "Or",
             "list_landmark": list_lmrk_str,
@@ -667,13 +659,13 @@ class Auto_IOSCBCT(IOSCBCT):
         logger.info(f"Parameter ALI_CBCT :  {parameter_ali_cbct}")
         logger.info(f"Parameter SEMI_ASO_CBCT : {parameter_semi_aso_cbct}")
         
-        PreOrientProcess_CBCT = slicer.modules.pre_aso_cbct
-        ALIProcess_CBCT = slicer.modules.ali_cbct
-        OrientProcess_CBCT = slicer.modules.semi_aso_cbct
+        pre_orient_process_cbct = slicer.modules.pre_aso_cbct
+        ali_process_cbct = slicer.modules.ali_cbct
+        orient_process_cbct = slicer.modules.semi_aso_cbct
         
         list_process.append(
             {
-                "Process": PreOrientProcess_CBCT,
+                "Process": pre_orient_process_cbct,
                 "Parameter": parameter_pre_aso_cbct,
                 "Module": "PRE_ASO_CBCT",
                 "Display": DisplayASOCBCT(
@@ -681,7 +673,7 @@ class Auto_IOSCBCT(IOSCBCT):
                 ),
             })
         list_process.append({
-                "Process": ALIProcess_CBCT,
+                "Process": ali_process_cbct,
                 "Parameter": parameter_ali_cbct,
                 "Module": "ALI_CBCT",
                 "ReviewId": "cbct_landmarks_orientation",
@@ -692,7 +684,7 @@ class Auto_IOSCBCT(IOSCBCT):
                 ),
             })
         list_process.append({
-                "Process": OrientProcess_CBCT,
+                "Process": orient_process_cbct,
                 "Parameter": parameter_semi_aso_cbct,
                 "Module": "SEMI_ASO_CBCT",
                 "ReviewId": "cbct_oriented",
@@ -707,19 +699,19 @@ class Auto_IOSCBCT(IOSCBCT):
         surf = "None"
         input_csv = "None"
         vtk_folder = "None"
-        if os.path.isfile(kwargs["input_t1_folder"]):
-            extension = os.path.splitext(kwargs["input_t1_folder"])[1]
+        if os.path.isfile(request.input_t1_folder):
+            extension = os.path.splitext(request.input_t1_folder)[1]
             if extension == ".vtk" or extension == ".stl":
-              surf = kwargs["input_t1_folder"]
+              surf = request.input_t1_folder
               
-        elif os.path.isdir(kwargs["input_t1_folder"]):
-          input_csv = self.create_csv(kwargs["input_t1_folder"],"liste_csv_file")
-          vtk_folder = kwargs["input_t1_folder"]
+        elif os.path.isdir(request.input_t1_folder):
+          input_csv = self.create_csv(request.input_t1_folder,"liste_csv_file")
+          vtk_folder = request.input_t1_folder
 
-        seg_ios_folder_path = os.path.join(kwargs["folder_output"],"Seg IOS")
+        seg_ios_folder_path = os.path.join(request.output_folder,"Seg IOS")
         os.makedirs(seg_ios_folder_path, exist_ok=True)
 
-        pre_aso_ios_folder_path = os.path.join(kwargs["folder_output"],"PRE ASO IOS")
+        pre_aso_ios_folder_path = os.path.join(request.output_folder,"PRE ASO IOS")
         os.makedirs(pre_aso_ios_folder_path, exist_ok=True)
 
         parameter_seg = {
@@ -762,37 +754,37 @@ class Auto_IOSCBCT(IOSCBCT):
         # relationship the link preserves is discarded two steps later anyway.
         parameter_pre_aso_ios = {
             "input": seg_ios_folder_path,
-            "gold_folder": os.path.join(kwargs["model_folder_1"],"IOS"),
+            "gold_folder": os.path.join(request.model_folder_1,"IOS"),
             "output_folder": pre_aso_ios_folder_path,
             "add_inname": "Or",
             "list_teeth": "UR6,UR4,UL4,UL6,LL6,LL4,LR4,LR6",
             "occlusion": "false",
             "jaw": "Upper/Lower",
             "folder_error": path_error,
-            "log_path": kwargs["logPath"],
+            "log_path": request.log_path,
         }
 
         logger.info(f"Parameter CrownSegmentation :  {parameter_seg}")
         logger.info(f"Parameter PRE_ASO_IOS :  {parameter_pre_aso_ios}")
 
-        PreOrientProcess_IOS = slicer.modules.pre_aso_ios
-        SegProcess_IOS = slicer.modules.crownsegmentationcli
-        OrientProcess_IOS = slicer.modules.semi_aso_ios
+        pre_orient_process_ios = slicer.modules.pre_aso_ios
+        seg_process_ios = slicer.modules.crownsegmentationcli
+        orient_process_ios = slicer.modules.semi_aso_ios
         
         
         list_process.append(
             {
-                "Process": SegProcess_IOS,
+                "Process": seg_process_ios,
                 "Parameter": parameter_seg,
                 "Module": "CrownSegmentationcli",
                 "ReviewId": "ios_segmented",
                 "ReviewFolder": seg_ios_folder_path,
                 "Display": DisplayCrownSeg(
-                    nb_scan, kwargs["logPath"],"Segmentation Patient"
+                    nb_scan, request.log_path,"Segmentation Patient"
                 ),
             })
         list_process.append({
-                "Process": PreOrientProcess_IOS,
+                "Process": pre_orient_process_ios,
                 "Parameter": parameter_pre_aso_ios,
                 "Module": "PRE_ASO_IOS",
                 "ReviewId": "ios_oriented",
@@ -801,21 +793,21 @@ class Auto_IOSCBCT(IOSCBCT):
                 # driven by one log line per arch: counting mouths made it read
                 # 200% by the end of the step.
                 "Display": DisplayASOIOS(
-                    2 * nb_scan, kwargs["logPath"],"Orient IOS Patient"
+                    2 * nb_scan, request.log_path,"Orient IOS Patient"
                 ),
             })
         
         temp_ali_cbct_folder = slicer.util.tempDirectory()
-        cbct_landmarks_folder_path = os.path.join(kwargs["folder_output"],"CBCT Landmarks")
+        cbct_landmarks_folder_path = os.path.join(request.output_folder,"CBCT Landmarks")
         os.makedirs(cbct_landmarks_folder_path, exist_ok=True)
 
         parameter_ali_cbct_2 = {
             "input": oriented_cbct_folder_path,
-            "dir_models": kwargs["model_folder_2"],
+            "dir_models": request.model_folder_2,
             "lm_type": "'LL1O','LL3O','LL6O','LR1O','LR3O','LR6O','UL1O','UL3O','UL6O','UR1O','UR3O','UR6O'",
             "output_dir": cbct_landmarks_folder_path,
             "temp_fold": temp_ali_cbct_folder,
-            "DCMInput": kwargs["isDCMInput"],
+            "DCMInput": request.is_dicom_input,
             "spacing": "[1,0.3]",
             "speed_per_scale": "[1,1]",
             "agent_FOV": "[64,64,64]",
@@ -826,7 +818,7 @@ class Auto_IOSCBCT(IOSCBCT):
 
         list_process.append(
             {
-                "Process": ALIProcess_CBCT,
+                "Process": ali_process_cbct,
                 "Parameter": parameter_ali_cbct_2,
                 "Module": "ALI_CBCT",
                 "ReviewId": "cbct_landmarks_registration",
@@ -839,13 +831,13 @@ class Auto_IOSCBCT(IOSCBCT):
         )
         
         temp_ali_ios_folder = os.path.join(slicer.util.tempDirectory(), "process.log")
-        ios_landmarks_folder_path = os.path.join(kwargs["folder_output"],"IOS Landmarks")
+        ios_landmarks_folder_path = os.path.join(request.output_folder,"IOS Landmarks")
         os.makedirs(ios_landmarks_folder_path, exist_ok=True)
 
         # Key order matters: the values are passed positionally to the ALI_IOS CLI
         parameter_ali_ios = {
             "input": pre_aso_ios_folder_path,
-            "dir_models": kwargs["model_folder_3"],
+            "dir_models": request.model_folder_3,
             "lm_type": "'O'",
             "teeth": "LL1 LL3 LL6 LR1 LR3 LR6 UL1 UL3 UL6 UR1 UR3 UR6'",
             "teeth_mg": "None",
@@ -858,10 +850,10 @@ class Auto_IOSCBCT(IOSCBCT):
 
         logger.info(f"Parameter ALI_IOS :  {parameter_ali_ios}")
 
-        ALIProcess_IOS = slicer.modules.ali_ios
+        ali_process_ios = slicer.modules.ali_ios
     
         list_process.append({
-                "Process": ALIProcess_IOS,
+                "Process": ali_process_ios,
                 "Parameter": parameter_ali_ios,
                 "Module": "ALI_IOS",
                 "ReviewId": "ios_landmarks",
@@ -872,24 +864,24 @@ class Auto_IOSCBCT(IOSCBCT):
                 ),
             })
         
-        registered_ios_folder_path = os.path.join(kwargs["folder_output"],"Registered IOS")
+        registered_ios_folder_path = os.path.join(request.output_folder,"Registered IOS")
         os.makedirs(registered_ios_folder_path, exist_ok=True)
 
-        parameter_areg_IOSCBCT = {
+        parameter_areg_ioscbct = {
             "IOS_folder": pre_aso_ios_folder_path,
             "CBCT_folder": oriented_cbct_folder_path,
             "IOS_lm_folder": ios_landmarks_folder_path,
             "CBCT_lm_folder": cbct_landmarks_folder_path,
             "output": registered_ios_folder_path
         }
-        logger.info(f"Parameter reg: {parameter_areg_IOSCBCT}")
+        logger.info(f"Parameter reg: {parameter_areg_ioscbct}")
 
-        AREGProcess = slicer.modules.areg_ioscbct
+        areg_process = slicer.modules.areg_ioscbct
 
         list_process.append(
             {
-                "Process": AREGProcess,
-                "Parameter": parameter_areg_IOSCBCT,
+                "Process": areg_process,
+                "Parameter": parameter_areg_ioscbct,
                 "Module": "AREG IOSCBCT",
                 "ReviewId": "ioscbct_registration",
                 "ReviewFolder": registered_ios_folder_path,

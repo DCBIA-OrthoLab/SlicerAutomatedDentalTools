@@ -2,21 +2,11 @@ from .Point import Point
 from .Line import Line
 import numpy as np
 from typing import Union
-import math
-import logging
-import sys
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("VFACE_measure")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("VFACE_measure")
 
 #Constant List
 #Describe where each tooth
@@ -39,7 +29,7 @@ class Measure:
 
     Explanation how compute measurement :
         - give the position of the landmark to the Measure class
-The position of the point have to be give by a dictionnary like this 
+The position of the point have to be give by a dictionnary like this
         position = {"T1":{"A":[0,3,1],"B":[0,3,5],...},
                   "T2":{"A":[8,3,5],"B":[9,2,5],...}}
 
@@ -307,7 +297,7 @@ class Distance(Measure):
         try :
             direction1 = lst_measurement[0][0:3]
             direction2 = lst_measurement[1][0:3]
-        except :
+        except Exception:
             logger.debug(f"No direction prefix on {lst_measurement}")
             direction1 = "No_direction"
             direction2 = "No_direction"
@@ -346,7 +336,7 @@ class Distance(Measure):
             try :
                 direction1 = lst_measurement[0][0]
                 direction2 = lst_measurement[1][0]
-            except :
+            except Exception:
                 logger.debug(f"No direction initial on {lst_measurement}")
                 direction1 = "No_direction"
                 direction2 = "No_direction"

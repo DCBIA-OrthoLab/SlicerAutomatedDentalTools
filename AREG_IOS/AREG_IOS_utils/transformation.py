@@ -2,65 +2,12 @@ import SimpleITK as sitk
 import numpy as np
 import vtk
 import os
-import logging
-import sys
+from ADTLib.geometry import ApplyTransform, RotationMatrix, TransformDict, TransformList, TransformSurf  # noqa: F401  (re-exported)
 # ===== Logging Configuration =====
-logger = logging.getLogger("AREG_IOS_transformation")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
 
+logger = get_logger("AREG_IOS_transformation")
 
-def RotationMatrix(axis, theta):
-    """
-    Return the rotation matrix associated with counterclockwise rotation about
-    the given axis by theta radians.
-
-    Parameters
-    ----------
-    axis : np.array
-        Axis of rotation
-    theta : float
-        Angle of rotation in radians
-
-    Returns
-    -------
-    np.array
-        Rotation matrix
-    """
-
-    axis = np.asarray(axis)
-    axis = axis / np.linalg.norm(axis)
-    a = np.cos(theta / 2.0)
-    b, c, d = -axis * np.sin(theta / 2.0)
-    aa, bb, cc, dd = a * a, b * b, c * c, d * d
-    bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
-    return np.array(
-        [
-            [aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
-            [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
-            [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc],
-        ]
-    )
-
-
-def TransformSurf(surf, matrix):
-    assert isinstance(surf, vtk.vtkPolyData)
-    surf_copy = vtk.vtkPolyData()
-    surf_copy.DeepCopy(surf)
-    surf = surf_copy
-
-    transform = vtk.vtkTransform()
-    transform.SetMatrix(np.reshape(matrix, 16))
-    surf = RotateTransform(surf, transform)
-
-    return surf
 
 def read_matrix(tfm_path):
     """
@@ -79,6 +26,19 @@ def read_matrix(tfm_path):
 
 def saveMatrixAsTfm(areg_matrix, aso_tfm_path, output_folder, patient_id, suffix, areg_mode):
     if areg_mode == "Auto_IOS":
+        # The same situation as the T1 copy in AREG_IOS ten lines above this
+        # call, which treats it as a warning: ASO produced no orientation
+        # transform for this timepoint. Read without checking, it came out as a
+        # SimpleITK HDF5 stack five frames deep, logged at ERROR, on a run whose
+        # registration had in fact succeeded and written its surfaces. What
+        # cannot be written is the COMPOSED transform, there being nothing to
+        # compose with -- so that is what the line says now.
+        if not aso_tfm_path or not os.path.exists(aso_tfm_path):
+            logger.warning(
+                "No ASO transform for %s at %s: the registered surfaces are "
+                "written, but not the composed %s_T2_SegOr%s.tfm",
+                patient_id, aso_tfm_path, patient_id, suffix)
+            return
         try:
             matrix_aso = read_matrix(aso_tfm_path)
         except Exception as e:
@@ -103,79 +63,11 @@ def saveMatrixAsTfm(areg_matrix, aso_tfm_path, output_folder, patient_id, suffix
 
 def RotateTransform(surf, transform):
 
-    transformFilter = vtk.vtkTransformPolyDataFilter()
-    transformFilter.SetTransform(transform)
-    transformFilter.SetInputData(surf)
-    transformFilter.Update()
-    return transformFilter.GetOutput()
-
-
-def TransformSurf(surf, matrix):
-    assert isinstance(surf, vtk.vtkPolyData)
-    surf_copy = vtk.vtkPolyData()
-    surf_copy.DeepCopy(surf)
-    surf = surf_copy
-
-    transform = vtk.vtkTransform()
-    transform.SetMatrix(np.reshape(matrix, 16))
-    surf = RotateTransform(surf, transform)
-
-    return surf
-
-
-def TransformList(input, matrix):
-    type = np.array
-    if isinstance(input, list):
-        input = np.array(input)
-        type = list
-
-    a = np.ones((input.shape[0], 1))
-
-    input = np.hstack((input, a))
-    matrix = matrix[:3, :]
-    input = np.matmul(matrix, input.T).T
-
-    if isinstance(type, list):
-        input = input.tolist()
-
-    return input
-
-
-def ApplyTransform(input, transform):
-    if isinstance(input, vtk.vtkPolyData):
-        input = TransformSurf(input, transform)
-
-    if isinstance(input, dict):
-        input = TransformDict(input, transform)
-
-    if isinstance(input, (list, np.ndarray)):
-        input = TransformList(input, transform)
-
-    return input
-
-
-def TransformDict(source, transform):
-    """
-    Apply a transform matrix to a set of landmarks
-
-    Parameters
-    ----------
-    source : dict
-        Dictionary of landmarks
-    transform : np.array
-        Transform matrix
-
-    Returns
-    -------
-    source : dict
-        Dictionary of transformed landmarks
-    """
-
-    sourcee = source.copy()
-    for key in sourcee.keys():
-        sourcee[key] = transform @ np.append(sourcee[key], 1)
-        sourcee[key] = sourcee[key][:3]
-    return sourcee
+    transform_filter = vtk.vtkTransformPolyDataFilter()
+    transform_filter.SetTransform(transform)
+    transform_filter.SetInputData(surf)
+    transform_filter.Update()
+    return transform_filter.GetOutput()
 
 
 def ScaleSurf(surf, mean_arr=None, scale_factor=None):

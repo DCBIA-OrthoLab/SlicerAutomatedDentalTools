@@ -2,30 +2,32 @@
 
 import argparse
 import os
-import re
 import shutil
-from pathlib import Path
 
 import sys
-import logging
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_CLI_Approx")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("MRI2CBCT_CLI_Approx")
 
 # realpath, not __file__: this CLI sits in a sub-folder, so it is registered
 # through a flat folder of symlinks into the source tree. __file__ then names
 # the link, whose parent holds no MRI2CBCT_CLI_utils. Resolving first lands in
 # MRI2CBCT_CLI either way; a built install has the package on sys.path already.
 fpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")
+
 sys.path.append(fpath)
 from MRI2CBCT_CLI_utils import approximation, get_transformation, crop_volume
 
@@ -91,7 +93,7 @@ def delete_folder(folder_path):
     else:
         logger.info(f"The folder '{folder_path}' does not exist.")
         
-def run_script_crop_volumes(ROI_file, transformation_folder, first_approximation_folder, cbct_folder, output_folder):
+def run_script_crop_volumes(roi_file, transformation_folder, first_approximation_folder, cbct_folder, output_folder):
     """
     Crops the CBCT volumes and MRI volumes based on the ROI and saves the results.
 
@@ -108,7 +110,7 @@ def run_script_crop_volumes(ROI_file, transformation_folder, first_approximation
     
     cropped_cbct_folder = os.path.join(output_folder, "cropped_cbct")
     create_folder(cropped_cbct_folder)
-    crop_volume(ROI_file, transformation_folder, first_approximation_folder, cbct_folder, cropped_cbct_folder)
+    crop_volume(roi_file, transformation_folder, first_approximation_folder, cbct_folder, cropped_cbct_folder)
 
 def main():
     parser = argparse.ArgumentParser(description="Run multiple Python scripts with arguments")

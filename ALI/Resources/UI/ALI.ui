@@ -461,7 +461,7 @@ QProgressBar::chunk {
         <item>
          <widget class="QPushButton" name="DownloadTestPushButton">
           <property name="toolTip">
-           <string>Initiate download of a test scan (~ 100MB) using an URL opened in default system browser</string>
+           <string>Download the published test scans if they are missing, then fill in the scan, model and output folders so the run can be started.</string>
           </property>
           <property name="text">
            <string>Download Test file</string>

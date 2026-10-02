@@ -26,9 +26,9 @@ class Signal(object):
 
     def connect(self, slot):
         assert slot, "Chosen slot should be a callable"
-        nextId = next(self._id)
-        self._connectDict[nextId] = slot
-        return nextId
+        next_id = next(self._id)
+        self._connectDict[next_id] = slot
+        return next_id
 
     def disconnect(self, connectId):
         if connectId in self._connectDict:
@@ -37,8 +37,8 @@ class Signal(object):
         return False
 
     def disconnectAll(self):
-        for connectId in list(self._connectDict.keys()):
-            self.disconnect(connectId)
+        for connect_id in list(self._connectDict.keys()):
+            self.disconnect(connect_id)
 
     def blockSignals(self, isBlocked):
         self._isSignalBlocked = isBlocked

@@ -8,39 +8,45 @@ Authors :
 """
 
 import os
-import logging
 import glob
 import time
 import shutil
-import subprocess
 import sys
 
 import vtk, qt, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin, pip_install
-from slicer import vtkMRMLCommandLineModuleNode
-import webbrowser
 try:
     import importlib.metadata as importlib_metadata
 except ImportError:
     import importlib_metadata
-import importlib
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+# This has to run before the first import of anything local, not just before
+# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+from ADTLib.logging_setup import get_logger
+
+from ADTLib.model_registry import AMASSS_CBCT, AMASSS_TEST_SCAN
+from ADTLib.testdata import TestDataError, ensure_with_progress
+from ADTLib.theming import update_line_edit_and_combo_box
+from ADTLib.env.deps import (
+    TORCH_FAMILY, check_lib_installed as lib_satisfies, requirement,
+    torch_cuda_conflict)
+from ADTLib.env.cuda import torch_install_arguments
+import platform
 
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("AMASSS")
-logger.setLevel(logging.INFO)
-
-logger.propagate = False
-
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("AMASSS")
 
 # torch 2.2.0 is compiled against numpy 1.x: numpy>=2 breaks every torch import
 # with "_ARRAY_API not found", including in the nnUNet subprocesses.
@@ -71,39 +77,40 @@ def fix_numpy_version():
         return True
     return False
 
-def check_lib_installed(lib_name, required_version=None,system="Windows"):
+def check_lib_installed(lib_name, required_version=None, system=None):
     '''
     Check if the library with the good version (if needed) is already installed in the slicer environment
     input: lib_name (str) : name of the library
             required_version (str) : required version of the library (if None, any version is accepted)
     output: bool : True if the library is installed with the good version, False otherwise
-    '''
-    if system == "Windows":
-      lib_torch = ["torch","torchvision","torchaudio"]
-      list_cuda_version =[]
-      if lib_name in lib_torch:
-        for lib_str in lib_torch:
-          try:
-            lib = importlib.import_module(lib_str)
-            cuda_version = lib.__version__.split('cu')[1]
-            list_cuda_version.append(cuda_version)
-          except:
-            return False
-        for i in range(len(list_cuda_version)-1):
-          if list_cuda_version[i] != list_cuda_version[i+1]:
-            return False
-          else:
-            return True
 
-    try:
-        installed_version = _get_installed_version(lib_name)
-        # check if the version is the good one - if required_version != None it's considered as a True
-        if required_version and installed_version != required_version:
-          return False
-        else:
-          return True
-    except importlib_metadata.PackageNotFoundError:
-        return False
+    `system` no longer changes the answer -- it used to gate the CUDA check on
+    Windows -- but the call site still passes it and it says which platform the
+    install branch will take, so it stays.
+    '''
+    if lib_name in TORCH_FAMILY and torch_cuda_conflict():
+      # Only an EXPLICIT disagreement counts: two members declaring different
+      # +cuXXX builds. A mismatch there imports fine and fails much later,
+      # inside a model, with an `undefined symbol` nobody can read back to its
+      # cause -- and the copy this replaces compared the first pair only, so a
+      # torchaudio out of step with the other two answered "agree".
+      #
+      # The strict `torch_cuda_builds_agree` was wired here first, and it cried
+      # wolf: a plain PyPI wheel carries no +cuXXX label at all, so a perfectly
+      # matching trio -- torch 2.2.0, torchvision 0.17.0, torchaudio 2.2.0 --
+      # was reported non-conforming and the dialog offered to "update torch
+      # 2.2.0 -> 2.2.0", which blocked the run for nothing.
+      #
+      # What is given up: a CPU wheel is no longer force-replaced by a CUDA
+      # one. That never happened on Linux anyway, and refusing to run over a
+      # label that says nothing is worse than running on a wheel that works.
+      return False
+
+    # And the version itself, which string equality could not answer: a `>=`
+    # constraint never matched, so dicom2nifti and nnunetv2 were proposed for
+    # reinstallation at every run, on every machine; and `2.2.0+cu118` read as
+    # "not 2.2.0", so a CUDA wheel always looked wrong.
+    return lib_satisfies(lib_name, required_version)
 
 def install_function(self,list_libs:list,system:str):
     '''
@@ -119,7 +126,7 @@ def install_function(self,list_libs:list,system:str):
               # check if the library is already installed
               if _get_installed_version(lib):
                 libs_to_update.append((lib, version))
-            except:
+            except Exception:
               libs_to_install.append((lib, version))
 
     if libs_to_install or libs_to_update:
@@ -134,7 +141,7 @@ def install_function(self,list_libs:list,system:str):
 
           if libs_to_install:
               message += "\nLibraries to install:\n"
-              message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
+              message += "\n".join([requirement(lib, version) for lib, version in libs_to_install])
 
           message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
           message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
@@ -153,33 +160,22 @@ def install_function(self,list_libs:list,system:str):
                 already_installed =False
                 for lib, version in libs_to_install:
                   if lib == "torch" or lib=="torchvision" or lib== "torchaudio":
-                    try:
-                      import torch
-                      if torch.cuda.is_available():
-                        cuda_version = torch.version.cuda
-                        if cuda_version =="11.8" or cuda_version=="12.1":
-                          cuda_version= f"cu{cuda_version.replace('.','')}"
-                        elif float(cuda_version) > 12.1:
-                          cuda_version = "cu121"
-                        elif 11.8 < float(cuda_version) < 12.1:
-                          cuda_version = "cu118"
-                        else:
-                          cuda_version = "cu118"
-                      else:
-                        raise RuntimeError("CUDA is not available")
-                    except ImportError:
-                      cuda_version = "cu121"
-                    except RuntimeError:
-                      cuda_version = "cu121"
-
+                    # The channel used to be read off the CUDA the *installed*
+                    # torch was built for, which answers what is there rather
+                    # than what this GPU needs, and mapped everything above 12.1
+                    # back down to cu121 - the one build an RTX 50 series cannot
+                    # run. It is read off the GPU now.
                     if not already_installed:
                       already_installed = True
-                      pip_install(f'torch>=2.2.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/{cuda_version}')
+                      arguments = torch_install_arguments()
+                      if arguments is None:
+                        logger.info("the installed torch already serves this GPU")
+                      else:
+                        pip_install(arguments)
                       nb_installed += 3
 
                   else:
-                    lib_version = f'{lib}=={version}' if version else lib
-                    pip_install(lib_version)
+                    pip_install(requirement(lib, version))
                     nb_installed += 1
                   self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
 
@@ -191,15 +187,19 @@ def install_function(self,list_libs:list,system:str):
                 libs_to_pip = libs_to_install + libs_to_update
 
                 if any(lib in torch_libs for lib, version in libs_to_pip):
-                  pip_install(f'torch>=2.2.0 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118')
+                  # cu118 was hardcoded here, and its kernels stop at sm_90.
+                  arguments = torch_install_arguments()
+                  if arguments is None:
+                    logger.info("the installed torch already serves this GPU")
+                  else:
+                    pip_install(arguments)
                   nb_installed += sum(1 for lib, version in libs_to_pip if lib in torch_libs)
                   self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
 
                 for lib, version in libs_to_pip:
                   if lib in torch_libs:
                     continue
-                  lib_version = f'{lib}=={version}' if version else lib
-                  pip_install(lib_version)
+                  pip_install(requirement(lib, version))
                   nb_installed += 1
                   self.ui.nb_package.setText(f"Package: {nb_installed}/{len_libs}")
 
@@ -219,27 +219,29 @@ def GetSegGroup(group_landmark):
   return seg_group
 
 def PathFromNode(node):
-  storageNode=node.GetStorageNode()
-  if storageNode is not None:
-    filepath=storageNode.GetFullNameFromFileName()
+  storage_node=node.GetStorageNode()
+  if storage_node is not None:
+    filepath=storage_node.GetFullNameFromFileName()
   else:
     filepath=None
   return filepath
 
 def createProgressDialog(parent=None, value=0, maximum=100, windowTitle="Starting..."):
     # import qt # qt.qVersion()
-    progressIndicator = qt.QProgressDialog()  #(parent if parent else self.mainWindow())
-    progressIndicator.minimumDuration = 0
-    progressIndicator.maximum = maximum
-    progressIndicator.value = value
-    progressIndicator.windowTitle = windowTitle
-    return progressIndicator
+    progress_indicator = qt.QProgressDialog()  #(parent if parent else self.mainWindow())
+    progress_indicator.minimumDuration = 0
+    progress_indicator.maximum = maximum
+    progress_indicator.value = value
+    progress_indicator.windowTitle = windowTitle
+    return progress_indicator
 
 #========= GLOBAL VARIABLES =========
 
-# MODEL_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.0-alpha/ALL_MODELS.zip'
-MODEL_LINK = 'https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/tag/AMASSS_CBCT'
-SCAN_LINK = 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz'
+# The nnUNet model archive, the same one AREG and VFACE already download. The
+# previous link pointed at `releases/tag/...`, the web page of the release:
+# GitHub serves it with a 200, and nothing comes out of it but a browser tab.
+MODEL_LINK = f"{AMASSS_CBCT}/AMASSS_Models.zip"
+SCAN_LINK = AMASSS_TEST_SCAN
 
 GROUPS_FF_SEG = {
   "Bones" : ["Mandible","Maxilla","Cranial base","Cervical vertebra"],
@@ -285,10 +287,10 @@ class AMASSS(ScriptedLoadableModule):
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "AMASSS"  # TODO: make this more human readable by adding spaces
+    self.parent.title = "AMASSS"
     self.parent.categories = ["Automated Dental Tools"]  # set categories (folders where the module shows up in the module selector)
-    self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-    self.parent.contributors = ["Maxime Gillot (CPE Lyon & UoM), Baptiste Baquero (CPE Lyon & UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UoNC)"]  # TODO: replace with "Firstname Lastname (Organization)"
+    self.parent.dependencies = []
+    self.parent.contributors = ["Maxime Gillot (CPE Lyon & UoM), Baptiste Baquero (CPE Lyon & UoM), Lucia Cevidanes (UoM), Juan Carlos Prieto (UoNC)"]
     self.parent.helpText = """
       This is a module that will allow you to automatically perform segmentation of skull structures in your CBCT scans.
       """
@@ -349,18 +351,18 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # Load widget from .ui file (created by Qt Designer).
     # Additional widgets can be instantiated manually and added to self.layout.
-    uiWidget = slicer.util.loadUI(self.resourcePath('UI/AMASSS.ui'))
-    self.uiWidget = uiWidget  # Store reference for styling
-    self.layout.addWidget(uiWidget)
-    self.ui = slicer.util.childWidgetVariables(uiWidget)
+    ui_widget = slicer.util.loadUI(self.resourcePath('UI/AMASSS.ui'))
+    self.uiWidget = ui_widget  # Store reference for styling
+    self.layout.addWidget(ui_widget)
+    self.ui = slicer.util.childWidgetVariables(ui_widget)
     
     # Apply dark mode styling if needed
-    self._applyDarkModeStylesheet(uiWidget)
+    self._applyDarkModeStylesheet(ui_widget)
 
     # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
     # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
     # "setMRMLScene(vtkMRMLScene*)" slot.
-    uiWidget.setMRMLScene(slicer.mrmlScene)
+    ui_widget.setMRMLScene(slicer.mrmlScene)
 
     # Create logic class. Logic implements all computations that should be possible to run
     # in batch mode, without a graphical user interface.
@@ -391,7 +393,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # Download model
     self.ui.DownloadButton.connect('clicked(bool)',self.onDownloadButton)
-    self.ui.DownloadScanButton.connect('clicked(bool)',self.onDownloadScanButton)
+    self.ui.TestFilesButton.connect('clicked(bool)',self.onTestFilesButton)
+    self.UpdateTestFilesButton()
 
     #endregion
 
@@ -445,8 +448,9 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if isinstance(parent, qt.QLabel):
       try:
         parent.setStyleSheet(f"color: #{color.name().lstrip('#')};")
-      except:
-        pass
+      except (AttributeError, RuntimeError):
+          # A widget without that method, or whose C++ object is already gone.
+          pass
     
     # Recursively update all children
     if hasattr(parent, 'children'):
@@ -461,15 +465,15 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if isinstance(parent, qt.QCheckBox):
       try:
         parent.setStyleSheet("color: #ffffff;")
-      except:
-        pass
+      except (AttributeError, RuntimeError):
+          pass
     
     # Update QPushButton text color (for Switch tab selection button in LMTab)
     if isinstance(parent, qt.QPushButton):
       try:
         parent.setStyleSheet("color: #ffffff;")
-      except:
-        pass
+      except (AttributeError, RuntimeError):
+          pass
     
     # Recursively update all children
     if hasattr(parent, 'children'):
@@ -501,12 +505,12 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             for child in parent.children():
               try:
                 child.setStyleSheet("color: #ffffff; background-color: #3c3c3c;")
-              except:
-                pass
-        except:
-          pass
-    except:
-      pass
+              except (AttributeError, RuntimeError):
+                  pass
+        except (AttributeError, RuntimeError):
+            pass
+    except (AttributeError, RuntimeError):
+        pass
     
     # Recursively update all children
     if hasattr(parent, 'children'):
@@ -514,70 +518,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._updateMRMLNodeComboBoxColor(child)
 
   def _updateLineEditAndComboBoxDarkMode(self, parent):
-    """
-    Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
-    """
-    # Update QLabel
-    if isinstance(parent, qt.QLabel):
-      try:
-        parent.setStyleSheet("""
-          QLabel {
-            color: #ffffff;
-            font-weight: 500;
-          }
-        """)
-      except:
-        pass
-    
-    # Update QLineEdit
-    if isinstance(parent, qt.QLineEdit):
-      try:
-        parent.setStyleSheet("""
-          QLineEdit {
-            background-color: #3c3c3c;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 6px;
-            color: #ffffff;
-          }
-          QLineEdit:focus {
-            border: 2px solid #5dade2;
-          }
-        """)
-      except:
-        pass
-    
-    # Update QComboBox
-    if isinstance(parent, qt.QComboBox):
-      try:
-        parent.setStyleSheet("""
-          QComboBox {
-            background-color: #3c3c3c;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 4px 6px;
-            color: #ffffff;
-          }
-          QComboBox:focus {
-            border: 2px solid #5dade2;
-          }
-          QComboBox::drop-down {
-            width: 20px;
-            border: none;
-          }
-          QComboBox QAbstractItemView {
-            background-color: #3c3c3c;
-            color: #ffffff;
-            selection-background-color: #5dade2;
-          }
-        """)
-      except:
-        pass
-    
-    # Recursively update all children
-    if hasattr(parent, 'children'):
-      for child in parent.children():
-        self._updateLineEditAndComboBoxDarkMode(child)
+    """Shared recursive pass, kept as a method for the existing call sites."""
+    update_line_edit_and_combo_box(parent)
 
   def SwitchInputType(self,index):
 
@@ -616,12 +558,16 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if index == 2: # Segmentation Files
       self.isSegmentInputFunction(True)
 
-  def isSegmentInputFunction(self,SegInput):
+    # After the three branches: `isDCMInput` is only set at the end of the
+    # second one, and the state of the button depends on both flags.
+    self.UpdateTestFilesButton()
+
+  def isSegmentInputFunction(self,seg_input):
 
     # Set the value to True when checked and vice-versa
     # self.isSegmentInput = not self.isSegmentInput
 
-    if SegInput:
+    if seg_input:
       self.isSegmentInput = True
       self.isDCMInput = False
       self.ui.label_folder_select.setText("Segmentation's Folder")
@@ -637,33 +583,35 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.ui.PrePredInfo.setText("Number of scans to process : 0")
     # Set to invisble all the unnecessary input
 
-    self.ui.DownloadScanButton.setVisible(not SegInput)
-    self.ui.DownloadButton.setVisible(not SegInput)
-    self.ui.label_model_select.setVisible(not SegInput)
-    self.ui.lineEditModelPath.setVisible(not SegInput)
-    self.ui.SearchModelFolder.setVisible(not SegInput)
+    # The "Test Files" button stays visible: disabled and with the reason in a
+    # tooltip, it says why this mode has no test set, where hiding it looked
+    # like the button had vanished.
+    self.ui.DownloadButton.setVisible(not seg_input)
+    self.ui.label_model_select.setVisible(not seg_input)
+    self.ui.lineEditModelPath.setVisible(not seg_input)
+    self.ui.SearchModelFolder.setVisible(not seg_input)
 
-    self.ui.smallFOVCheckBox.setVisible(not SegInput)
-    self.ui.label_6.setVisible(not SegInput)
+    self.ui.smallFOVCheckBox.setVisible(not seg_input)
+    self.ui.label_6.setVisible(not seg_input)
 
     # OUTPUT
-    self.ui.CenterAllCheckBox.setVisible(not SegInput)
-    self.ui.SaveAdjustedCheckBox.setVisible(not SegInput)
+    self.ui.CenterAllCheckBox.setVisible(not seg_input)
+    self.ui.SaveAdjustedCheckBox.setVisible(not seg_input)
 
-    self.ui.label_2.setVisible(not SegInput)
-    self.ui.OutputTypecomboBox.setVisible(not SegInput)
+    self.ui.label_2.setVisible(not seg_input)
+    self.ui.OutputTypecomboBox.setVisible(not seg_input)
 
-    self.ui.label_9.setVisible(not SegInput)
-    self.ui.SaveId.setVisible(not SegInput)
+    self.ui.label_9.setVisible(not seg_input)
+    self.ui.SaveId.setVisible(not seg_input)
 
-    self.ui.checkBoxSurfaceSelect.setVisible(not SegInput)
+    self.ui.checkBoxSurfaceSelect.setVisible(not seg_input)
 
     # ADVANCED
-    self.ui.labelSmoothing.setVisible(SegInput)
-    self.ui.horizontalSliderSmoothing.setVisible(SegInput)
-    self.ui.spinBoxSmoothing.setVisible(SegInput)
+    self.ui.labelSmoothing.setVisible(seg_input)
+    self.ui.horizontalSliderSmoothing.setVisible(seg_input)
+    self.ui.spinBoxSmoothing.setVisible(seg_input)
 
-    self.ui.saveInFolder.setVisible(not SegInput)
+    self.ui.saveInFolder.setVisible(not seg_input)
 
     # self.ui..setVisible(not self.isSegmentInput)
 
@@ -679,19 +627,6 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     return selected
 
-  def CountFileWithExtention(self,path,extentions = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"], exception = ["Seg", "seg", "Pred"]):
-
-    count = 0
-    normpath = os.path.normpath("/".join([path, '**', '']))
-    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-        basename = os.path.basename(img_fn)
-
-        if True in [ext in basename for ext in extentions]:
-            if not True in [ex in basename for ex in exception]:
-                count += 1
-
-    return count
-
   def onSearchScanButton(self):
     file_explorer = qt.QFileDialog()
     # file_explorer.setFileMode(qt.QFileDialog.AnyFile)
@@ -699,11 +634,11 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     if scan_folder != '':
       if self.isSegmentInput:
-        nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],exception=["scan"])
+        nbr_scans = self.logic.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],exception=["scan"])
       elif self.isDCMInput:
         nbr_scans = len(os.listdir(scan_folder))
       else:
-        nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
+        nbr_scans = self.logic.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"])
       if nbr_scans == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
 
@@ -716,7 +651,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onSearchModelButton(self):
     model_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a model folder")
     if model_folder != '':
-      nbr_model = self.CountFileWithExtention(model_folder, [".pth"], [])
+      nbr_model = self.logic.CountFileWithExtention(model_folder, [".pth"], [])
       if nbr_model == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'No models found in the selected folder\nPlease select a folder containing .pth files\nYou can download the latest models with\n  "Download latest models" button')
 
@@ -724,22 +659,105 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.lineEditModelPath.setText(model_folder)
         self.model_ready = True
 
-  def openUrlInBrowser(self,url):
-    # on choisit firefox si dispo
-    browser = 'firefox' if shutil.which('firefox') else 'xdg-open'
-    env = os.environ.copy()
-    env['NO_AT_BRIDGE'] = '1'
-    subprocess.Popen(
-        [browser, url],
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
-  def onDownloadButton(self):
-        self.openUrlInBrowser(MODEL_LINK)
+  def DownloadPath(self):
+    """Where AMASSS keeps what it downloads, next to the other modules."""
+    documents = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
+    return os.path.join(documents, slicer.app.applicationName + "Downloads", "AMASSS")
 
-  def onDownloadScanButton(self):
-        self.openUrlInBrowser(SCAN_LINK)
+  def FindModelRoot(self, directory):
+    """The folder the CLI expects: the one holding the structure codes.
+
+    `AMASSS_Models.zip` unfolds into an `AMASSS_Models/`, so the extraction
+    folder is one level above what `FindModelFolder` looks for
+    (`<root>/<CODE>/**/...__nnUNetPlans__3d_fullres/fold_0`). Pointing the
+    field at the level above gives "no nnUNet model found".
+    """
+    codes = set(TRANSLATE.values())
+    for root, dirs, _files in os.walk(directory):
+      if codes.intersection(dirs):
+        return root
+    return directory
+
+  def DownloadModels(self):
+    """The nnUNet models, downloaded once. None on failure."""
+    try:
+      bundle = ensure_with_progress(
+        MODEL_LINK, os.path.join(self.DownloadPath(), "Models"), "Segmentation",
+        parent=self.parent, title="Downloading the AMASSS models (2 GB)...")
+    except (TestDataError, OSError) as error:
+      qt.QMessageBox.warning(self.parent, 'Warning',
+        'The AMASSS models could not be downloaded:\n%s' % error)
+      return None
+
+    model_folder = self.FindModelRoot(bundle)
+    self.ui.lineEditModelPath.setText(model_folder)
+    self.model_ready = True
+    return model_folder
+
+  def onDownloadButton(self):
+    self.DownloadModels()
+
+  def onTestFilesButton(self):
+    """Fetch the published test set for the current mode, and fill the fields.
+
+    The button that used to be here opened firefox on the release link and
+    filled in nothing: the user had to find the file again, put it away, then
+    browse to three fields by hand.
+    """
+    if self.isSegmentInput:
+      qt.QMessageBox.warning(self.parent, 'Warning',
+        'No test set is published for the Segmentation input mode.')
+      return
+    if self.isDCMInput:
+      qt.QMessageBox.warning(self.parent, 'Warning',
+        'No DICOM test set is published for AMASSS. Switch the input type to '
+        '"NIFTI, GIPL, NRRD" to get the published test scan.')
+      return
+
+    download_path = self.DownloadPath()
+    try:
+      scan_folder = ensure_with_progress(
+        SCAN_LINK, os.path.join(download_path, "Test_Files"), "MG_test_scan",
+        parent=self.parent, title="Downloading the AMASSS test scan (99 MB)...")
+    except (TestDataError, OSError) as error:
+      qt.QMessageBox.warning(self.parent, 'Warning',
+        'The AMASSS test scan could not be downloaded:\n%s' % error)
+      return
+
+    if self.DownloadModels() is None:
+      return
+
+    # The test scan is a folder: without this switch to "Folder as input",
+    # the required field we have just filled stays invisible, and it is the
+    # MRML node, empty, that the prediction would read.
+    self.ui.input_type_select.setCurrentIndex(1)
+    self.input_path = scan_folder
+    self.ui.lineEditScanPath.setText(scan_folder)
+    self.scan_count = self.logic.CountFileWithExtention(scan_folder)
+    self.ui.PrePredInfo.setText(
+      "Number of scans to process : " + str(self.scan_count))
+
+    # An output already chosen is the user's own; we do not touch it.
+    if self.ui.SaveFolderLineEdit.text == "":
+      output_folder = os.path.join(download_path, "Test_Files", "Segmentations")
+      os.makedirs(output_folder, exist_ok=True)
+      self.ui.SaveFolderLineEdit.setText(output_folder)
+
+  def UpdateTestFilesButton(self):
+    """The button is only offered for the modes whose test set is published."""
+    if self.isSegmentInput:
+      enabled, reason = False, (
+        'AMASSS publishes no test set for the Segmentation input mode.')
+    elif self.isDCMInput:
+      enabled, reason = False, (
+        'AMASSS publishes no DICOM test set. Switch the input type to '
+        '"NIFTI, GIPL, NRRD" to use the published test scan.')
+    else:
+      enabled, reason = True, (
+        'Download the published test scan (99 MB) and the segmentation models '
+        '(2 GB) once, then fill every required field')
+    self.ui.TestFilesButton.setEnabled(enabled)
+    self.ui.TestFilesButton.setToolTip(reason)
 
     #endregion
 
@@ -853,16 +871,19 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     try:
       logger.info('Prediction button clicked: starting prediction process...')
       
-      import platform
       
       # First, install the required libraries and their version
       try:
         list_libs = [
-          ('torch','2.2.0'),('torchvision', "0.17.0"),('torchaudio',"2.2.0"),
-          ('itk', None),('blosc2', None),('dicom2nifti', '2.6.2'),
+          # No version against the torch family: which build this machine needs
+          # is decided by torch_install_arguments, from the GPU, and a version
+          # written here would only make the check flag torch on every press --
+          # a 2.2.0 pin flagged the cu128 build an RTX 50 series depends on.
+          ('torch',None),('torchvision', None),('torchaudio',None),
+          ('itk', None),('blosc2', None),('dicom2nifti', '>=2.6.2'),
           # pydicom is kept on the version Slicer ships: downgrading it to 2.x breaks
           # dicomweb-client and highdicom, hence every DICOM module of Slicer.
-          ('pydicom', '3.0.2'),('einops',None),('nibabel',None),('nnunetv2','2.8.0'),
+          ('pydicom', '3.0.2'),('einops',None),('nibabel',None),('nnunetv2', '>=2.8.0'),
           ('numpy', NUMPY_PINNED_VERSION)
         ]
         logger.info('Checking/installing required libraries...')
@@ -870,7 +891,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         if not libs_installation:
           logger.error('User cancelled library installation or installation failed')
-          qt.QMessageBox.warning(self.parent, 'Warning', 
+          qt.QMessageBox.warning(self.parent, 'Warning',
             'The module will not work properly without the required libraries.\nPlease install them and try again.')
           return
       except Exception as e:
@@ -958,8 +979,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         param["prediction_ID"] = self.ui.SaveId.text
 
         # Create temp directory
-        documentsLocation = qt.QStandardPaths.DocumentsLocation
-        documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        documents_location = qt.QStandardPaths.DocumentsLocation
+        documents = qt.QStandardPaths.writableLocation(documents_location)
         temp_dir = os.path.join(documents, slicer.app.applicationName + "_temp_AMASSS")
         
         try:
@@ -1025,11 +1046,11 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       if status & caller.Completed:
           if status & caller.ErrorsMask:
 
-              errorText = caller.GetErrorText()
+              error_text = caller.GetErrorText()
               qt.QMessageBox.critical(
                   slicer.util.mainWindow(),
                   "AMASSS Error",
-                  f"Une erreur est survenue :\n\n{errorText}"
+                  f"An error occurred:\n\n{error_text}"
               )
           else:
               # End process
@@ -1041,7 +1062,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       if progress > 1:
           progress /= 100.0
 
-      # Number of ready scan 
+      # Number of ready scan
       done_scans = int(round(progress * self.scan_count))
       self.ui.PredScanLabel.setText(
           f"Scan ready for segmentation : {done_scans} / {self.scan_count}"
@@ -1097,8 +1118,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       except Exception as e:
         logger.warning(f'Could not retrieve process output: {e}')
 
-      stopTime = time.time()
-      elapsed_time = stopTime - self.startTime
+      stop_time = time.time()
+      elapsed_time = stop_time - self.startTime
       logger.info(f'Processing completed in {elapsed_time:.2f} seconds')
 
       self.RunningUI(False)
@@ -1120,16 +1141,16 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             try:
               if models not in LOADED_VTK_FILES.keys():
                 logger.debug(f'Loading VTK file: {models}')
-                modelNode = slicer.util.loadModel(models)
-                LOADED_VTK_FILES[models] = modelNode
+                model_node = slicer.util.loadModel(models)
+                LOADED_VTK_FILES[models] = model_node
 
                 # Edit display properties
-                displayNode = modelNode.GetDisplayNode()
-                displayNode.SetSliceIntersectionVisibility(True)
-                displayNode.SetSliceIntersectionThickness(2)
+                display_node = model_node.GetDisplayNode()
+                display_node.SetSliceIntersectionVisibility(True)
+                display_node.SetSliceIntersectionThickness(2)
                 
                 if "Skin" in models or "SKIN" in models:
-                  displayNode.SetOpacity(0.1)
+                  display_node.SetOpacity(0.1)
                   logger.debug(f'Set skin opacity to 0.1 for {models}')
             except Exception as e:
               logger.error(f'Error loading VTK file {models}: {e}')
@@ -1140,8 +1161,8 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             logger.debug('Root canal model detected, adjusting mandible/maxilla opacity')
             for model, node in LOADED_VTK_FILES.items():
               if True in [x in model for x in ["Mandible", "Maxilla"]]:
-                displayNode = node.GetDisplayNode()
-                displayNode.SetOpacity(0.2)
+                display_node = node.GetDisplayNode()
+                display_node.SetOpacity(0.2)
       except Exception as e:
         logger.error(f'Error loading VTK files: {e}')
 
@@ -1402,11 +1423,11 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # Select default input nodes if nothing is selected yet to save a few clicks for the user
     if not self._parameterNode.GetNodeReference("InputVolume"):
-      firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-      if firstVolumeNode:
-        self._parameterNode.SetNodeReferenceID("InputVolume", firstVolumeNode.GetID())
+      first_volume_node = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+      if first_volume_node:
+        self._parameterNode.SetNodeReferenceID("InputVolume", first_volume_node.GetID())
 
-  def setParameterNode(self, inputParameterNode):
+  def setParameterNode(self, input_parameter_node):
     """
     Set and observe parameter node.
     Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
@@ -1420,7 +1441,7 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # those are reflected immediately in the GUI.
     if self._parameterNode is not None:
       self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-    self._parameterNode = inputParameterNode
+    self._parameterNode = input_parameter_node
     if self._parameterNode is not None:
       self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
 
@@ -1452,10 +1473,10 @@ class AMASSSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if self._parameterNode is None or self._updatingGUIFromParameterNode:
       return
 
-    wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
+    was_modified = self._parameterNode.StartModify()  # Modify all properties in a single batch
 
 
-    self._parameterNode.EndModify(wasModified)
+    self._parameterNode.EndModify(was_modified)
 
     #endregion
 
@@ -1635,7 +1656,7 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
       logger.info(f'Processing started with parameters:{parameters}')
 
       try:
-        AMASSSProcess = slicer.modules.amasss_cli
+        amasss_process = slicer.modules.amasss_cli
         logger.debug('AMASSS CLI module loaded successfully')
       except Exception as e:
         logger.error(f'Failed to load AMASSS CLI module: {e}')
@@ -1643,13 +1664,25 @@ class AMASSSLogic(ScriptedLoadableModuleLogic):
 
       try:
         logger.info('Running AMASSS CLI module...')
-        self.cliNode = slicer.cli.run(AMASSSProcess, None, parameters)
+        self.cliNode = slicer.cli.run(amasss_process, None, parameters)
         logger.info('CLI node created and running')
       except Exception as e:
         logger.error(f'Error running CLI module: {e}')
         raise
 
-      return AMASSSProcess
+      return amasss_process
     except Exception as e:
       logger.error(f'Error in process: {e}')
       raise
+  def CountFileWithExtention(self,path,extentions = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"], exception = ["Seg", "seg", "Pred"]):
+
+    count = 0
+    normpath = os.path.normpath("/".join([path, '**', '']))
+    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
+        basename = os.path.basename(img_fn)
+
+        if True in [ext in basename for ext in extentions]:
+            if not True in [ex in basename for ex in exception]:
+                count += 1
+
+    return count

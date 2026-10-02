@@ -1,4 +1,4 @@
-import os, sys,logging, time, traceback, zipfile, urllib.request, shutil, glob
+import os, sys,time, traceback
 import vtk, qt, slicer
 from qt import (
     QWidget,
@@ -13,19 +13,8 @@ from qt import (
 )
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin, pip_install
-from functools import partialmethod
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("AREG")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
 
 # Slicer captures its own stdout through a pipe that it drains from the Qt event
 # loop, so whatever writes to the log needs that loop to keep running. A conda
@@ -54,6 +43,23 @@ MGL_DEFAULT_RADIUS = 5.0
 MGL_MIN_RADIUS = 0.0
 MGL_MAX_RADIUS = 20.0
 
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+# This has to run before the first import of anything local, not just before
+# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("AREG")
+
 from AREG_Method.IOS import Auto_IOS, Semi_IOS
 from AREG_Method.CBCT import Semi_CBCT, Auto_CBCT, Or_Auto_CBCT
 from AREG_Method.IOSCBCT import Auto_IOSCBCT,Semi_IOSCBCT,Reg_IOSCBCT
@@ -62,7 +68,6 @@ from AREG_Method.Progress import Display
 from AREG_Method import Review
 from AREG_Method.pip_install_window import PipInstallWindow
 
-from pathlib import Path
 import textwrap
 try:
     import importlib.metadata as importlib_metadata
@@ -75,6 +80,19 @@ import collections
 import subprocess
 import re
 
+from ADTLib.format import format_elapsed, elapsed_since
+from ADTLib.theming import update_line_edit_and_combo_box
+from ADTLib.env.deps import check_lib_installed as lib_satisfies, torch_cuda_conflict
+from ADTLib.env.cuda import torch_install_arguments, torch_needs_numpy1
+from ADTLib.env.conda import (
+    check_pythonpath, conda_quote, give_pythonpath,
+    init_conda as init_conda_call, check_lib_wsl as wsl_libraries_present,
+    windows_to_linux_path as windows_to_linux_path_shared)
+from ADTLib.format import format_timer
+from ADTLib.requests import AREGRequest
+from ADTLib.model_registry import SLICER_TESTING_DATA
+from ADTLib.testdata import ensure_with_progress, TestDataError
+
 
 def _get_installed_version(lib_name):
     try:
@@ -84,27 +102,67 @@ def _get_installed_version(lib_name):
 
 
 def check_lib_installed(lib_name, required_version=None):
-    '''
-    Check if the library is installed and meets the required version constraint (if any).
-    - lib_name: "torch"
-    - required_version: ">=1.10.0", "==0.7.0", "<2.0.0", etc.
-    '''
-    try:
-        installed_version = _get_installed_version(lib_name)
-        if required_version:
-            # Simple version check - for minimal change, assume it's satisfied if installed
-            # In future, could use packaging to parse required_version
-            pass
-        return True
-    except importlib_metadata.PackageNotFoundError:
-        return False
+    """Whether the library is installed and satisfies the constraint."""
+    return lib_satisfies(lib_name, required_version)
 
 # import csv
 
-def install_function(self,list_libs:list):
+def torch_requirements_for_this_gpu():
+    """The pip arguments for a torch this GPU can run, or None to change nothing.
+
+    This replaces a `torch==2.2.0` that every branch carried. That pin resolves
+    to a cu121 wheel whose kernels stop at sm_90, so on an RTX 50 series it
+    installed cleanly, answered `torch.cuda.is_available()` with True, and then
+    failed every single kernel launch with "no kernel image is available" - a
+    message that names neither torch nor the wheel, and sent the diagnosis
+    looking at the driver, the machine and the data instead.
+
+    None covers three cases that all mean "leave it alone": the installed stack
+    already serves this GPU, there is no GPU to serve, or no published wheel
+    covers it and the CPU is the only thing left to run on.
+    """
+    arguments = torch_install_arguments()
+    if arguments is None:
+        logger.info("the installed torch serves this GPU, or there is none to serve")
+    return arguments
+
+
+def warn_on_torch_cuda_conflict():
+    """Say so when the torch family ended up on two different CUDA builds.
+
+    AREG pins torch, torchvision and torchaudio together; nothing stops another
+    extension, or an earlier run, from having replaced one of them. The three
+    then import fine and fail much later, inside a model, with an
+    `undefined symbol` that reads like anything but a version mismatch.
+
+    Only an explicit disagreement is reported: a wheel without a `+cuXXX` label
+    says nothing about its build, and warning on that would fire on every plain
+    PyPI install.
+    """
+    conflict = torch_cuda_conflict()
+    if not conflict:
+        return
+    detail = ", ".join("%s (cu%s)" % (name, label) for name, label in sorted(conflict.items()))
+    logger.warning("torch family built against different CUDA versions: %s", detail)
+    slicer.util.warningDisplay(
+        "These libraries come from different CUDA builds:\n\n" + detail
+        + "\n\nThey import without complaining and fail later, inside a model,"
+          " with an error that does not mention versions. Reinstalling them"
+          " together, from the same index, is the fix."
+    )
+
+
+def install_function(self, list_libs:list, extra_requirements=()):
     '''
     Test the necessary libraries and install them with the specific version if needed
     User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
+
+    `extra_requirements` holds pip argument strings to install verbatim, each in
+    one call. The torch trio goes through here rather than through `list_libs`:
+    whether it has to be replaced is not a question about version numbers -- a
+    torch that satisfies the pin exactly can still have no kernels for this GPU
+    -- and the three wheels have to be resolved together, which one entry per
+    library cannot express.
     '''
     libs = list_libs
     libs_to_install = []
@@ -116,10 +174,12 @@ def install_function(self,list_libs:list):
             # check if the library is already installed
                 if _get_installed_version(lib):
                     libs_to_update.append((lib, version_constraint))
-            except:
+            except Exception:
                 libs_to_install.append((lib, version_constraint))
 
-    if libs_to_install or libs_to_update:
+    extra_requirements = list(extra_requirements)
+
+    if libs_to_install or libs_to_update or extra_requirements:
           message = "The following changes are required for the libraries:\n"
 
           #Specify which libraries will be updated with a new version
@@ -132,6 +192,10 @@ def install_function(self,list_libs:list):
 
               message += "\n --- Libraries to install:  \n"
           message += "\n".join([f"{lib}{version_constraint}" if version_constraint else lib for lib, version_constraint in libs_to_install])
+
+          if extra_requirements:
+              message += "\n\n --- PyTorch build for this GPU: \n"
+              message += "\n".join(extra_requirements)
 
           message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
           message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
@@ -148,7 +212,21 @@ def install_function(self,list_libs:list):
             # the session is gone. See AREG_Method.pip_install_window.
             try:
                 with PipInstallWindow(requester="AREG") as window:
-                    for lib, version_constraint in libs_to_install + libs_to_update:
+                    # torch first, and on its own: monai and nnunetv2 declare an
+                    # unbounded dependency on it, so installing them beforehand
+                    # lets pip pull PyPI's default build in and the GPU-specific
+                    # one installed afterwards is the one that gets replaced.
+                    for requirement in extra_requirements:
+                        lib = requirement.split("==")[0]
+                        if not window.install(requirement):
+                            installation_errors.append(
+                                (lib, "pip failed, see the installation window")
+                            )
+                            break
+
+                    for lib, version_constraint in (
+                            [] if installation_errors
+                            else libs_to_install + libs_to_update):
                         if not version_constraint:
                             requirement = lib
 
@@ -177,37 +255,18 @@ def install_function(self,list_libs:list):
                 slicer.util.errorDisplay(error_message)
                 return False
 
+            warn_on_torch_cuda_conflict()
             return True
           else :
             return False
 
     else:
+        warn_on_torch_cuda_conflict()
         return True
 
 def condaQuote(conda, value):
-    """Quote `value` only if this SlicerConda joins the command into a shell line.
-
-    Two SlicerConda versions are in circulation and they want the opposite of
-    each other. The older one builds a bash line, where a path holding a space -
-    and the ';' inside a `python -c` body - has to be quoted or the line falls
-    apart. The newer one hands conda an argv list, where nothing ever strips
-    those quotes: they reach PYTHONPATH and argv literally and break exactly what
-    they were meant to protect. Reading the installed source tests the property
-    that decides it, rather than guessing from a version number.
-
-    Only commands going to SlicerConda come through here. The copies of
-    condaRunCommand this extension carries of its own always build a shell line,
-    so what they are given keeps its quotes unconditionally.
-    """
-    try:
-        import inspect
-
-        shell = "shell=True" in inspect.getsource(conda.condaRunCommand)
-    except Exception:
-        # Source unreadable: assume the argv contract, which is the one shipping
-        # now, rather than emitting quotes that would land literally.
-        shell = False
-    return f'"{value}"' if shell else str(value)
+    """Delegated to ADTLib; kept as a module function for the call sites."""
+    return conda_quote(conda, value)
 
 
 class AREG(ScriptedLoadableModule):
@@ -218,23 +277,23 @@ class AREG(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = (
-            "AREG"  # TODO: make this more human readable by adding spaces
+            "AREG"
         )
         self.parent.categories = [
             "Automated Dental Tools"
         ]  # set categories (folders where the module shows up in the module selector)
         self.parent.dependencies = (
             ["CondaSetUp"]
-        )  # TODO: add here list of module names that this module requires
+        )
         self.parent.contributors = [
             "Nathan Hutin (UoM), Luc Anchling (UoM)"
-        ]  # TODO: replace with "Firstname Lastname (Organization)"
-        # TODO: update with short description of the module and a link to online module documentation
+        ]
+        
         self.parent.helpText = """
         This is an example of scripted loadable module bundled in an extension.
-        See more information in <a href="https://github.com/organization/projectname#AREG">module documentation</a>.
+        See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools#AREG">module documentation</a>.
         """
-        # TODO: replace with organization, grant and thanks
+        
         self.parent.acknowledgementText = """
         This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
         and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
@@ -270,7 +329,7 @@ class AREG(ScriptedLoadableModule):
 
         import SampleData
 
-        iconsPath = os.path.join(os.path.dirname(__file__), "Resources/Icons")
+        icons_path = os.path.join(os.path.dirname(__file__), "Resources/Icons")
 
         # To ensure that the source code repository remains small (can be downloaded and installed quickly)
         # it is recommended to store data sets that are larger than a few MB in a Github release.
@@ -282,9 +341,9 @@ class AREG(ScriptedLoadableModule):
             sampleName="AREG1",
             # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
             # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-            thumbnailFileName=os.path.join(iconsPath, "AREG1.png"),
+            thumbnailFileName=os.path.join(icons_path, "AREG1.png"),
             # Download URL and target file name
-            uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+            uris=f"{SLICER_TESTING_DATA}/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
             fileNames="AREG1.nrrd",
             # Checksum to ensure file integrity. Can be computed by this command:
             checksums="SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
@@ -297,9 +356,9 @@ class AREG(ScriptedLoadableModule):
             # Category and sample name displayed in Sample Data module
             category="AREG",
             sampleName="AREG2",
-            thumbnailFileName=os.path.join(iconsPath, "AREG2.png"),
+            thumbnailFileName=os.path.join(icons_path, "AREG2.png"),
             # Download URL and target file name
-            uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+            uris=f"{SLICER_TESTING_DATA}/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
             fileNames="AREG2.nrrd",
             checksums="SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
             # This node name will be used when the data set is loaded
@@ -380,9 +439,9 @@ class PopUpWindow(qt.QDialog):
             button.setChecked(False)
 
     def onClickedCheckbox(self):
-        TrueFalse = [button.isChecked() for button in self.ListButtons]
+        true_false = [button.isChecked() for button in self.ListButtons]
         self.checked = [
-            self.listename[i] for i in range(len(self.listename)) if TrueFalse[i]
+            self.listename[i] for i in range(len(self.listename)) if true_false[i]
         ]
         self.accept()
 
@@ -444,16 +503,16 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath("UI/AREG.ui"))
-        self.uiWidget = uiWidget  # Store reference for styling
-        self.layout.addWidget(uiWidget)
+        ui_widget = slicer.util.loadUI(self.resourcePath("UI/AREG.ui"))
+        self.uiWidget = ui_widget  # Store reference for styling
+        self.layout.addWidget(ui_widget)
 
-        self.ui = slicer.util.childWidgetVariables(uiWidget)
+        self.ui = slicer.util.childWidgetVariables(ui_widget)
 
         # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
         # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
         # "setMRMLScene(vtkMRMLScene*)" slot.
-        uiWidget.setMRMLScene(slicer.mrmlScene)
+        ui_widget.setMRMLScene(slicer.mrmlScene)
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
@@ -501,14 +560,14 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.nb_scan = 0
         self.startprocess = 0
         self.patient_process = 0
-        self.dicchckbox = {}
-        self.dicchckbox2 = {}
+        self.checkboxes = {}
+        self.checkboxes2 = {}
         self.display = Display
         self.isDCMInput = False
         self.CBCTOrientRef = "Frankfurt Horizontal and Midsagittal Plane"
         self.SegmentationLabels = [0]
         """
-        exemple dic = {'teeth'=['A,....],'Type'=['O',...]}
+        example dic = {'teeth'=['A,....],'Type'=['O',...]}
         """
 
         self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
@@ -516,8 +575,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # use messletter to add big comment with univers as police
 
-        documentsLocation = qt.QStandardPaths.DocumentsLocation
-        self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        documents_location = qt.QStandardPaths.DocumentsLocation
+        self.documents = qt.QStandardPaths.writableLocation(documents_location)
         self.SlicerDownloadPath = os.path.join(
             self.documents,
             slicer.app.applicationName + "Downloads",
@@ -597,7 +656,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.ButtonSearchModel1.pressed.connect(
             lambda: self.downloadModel(
-                self.ui.lineEditModel1, self.ui.label_7.text.split(" ")[0]
+                self.ui.lineEditModel1, self.ui.labelModelFolder.text.split(" ")[0]
             )
         )
         self.ui.ButtonSearchModel3.pressed.connect(
@@ -679,15 +738,15 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditMaskT1Path.setVisible(True)
             self.ui.ButtonSearchT1Mask.setVisible(True)
 
-            self.ui.label_7.setVisible(True)
-            self.ui.label_7.setText("Segmentation Model Folder")
+            self.ui.labelModelFolder.setVisible(True)
+            self.ui.labelModelFolder.setText("Segmentation Model Folder")
             self.ui.ButtonSearchModel1.setVisible(True)
             self.ui.lineEditModel1.setVisible(True)
 
         if index == 1:  # Fully Automated
 
-            self.ui.label_7.setVisible(True)
-            self.ui.label_7.setText("Segmentation Model Folder")
+            self.ui.labelModelFolder.setVisible(True)
+            self.ui.labelModelFolder.setText("Segmentation Model Folder")
             self.ui.ButtonSearchModel1.setVisible(True)
             self.ui.lineEditModel1.setVisible(True)
 
@@ -701,8 +760,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         if index == 0:  #  Orientation & Fully Auto Reg
 
-            self.ui.label_7.setVisible(True)
-            self.ui.label_7.setText("Segmentation Model Folder")
+            self.ui.labelModelFolder.setVisible(True)
+            self.ui.labelModelFolder.setText("Segmentation Model Folder")
             self.ui.ButtonSearchModel1.setVisible(True)
             self.ui.lineEditModel1.setVisible(True)
 
@@ -791,9 +850,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         if self.isMGLRegistration():
             error = self.ActualMeth.TestMGLModel(
-                model_folder_3=folder,
+                AREGRequest(model_folder_3=folder,
                 mgl_landmarks=self.lineEditMGLLandmarks.text.strip(),
-            ) or None
+            )) or None
         else:
             error = self.ActualMeth.TestModel(folder, self.ui.lineEditModel3.name)
 
@@ -848,7 +907,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # the user guessing what to fill in. Outside MGL they come back only in
         # the mode that orients, which is index 0.
         orientation_used = not is_mgl and self.ui.CbModeType.currentIndex == 0
-        for widget in (self.ui.label_7, self.ui.lineEditModel1, self.ui.ButtonSearchModel1,
+        for widget in (self.ui.labelModelFolder, self.ui.lineEditModel1, self.ui.ButtonSearchModel1,
                        self.ui.label_6, self.ui.lineEditModel2, self.ui.ButtonSearchModel2):
             widget.setVisible(orientation_used)
 
@@ -884,8 +943,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # registration and orientation
         if index == 0:
-            self.ui.label_7.setVisible(True)
-            self.ui.label_7.setText("Segmentation Model Folder")
+            self.ui.labelModelFolder.setVisible(True)
+            self.ui.labelModelFolder.setText("Segmentation Model Folder")
             self.ui.ButtonSearchModel1.setVisible(True)
             self.ui.lineEditModel1.setVisible(True)
 
@@ -901,8 +960,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Registration
         if index == 1:
-            self.ui.label_7.setVisible(False)
-            self.ui.label_7.setText("Segmentation Model Folder")
+            self.ui.labelModelFolder.setVisible(False)
+            self.ui.labelModelFolder.setText("Segmentation Model Folder")
             self.ui.ButtonSearchModel1.setVisible(False)
             self.ui.lineEditModel1.setVisible(False)
 
@@ -939,8 +998,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.label_3.setText("IOS Scans")
             self.ui.label_2.setText("CBCT Scans")
 
-            self.ui.label_7.setVisible(True)
-            self.ui.label_7.setText("Orientation Model Folder")
+            self.ui.labelModelFolder.setVisible(True)
+            self.ui.labelModelFolder.setText("Orientation Model Folder")
             self.ui.ButtonSearchModel1.setVisible(True)
             self.ui.lineEditModel1.setVisible(True)
 
@@ -959,7 +1018,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.label_3.setText("Oriented IOS Scans")
             self.ui.label_2.setText("Oriented CBCT Scans")
 
-            self.ui.label_7.setVisible(False)
+            self.ui.labelModelFolder.setVisible(False)
             self.ui.ButtonSearchModel1.setVisible(False)
             self.ui.lineEditModel1.setVisible(False)
 
@@ -983,7 +1042,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.lineEditMaskT1Path.setVisible(True)
             self.ui.ButtonSearchT1Mask.setVisible(True)
 
-            self.ui.label_7.setVisible(False)
+            self.ui.labelModelFolder.setVisible(False)
             self.ui.ButtonSearchModel1.setVisible(False)
             self.ui.lineEditModel1.setVisible(False)
 
@@ -1000,91 +1059,61 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.ButtonSearchModel3.setVisible(False)
 
 
-    def SwitchType(self,source=None):
-        """Function to change the UI and the Method in AREG depending on the selected type (Semi CBCT, Fully CBCT...)"""
-        if self.ui.CbInputType.currentIndex == 0:
-            if source == "InputType":
-                number_item = self.ui.CbModeType.count
-                for _ in range(number_item):
-                    self.ui.CbModeType.removeItem(0)
+    #: Per input type: the modes offered, in order, the method that answers
+    #: each one, and the function that adjusts the rest of the interface.
+    #: This table replaces three nested `if/elif` branches on combo box
+    #: indices. Adding a mode is done here and in `MethodDic`, without
+    #: touching the body of `SwitchType`.
+    INPUT_TYPES = {
+        0: {
+            "modes": ["Orientation and Registration",
+                      "Fully-Automated Registration",
+                      "Semi-Automated Registration"],
+            "methods": {0: "Or_Auto_CBCT", 1: "Auto_CBCT", 2: "Semi_CBCT"},
+            "switch_mode": "SwitchModeCBCT",
+        },
+        1: {
+            "modes": ["Orientation and Registration", "Registration"],
+            "methods": {0: "Auto_IOS", 1: "Semi_IOS"},
+            "switch_mode": "SwitchModeIOS",
+        },
+        2: {
+            "modes": ["Fully Automated Registration",
+                      "Semi Automated Registration",
+                      "Registration"],
+            "methods": {0: "Auto_IOSCBCT", 1: "Semi_IOSCBCT", 2: "Reg_IOSCBCT"},
+            "switch_mode": "SwitchModeIOSCBCT",
+        },
+    }
 
-                self.ui.CbModeType.addItem("Orientation and Registration")
-                self.ui.CbModeType.addItem("Fully-Automated Registration")
-                self.ui.CbModeType.addItem("Semi-Automated Registration")
+    def SwitchType(self, source=None):
+        """Pick the method, then apply the description it gives of itself.
 
-            if self.ui.CbModeType.currentIndex == 2:
-                self.ActualMethName = "Semi_CBCT"
-                self.ActualMeth = self.MethodDic[self.ActualMethName]
-                self.ui.stackedWidget.setCurrentIndex(0)
+        What the interface must show -- page, scan type, model label -- is
+        read off the method, no longer decided here. See
+        `AREG_Method.Method`.
+        """
+        config = self.INPUT_TYPES[self.ui.CbInputType.currentIndex]
 
-            elif self.ui.CbModeType.currentIndex == 0:
-                self.ActualMethName = "Or_Auto_CBCT"
-                self.ActualMeth = self.MethodDic[self.ActualMethName]
-                self.ui.stackedWidget.setCurrentIndex(2)
-                self.ui.label_7.setText("Segmentation Model Folder")
+        if source == "InputType":
+            for _ in range(self.ui.CbModeType.count):
+                self.ui.CbModeType.removeItem(0)
+            for label in config["modes"]:
+                self.ui.CbModeType.addItem(label)
 
-            elif self.ui.CbModeType.currentIndex == 1:
-                self.ActualMethName = "Auto_CBCT"
-                self.ActualMeth = self.MethodDic[self.ActualMethName]
-                self.ui.stackedWidget.setCurrentIndex(1)
-                self.ui.label_7.setText("Segmentation Model Folder")
+        mode = self.ui.CbModeType.currentIndex
+        if mode in config["methods"]:
+            self.ActualMethName = config["methods"][mode]
+            self.ActualMeth = self.MethodDic[self.ActualMethName]
+            self.ui.stackedWidget.setCurrentIndex(self.ActualMeth.stacked_page)
+            self.type = self.ActualMeth.scan_type
+            if self.ActualMeth.model_label is not None:
+                self.ui.labelModelFolder.setText(self.ActualMeth.model_label)
 
-            self.type = "CBCT"
-            self.SwitchModeCBCT(self.ui.CbModeType.currentIndex)
+        getattr(self, config["switch_mode"])(mode)
 
-        elif self.ui.CbInputType.currentIndex == 1:
-            if source == "InputType":
-                number_item = self.ui.CbModeType.count
-                for _ in range(number_item):
-                    self.ui.CbModeType.removeItem(0)
-
-                self.ui.CbModeType.addItem("Orientation and Registration")
-                self.ui.CbModeType.addItem("Registration")
-
-            if self.ui.CbModeType.currentIndex == 1:
-                self.ActualMeth = self.MethodDic["Semi_IOS"]
-                self.ui.stackedWidget.setCurrentIndex(3)
-                self.type = "IOS"
-
-            elif self.ui.CbModeType.currentIndex == 0:
-                self.ActualMeth = self.MethodDic["Auto_IOS"]
-                self.ui.stackedWidget.setCurrentIndex(3)
-                self.type = "IOS"
-                self.ui.label_7.setText("Segmentation Model Folder")
-
-            self.SwitchModeIOS(self.ui.CbModeType.currentIndex)
-        elif self.ui.CbInputType.currentIndex == 2:
-            if source == "InputType":
-                number_item = self.ui.CbModeType.count
-                for _ in range(number_item):
-                    self.ui.CbModeType.removeItem(0)
-
-                self.ui.CbModeType.addItem("Fully Automated Registration")
-                self.ui.CbModeType.addItem("Semi Automated Registration")
-                self.ui.CbModeType.addItem("Registration")
-
-            if self.ui.CbModeType.currentIndex == 0:
-                self.ActualMethName = "Auto_IOSCBCT"
-                self.ActualMeth = self.MethodDic[self.ActualMethName]
-                self.ui.stackedWidget.setCurrentIndex(4)
-                self.type = "IOSCBCT"
-
-            elif self.ui.CbModeType.currentIndex == 1:
-                self.ActualMethName = "Semi_IOSCBCT"
-                self.ActualMeth = self.MethodDic[self.ActualMethName]
-                self.ui.stackedWidget.setCurrentIndex(4)
-                self.type = "IOSCBCT"
-            
-            elif self.ui.CbModeType.currentIndex == 2:
-                self.ActualMethName = "Reg_IOSCBCT"
-                self.ActualMeth = self.MethodDic[self.ActualMethName]
-                self.ui.stackedWidget.setCurrentIndex(4)
-                self.type = "IOSCBCT"
-          
-            self.SwitchModeIOSCBCT(self.ui.CbModeType.currentIndex)
-
-        self.dicchckbox = self.ActualMeth.getcheckbox()
-        self.dicchckbox2 = self.ActualMeth.getcheckbox2()
+        self.checkboxes = self.ActualMeth.getcheckbox()
+        self.checkboxes2 = self.ActualMeth.getcheckbox2()
 
         self.SlicerDownloadPath = os.path.join(
             self.documents,
@@ -1123,61 +1152,68 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def DownloadUnzip(
         self, url, directory, folder_name=None, num_downl=1, total_downloads=1
     ):
-        out_path = os.path.join(directory, folder_name)
-        if not os.path.exists(out_path):
-            os.makedirs(out_path)
-            temp_path = os.path.join(directory, "temp.zip")
+        """The folder holding this dataset, downloaded only when it is missing.
 
-            # Download the zip file from the url
-            with urllib.request.urlopen(url) as response, open(
-                temp_path, "wb"
-            ) as out_file:
-                # Pop up a progress bar with a QProgressDialog
-                progress = qt.QProgressDialog(
-                    "Downloading {} (File {}/{})".format(
-                        folder_name.split(os.sep)[0], num_downl, total_downloads
-                    ),
-                    "Cancel",
-                    0,
-                    100,
-                    self.parent,
-                )
-                progress.setCancelButton(None)
-                progress.setWindowModality(qt.Qt.WindowModal)
-                progress.setWindowTitle(
-                    "Downloading {}...".format(folder_name.split(os.sep)[0])
-                )
-                progress.show()
-                length = response.info().get("Content-Length")
-                if length:
-                    length = int(length)
-                    blocksize = max(4096, length // 100)
-                    read = 0
-                    while True:
-                        buffer = response.read(blocksize)
-                        if not buffer:
-                            break
-                        read += len(buffer)
-                        out_file.write(buffer)
-                        progress.setValue(read * 100.0 / length)
-                        qt.QApplication.processEvents()
-                shutil.copyfileobj(response, out_file)
+        The work belongs to `ADTLib.testdata`, which this module shares with the
+        six others that carried the same copy. What the copy here got wrong, and
+        the shared one does not: it created the destination folder *before*
+        downloading, so a cancelled or failed download left an empty folder that
+        every later call read as "already there". And nothing checked what the
+        server actually sent -- a mistyped release link answers 200 with a web
+        page, which then failed as "not a zip file".
+        """
+        return ensure_with_progress(
+            url,
+            directory,
+            folder_name,
+            parent=self.parent,
+            title="Downloading {} (File {}/{})".format(
+                folder_name.split(os.sep)[0], num_downl, total_downloads
+            ),
+        )
 
-            # Unzip the file
-            with zipfile.ZipFile(temp_path, "r") as zip:
-                zip.extractall(out_path)
+    def testFileListForMode(self):
+        """The (name, url) of the test set for the mode and input type in use.
 
-            # Delete the zip file
-            os.remove(temp_path)
-
-        return out_path
+        `getTestFileListDCM` is only defined by `Or_Auto_CBCT`; for every other
+        mode the base class answers `None`, which unpacked as a `TypeError` with
+        nothing in it for the user. Those modes are reachable only while
+        `isDCMInput` stays False -- `SwitchType` forces it off outside CBCT mode
+        0 -- so the mistake never showed. Say it instead of relying on that.
+        """
+        if self.isDCMInput:
+            files = self.ActualMeth.getTestFileListDCM()
+            if not files:
+                raise TestDataError(
+                    "%s publishes no DICOM test set. Switch the CBCT input type "
+                    "back to NIfTI to use its test files." % self.ActualMethName)
+            return files
+        files = self.ActualMeth.getTestFileList()
+        if not files:
+            raise TestDataError(
+                "%s publishes no test set." % self.ActualMethName)
+        return files
 
     def TestFiles(self):
-        """Function to download and select all the test files"""
-        if self.isDCMInput:
-            name, url = self.ActualMeth.getTestFileListDCM()
-        else:
-            name, url = self.ActualMeth.getTestFileList()
+        """Fill every field of the selected mode from its published test set.
+
+        The download is a chain -- scans, then whichever models the mode asks
+        for -- and any link of it can fail on a bad address or on the network.
+        Reported as a message rather than as a traceback in the Python console,
+        which is where it went until now.
+        """
+        try:
+            self.FillFromTestFiles()
+        except TestDataError as error:
+            qt.QMessageBox.warning(self.parent, "Test Files", str(error))
+        except OSError as error:
+            qt.QMessageBox.warning(
+                self.parent, "Test Files",
+                "The test files could not be downloaded: %s" % error)
+
+    def FillFromTestFiles(self):
+        """Download the test set of the current mode and fill in its fields."""
+        name, url = self.testFileListForMode()
 
         logger.info(f"Test file name: {name}")
         logger.info(f"Test file url: {url}")
@@ -1215,6 +1251,15 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.lineEditMaskT1Path.setText(lm_folder_t1)
                 self.ui.lineEditT2LMPath.setText(lm_folder_t2)
 
+            if self.ActualMethName == "Semi_CBCT":
+                # The semi-automated mode registers on masks the user supplies,
+                # and its TestProcess refuses to start without that folder --
+                # which the button left empty. The published set keeps them in
+                # a <patient>_SegOut folder under T1, so T1 is what to hand
+                # over; it is also the folder AREG_CBCT falls back to on its
+                # own when the field is empty.
+                self.ui.lineEditMaskT1Path.setText(scan_folder_t1)
+
             self.ui.LabelInfoPreProc.setText(
                 "Number of Patients to process : " + str(nb_scans)
             )
@@ -1232,6 +1277,31 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.downloadModel(
                     lineEdit=self.ui.lineEditModel2, name="Orientation", test=True
                 )
+        if self.type == "IOS":
+            # The button downloaded the scans and stopped there, leaving every
+            # model field empty -- and both IOS modes refuse to run without the
+            # registration model. `SwitchModeIOS` names the fields: Model1 the
+            # segmentation, Model2 the orientation reference, Model3 the
+            # registration checkpoint.
+            if self.isMGLRegistration():
+                # MGL builds its patch from the ALI landmarks, so the field
+                # that holds the palatal checkpoint holds the ALI models
+                # instead, and neither orientation field is shown.
+                self.downloadModel(
+                    lineEdit=self.ui.lineEditModel3, name="ALI", test=True
+                )
+            else:
+                self.downloadModel(
+                    lineEdit=self.ui.lineEditModel3, name="Registration", test=True
+                )
+                if self.ActualMethName == "Auto_IOS":
+                    # Only the mode that orients asks for these two.
+                    self.downloadModel(
+                        lineEdit=self.ui.lineEditModel1, name="Segmentation", test=True
+                    )
+                    self.downloadModel(
+                        lineEdit=self.ui.lineEditModel2, name="Reference", test=True
+                    )
         if self.type == "IOSCBCT":
             if self.ActualMethName == "Auto_IOSCBCT":
                 self.SearchModelALI(self.CBCTOrientRef)
@@ -1321,11 +1391,11 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             and not test
             and name == "Orientation"
         ) or (self.type == "IOSCBCT" and not test and name == "Orientation"):
-            referenceList = self.ActualMeth.getReferenceList()
-            refList = list(referenceList.keys())
+            reference_list = self.ActualMeth.getReferenceList()
+            ref_list = list(reference_list.keys())
 
             s = PopUpWindow(
-                title="Choice of Reference Files", listename=refList, type="radio"
+                title="Choice of Reference Files", listename=ref_list, type="radio"
             )
             s.exec_()
             self.CBCTOrientRef = s.checked
@@ -1362,9 +1432,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 # That field holds the ALI models in MGL, so the palatal
                 # checkpoint check does not apply to it
                 error = self.ActualMeth.TestMGLModel(
-                    model_folder_3=model_folder,
+                    AREGRequest(model_folder_3=model_folder,
                     mgl_landmarks=self.lineEditMGLLandmarks.text.strip(),
-                ) or None
+                )) or None
             else:
                 error = self.ActualMeth.TestModel(model_folder, lineEdit.name)
 
@@ -1447,7 +1517,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         if self.type == "CBCT":
             for checkboxs, checkboxs2 in zip(
-                self.dicchckbox.values(), self.dicchckbox2.values()
+                self.checkboxes.values(), self.checkboxes2.values()
             ):
                 for checkbox, checkbox2 in zip(checkboxs, checkboxs2):
                     checkbox.setVisible(status[checkbox.text])
@@ -1483,13 +1553,25 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # 1. Coordinate MONAI and PyTorch versions based on Python version
             if sys.version_info >= (3, 10):
                 monai_version = '==1.3.2'
-                torch_version = '==2.2.0'
-                
+
+            # torch is no longer one entry per library with a version beside it:
+            # which build this machine needs is a question about the GPU, not
+            # about version numbers, and the three wheels have to be resolved in
+            # one call. Empty when nothing has to change, which is every machine
+            # whose card the installed torch already covers.
+            torch_requirements = torch_requirements_for_this_gpu()
+            torch_requirements = [torch_requirements] if torch_requirements else []
+
+            # Only a torch older than 2.3 was built against numpy 1.x. Asked of
+            # the torch that will be there rather than the one being replaced,
+            # so a card moving to 2.7 is not also held on a numpy it left behind.
+            numpy_constraint = '<2.0.0' if torch_needs_numpy1() else None
+
             if platform.system() == "Windows":
-                list_libs_CBCT_windows = [
-                    ('itk', '==5.4.0', None),
-                    ('itk-elastix', '==0.19.2', None),
-                    ('dicom2nifti', '==2.6.2', None),
+                list_libs_cbct_windows = [
+                    ('itk', '>=5.4.0', None),
+                    ('itk-elastix', '>=0.19.2', None),
+                    ('dicom2nifti', '>=2.6.2', None),
                     # pydicom is kept on the version Slicer ships: downgrading it to 2.x breaks
                     # dicomweb-client and highdicom, hence every DICOM module of Slicer.
                     ('pydicom', '==3.0.2', None),
@@ -1497,17 +1579,17 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     ('nibabel', None, None),
                     ('connected-components-3d', '>=3.13.0', None),
                     ('pandas', None, None),
-                    ('torch', torch_version, "https://download.pytorch.org/whl/cu118")
                 ]
-                list_libs_CBCT_windows.append(('monai', monai_version, None))
-                is_installed = install_function(self, list_libs_CBCT_windows) and is_installed
+                list_libs_cbct_windows.append(('monai', monai_version, None))
+                is_installed = install_function(
+                    self, list_libs_cbct_windows, torch_requirements) and is_installed
                 
             else:
                 # macOS / Linux
-                list_libs_CBCT = [
-                    ('itk', '==5.4.0', None),
-                    ('itk-elastix', '==0.19.2', None),
-                    ('dicom2nifti', '==2.6.2', None),
+                list_libs_cbct = [
+                    ('itk', '>=5.4.0', None),
+                    ('itk-elastix', '>=0.19.2', None),
+                    ('dicom2nifti', '>=2.6.2', None),
                     # pydicom is kept on the version Slicer ships: downgrading it to 2.x breaks
                     # dicomweb-client and highdicom, hence every DICOM module of Slicer.
                     ('pydicom', '==3.0.2', None),
@@ -1515,13 +1597,13 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     ('nibabel', None, None),
                     ('connected-components-3d', '>=3.13.0', None),
                     ('pandas', None, None),
-                    ('numpy', '<2.0.0', None),
-                    ('torch', torch_version, None),
-                    ('torchvision', "==0.17.0",None),('blosc2', None,None), 
-                    ('torchaudio',torch_version,None),('nnunetv2','>=2.8.0',None),
+                    ('numpy', numpy_constraint, None),
+                    ('blosc2', None,None),
+                    ('nnunetv2','>=2.8.0',None),
                     ('monai', monai_version, None)
                 ]
-                is_installed = install_function(self, list_libs_CBCT) and is_installed
+                is_installed = install_function(
+                    self, list_libs_cbct, torch_requirements) and is_installed
 
                 # Read numpy from the distribution metadata, not from the
                 # imported module. numpy is already imported when Slicer starts,
@@ -1537,9 +1619,14 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 except importlib_metadata.PackageNotFoundError:
                     numpy_version = None
 
-                if numpy_version is None or numpy_version > Version("2.0"):
+                # Asked again after pip rather than reusing the answer from
+                # before it: nnunetv2 is what pulls numpy 2.x back in, and it was
+                # installed in between.
+                if torch_needs_numpy1() and (
+                        numpy_version is None or numpy_version > Version("2.0")):
                     logger.info(
-                        f"numpy {numpy_version} is incompatible with torch: pinning it below 2.0"
+                        f"numpy {numpy_version} is incompatible with this torch:"
+                        " pinning it below 2.0"
                     )
                     pip_install("numpy<2.0.0")
                 
@@ -1548,12 +1635,12 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             logger.debug(f"Segmentation environment: {check_env}")
             
             if check_env:
-                list_libs_IOS = [("tqdm",None,None),('vtk',None,None),('pandas',None,None)]
+                list_libs_ios = [("tqdm",None,None),('vtk',None,None),('pandas',None,None)]
                 
                 monai_version = '==1.3.2' if sys.version_info >= (3, 10) else '==0.7.0'
-                list_libs_IOS.append(('monai', monai_version, None))
+                list_libs_ios.append(('monai', monai_version, None))
 
-                is_installed = install_function(self,list_libs_IOS) and is_installed
+                is_installed = install_function(self,list_libs_ios) and is_installed
             else:
                 is_installed = False
 
@@ -1569,9 +1656,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 # libraries and versions compatibility to use AREG_IOSCBCT
                 # tqdm is what PRE_ASO_IOS and SEMI_ASO_IOS import at module
                 # level; the CBCT list this mode also installs does not name it.
-                list_libs_IOSCBCT = [('pyvista','==0.47.3',None),('scipy',None,None),('numpy',None,None),('SimpleITK',None,None),('tqdm',None,None)]
+                list_libs_ioscbct = [('pyvista','==0.47.3',None),('scipy',None,None),('numpy',None,None),('SimpleITK',None,None),('tqdm',None,None)]
 
-                is_installed = install_function(self,list_libs_IOSCBCT) and is_installed
+                is_installed = install_function(self,list_libs_ioscbct) and is_installed
             else:
                 is_installed = False
 
@@ -1584,21 +1671,21 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.label_LibsInstallation.setVisible(False)
         error = self.ActualMeth.TestProcess(
-            input_t1_folder=self.ui.lineEditScanT1LmPath.text,
+            AREGRequest(input_t1_folder=self.ui.lineEditScanT1LmPath.text,
             input_t2_folder=self.ui.lineEditScanT2LmPath.text,
             input_t1_mask=self.ui.lineEditMaskT1Path.text,
             input_t2_landmarks = self.ui.lineEditT2LMPath.text,
-            folder_output=self.ui.lineEditOutputPath.text,
+            output_folder=self.ui.lineEditOutputPath.text,
             model_folder_1=self.ui.lineEditModel1.text,
             model_folder_2=self.ui.lineEditModel2.text,
             model_folder_3=self.ui.lineEditModel3.text,
             add_in_namefile=self.ui.lineEditAddName.text,
-            dic_checkbox=self.dicchckbox,
-            isDCMInput=self.isDCMInput,
+            dic_checkbox=self.checkboxes,
+            is_dicom_input=self.isDCMInput,
             OrientReference=self.CBCTOrientRef,
             reg_type="MGL" if self.isMGLRegistration() else "Butterfly",
             mgl_landmarks=self.lineEditMGLLandmarks.text.strip(),
-        )
+        ))
 
         if isinstance(error, str):
             qt.QMessageBox.warning(self.parent, "Warning", error.replace(",", "\n"))
@@ -1620,19 +1707,19 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 )
 
             self.list_Processes_Parameters = self.ActualMeth.Process(
-                input_t1_folder=self.ui.lineEditScanT1LmPath.text,
+                AREGRequest(input_t1_folder=self.ui.lineEditScanT1LmPath.text,
                 input_t2_folder=self.ui.lineEditScanT2LmPath.text,
                 input_t1_mask=self.ui.lineEditMaskT1Path.text,
                 input_t2_landmarks = self.ui.lineEditT2LMPath.text,
-                folder_output=self.ui.lineEditOutputPath.text,
+                output_folder=self.ui.lineEditOutputPath.text,
                 model_folder_1=self.ui.lineEditModel1.text,
                 model_folder_2=self.ui.lineEditModel2.text,
                 model_folder_3=self.ui.lineEditModel3.text,
                 add_in_namefile=self.ui.lineEditAddName.text,
-                dic_checkbox=self.dicchckbox,
-                logPath=self.log_path,
+                dic_checkbox=self.checkboxes,
+                log_path=self.log_path,
                 merge_seg=merge_seg,
-                isDCMInput=self.isDCMInput,
+                is_dicom_input=self.isDCMInput,
                 slicerDownload=self.SlicerDownloadPath,
                 OrientReference=self.CBCTOrientRef,
                 LabelSeg=str(
@@ -1642,7 +1729,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 reg_type="MGL" if self.isMGLRegistration() else "Butterfly",
                 patch_radius=self.MGLRadius(),
                 mgl_landmarks=self.lineEditMGLLandmarks.text.strip(),
-            )
+            ))
 
             # Guard: if Process() returned an empty list, log and return to avoid IndexError
             if not self.list_Processes_Parameters:
@@ -1865,12 +1952,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             return
 
         currentTime = time.time() - self.startTime
-        if currentTime < 60:
-            timer = f"Time : {int(currentTime)}s"
-        elif currentTime < 3600:
-            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-        else:
-            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+        timer = format_timer(currentTime)
 
         self.ui.LabelTimer.setText(timer)
         progress = caller.GetProgress()
@@ -1888,10 +1970,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.nb_change_bystep = 0
 
         if progress == 0:
-            self.updateProgessBar = False
+            self.updateProgressBar = False
 
         if self.displayModule.isProgress(
-            progress=progress, updateProgessBar=self.updateProgessBar
+            progress=progress, updateProgressBar=self.updateProgressBar
         ):
             progress_bar, message = self.displayModule()
             self.ui.progressBar.setValue(progress_bar)
@@ -1901,8 +1983,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if caller.GetStatus() & caller.Completed:
             if caller.GetStatus() & caller.ErrorsMask:
                 # error
-                out = self._briefCliOutput(caller.GetOutputText())
-                err = self._briefCliOutput(caller.GetErrorText())
+                out = self.logic._briefCliOutput(caller.GetOutputText())
+                err = self.logic._briefCliOutput(caller.GetErrorText())
                 qt.QTimer.singleShot(0, lambda: logger.error(
                     "========= PROCESS COMPLETED WITH ERRORS =========\n"
                     f"{out}\n========= ERROR DETAILS =========\n{err}"
@@ -1916,27 +1998,13 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 # Writing a whole CLI's output here fills the pipe with no reader
                 # left and the main thread blocks in write() for ever - a batch of
                 # three patients through ALI is already enough to do it.
-                cli_output = self._briefCliOutput(caller.GetOutputText())
+                cli_output = self.logic._briefCliOutput(caller.GetOutputText())
                 qt.QTimer.singleShot(0, lambda: logger.info(
                     f"========= PROCESS COMPLETED SUCCESSFULLY =========\n{cli_output}"
                 ))
                 if self.enterReviewPause():
                     return
                 self.advanceToNextProcess()
-
-    MAX_CLI_OUTPUT_CHARS = 8000
-
-    @classmethod
-    def _briefCliOutput(cls, text) -> str:
-        """The tail of a CLI's output, small enough to never fill the stdout pipe."""
-        text = text or ""
-        if len(text) <= cls.MAX_CLI_OUTPUT_CHARS:
-            return text
-        kept = text[-cls.MAX_CLI_OUTPUT_CHARS:]
-        return (
-            f"[... {len(text) - len(kept)} characters omitted, "
-            f"full output in the Slicer log ...]\n{kept}"
-        )
 
     def prepareHeadStep(self):
         """Narrow the step about to run, now that its input is final.
@@ -2070,8 +2138,8 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             return
         try:
             steps = method.getReviewSteps(
-                reg_type="MGL" if self.isMGLRegistration() else "Butterfly"
-            )
+                AREGRequest(reg_type="MGL" if self.isMGLRegistration() else "Butterfly"
+            ))
         except Exception as e:
             logger.warning(f"Could not list the reviewable steps: {e}")
             return
@@ -2261,31 +2329,6 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     ids.add(Review.patientIdFromFileName(name))
         return ids
 
-    def previousCorrectableStep(self):
-        """The nearest step behind this one the user can actually change.
-
-        Looking at a bad orientation is useless without a way back to the
-        landmarks that caused it. Steps that only ever get looked at are
-        skipped over, so the button lands where something can be done.
-
-        Returns:
-            tuple: (step, steps to replay after it), or (None, []) if there is
-                nothing correctable behind the current one
-        """
-        current = self.review_step or {}
-        history = self.executed_steps
-        try:
-            # the last time this step ran, not the first
-            here = len(history) - 1 - history[::-1].index(current)
-        except ValueError:
-            return None, []
-
-        for i in range(here - 1, -1, -1):
-            kind = Review.describe(history[i].get("ReviewId", "")).get("kind")
-            if kind in (Review.LANDMARKS, Review.REGISTRATION):
-                return history[i], history[i + 1:here + 1]
-        return None, []
-
     def updateReviewButtons(self):
         """Show the actions this patient, and this step, actually allow.
 
@@ -2307,7 +2350,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ReviewNextPatientButton.setEnabled(index < total - 1)
 
         # Marking is only worth offering when there is somewhere to go back to.
-        target, _ = self.previousCorrectableStep()
+        target, _ = self.logic.previousCorrectableStep(self.executed_steps)
         self.ui.ReviewFlagButton.setVisible(target is not None)
         if session.isFlagged():
             self.ui.ReviewFlagButton.setText("Cancel - this patient is fine")
@@ -2356,7 +2399,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         the results it already has, and a run of fifty does not start over
         because one case was wrong.
         """
-        target, replay = self.previousCorrectableStep()
+        target, replay = self.logic.previousCorrectableStep(self.executed_steps)
         if target is None:
             logger.warning("Nothing correctable behind this step")
             return
@@ -2481,9 +2524,9 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
         self.RunningUI(False)
 
-        stopTime = time.time()
+        stop_time = time.time()
 
-        logger.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+        logger.info(f"Processing completed in {stop_time-self.startTime:.2f} seconds")
 
         # OnEndProcess is reached from onProcessUpdate, i.e. from inside a VTK
         # observer callback. Opening an application-modal dialog there starts a
@@ -2650,70 +2693,8 @@ qMRMLNodeComboBox:focus {
         self._updateDynamicCheckboxesDarkMode()
 
     def _updateLineEditAndComboBoxDarkMode(self, parent):
-      """
-      Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
-      """
-      # Update QLabel
-      if isinstance(parent, qt.QLabel):
-        try:
-          parent.setStyleSheet("""
-            QLabel {
-              color: #ffffff;
-              font-weight: 500;
-            }
-          """)
-        except:
-          pass
-      
-      # Update QLineEdit
-      if isinstance(parent, qt.QLineEdit):
-        try:
-          parent.setStyleSheet("""
-            QLineEdit {
-              background-color: #3c3c3c;
-              border: 1px solid #555555;
-              border-radius: 4px;
-              padding: 6px;
-              color: #ffffff;
-            }
-            QLineEdit:focus {
-              border: 2px solid #5dade2;
-            }
-          """)
-        except:
-          pass
-      
-      # Update QComboBox
-      if isinstance(parent, qt.QComboBox):
-        try:
-          parent.setStyleSheet("""
-            QComboBox {
-              background-color: #3c3c3c;
-              border: 1px solid #555555;
-              border-radius: 4px;
-              padding: 4px 6px;
-              color: #ffffff;
-            }
-            QComboBox:focus {
-              border: 2px solid #5dade2;
-            }
-            QComboBox::drop-down {
-              width: 20px;
-              border: none;
-            }
-            QComboBox QAbstractItemView {
-              background-color: #3c3c3c;
-              color: #ffffff;
-              selection-background-color: #5dade2;
-            }
-          """)
-        except:
-          pass
-      
-      # Recursively update all children
-      if hasattr(parent, 'children'):
-        for child in parent.children():
-          self._updateLineEditAndComboBoxDarkMode(child)
+        """Shared recursive pass, kept as a method for the existing call sites."""
+        update_line_edit_and_combo_box(parent)
     
     def _updateDynamicCheckboxesDarkMode(self):
       """
@@ -2756,8 +2737,9 @@ qMRMLNodeComboBox:focus {
       try:
         if hasattr(self.ui, 'AREG_Method') and hasattr(self.ui.AREG_Method, 'merge_seg_checkbox'):
           self.ui.AREG_Method.merge_seg_checkbox.setStyleSheet(checkbox_stylesheet)
-      except:
-        pass
+      except (AttributeError, RuntimeError):
+          # A widget with no such method, or whose C++ object is already gone.
+          pass
     
     def _styleAllCheckboxes(self, parent, stylesheet):
       """
@@ -2766,8 +2748,8 @@ qMRMLNodeComboBox:focus {
       if isinstance(parent, qt.QCheckBox):
         try:
           parent.setStyleSheet(stylesheet)
-        except:
-          pass
+        except (AttributeError, RuntimeError):
+            pass
       
       # Recursively process all children
       if hasattr(parent, 'children'):
@@ -2794,21 +2776,21 @@ qMRMLNodeComboBox:focus {
 
         self.HideComputeItems(run)
         
-    def format_time(self,seconds):
-        """ Convert seconds to H:M:S format. """
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-        return f"{hours:02}:{minutes:02}:{secs:02}"
-    
+    def format_time(self, seconds):
+        """Seconds as HH:MM:SS."""
+        return format_elapsed(seconds)
+
     def update_ui_time(self, start_time, previous_time):
-        current_time = time.time()
-        gap=current_time-previous_time
-        if gap>0.3:
-            previous_time = current_time
-            self.elapsed_time = current_time - start_time
-            formatted_time = self.format_time(self.elapsed_time)
-            return formatted_time
+        """Elapsed time since `start_time`, formatted for the installation label.
+
+        `previous_time` is kept for signature parity with the call sites, which
+        pass it but never update their own copy. It used to throttle this to one
+        update every 0.3s and return None in between, which is what wrote
+        "time: None" into the label. Formatting unconditionally is both simpler
+        and correct.
+        """
+        self.elapsed_time = elapsed_since(start_time)
+        return self.format_time(self.elapsed_time)
         
         
     def run_conda_tool(self,type):
@@ -2867,12 +2849,7 @@ qMRMLNodeComboBox:focus {
                     if gap>0.3:
                         currentTime = time.time() - self.startTime
                         previous_time = currentTime
-                        if currentTime < 60:
-                            timer = f"Time : {int(currentTime)}s"
-                        elif currentTime < 3600:
-                            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-                        else:
-                            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                        timer = format_timer(currentTime)
                         
                         self.ui.LabelTimer.setText(timer)
 
@@ -2913,12 +2890,7 @@ qMRMLNodeComboBox:focus {
                 if gap>0.3:
                     currentTime = time.time() - self.startTime
                     previous_time = currentTime
-                    if currentTime < 60:
-                        timer = f"Time : {int(currentTime)}s"
-                    elif currentTime < 3600:
-                        timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-                    else:
-                        timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                    timer = format_timer(currentTime)
                     
                     self.ui.LabelTimer.setText(timer)
 
@@ -2957,12 +2929,7 @@ qMRMLNodeComboBox:focus {
                 if gap>0.3:
                     currentTime = time.time() - self.startTime
                     previous_time = currentTime
-                    if currentTime < 60:
-                        timer = f"Time : {int(currentTime)}s"
-                    elif currentTime < 3600:
-                        timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-                    else:
-                        timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+                    timer = format_timer(currentTime)
 
                     self.ui.LabelTimer.setText(timer)
 
@@ -3016,11 +2983,11 @@ qMRMLNodeComboBox:focus {
         layout.addWidget(Method.merge_seg_checkbox)
 
     def CreateMiniTab(
-        self, tabWidget: QTabWidget, name: str, index: int, numberItems=None
+        self, tab_widget: QTabWidget, name: str, index: int, number_items=None
     ):
         new_widget = QWidget()
-        if numberItems is not None:
-            tabWidget.setMinimumHeight(46 * numberItems)
+        if number_items is not None:
+            tab_widget.setMinimumHeight(46 * number_items)
 
         layout = QGridLayout(new_widget)
 
@@ -3034,7 +3001,7 @@ qMRMLNodeComboBox:focus {
         scr_box.setWidgetResizable(True)
         scr_box.setWidget(new_widget2)
 
-        tabWidget.insertTab(index, new_widget, name)
+        tab_widget.insertTab(index, new_widget, name)
 
         return layout2
 
@@ -3067,12 +3034,12 @@ qMRMLNodeComboBox:focus {
     
     def onCheckRequirements(self):
         if not self.logic.isCondaSetUp:
-            messageBox = qt.QMessageBox()
+            message_box = qt.QMessageBox()
             text = textwrap.dedent("""
-            SlicerConda is not set up, please click 
+            SlicerConda is not set up, please click
             <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
             """).strip()
-            messageBox.information(None, "Information", text)
+            message_box.information(None, "Information", text)
             return False
         
         if platform.system() == "Windows":
@@ -3083,24 +3050,24 @@ qMRMLNodeComboBox:focus {
                 self.ui.label_LibsInstallation.setText(f"WSL installed")
                 if not self.logic.check_lib_wsl():
                     self.ui.label_LibsInstallation.setText(f"Checking if the required librairies are installed, this task may take a moments")
-                    messageBox = qt.QMessageBox()
+                    message_box = qt.QMessageBox()
                     text = textwrap.dedent("""
-                        WSL doesn't have all the necessary libraries, please download the installer 
-                        and follow the instructions 
-                        <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+                        WSL doesn't have all the necessary libraries, please download the installer
+                        and follow the instructions
+                        <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
                         for installation. The link may be blocked by Chrome, just authorize it.""").strip()
 
-                    messageBox.information(None, "Information", text)
+                    message_box.information(None, "Information", text)
                     return False
                 
             else : # if wsl not install, ask user to install it ans stop process
-                messageBox = qt.QMessageBox()
+                message_box = qt.QMessageBox()
                 text = textwrap.dedent("""
-                    WSL is not installed, please download the installer and follow the instructions 
-                    <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
-                    for installation. The link may be blocked by Chrome, just authorize it.""").strip()        
+                    WSL is not installed, please download the installer and follow the instructions
+                    <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
+                    for installation. The link may be blocked by Chrome, just authorize it.""").strip()
 
-                messageBox.information(None, "Information", text)
+                message_box.information(None, "Information", text)
                 return False
             
         
@@ -3109,11 +3076,11 @@ qMRMLNodeComboBox:focus {
         
         self.ui.label_LibsInstallation.setText(f"Checking if miniconda is installed")
         if "no setup" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
-            messageBox = qt.QMessageBox()
+            message_box = qt.QMessageBox()
             text = textwrap.dedent("""
-            Code can't be launch. \nConda is not setup. 
+            Code can't be launch. \nConda is not setup.
             Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
-            messageBox.information(None, "Information", text)
+            message_box.information(None, "Information", text)
             return False
         
         
@@ -3122,8 +3089,8 @@ qMRMLNodeComboBox:focus {
 
         self.ui.label_LibsInstallation.setText(f"Checking if environnement exists")
         if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
-            userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
-            if userResponse :
+            user_response = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+            if user_response :
                 start_time = time.time()
                 previous_time = start_time
                 formatted_time = self.format_time(0)
@@ -3139,7 +3106,7 @@ qMRMLNodeComboBox:focus {
                 previous_time = start_time
                 formatted_time = self.format_time(0)
                 text = textwrap.dedent(f"""
-                Installation of librairies into the new environnement. 
+                Installation of librairies into the new environnement.
                 This task may take a few minutes.\ntime: {formatted_time}""").strip()
                 self.ui.label_LibsInstallation.setText(text)
             else:
@@ -3152,7 +3119,7 @@ qMRMLNodeComboBox:focus {
 
 
         self.ui.label_LibsInstallation.setText(f"Checking if pytorch3d is installed")
-        if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed 
+        if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed
             process = self.logic.install_pytorch3d()
             start_time = time.time()
             previous_time = start_time
@@ -3161,7 +3128,7 @@ qMRMLNodeComboBox:focus {
                 slicer.app.processEvents()
                 formatted_time = self.update_ui_time(start_time, previous_time)
                 text = textwrap.dedent(f"""
-                Installation of pytorch into the new environnement. 
+                Installation of pytorch into the new environnement.
                 This task may take a few minutes.\ntime: {formatted_time}
                 """).strip()
                 self.ui.label_LibsInstallation.setText(text)
@@ -3169,7 +3136,7 @@ qMRMLNodeComboBox:focus {
             self.ui.label_LibsInstallation.setText(f"pytorch3d is already installed")
             logger.info("pytorch3d already installed")
 
-        self.all_installed = True   
+        self.all_installed = True
         return True
 
     def cleanup(self):
@@ -3221,7 +3188,7 @@ qMRMLNodeComboBox:focus {
         # Parameter node stores all user choices in parameter values, node selections, etc.
         # so that when the scene is saved and reloaded, these settings are restored.
 
-    def setParameterNode(self, inputParameterNode):
+    def setParameterNode(self, input_parameter_node):
         """
         Set and observe parameter node.
         Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
@@ -3239,7 +3206,7 @@ qMRMLNodeComboBox:focus {
                 vtk.vtkCommand.ModifiedEvent,
                 self.updateGUIFromParameterNode,
             )
-        self._parameterNode = inputParameterNode
+        self._parameterNode = input_parameter_node
         if self._parameterNode is not None:
             self.addObserver(
                 self._parameterNode,
@@ -3289,7 +3256,7 @@ qMRMLNodeComboBox:focus {
         if self._parameterNode is None or self._updatingGUIFromParameterNode:
             return
 
-        wasModified = (
+        was_modified = (
             self._parameterNode.StartModify()
         )  # Modify all properties in a single batch
 
@@ -3307,7 +3274,7 @@ qMRMLNodeComboBox:focus {
             "OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID
         )
 
-        self._parameterNode.EndModify(wasModified)
+        self._parameterNode.EndModify(was_modified)
 
 
 class AREGLogic(ScriptedLoadableModuleLogic):
@@ -3340,20 +3307,10 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         self.conda_output_dropped = 0
 
     def init_conda(self):
-        # check if CondaSetUp exists
-        try:
-            import CondaSetUp
-        except:
-            return False
-        self.isCondaSetUp = True
-        
-        # set up conda on windows with WSL
-        if platform.system() == "Windows":
-            from CondaSetUp import CondaSetUpCallWsl
-            return CondaSetUpCallWsl()
-        else:
-            from CondaSetUp import CondaSetUpCall
-            return CondaSetUpCall()
+        """The SlicerConda entry point for this platform, or False without it."""
+        call = init_conda_call()
+        self.isCondaSetUp = bool(call)
+        return call
         
     def run_conda_command(self, target, command):
         self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
@@ -3378,15 +3335,15 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         return self.conda.condaRunCommand(command)
     
     def install_pytorch3d(self):
-        result_pythonpath = self.check_pythonpath_windows("AREG_Method.install_pytorch")
+        result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
         if not result_pythonpath :
             self.give_pythonpath_windows()
-            result_pythonpath = self.check_pythonpath_windows("AREG_Method.install_pytorch")
+            result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
         
-        if result_pythonpath : 
+        if result_pythonpath :
             conda_exe = self.conda.getCondaExecutable()
             path_pip = self.conda.getCondaPath()+f"/envs/{self.name_env}/bin/pip"
-            command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"AREG_Method.install_pytorch",path_pip]
+            command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"ADTLib.env.install_pytorch",path_pip]
 
         self.run_conda_command(target=self.conda.condaRunCommand, command=(command,))
         
@@ -3400,63 +3357,20 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         self.run_conda_command(target=self.condaRunCommand, command=(command,))
         
     def check_lib_wsl(self) -> bool:
-        # Ubuntu versions < 24.04
-        required_libs_old = ["libxrender1", "libgl1-mesa-glx"]
-        # Ubuntu versions >= 24.04
-        required_libs_new = ["libxrender1", "libgl1", "libglx-mesa0"]
-
-
-        all_installed = lambda libs: all(
-            subprocess.run(
-                f"wsl -- bash -c \"dpkg -l | grep {lib}\"", capture_output=True, text=True
-            ).stdout.encode("utf-16-le").decode("utf-8").replace("\x00", "").find(lib) >= 0
-            for lib in libs
-        )
-
-        return all_installed(required_libs_old) or all_installed(required_libs_new)
+        """Whether WSL carries the system libraries the tools need."""
+        return wsl_libraries_present()
     
-    def check_pythonpath_windows(self,file):
-        '''
-        Check if the environment env_name in wsl know the path to a specific file (ex : Crownsegmentationcli.py)
-        return : bool
-        '''
-        conda_exe = self.conda.getCondaExecutable()
-        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", condaQuote(self.conda, f"import {file} as check;import os; print(os.path.isfile(check.__file__))")]
-        result = self.conda.condaRunCommand(command)
-        if "True" in result :
-            return True
-        return False
+    def check_pythonpath_windows(self, file):
+        """Whether `file` is importable by the Python of this module's environment."""
+        return check_pythonpath(self.conda, self.name_env, file)
     
     def give_pythonpath_windows(self):
-        '''
-        take the pythonpath of Slicer and give it to the environment name_env in wsl.
-        '''
-        paths = slicer.app.moduleManager().factoryManager().searchPaths
-        mnt_paths = []
-        for path in paths :
-            # Quoted only where a shell will strip the quotes again. They used to be
-            # unconditional: under the argv-passing SlicerConda they survived into
-            # PYTHONPATH, Python read each entry as a relative path and prefixed the
-            # cwd, and every sys.path entry pointed nowhere.
-            mnt_paths.append(condaQuote(self.conda, self.windows_to_linux_path(path)))
-        pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
-        conda_exe = self.conda.getCondaExecutable()
-        argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
-        results = self.conda.condaRunCommand(argument)
+        """Publish Slicer's module search paths into this module's environment."""
+        give_pythonpath(self.conda, self.name_env)
         
-    def windows_to_linux_path(self,windows_path):
-        '''
-        convert a windows path to a wsl path
-        '''
-        windows_path = windows_path.strip()
-
-        path = windows_path.replace('\\', '/')
-
-        if ':' in path:
-            drive, path_without_drive = path.split(':', 1)
-            path = "/mnt/" + drive.lower() + path_without_drive
-
-        return path
+    def windows_to_linux_path(self, windows_path):
+        """A Windows path as WSL sees it."""
+        return windows_to_linux_path_shared(windows_path)
     
     def cancel_process(self):
         if platform.system() == 'Windows':
@@ -3469,7 +3383,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         self.cancel = True
     
     def check_cli_script(self):
-        if not self.check_pythonpath_windows("AREG_IOS"): 
+        if not self.check_pythonpath_windows("AREG_IOS"):
             self.give_pythonpath_windows()
             results = self.check_pythonpath_windows("AREG_IOS")
             
@@ -3481,7 +3395,7 @@ class AREGLogic(ScriptedLoadableModuleLogic):
         '''
         Runs a command in a specified Conda environment, handling different operating systems.
         
-        copy paste from SlicerConda and change the process line to be able to get the stderr/stdout 
+        copy paste from SlicerConda and change the process line to be able to get the stderr/stdout
         and cancel the process without blocking slicer
         '''
         path_activate = self.conda.getActivateExecutable()
@@ -3566,7 +3480,9 @@ class AREGLogic(ScriptedLoadableModuleLogic):
                     for line in (stream or "").splitlines():
                         self.queueCondaOutput(line)
             except Exception:
-                pass
+                # Last resort: there is nothing left to try after this, but losing
+                # the process output with no trace makes diagnosis impossible.
+                logger.debug("Could not recover the conda output", exc_info=True)
 
     def queueCondaOutput(self, line):
         """Hand one line of a conda tool's output to the main thread.
@@ -3596,3 +3512,46 @@ class AREGLogic(ScriptedLoadableModuleLogic):
             dropped = self.conda_output_dropped
             self.conda_output_dropped = 0
         return "\n".join(taken), dropped
+    #: Short enough never to fill the pipe Slicer captures its own output
+    #: into. It lived on the Widget while this method is its only reader: the
+    #: move to the Logic left it behind, and `cls.MAX_CLI_OUTPUT_CHARS` raised
+    #: an AttributeError on the first CLI that finished.
+    MAX_CLI_OUTPUT_CHARS = 8000
+
+    @classmethod
+    def _briefCliOutput(cls, text) -> str:
+        """The tail of a CLI's output, small enough to never fill the stdout pipe."""
+        text = text or ""
+        if len(text) <= cls.MAX_CLI_OUTPUT_CHARS:
+            return text
+        kept = text[-cls.MAX_CLI_OUTPUT_CHARS:]
+        return (
+            f"[... {len(text) - len(kept)} characters omitted, "
+            f"full output in the Slicer log ...]\n{kept}"
+        )
+    def previousCorrectableStep(self, executed_steps):
+        """The nearest step behind this one the user can actually change.
+
+        Looking at a bad orientation is useless without a way back to the
+        landmarks that caused it. Steps that only ever get looked at are
+        skipped over, so the button lands where something can be done.
+
+        Returns:
+            tuple: (step, steps to replay after it), or (None, []) if there is
+                nothing correctable behind the current one
+        """
+        current = self.review_step or {}
+        history = executed_steps
+        try:
+            # the last time this step ran, not the first
+            here = len(history) - 1 - history[::-1].index(current)
+        except ValueError:
+            return None, []
+
+        for i in range(here - 1, -1, -1):
+            kind = Review.describe(history[i].get("ReviewId", "")).get("kind")
+            if kind in (Review.LANDMARKS, Review.REGISTRATION):
+                return history[i], history[i + 1:here + 1]
+        return None, []
+
+

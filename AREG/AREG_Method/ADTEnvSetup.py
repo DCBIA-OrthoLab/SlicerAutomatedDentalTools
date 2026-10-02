@@ -11,11 +11,15 @@ line and a `return`, so the segmentation step was skipped and the run carried on
 with nothing to show for it.
 
 This module asks once, at startup, and builds the environment on the spot when
-the user agrees. It is hosted by AREG because the pip step it drives lives in
-`AREG_Method.install_pytorch`, but the environment it looks after belongs to the
-whole extension. It sits in `AREG_Method` rather than next to `AREG.py`: Slicer
-probes every file at the root of a module path for a scripted module class, and
-a helper left there fails that probe loudly at each startup.
+the user agrees. The environment it looks after belongs to the whole extension;
+it is still hosted by AREG only because the steps it drives are AREG's own
+`install_shapeaxi` and `install_pytorch3d`. The pip step itself has moved to
+`ADTLib.env.install_pytorch`, so this module is a candidate to follow it into
+`ADTLib` once those two steps are shared as well.
+
+It sits in `AREG_Method` rather than next to `AREG.py`: Slicer probes every file
+at the root of a module path for a scripted module class, and a helper left
+there fails that probe loudly at each startup.
 """
 
 import logging
@@ -35,16 +39,20 @@ ENV_NAME = "shapeaxi"
 # (SlicerConda keys its path by installation), so a new Slicer has to ask again.
 SKIP_KEY = "AutomatedDentalTools/skipSharedEnvironmentCheck"
 
-# Same specification the modules use in their own install path, kept identical
-# so that an environment built here needs no repair on the first run.
-PYTHON_VERSION = "3.12"
-BASE_LIBRARIES = ["torch>=2.8,<2.13", "ocnn==2.2.1", "SimpleITK"]
+# The environment specification is deliberately NOT repeated here. installEnvironment
+# drives AREG's own install_shapeaxi and install_pytorch3d, so whatever those two
+# install is what this module builds, and the two can never drift apart. A copy of
+# the specification used to sit here, promising to be "kept identical"; PR #254 moved
+# torch out of condaCreateEnv and into ADTLib.env.install_pytorch, and this copy was
+# not updated - it was never read, so nothing broke, which is exactly why it went
+# unnoticed. Anything this module needs to know about the specification, it asks the
+# module that owns it.
 
 
 def _settings():
     """Settings of the running installation, falling back to the user's own."""
-    revisionUserSettings = getattr(slicer.app, "revisionUserSettings", None)
-    settings = revisionUserSettings() if revisionUserSettings else None
+    revision_user_settings = getattr(slicer.app, "revisionUserSettings", None)
+    settings = revision_user_settings() if revision_user_settings else None
     if settings and settings.isWritable():
         return settings
     return slicer.app.userSettings()
@@ -70,10 +78,10 @@ def environmentIsPresent(conda):
     """
     if platform.system() == "Windows":
         return conda.condaTestEnv(ENV_NAME) is True
-    condaPath = conda.getCondaPath()
-    if not condaPath or condaPath == "None":
+    conda_path = conda.getCondaPath()
+    if not conda_path or conda_path == "None":
         return False
-    return os.path.isdir(os.path.join(condaPath, "envs", ENV_NAME))
+    return os.path.isdir(os.path.join(conda_path, "envs", ENV_NAME))
 
 
 def _formatTime(seconds):
@@ -236,8 +244,8 @@ def checkAtStartup():
         # already reported by the extension manager, not this check's business.
         return
 
-    condaPath = conda.getCondaPath()
-    if not condaPath or condaPath == "None":
+    conda_path = conda.getCondaPath()
+    if not conda_path or conda_path == "None":
         _informCondaMissing()
         return
 

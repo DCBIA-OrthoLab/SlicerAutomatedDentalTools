@@ -1,28 +1,26 @@
 #!/usr/bin/env python-real
-import glob
 import os
 import sys
-import time
 import argparse
 import platform
-import logging
 import numpy as np
 
+# Import from utils
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("PRE_ASO_IOS")
-logger.setLevel(logging.INFO)
+from ADTLib.logging_setup import get_logger
 
-logger.propagate = False
-
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("PRE_ASO_IOS")
 
 from tqdm import tqdm
 from itertools import chain
@@ -46,7 +44,7 @@ def check_platform():
     else:
         return "Unknown"
 
-# Import from utils
+
 if check_platform()=="WSL":
     from ASO_IOS_utils.utils import UpperOrLower, search, ReadSurf, WriteSurf, WritefileError, saveMatrixAsTfm, PatientNumber
     from ASO_IOS_utils.icp import vtkICP, vtkMeanTeeth, InitIcp, ICP, ToothNoExist, NoSegmentationSurf
@@ -66,6 +64,415 @@ else:
     )
     
 # import ASO_IOS_utils
+
+def _register_one_file(args, dic_teeth, error_details, failed_indices, file, gold, icp, index, jaw, link, list_files, success_count):
+    """Register one file onto the reference, and write out what comes of it.
+
+    Each step has its own error handler, which logs the failure and moves on
+    to the next file: one unreadable scan does not stop the batch."""
+    try:
+        # Determine jaw and file path
+        file_vtk = file
+        if link:
+            file_vtk = file[jaw()]
+        if not link:
+            jaw = Jaw(file_vtk)
+
+        logger.debug(f"Processing [{index+1}/{len(list_files)}]: {os.path.basename(file_vtk)} ({jaw()})")
+
+        # PrePreAso needs 3 or 4 teeth of this arch to build its frame.
+        # With none it used to fail on a bare assertion naming universal
+        # ids, which says nothing about what the caller got wrong: the
+        # teeth to register on were all from the other jaw.
+        if len(dic_teeth[jaw()]) not in (3, 4):
+            error_msg = (
+                f"{len(dic_teeth[jaw()])} {jaw()} teeth given in list_teeth, "
+                "3 or 4 are needed to orient this arch. Add them (the usual "
+                "set is UR6,UR4,UL4,UL6 for the upper and LL6,LL4,LR4,LR6 "
+                "for the lower), or orient the arches in occlusion so the "
+                "upper's transform carries the lower.")
+            logger.error(f"[{index}] {error_msg} for {os.path.basename(file_vtk)}")
+            failed_indices.append(index)
+            error_details.append({
+                "index": index,
+                "file": os.path.basename(file_vtk),
+                "stage": "teeth_for_jaw",
+                "message": error_msg,
+            })
+            try:
+                WritefileError(file_vtk, args.folder_error[0], error_msg)
+            except Exception as we:
+                logger.warning(f"Could not write error file: {str(we)}")
+            return jaw, success_count
+
+        # ===== Stage 8.1: Surface Loading =====
+        try:
+            surf = ReadSurf(file_vtk)
+            # An arch the segmentation numbered in both jaws loses the
+            # teeth this module fits on: their points went to the other
+            # jaw's number, so vtkMeanTeeth finds nothing and the arch is
+            # dropped. Repaired here, before the teeth are looked up, and
+            # carried into what WriteSurf saves for the rest of the run.
+            # The teeth PrePreAso asks for three lines below: the renumbering
+            # only applies when it is what makes them appear. Without them
+            # `required` stays empty and only a SPLIT arch is repaired, not one
+            # numbered entirely in the other jaw.
+            UnifyArchLabels(surf, jaw(), dic_teeth[jaw()])
+            logger.debug(f"Surface loaded for {os.path.basename(file_vtk)}")
+        except Exception as sl_err:
+            error_msg = f"Failed to load surface: {str(sl_err)}"
+            logger.error(f"[{index}] {error_msg}")
+            failed_indices.append(index)
+            error_details.append({
+                "index": index,
+                "file": os.path.basename(file_vtk),
+                "stage": "surface_loading",
+                "message": str(sl_err)
+            })
+            try:
+                WritefileError(file_vtk, args.folder_error[0], error_msg)
+            except Exception as we:
+                logger.warning(f"Could not write error file: {str(we)}")
+            return jaw, success_count
+
+        # ===== Stage 8.2: PreProcessing =====
+        try:
+            surf, matrix = PrePreAso(surf, gold[jaw()], dic_teeth[jaw()])
+            logger.debug(f"Preprocessing completed for {os.path.basename(file_vtk)}")
+        except ToothNoExist as tne:
+            error_msg = f"Tooth not found: {str(tne)}"
+            logger.error(f"[{index}] {error_msg} for {file_vtk}")
+            failed_indices.append(index)
+            error_details.append({
+                "index": index,
+                "file": os.path.basename(file_vtk),
+                "stage": "preprocessing",
+                "error_type": "ToothNoExist",
+                "message": str(tne)
+            })
+            try:
+                WritefileError(file_vtk, args.folder_error[0], error_msg)
+            except Exception as we:
+                logger.warning(f"Could not write error file: {str(we)}")
+            with open(args.log_path[0], "a") as log_f:
+                log_f.write(f"{index},ToothNoExist\n")
+            return jaw, success_count
+        except NoSegmentationSurf as nss:
+            error_msg = f"No segmentation surface: {str(nss)}"
+            logger.error(f"[{index}] {error_msg} for {file_vtk}")
+            failed_indices.append(index)
+            error_details.append({
+                "index": index,
+                "file": os.path.basename(file_vtk),
+                "stage": "preprocessing",
+                "error_type": "NoSegmentationSurf",
+                "message": str(nss)
+            })
+            try:
+                WritefileError(file_vtk, args.folder_error[0], error_msg)
+            except Exception as we:
+                logger.warning(f"Could not write error file: {str(we)}")
+            with open(args.log_path[0], "a") as log_f:
+                log_f.write(f"{index},NoSegmentationSurf\n")
+            return jaw, success_count
+        except Exception as pre_err:
+            error_msg = f"Preprocessing error: {str(pre_err)}"
+            logger.error(f"[{index}] {error_msg}")
+            failed_indices.append(index)
+            error_details.append({
+                "index": index,
+                "file": os.path.basename(file_vtk),
+                "stage": "preprocessing",
+                "message": str(pre_err)
+            })
+            try:
+                WritefileError(file_vtk, args.folder_error[0], error_msg)
+            except Exception as we:
+                logger.warning(f"Could not write error file: {str(we)}")
+            return jaw, success_count
+
+        # ===== Stage 8.3: ICP Registration =====
+        try:
+            output_icp = icp[jaw()].run(surf, gold[jaw()])
+            logger.debug(f"ICP registration completed for {os.path.basename(file_vtk)}")
+        except Exception as icp_err:
+            error_msg = f"ICP registration failed: {str(icp_err)}"
+            logger.error(f"[{index}] {error_msg}")
+            failed_indices.append(index)
+            error_details.append({
+                "index": index,
+                "file": os.path.basename(file_vtk),
+                "stage": "icp_registration",
+                "message": str(icp_err)
+            })
+            try:
+                WritefileError(file_vtk, args.folder_error[0], error_msg)
+            except Exception as we:
+                logger.warning(f"Could not write error file: {str(we)}")
+            return jaw, success_count
+
+        # ===== Stage 8.4: Matrix Computation =====
+        try:
+            final_matrix = np.matmul(output_icp["matrix"], matrix)
+            if link:
+                # One matrix moved the whole mouth, so one file holds it,
+                # under the patient's name alone. AREG_IOS reads it back
+                # under that name in Auto_IOS mode.
+                tfm_name = f"{PatientNumber(file_vtk)}_SegOr.tfm"
+            else:
+                # One matrix per arch, so the jaw has to stay in the
+                # name. PatientNumber cuts the name at _U or _L, which
+                # gave the upper and the lower the same file name: the
+                # arch written second overwrote the other one's matrix,
+                # and both were then read as the one that survived. The
+                # matrix now shares the stem of the surface it belongs
+                # to, written alongside it by WriteSurf.
+                stem = os.path.splitext(os.path.basename(file_vtk))[0]
+                tfm_name = f"{stem}{args.add_inname[0]}.tfm"
+            tfm_path = os.path.join(args.output_folder[0], tfm_name)
+            logger.debug(f"Saving transform matrix to {os.path.basename(tfm_path)}")
+            saveMatrixAsTfm(final_matrix, tfm_path)
+            logger.debug(f"Transform matrix saved successfully")
+        except Exception as mat_err:
+            error_msg = f"Matrix computation/saving failed: {str(mat_err)}"
+            logger.error(f"[{index}] {error_msg}")
+            failed_indices.append(index)
+            error_details.append({
+                "index": index,
+                "file": os.path.basename(file_vtk),
+                "stage": "matrix_saving",
+                "message": str(mat_err)
+            })
+            try:
+                WritefileError(file_vtk, args.folder_error[0], error_msg)
+            except Exception as we:
+                logger.warning(f"Could not write error file: {str(we)}")
+            return jaw, success_count
+
+        # ===== Stage 8.5: Surface Output Writing =====
+        try:
+            logger.debug(f"Writing registered surface for {os.path.basename(file_vtk)}")
+            WriteSurf(
+                output_icp["source_Or"],
+                args.output_folder[0],
+                os.path.basename(file_vtk),
+                args.add_inname[0],
+            )
+            logger.debug(f"Registered surface saved successfully")
+        except Exception as write_err:
+            error_msg = f"Surface writing failed: {str(write_err)}"
+            logger.error(f"[{index}] {error_msg}")
+            logger.error(f"  Output folder: {args.output_folder[0]}, File: {os.path.basename(file_vtk)}")
+            failed_indices.append(index)
+            error_details.append({
+                "index": index,
+                "file": os.path.basename(file_vtk),
+                "stage": "surface_writing",
+                "message": str(write_err)
+            })
+            try:
+                WritefileError(file_vtk, args.folder_error[0], error_msg)
+            except Exception as we:
+                logger.warning(f"Could not write error file: {str(we)}")
+            return jaw, success_count
+
+        # ===== Stage 8.6: Linked Jaw Processing (if applicable) =====
+        if link:
+            try:
+                logger.debug(f"Processing linked jaw for {os.path.basename(file_vtk)}")
+                surf_lower = ReadSurf(file[jaw.inv()])
+                output_lower = TransformSurf(surf_lower, matrix)
+                output_lower = TransformSurf(output_lower, output_icp["matrix"])
+
+                WriteSurf(
+                    output_lower,
+                    args.output_folder[0],
+                    os.path.basename(file[jaw.inv()]),
+                    args.add_inname[0],
+                )
+                logger.debug(f"Linked jaw surface written successfully")
+            except Exception as link_err:
+                error_msg = f"Linked jaw processing failed: {str(link_err)}"
+                logger.error(f"[{index}] {error_msg}")
+                failed_indices.append(index)
+                error_details.append({
+                    "index": index,
+                    "file": os.path.basename(file[jaw.inv()]),
+                    "stage": "linked_jaw_processing",
+                    "message": str(link_err)
+                })
+                try:
+                    WritefileError(file[jaw.inv()], args.folder_error[0], error_msg)
+                except Exception as we:
+                    logger.warning(f"Could not write error file: {str(we)}")
+                return jaw, success_count
+
+        # ===== Stage 8.7: Log Update =====
+        try:
+            with open(args.log_path[0], "a") as log_f:
+                log_f.write(f"{index+1},success\n")
+            success_count += 1
+            logger.info(f"[{index+1}/{len(list_files)}] File processed successfully")
+        except Exception as log_err:
+            logger.warning(f"Could not update log file: {str(log_err)}")
+
+    except Exception as outer_err:
+        logger.error(f"Unhandled error in processing loop at index {index}: {str(outer_err)}")
+        failed_indices.append(index)
+        error_details.append({
+            "index": index,
+            "stage": "outer_loop",
+            "message": str(outer_err)
+        })
+    return jaw, success_count
+
+def _build_icp_methods(dic_teeth):
+    """One ICP method per jaw, tuned on its own reference teeth."""
+    method = [InitIcp(), vtkICP()]
+    option_upper = vtkMeanTeeth(dic_teeth["Upper"],property="Universal_ID")
+    option_lower = vtkMeanTeeth(dic_teeth["Lower"],property="Universal_ID")
+    icp_upper = ICP(method, option=option_upper)
+    icp_lower = ICP(method, option=option_lower)
+    icp = {"Upper": icp_upper, "Lower": icp_lower}
+    logger.debug("ICP methods initialized successfully")
+    return icp
+
+def _discover_input_files(args, link, list_extension):
+    """The files to register, in pairs when the arches are linked."""
+    if not os.path.exists(args.input[0]):
+        raise FileNotFoundError(f"Input folder does not exist: {args.input[0]}")
+
+    if link:
+        list_files = Files_vtk_link(args.input[0])
+    else:
+        list_files = list(
+            chain.from_iterable(search(args.input[0], list_extension).values())
+        )
+
+    if not list_files:
+        raise ValueError(f"No surface files found in {args.input[0]}")
+    logger.info(f"Discovered {len(list_files)} surface files for processing")
+    return list_files
+
+def _configure_jaws(args):
+    """Which jaw to treat, and whether to keep the two linked.
+
+    In occlusion the two arches move together: the registration is computed
+    on one and applied to both."""
+    link = False
+    jaw = None
+
+    if args.occlusion[0].lower() == "true":
+        link = True
+        if args.jaw[0] == "Upper":
+            jaw = Jaw(Upper())
+            logger.debug("Jaw linking enabled for Upper jaw")
+        elif args.jaw[0] == "Lower":
+            jaw = Jaw(Lower())
+            logger.debug("Jaw linking enabled for Lower jaw")
+        else:
+            # "Upper/Lower" is what the GUI sends when both arches are
+            # selected, and it is the one thing this mode cannot do:
+            # linking means one arch is fitted and drags the other, so
+            # exactly one of them has to be named.
+            raise ValueError(
+                f"Invalid jaw specification: {args.jaw[0]}. Orienting the "
+                "arches in occlusion fits one arch and moves the other "
+                "with it, so jaw must be Upper or Lower. To orient each "
+                "arch on its own reference, leave the occlusion option "
+                "off and give the teeth of both jaws in list_teeth.")
+    else:
+        logger.debug(
+            "Jaw linking disabled: each arch is oriented on the gold "
+            "standard of its own jaw")
+    return jaw, link
+
+def _prepare_output_dirs(args):
+    """Create the output folders and reset the tracking file to empty."""
+    if not os.path.exists(args.output_folder[0]):
+        os.makedirs(args.output_folder[0], exist_ok=True)
+        logger.debug(f"Created output folder: {args.output_folder[0]}")
+
+    # Setup error folder
+    if not os.path.exists(args.folder_error[0]):
+        os.makedirs(args.folder_error[0], exist_ok=True)
+        logger.debug(f"Created error folder: {args.folder_error[0]}")
+
+    # Setup log file
+    log_dir = os.path.split(args.log_path[0])[0]
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+
+    with open(args.log_path[0], "w") as log_f:
+        log_f.truncate(0)
+    logger.debug(f"Log file initialized: {args.log_path[0]}")
+
+def _load_gold_surfaces(args, gold, list_extension):
+    """The two reference surfaces, upper and lower."""
+    if not os.path.exists(args.gold_folder[0]):
+        raise FileNotFoundError(f"Gold folder does not exist: {args.gold_folder[0]}")
+
+    gold_files = list(
+        chain.from_iterable(search(args.gold_folder[0], list_extension).values())
+    )
+
+    if len(gold_files) < 2:
+        raise ValueError(f"Expected at least 2 gold reference files, found {len(gold_files)}")
+
+    logger.debug(f"Loading {len(gold_files)} gold reference files")
+    for i, gf in enumerate(gold_files[:2]):
+        try:
+            jaw_type = UpperOrLower(gf)
+            gold_surf = ReadSurf(gf)
+            gold[jaw_type] = gold_surf
+            logger.debug(f"Gold reference [{jaw_type}] loaded from {os.path.basename(gf)}")
+        except Exception as gf_err:
+            logger.error(f"Failed to load gold file {i+1}: {str(gf_err)}")
+            raise
+
+    if "Upper" not in gold or "Lower" not in gold:
+        raise ValueError("Could not load both Upper and Lower gold references")
+    logger.info("Gold reference surfaces loaded successfully")
+
+def _build_teeth_dict(args, dic_teeth, lower):
+    """The requested teeth, sorted by jaw according to their number."""
+    list_teeth = args.list_teeth[0].split(",")
+    dic = {
+        "UR8": 1, "UR7": 2, "UR6": 3, "UR5": 4, "UR4": 5, "UR3": 6, "UR2": 7, "UR1": 8,
+        "UL1": 9, "UL2": 10, "UL3": 11, "UL4": 12, "UL5": 13, "UL6": 14, "UL7": 15, "UL8": 16,
+        "LL8": 17, "LL7": 18, "LL6": 19, "LL5": 20, "LL4": 21, "LL3": 22, "LL2": 23, "LL1": 24,
+        "LR1": 25, "LR2": 26, "LR3": 27, "LR4": 28, "LR5": 29, "LR6": 30, "LR7": 31, "LR8": 32,
+    }
+
+    for tooth in list_teeth:
+        tooth = tooth.strip()
+        if tooth not in dic:
+            raise ValueError(f"Unknown tooth identifier: {tooth}")
+        tooth_code = dic[tooth]
+        if tooth_code in lower:
+            dic_teeth["Lower"].append(tooth_code)
+        else:
+            dic_teeth["Upper"].append(tooth_code)
+
+    if not dic_teeth["Upper"] and not dic_teeth["Lower"]:
+        raise ValueError("No valid teeth identified from input list")
+    logger.info(f"Teeth dictionary built: Upper={dic_teeth['Upper']}, Lower={dic_teeth['Lower']}")
+
+def _validate_inputs(args):
+    """Are all the arguments the next step needs actually there?"""
+    if not hasattr(args, 'list_teeth') or not args.list_teeth or not args.list_teeth[0]:
+        raise ValueError("list_teeth argument is missing or empty")
+    if not hasattr(args, 'gold_folder') or not args.gold_folder or not args.gold_folder[0]:
+        raise ValueError("gold_folder argument is missing or empty")
+    if not hasattr(args, 'input') or not args.input or not args.input[0]:
+        raise ValueError("input argument is missing or empty")
+    if not hasattr(args, 'output_folder') or not args.output_folder or not args.output_folder[0]:
+        raise ValueError("output_folder argument is missing or empty")
+    if not hasattr(args, 'log_path') or not args.log_path or not args.log_path[0]:
+        raise ValueError("log_path argument is missing or empty")
+    if not hasattr(args, 'folder_error') or not args.folder_error or not args.folder_error[0]:
+        raise ValueError("folder_error argument is missing or empty")
+    logger.debug("All required arguments present")
 
 def main(args):
     """
@@ -109,19 +516,7 @@ def main(args):
         # ===== Stage 1: Argument and Input Validation =====
         logger.debug("Stage 1: Validating arguments and inputs")
         try:
-            if not hasattr(args, 'list_teeth') or not args.list_teeth or not args.list_teeth[0]:
-                raise ValueError("list_teeth argument is missing or empty")
-            if not hasattr(args, 'gold_folder') or not args.gold_folder or not args.gold_folder[0]:
-                raise ValueError("gold_folder argument is missing or empty")
-            if not hasattr(args, 'input') or not args.input or not args.input[0]:
-                raise ValueError("input argument is missing or empty")
-            if not hasattr(args, 'output_folder') or not args.output_folder or not args.output_folder[0]:
-                raise ValueError("output_folder argument is missing or empty")
-            if not hasattr(args, 'log_path') or not args.log_path or not args.log_path[0]:
-                raise ValueError("log_path argument is missing or empty")
-            if not hasattr(args, 'folder_error') or not args.folder_error or not args.folder_error[0]:
-                raise ValueError("folder_error argument is missing or empty")
-            logger.debug("All required arguments present")
+            _validate_inputs(args)
         except ValueError as ve:
             logger.error(f"Argument validation failed: {str(ve)}")
             return {
@@ -134,27 +529,7 @@ def main(args):
         # ===== Stage 2: Teeth Dictionary Parsing =====
         logger.debug("Stage 2: Building teeth dictionary from input list")
         try:
-            list_teeth = args.list_teeth[0].split(",")
-            dic = {
-                "UR8": 1, "UR7": 2, "UR6": 3, "UR5": 4, "UR4": 5, "UR3": 6, "UR2": 7, "UR1": 8,
-                "UL1": 9, "UL2": 10, "UL3": 11, "UL4": 12, "UL5": 13, "UL6": 14, "UL7": 15, "UL8": 16,
-                "LL8": 17, "LL7": 18, "LL6": 19, "LL5": 20, "LL4": 21, "LL3": 22, "LL2": 23, "LL1": 24,
-                "LR1": 25, "LR2": 26, "LR3": 27, "LR4": 28, "LR5": 29, "LR6": 30, "LR7": 31, "LR8": 32,
-            }
-            
-            for tooth in list_teeth:
-                tooth = tooth.strip()
-                if tooth not in dic:
-                    raise ValueError(f"Unknown tooth identifier: {tooth}")
-                tooth_code = dic[tooth]
-                if tooth_code in lower:
-                    dic_teeth["Lower"].append(tooth_code)
-                else:
-                    dic_teeth["Upper"].append(tooth_code)
-            
-            if not dic_teeth["Upper"] and not dic_teeth["Lower"]:
-                raise ValueError("No valid teeth identified from input list")
-            logger.info(f"Teeth dictionary built: Upper={dic_teeth['Upper']}, Lower={dic_teeth['Lower']}")
+            _build_teeth_dict(args, dic_teeth, lower)
         except (ValueError, KeyError) as e:
             logger.error(f"Teeth dictionary parsing failed: {str(e)}")
             error_details.append({"stage": "teeth_parsing", "message": str(e)})
@@ -169,30 +544,7 @@ def main(args):
         logger.debug("Stage 3: Loading gold standard reference surfaces")
         gold = {}
         try:
-            if not os.path.exists(args.gold_folder[0]):
-                raise FileNotFoundError(f"Gold folder does not exist: {args.gold_folder[0]}")
-            
-            gold_files = list(
-                chain.from_iterable(search(args.gold_folder[0], list_extension).values())
-            )
-            
-            if len(gold_files) < 2:
-                raise ValueError(f"Expected at least 2 gold reference files, found {len(gold_files)}")
-            
-            logger.debug(f"Loading {len(gold_files)} gold reference files")
-            for i, gf in enumerate(gold_files[:2]):
-                try:
-                    jaw_type = UpperOrLower(gf)
-                    gold_surf = ReadSurf(gf)
-                    gold[jaw_type] = gold_surf
-                    logger.debug(f"Gold reference [{jaw_type}] loaded from {os.path.basename(gf)}")
-                except Exception as gf_err:
-                    logger.error(f"Failed to load gold file {i+1}: {str(gf_err)}")
-                    raise
-            
-            if "Upper" not in gold or "Lower" not in gold:
-                raise ValueError("Could not load both Upper and Lower gold references")
-            logger.info("Gold reference surfaces loaded successfully")
+            _load_gold_surfaces(args, gold, list_extension)
         except (FileNotFoundError, ValueError, Exception) as ge:
             logger.error(f"Gold reference loading failed: {str(ge)}")
             error_details.append({"stage": "gold_loading", "message": str(ge)})
@@ -207,23 +559,7 @@ def main(args):
         logger.debug("Stage 4: Setting up output directories")
         try:
             # Setup output folder
-            if not os.path.exists(args.output_folder[0]):
-                os.makedirs(args.output_folder[0], exist_ok=True)
-                logger.debug(f"Created output folder: {args.output_folder[0]}")
-            
-            # Setup error folder
-            if not os.path.exists(args.folder_error[0]):
-                os.makedirs(args.folder_error[0], exist_ok=True)
-                logger.debug(f"Created error folder: {args.folder_error[0]}")
-            
-            # Setup log file
-            log_dir = os.path.split(args.log_path[0])[0]
-            if not os.path.exists(log_dir):
-                os.makedirs(log_dir, exist_ok=True)
-            
-            with open(args.log_path[0], "w") as log_f:
-                log_f.truncate(0)
-            logger.debug(f"Log file initialized: {args.log_path[0]}")
+            _prepare_output_dirs(args)
         except OSError as oe:
             logger.error(f"Directory setup failed: {str(oe)}")
             error_details.append({"stage": "directory_setup", "message": str(oe)})
@@ -237,32 +573,7 @@ def main(args):
         # ===== Stage 5: Jaw Configuration =====
         logger.debug("Stage 5: Configuring jaw parameters")
         try:
-            link = False
-            jaw = None
-            
-            if args.occlusion[0].lower() == "true":
-                link = True
-                if args.jaw[0] == "Upper":
-                    jaw = Jaw(Upper())
-                    logger.debug("Jaw linking enabled for Upper jaw")
-                elif args.jaw[0] == "Lower":
-                    jaw = Jaw(Lower())
-                    logger.debug("Jaw linking enabled for Lower jaw")
-                else:
-                    # "Upper/Lower" is what the GUI sends when both arches are
-                    # selected, and it is the one thing this mode cannot do:
-                    # linking means one arch is fitted and drags the other, so
-                    # exactly one of them has to be named.
-                    raise ValueError(
-                        f"Invalid jaw specification: {args.jaw[0]}. Orienting the "
-                        "arches in occlusion fits one arch and moves the other "
-                        "with it, so jaw must be Upper or Lower. To orient each "
-                        "arch on its own reference, leave the occlusion option "
-                        "off and give the teeth of both jaws in list_teeth.")
-            else:
-                logger.debug(
-                    "Jaw linking disabled: each arch is oriented on the gold "
-                    "standard of its own jaw")
+            jaw, link = _configure_jaws(args)
         except (ValueError, Exception) as je:
             logger.error(f"Jaw configuration failed: {str(je)}")
             error_details.append({"stage": "jaw_config", "message": str(je)})
@@ -276,19 +587,7 @@ def main(args):
         # ===== Stage 6: File Discovery =====
         logger.debug("Stage 6: Discovering input surface files")
         try:
-            if not os.path.exists(args.input[0]):
-                raise FileNotFoundError(f"Input folder does not exist: {args.input[0]}")
-            
-            if link:
-                list_files = Files_vtk_link(args.input[0])
-            else:
-                list_files = list(
-                    chain.from_iterable(search(args.input[0], list_extension).values())
-                )
-            
-            if not list_files:
-                raise ValueError(f"No surface files found in {args.input[0]}")
-            logger.info(f"Discovered {len(list_files)} surface files for processing")
+            list_files = _discover_input_files(args, link, list_extension)
         except (FileNotFoundError, ValueError, Exception) as fe:
             logger.error(f"File discovery failed: {str(fe)}")
             error_details.append({"stage": "file_discovery", "message": str(fe)})
@@ -302,13 +601,7 @@ def main(args):
         # ===== Stage 7: ICP Method Initialization =====
         logger.debug("Stage 7: Initializing ICP registration methods")
         try:
-            Method = [InitIcp(), vtkICP()]
-            option_upper = vtkMeanTeeth(dic_teeth["Upper"],property="Universal_ID")
-            option_lower = vtkMeanTeeth(dic_teeth["Lower"],property="Universal_ID")
-            icp_upper = ICP(Method, option=option_upper)
-            icp_lower = ICP(Method, option=option_lower)
-            icp = {"Upper": icp_upper, "Lower": icp_lower}
-            logger.debug("ICP methods initialized successfully")
+            icp = _build_icp_methods(dic_teeth)
         except Exception as ic:
             logger.error(f"ICP initialization failed: {str(ic)}")
             error_details.append({"stage": "icp_init", "message": str(ic)})
@@ -322,259 +615,7 @@ def main(args):
         # ===== Stage 8: Main Processing Loop =====
         logger.info(f"Starting registration processing for {len(list_files)} files")
         for index, file in tqdm(enumerate(list_files), total=len(list_files)):
-            try:
-                # Determine jaw and file path
-                file_vtk = file
-                if link:
-                    file_vtk = file[jaw()]
-                if not link:
-                    jaw = Jaw(file_vtk)
-                
-                logger.debug(f"Processing [{index+1}/{len(list_files)}]: {os.path.basename(file_vtk)} ({jaw()})")
-
-                # PrePreAso needs 3 or 4 teeth of this arch to build its frame.
-                # With none it used to fail on a bare assertion naming universal
-                # ids, which says nothing about what the caller got wrong: the
-                # teeth to register on were all from the other jaw.
-                if len(dic_teeth[jaw()]) not in (3, 4):
-                    error_msg = (
-                        f"{len(dic_teeth[jaw()])} {jaw()} teeth given in list_teeth, "
-                        "3 or 4 are needed to orient this arch. Add them (the usual "
-                        "set is UR6,UR4,UL4,UL6 for the upper and LL6,LL4,LR4,LR6 "
-                        "for the lower), or orient the arches in occlusion so the "
-                        "upper's transform carries the lower.")
-                    logger.error(f"[{index}] {error_msg} for {os.path.basename(file_vtk)}")
-                    failed_indices.append(index)
-                    error_details.append({
-                        "index": index,
-                        "file": os.path.basename(file_vtk),
-                        "stage": "teeth_for_jaw",
-                        "message": error_msg,
-                    })
-                    try:
-                        WritefileError(file_vtk, args.folder_error[0], error_msg)
-                    except Exception as we:
-                        logger.warning(f"Could not write error file: {str(we)}")
-                    continue
-
-                # ===== Stage 8.1: Surface Loading =====
-                try:
-                    surf = ReadSurf(file_vtk)
-                    # An arch the segmentation numbered in both jaws loses the
-                    # teeth this module fits on: their points went to the other
-                    # jaw's number, so vtkMeanTeeth finds nothing and the arch is
-                    # dropped. Repaired here, before the teeth are looked up, and
-                    # carried into what WriteSurf saves for the rest of the run.
-                    # Les dents que PrePreAso va reclamer trois lignes plus
-                    # bas : la renumerotation ne s applique que si elle les
-                    # fait apparaitre.
-                    UnifyArchLabels(surf, jaw(), dic_teeth[jaw()])
-                    logger.debug(f"Surface loaded for {os.path.basename(file_vtk)}")
-                except Exception as sl_err:
-                    error_msg = f"Failed to load surface: {str(sl_err)}"
-                    logger.error(f"[{index}] {error_msg}")
-                    failed_indices.append(index)
-                    error_details.append({
-                        "index": index,
-                        "file": os.path.basename(file_vtk),
-                        "stage": "surface_loading",
-                        "message": str(sl_err)
-                    })
-                    try:
-                        WritefileError(file_vtk, args.folder_error[0], error_msg)
-                    except Exception as we:
-                        logger.warning(f"Could not write error file: {str(we)}")
-                    continue
-                
-                # ===== Stage 8.2: PreProcessing =====
-                try:
-                    surf, matrix = PrePreAso(surf, gold[jaw()], dic_teeth[jaw()])
-                    logger.debug(f"Preprocessing completed for {os.path.basename(file_vtk)}")
-                except ToothNoExist as tne:
-                    error_msg = f"Tooth not found: {str(tne)}"
-                    logger.error(f"[{index}] {error_msg} for {file_vtk}")
-                    failed_indices.append(index)
-                    error_details.append({
-                        "index": index,
-                        "file": os.path.basename(file_vtk),
-                        "stage": "preprocessing",
-                        "error_type": "ToothNoExist",
-                        "message": str(tne)
-                    })
-                    try:
-                        WritefileError(file_vtk, args.folder_error[0], error_msg)
-                    except Exception as we:
-                        logger.warning(f"Could not write error file: {str(we)}")
-                    with open(args.log_path[0], "a") as log_f:
-                        log_f.write(f"{index},ToothNoExist\n")
-                    continue
-                except NoSegmentationSurf as nss:
-                    error_msg = f"No segmentation surface: {str(nss)}"
-                    logger.error(f"[{index}] {error_msg} for {file_vtk}")
-                    failed_indices.append(index)
-                    error_details.append({
-                        "index": index,
-                        "file": os.path.basename(file_vtk),
-                        "stage": "preprocessing",
-                        "error_type": "NoSegmentationSurf",
-                        "message": str(nss)
-                    })
-                    try:
-                        WritefileError(file_vtk, args.folder_error[0], error_msg)
-                    except Exception as we:
-                        logger.warning(f"Could not write error file: {str(we)}")
-                    with open(args.log_path[0], "a") as log_f:
-                        log_f.write(f"{index},NoSegmentationSurf\n")
-                    continue
-                except Exception as pre_err:
-                    error_msg = f"Preprocessing error: {str(pre_err)}"
-                    logger.error(f"[{index}] {error_msg}")
-                    failed_indices.append(index)
-                    error_details.append({
-                        "index": index,
-                        "file": os.path.basename(file_vtk),
-                        "stage": "preprocessing",
-                        "message": str(pre_err)
-                    })
-                    try:
-                        WritefileError(file_vtk, args.folder_error[0], error_msg)
-                    except Exception as we:
-                        logger.warning(f"Could not write error file: {str(we)}")
-                    continue
-                
-                # ===== Stage 8.3: ICP Registration =====
-                try:
-                    output_icp = icp[jaw()].run(surf, gold[jaw()])
-                    logger.debug(f"ICP registration completed for {os.path.basename(file_vtk)}")
-                except Exception as icp_err:
-                    error_msg = f"ICP registration failed: {str(icp_err)}"
-                    logger.error(f"[{index}] {error_msg}")
-                    failed_indices.append(index)
-                    error_details.append({
-                        "index": index,
-                        "file": os.path.basename(file_vtk),
-                        "stage": "icp_registration",
-                        "message": str(icp_err)
-                    })
-                    try:
-                        WritefileError(file_vtk, args.folder_error[0], error_msg)
-                    except Exception as we:
-                        logger.warning(f"Could not write error file: {str(we)}")
-                    continue
-                
-                # ===== Stage 8.4: Matrix Computation =====
-                try:
-                    final_matrix = np.matmul(output_icp["matrix"], matrix)
-                    if link:
-                        # One matrix moved the whole mouth, so one file holds it,
-                        # under the patient's name alone. AREG_IOS reads it back
-                        # under that name in Auto_IOS mode.
-                        tfm_name = f"{PatientNumber(file_vtk)}_SegOr.tfm"
-                    else:
-                        # One matrix per arch, so the jaw has to stay in the
-                        # name. PatientNumber cuts the name at _U or _L, which
-                        # gave the upper and the lower the same file name: the
-                        # arch written second overwrote the other one's matrix,
-                        # and both were then read as the one that survived. The
-                        # matrix now shares the stem of the surface it belongs
-                        # to, written alongside it by WriteSurf.
-                        stem = os.path.splitext(os.path.basename(file_vtk))[0]
-                        tfm_name = f"{stem}{args.add_inname[0]}.tfm"
-                    tfm_path = os.path.join(args.output_folder[0], tfm_name)
-                    logger.debug(f"Saving transform matrix to {os.path.basename(tfm_path)}")
-                    saveMatrixAsTfm(final_matrix, tfm_path)
-                    logger.debug(f"Transform matrix saved successfully")
-                except Exception as mat_err:
-                    error_msg = f"Matrix computation/saving failed: {str(mat_err)}"
-                    logger.error(f"[{index}] {error_msg}")
-                    failed_indices.append(index)
-                    error_details.append({
-                        "index": index,
-                        "file": os.path.basename(file_vtk),
-                        "stage": "matrix_saving",
-                        "message": str(mat_err)
-                    })
-                    try:
-                        WritefileError(file_vtk, args.folder_error[0], error_msg)
-                    except Exception as we:
-                        logger.warning(f"Could not write error file: {str(we)}")
-                    continue
-                
-                # ===== Stage 8.5: Surface Output Writing =====
-                try:
-                    logger.debug(f"Writing registered surface for {os.path.basename(file_vtk)}")
-                    WriteSurf(
-                        output_icp["source_Or"],
-                        args.output_folder[0],
-                        os.path.basename(file_vtk),
-                        args.add_inname[0],
-                    )
-                    logger.debug(f"Registered surface saved successfully")
-                except Exception as write_err:
-                    error_msg = f"Surface writing failed: {str(write_err)}"
-                    logger.error(f"[{index}] {error_msg}")
-                    logger.error(f"  Output folder: {args.output_folder[0]}, File: {os.path.basename(file_vtk)}")
-                    failed_indices.append(index)
-                    error_details.append({
-                        "index": index,
-                        "file": os.path.basename(file_vtk),
-                        "stage": "surface_writing",
-                        "message": str(write_err)
-                    })
-                    try:
-                        WritefileError(file_vtk, args.folder_error[0], error_msg)
-                    except Exception as we:
-                        logger.warning(f"Could not write error file: {str(we)}")
-                    continue
-                
-                # ===== Stage 8.6: Linked Jaw Processing (if applicable) =====
-                if link:
-                    try:
-                        logger.debug(f"Processing linked jaw for {os.path.basename(file_vtk)}")
-                        surf_lower = ReadSurf(file[jaw.inv()])
-                        output_lower = TransformSurf(surf_lower, matrix)
-                        output_lower = TransformSurf(output_lower, output_icp["matrix"])
-                        
-                        WriteSurf(
-                            output_lower,
-                            args.output_folder[0],
-                            os.path.basename(file[jaw.inv()]),
-                            args.add_inname[0],
-                        )
-                        logger.debug(f"Linked jaw surface written successfully")
-                    except Exception as link_err:
-                        error_msg = f"Linked jaw processing failed: {str(link_err)}"
-                        logger.error(f"[{index}] {error_msg}")
-                        failed_indices.append(index)
-                        error_details.append({
-                            "index": index,
-                            "file": os.path.basename(file[jaw.inv()]),
-                            "stage": "linked_jaw_processing",
-                            "message": str(link_err)
-                        })
-                        try:
-                            WritefileError(file[jaw.inv()], args.folder_error[0], error_msg)
-                        except Exception as we:
-                            logger.warning(f"Could not write error file: {str(we)}")
-                        continue
-                
-                # ===== Stage 8.7: Log Update =====
-                try:
-                    with open(args.log_path[0], "a") as log_f:
-                        log_f.write(f"{index+1},success\n")
-                    success_count += 1
-                    logger.info(f"[{index+1}/{len(list_files)}] File processed successfully")
-                except Exception as log_err:
-                    logger.warning(f"Could not update log file: {str(log_err)}")
-            
-            except Exception as outer_err:
-                logger.error(f"Unhandled error in processing loop at index {index}: {str(outer_err)}")
-                failed_indices.append(index)
-                error_details.append({
-                    "index": index,
-                    "stage": "outer_loop",
-                    "message": str(outer_err)
-                })
+            jaw, success_count = _register_one_file(args, dic_teeth, error_details, failed_indices, file, gold, icp, index, jaw, link, list_files, success_count)
         
         # ===== Stage 9: Final Report =====
         logger.info(f"Processing complete: {success_count} successful, {len(failed_indices)} failed")

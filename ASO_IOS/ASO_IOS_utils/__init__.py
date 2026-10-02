@@ -4,7 +4,6 @@ from .utils import (
     ReadSurf,
     WriteJsonLandmarks,
     WriteSurf,
-    PatientNumber,
     LoadJsonLandmarks,
     listlandmark2diclandmark,
     WritefileError,
@@ -28,7 +27,6 @@ from .data_file import (
     Files_vtk_json,
     Jaw,
     Lower,
-    Upper,
     Files_vtk_json_semilink,
     Upper,
 )

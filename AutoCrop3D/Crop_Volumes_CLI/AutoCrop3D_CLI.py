@@ -1,7 +1,6 @@
 #!/usr/bin/env python-real
 
 import argparse
-import logging
 import SimpleITK as sitk
 
 
@@ -9,19 +8,13 @@ import SimpleITK as sitk
 from Crop_Volumes_utils.FilesType import Search, ChangeKeyDict
 from Crop_Volumes_utils.GenerateVTKfromSeg import convertNiftiToVTK
 import numpy as np
-import os,json,sys
+import os,json
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("AutoCrop3D_CLI")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+import sys
+
+logger = get_logger("AutoCrop3D_CLI")
 
 def main(args)-> None:
     """
@@ -36,55 +29,55 @@ def main(args)-> None:
 
     """
     path_input = args.scan_files_path
-    ROI_Path = args.path_ROI_file
-    OutputPath = args.output_path
+    roi_path = args.path_ROI_file
+    output_path = args.output_path
     suffix_namefile = args.suffix
-    originalSize = args.box_Size
+    original_size = args.box_Size
 
     with open(args.logPath,'w') as log_f:
         # clear log file
         log_f.truncate(0)
     index =0
-    ScanList = Search(path_input, ".nii.gz",".nii",".nrrd.gz",".nrrd",".gipl.gz",".gipl")
+    scan_list = Search(path_input, ".nii.gz",".nii",".nrrd.gz",".nrrd",".gipl.gz",".gipl")
 
     # Include case with a folder of ROI corresponding to a folder of scans
-    ROIList = Search(ROI_Path,".mrk.json")
+    roi_list = Search(roi_path,".mrk.json")
 
-    if len(ROIList['.mrk.json']) >1:
-        ROI_dict = ChangeKeyDict(ROIList)
+    if len(roi_list['.mrk.json']) >1:
+        roi_dict = ChangeKeyDict(roi_list)
 
-    for key,data in ScanList.items():
+    for key,data in scan_list.items():
 
         for patient_path in data:
             patient = os.path.basename(patient_path).split('_Scan')[0].split('_scan')[0].split('_Seg')[0].split('_seg')[0].split('_Or')[0].split('_OR')[0].split('_MAND')[0].split('_MD')[0].split('_MAX')[0].split('_MX')[0].split('_CB')[0].split('_lm')[0].split('_T2')[0].split('_T1')[0].split('_Cl')[0].split('.')[0]
 
             img = sitk.ReadImage(patient_path)
 
-            if len(ROIList['.mrk.json']) >1:
+            if len(roi_list['.mrk.json']) >1:
                 try:
-                    ROI_Path = ROI_dict[patient]
-                except:
+                    roi_path = roi_dict[patient]
+                except Exception:
                     logger.warning('No ROI for patient:'+str(patient))
                     continue
 
-            ROI = json.load(open(ROI_Path))['markups'][0]
-            ROI_Center = np.array(ROI['center'])
-            ROI_Size = np.array(ROI['size'])
+            ROI = json.load(open(roi_path))['markups'][0]
+            roi_center = np.array(ROI['center'])
+            roi_size = np.array(ROI['size'])
 
-            Lower = ROI_Center - ROI_Size / 2
-            Upper = ROI_Center + ROI_Size / 2
+            lower = roi_center - roi_size / 2
+            upper = roi_center + roi_size / 2
 
-            Lower = np.array(img.TransformPhysicalPointToContinuousIndex(Lower)).astype(int)
-            Upper = np.array(img.TransformPhysicalPointToContinuousIndex(Upper)).astype(int)
+            lower = np.array(img.TransformPhysicalPointToContinuousIndex(lower)).astype(int)
+            upper = np.array(img.TransformPhysicalPointToContinuousIndex(upper)).astype(int)
 
             for i in range(3):
-                if Lower[i] > Upper[i]:
-                    Lower[i], Upper[i] = Upper[i], Lower[i]
+                if lower[i] > upper[i]:
+                    lower[i], upper[i] = upper[i], lower[i]
             # Bounds checking
             img_size = img.GetSize()
-            Lower = [max(0, l) for l in Lower]
+            lower = [max(0, l) for l in lower]
 
-            Upper = [min(img_size[i], u) for i, u in enumerate(Upper)]
+            upper = [min(img_size[i], u) for i, u in enumerate(upper)]
 
             # Crop the image
 
@@ -95,16 +88,16 @@ def main(args)-> None:
             img_blank_arr = sitk.GetArrayFromImage(img_blank)
 
             # Coord of the ROI in the blank image
-            size_ROI = [int(Upper[0]-Lower[0]),int(Upper[1]-Lower[1]),int(Upper[2]-Lower[2])]
-            start_coord = [int(Lower[0]),int(Lower[1]),int(Lower[2])]
-            end_coord = [start_coord[0]+size_ROI[0],start_coord[1]+size_ROI[1],start_coord[2]+size_ROI[2]]
+            size_roi = [int(upper[0]-lower[0]),int(upper[1]-lower[1]),int(upper[2]-lower[2])]
+            start_coord = [int(lower[0]),int(lower[1]),int(lower[2])]
+            end_coord = [start_coord[0]+size_roi[0],start_coord[1]+size_roi[1],start_coord[2]+size_roi[2]]
 
             # Get only the ROI
-            img_roi = img[Lower[0]:Upper[0],
-                            Lower[1]:Upper[1],
-                            Lower[2]:Upper[2]]
+            img_roi = img[lower[0]:upper[0],
+                            lower[1]:upper[1],
+                            lower[2]:upper[2]]
 
-            if originalSize=='True':
+            if original_size=='True':
                 img_roi_arr = sitk.GetArrayFromImage(img_roi)
 
                 # GetArrayFromImage return a numpy array with the shape (z,y,x)
@@ -126,33 +119,32 @@ def main(args)-> None:
             filename = filename_interm + "_"+ suffix_namefile + key
 
             vtk_filename = filename_interm + "_" + suffix_namefile + "_vtk.vtk"
-            ScanOutPath = os.path.join(OutputPath,relative_path).replace(os.path.basename(relative_path),filename)
+            scan_out_path = os.path.join(output_path,relative_path).replace(os.path.basename(relative_path),filename)
 
-            VTKOutPath = os.path.join(OutputPath,relative_path).replace(os.path.basename(relative_path),vtk_filename)
+            vtk_out_path = os.path.join(output_path,relative_path).replace(os.path.basename(relative_path),vtk_filename)
 
-            os.makedirs(os.path.dirname(ScanOutPath), exist_ok=True)
+            os.makedirs(os.path.dirname(scan_out_path), exist_ok=True)
 
             try:
 
-                sitk.WriteImage(img_crop,ScanOutPath)
+                sitk.WriteImage(img_crop,scan_out_path)
 
-            except:
-                import sys
+            except Exception:
                 logger.error("Error for patient: "+str(patient))
                 logger.error('The error says: '+str(sys.exc_info()[0]))
-                logger.error('Lower: '+str(Lower))
-                logger.error('Upper: '+str(Upper))
-                logger.error('Lower[2]:'+str(Lower[2]))
-                logger.error('Upper[2]:'+str(Upper[2]))
+                logger.error('Lower: '+str(lower))
+                logger.error('Upper: '+str(upper))
+                logger.error('Lower[2]:'+str(lower[2]))
+                logger.error('Upper[2]:'+str(upper[2]))
 
             with open(args.logPath,'r+') as log_f :
                     log_f.write(str(index))
 
-            if "seg" in ScanOutPath.lower():
+            if "seg" in scan_out_path.lower():
                 try :
-                    convertNiftiToVTK(ScanOutPath,VTKOutPath)
-                except :
-                    pass
+                    convertNiftiToVTK(scan_out_path,vtk_out_path)
+                except Exception:
+                    logger.debug("Could not convert the segmentation to VTK", exc_info=True)
 
             index+=1
 

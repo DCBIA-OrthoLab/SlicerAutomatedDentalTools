@@ -4,19 +4,10 @@ import numpy as np
 from AREG_IOS_utils.utils import ReadSurf, LoadJsonLandmarks, VTKMatrixToNumpy
 from AREG_IOS_utils.transformation import ApplyTransform
 
-import logging
-import sys
 # ===== Logging Configuration =====
-logger = logging.getLogger("AREG_IOS_ICP")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("AREG_IOS_ICP")
 
 
 class ICP:
@@ -104,9 +95,9 @@ class vtkICP:
         icp.Update()
 
         # ============ apply ICP transform ==============
-        transformFilter = vtk.vtkTransformPolyDataFilter()
-        transformFilter.SetInputData(source)
-        transformFilter.SetTransform(icp)
-        transformFilter.Update()
+        transform_filter = vtk.vtkTransformPolyDataFilter()
+        transform_filter.SetInputData(source)
+        transform_filter.SetTransform(icp)
+        transform_filter.Update()
 
         return source, VTKMatrixToNumpy(icp.GetMatrix())

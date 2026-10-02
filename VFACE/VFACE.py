@@ -1,12 +1,9 @@
 import contextlib
-import logging
 import glob
 import os
 import re
 import stat
 import tempfile
-import traceback
-from typing import Annotated
 import urllib.request
 import shutil
 import zipfile
@@ -14,22 +11,27 @@ import sys
 import importlib.metadata as importlib_metadata
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("VFACE")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+from ADTLib.logging_setup import get_logger
+from ADTLib.env.cuda import torch_install_arguments
+
+logger = get_logger("VFACE")
 
 import importlib
 try:
     from VFACE_utils import Progress
     importlib.reload(Progress)
-    from VFACE_utils.Progress import DisplayALICBCT,DisplayAMASSS,DisplayASOCBCT,Display
+    from VFACE_utils.Progress import Display
     
     from VFACE_utils import createlistprocess
     importlib.reload(createlistprocess)
@@ -40,7 +42,7 @@ try:
 
 except Exception as e:
     logger.error(f"Error loading VFACE utilities: {e}")
-    from VFACE_utils.Progress import DisplayALICBCT,DisplayAMASSS,DisplayASOCBCT,Display
+    from VFACE_utils.Progress import Display
     from VFACE_utils.createlistprocess import CreateListProcess, NumberScan, patientIdFromFileName
     from VFACE_utils import review_steps
 
@@ -48,16 +50,21 @@ import vtk
 
 import slicer
 from slicer.i18n import tr as _
-from slicer.i18n import translate
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 from slicer.parameterNodeWrapper import (
     parameterNodeWrapper,
-    WithinRange,
 )
 
 from slicer import vtkMRMLScalarVolumeNode
 import qt
+from ADTLib.model_registry import ADT_MODELS
+from ADTLib.requests import VFACERequest
+from ADTLib.model_registry import AMASSS_CBCT, AREG_CBCT_TEST_FILES, ASO_CBCT_GOLD, AUTOMATRIX_MIRROR, SLICER_TESTING_DATA, VFACE_MODELS
+from ADTLib.testdata import TestDataError, ensure_with_progress
+from ADTLib.theming import apply_button_style
+import time
+import traceback
 
 
 # VFACE drives the CLIs of the other modules (PRE_ASO_CBCT, ALI_CBCT, AMASSS_CLI,
@@ -88,10 +95,12 @@ CLI_LIBRARIES = [
 
 # torch, torchvision and torchaudio have to be resolved together against the same
 # CUDA build, hence a single pip call, exactly like AMASSS does.
-TORCH_REQUIREMENT = (
-    "torch>=2.2.0 torchvision torchaudio "
-    "--extra-index-url https://download.pytorch.org/whl/cu118"
-)
+#
+# Which build, though, is asked of the GPU rather than written here: cu118 was
+# hardcoded, its kernels stop at sm_90, and on an RTX 50 series it installed
+# cleanly and then failed every launch with "no kernel image is available".
+# Asked at the call site and not at import, so that nothing probes the GPU
+# merely because this module was loaded.
 
 # torch 2.2.0 is compiled against numpy 1.x: numpy>=2 breaks every torch import
 # with "_ARRAY_API not found", including in the nnUNet subprocesses.
@@ -168,7 +177,7 @@ class VFACE(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("V FACE")
         self.parent.categories = ["Automated Dental Tools"]
-        self.parent.contributors = ["Alexandre Buisson (University of North Carolina at Chapel Hill)"] 
+        self.parent.contributors = ["Alexandre Buisson (University of North Carolina at Chapel Hill)"]
         self.parent.helpText = _("""
         VFACE - Vertical Facial Asymmetry Classification Engine
         
@@ -194,7 +203,7 @@ def registerSampleData():
     try:
         import SampleData
 
-        iconsPath = os.path.join(os.path.dirname(__file__), "Resources/Icons")
+        icons_path = os.path.join(os.path.dirname(__file__), "Resources/Icons")
 
         # To ensure that the source code repository remains small (can be downloaded and installed quickly)
         # it is recommended to store data sets that are larger than a few MB in a Github release.
@@ -206,9 +215,9 @@ def registerSampleData():
             sampleName="VFACE1",
             # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
             # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-            thumbnailFileName=os.path.join(iconsPath, "VFACE1.png"),
+            thumbnailFileName=os.path.join(icons_path, "VFACE1.png"),
             # Download URL and target file name
-            uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+            uris=f"{SLICER_TESTING_DATA}/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
             fileNames="VFACE1.nrrd",
             # Checksum to ensure file integrity. Can be computed by this command:
             #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
@@ -222,9 +231,9 @@ def registerSampleData():
             # Category and sample name displayed in Sample Data module
             category="VFACE",
             sampleName="VFACE2",
-            thumbnailFileName=os.path.join(iconsPath, "VFACE2.png"),
+            thumbnailFileName=os.path.join(icons_path, "VFACE2.png"),
             # Download URL and target file name
-            uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+            uris=f"{SLICER_TESTING_DATA}/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
             fileNames="VFACE2.nrrd",
             checksums="SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
             # This node name will be used when the data set is loaded
@@ -355,9 +364,9 @@ class PopUpWindow(qt.QDialog):
 
     def onClickedCheckbox(self):
         """Handle checkbox confirmation."""
-        TrueFalse = [button.isChecked() for button in self.ListButtons]
+        true_false = [button.isChecked() for button in self.ListButtons]
         self.checked = [
-            self.listename[i] for i in range(len(self.listename)) if TrueFalse[i]
+            self.listename[i] for i in range(len(self.listename)) if true_false[i]
         ]
         self.accept()
 
@@ -436,7 +445,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.review_temp_folders = []
         # onCliUpdated only assigns this when progress is 0, so a first event
         # carrying a non-zero progress would read it before it exists.
-        self.updateProgessBar = False
+        self.updateProgressBar = False
 
     def reloadCustomModules(self) -> None:
         """
@@ -457,84 +466,39 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         except Exception as e:
             logger.error(f"Error reloading custom modules: {e}")
 
-    @staticmethod
-    def widenCapturedPipes() -> None:
-        """Give Slicer's captured output more room than the default 64 KB.
-
-        Precaution, not a proven cure. What is established: long VFACE runs have
-        frozen several times with the main thread in `pipe_write` on the pipe
-        Slicer captures its own stdout into, zero CPU, never recovering. What is
-        not established: what fills it. Writing 200 KB from inside a VTK observer
-        callback - the shape the freeze was blamed on - does NOT deadlock, with
-        or without a main window, so that explanation is wrong or incomplete.
-
-        Widening suppresses no output and changes no behaviour; it only raises
-        the ceiling from 64 KB to whatever the kernel allows, typically 1 MB,
-        against a whole run's console output of roughly 100 KB. If the freeze
-        really is an accumulation, this removes it; if it is something else, this
-        costs nothing. Do not read it as the fix until a run confirms it.
-
-        Fails quietly wherever it does not apply - Windows, output redirected to
-        a file rather than a pipe, a kernel that refuses - because a smaller pipe
-        is not worth failing over.
-        """
-        try:
-            import fcntl
-        except ImportError:
-            return  # not a POSIX platform; nothing to widen
-        F_SETPIPE_SZ, F_GETPIPE_SZ = 1031, 1032
-        try:
-            with open("/proc/sys/fs/pipe-max-size") as fh:
-                target = int(fh.read().strip())
-        except (OSError, ValueError):
-            target = 1024 * 1024
-        for fd in (1, 2):
-            try:
-                if not stat.S_ISFIFO(os.fstat(fd).st_mode):
-                    continue
-                before = fcntl.fcntl(fd, F_GETPIPE_SZ)
-                if before >= target:
-                    continue
-                fcntl.fcntl(fd, F_SETPIPE_SZ, target)
-                logger.info(
-                    f"Captured output fd{fd} widened {before} -> "
-                    f"{fcntl.fcntl(fd, F_GETPIPE_SZ)} bytes"
-                )
-            except (OSError, ValueError) as e:
-                logger.warning(f"Could not widen fd{fd}, leaving it as it is: {e}")
-
     def setup(self) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
         ScriptedLoadableModuleWidget.setup(self)
 
         # Before anything else writes: the deadlock this avoids takes the whole
         # application down, and an undersized pipe is only a problem once it is
-        # already full.
-        self.widenCapturedPipes()
+        # already full. On the class, not on self.logic: the logic is built
+        # further down, once the interface is loaded.
+        VFACELogic.widenCapturedPipes()
 
         self.reloadCustomModules()
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath("UI/VFACE.ui"))
-        self.uiWidget = uiWidget
-        self.layout.addWidget(uiWidget)
-        self.ui = slicer.util.childWidgetVariables(uiWidget)
+        ui_widget = slicer.util.loadUI(self.resourcePath("UI/VFACE.ui"))
+        self.uiWidget = ui_widget
+        self.layout.addWidget(ui_widget)
+        self.ui = slicer.util.childWidgetVariables(ui_widget)
 
         # Detect dark mode and apply stylesheet
-        isDarkMode = self._isDarkMode()
-        styleSheet = self._getStyleSheet(isDarkMode)
-        uiWidget.setStyleSheet(styleSheet)
+        is_dark_mode = self._isDarkMode()
+        style_sheet = self._getStyleSheet(is_dark_mode)
+        ui_widget.setStyleSheet(style_sheet)
         
         # Also apply label-specific stylesheet
-        self._applyLabelStyleSheets(isDarkMode)
-        self._applyButtonStyleSheets(isDarkMode)
-        self._applyCheckboxStyleSheets(isDarkMode)
+        self._applyLabelStyleSheets(is_dark_mode)
+        self._applyButtonStyleSheets(is_dark_mode)
+        self._applyCheckboxStyleSheets(is_dark_mode)
 
         # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
         # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
         # "setMRMLScene(vtkMRMLScene*)" slot.
-        uiWidget.setMRMLScene(slicer.mrmlScene)
+        ui_widget.setMRMLScene(slicer.mrmlScene)
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
@@ -572,8 +536,8 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.reviewFlagButton.connect("clicked(bool)", self.onReviewToggleFlag)
         self.ui.reviewGoBackButton.connect("clicked(bool)", self.onReviewGoBack)
 
-        documentsLocation = qt.QStandardPaths.DocumentsLocation
-        self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        documents_location = qt.QStandardPaths.DocumentsLocation
+        self.documents = qt.QStandardPaths.writableLocation(documents_location)
 
         self.display = Display
         self.SlicerDownloadPath = os.path.join(
@@ -592,10 +556,10 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Check if the application is in dark mode."""
         try:
             palette = slicer.app.palette()
-            bgColor = palette.color(qt.QPalette.Window)
-            luminance = (0.299 * bgColor.red() + 0.587 * bgColor.green() + 0.114 * bgColor.blue()) / 255.0
+            bg_color = palette.color(qt.QPalette.Window)
+            luminance = (0.299 * bg_color.red() + 0.587 * bg_color.green() + 0.114 * bg_color.blue()) / 255.0
             return luminance < 0.5
-        except:
+        except Exception:
             return False
 
     def _getStyleSheet(self, isDarkMode: bool) -> str:
@@ -727,32 +691,32 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def _applyLabelStyleSheets(self, isDarkMode: bool) -> None:
         """Apply label-specific stylesheets."""
         if isDarkMode:
-            labelStyle = "color: #b0b0b0; font-weight: 600;"
+            label_style = "color: #b0b0b0; font-weight: 600;"
         else:
-            labelStyle = "color: #34495e; font-weight: 600;"
+            label_style = "color: #34495e; font-weight: 600;"
         
         # List of labels to style
         labels = [
             'label_5', 'label_4', 'label_2', 'label_6', 'label_3', 'label', 'modeLabel', 't2label', 'excellabel'
         ]
         
-        for labelName in labels:
-            if hasattr(self.ui, labelName):
-                label = getattr(self.ui, labelName)
-                label.setStyleSheet(labelStyle)
+        for label_name in labels:
+            if hasattr(self.ui, label_name):
+                label = getattr(self.ui, label_name)
+                label.setStyleSheet(label_style)
 
         if hasattr(self.ui, "reviewLabel"):
             if isDarkMode:
-                reviewStyle = (
+                review_style = (
                     "color: #e8e8e8; background-color: #2f3b47;"
                     " border: 1px solid #4ba3ff; border-radius: 4px; padding: 8px;"
                 )
             else:
-                reviewStyle = (
+                review_style = (
                     "color: #1f2d3a; background-color: #eaf3fb;"
                     " border: 1px solid #3498db; border-radius: 4px; padding: 8px;"
                 )
-            self.ui.reviewLabel.setStyleSheet(reviewStyle)
+            self.ui.reviewLabel.setStyleSheet(review_style)
 
     def _applyCheckboxStyleSheets(self, isDarkMode: bool) -> None:
         """
@@ -861,117 +825,29 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             for child in parent.children():
                 self._styleAllCheckboxes(child, stylesheet)
 
+    #: Every button on the standard accent. The cancel button is the only one
+    #: on the danger accent.
+    STANDARD_BUTTONS = (
+        "applyButton", "CheckDependencyButton", "continueButton",
+        "DefaultListButton", "TestFilesButton",
+        "reviewSelectAllButton", "reviewSelectNoneButton",
+        "reviewSelectRecommendedButton",
+        "reviewPrevPatientButton", "reviewNextPatientButton",
+        "reviewFlagButton", "reviewGoBackButton",
+    )
+
     def _applyButtonStyleSheets(self, isDarkMode: bool) -> None:
-        """Apply button-specific stylesheets."""
-        if isDarkMode:
-            # Dark mode button styles
-            standardButtonStyle = """
-            QPushButton {
-              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
-              color: white;
-              border: none;
-              border-radius: 6px;
-              font-weight: 600;
-              font-size: 10pt;
-              padding: 8px;
-              margin-top: 4px;
-            }
-            QPushButton:hover:!pressed {
-              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
-            }
-            QPushButton:pressed {
-              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
-            }
-            QPushButton:disabled {
-              background-color: #555555;
-              color: #888888;
-            }
-            """
-            
-            cancelButtonStyle = """
-            QPushButton {
-              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e74c3c, stop:1 #c0392b);
-              color: white;
-              border: none;
-              border-radius: 6px;
-              font-weight: 600;
-              font-size: 10pt;
-              padding: 8px;
-              margin-top: 4px;
-            }
-            QPushButton:hover:!pressed {
-              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ec7063, stop:1 #a93226);
-            }
-            QPushButton:pressed {
-              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a93226, stop:1 #922b21);
-            }
-            QPushButton:disabled {
-              background-color: #555555;
-              color: #888888;
-            }
-            """
-        else:
-            # Light mode button styles
-            standardButtonStyle = """
-            QPushButton {
-              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db);
-              color: white;
-              border: none;
-              border-radius: 6px;
-              font-weight: 600;
-              font-size: 10pt;
-              padding: 8px;
-              margin-top: 4px;
-            }
-            QPushButton:hover:!pressed {
-              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cb3ff, stop:1 #2980b9);
-            }
-            QPushButton:pressed {
-              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1f618d);
-            }
-            QPushButton:disabled {
-              background-color: #bdc3c7;
-              color: #95a5a6;
-            }
-            """
-            
-            cancelButtonStyle = """
-            QPushButton {
-              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e74c3c, stop:1 #c0392b);
-              color: white;
-              border: none;
-              border-radius: 6px;
-              font-weight: 600;
-              font-size: 10pt;
-              padding: 8px;
-              margin-top: 4px;
-            }
-            QPushButton:hover:!pressed {
-              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ec7063, stop:1 #a93226);
-            }
-            QPushButton:pressed {
-              background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a93226, stop:1 #922b21);
-            }
-            QPushButton:disabled {
-              background-color: #bdc3c7;
-              color: #95a5a6;
-            }
-            """
-        
-        # Apply standard style to most buttons
-        for buttonName in ['applyButton', 'CheckDependencyButton', 'continueButton',
-                           'DefaultListButton', 'TestFilesButton',
-                           'reviewSelectAllButton', 'reviewSelectNoneButton',
-                           'reviewSelectRecommendedButton',
-                           'reviewPrevPatientButton', 'reviewNextPatientButton',
-                           'reviewFlagButton', 'reviewGoBackButton']:
-            if hasattr(self.ui, buttonName):
-                button = getattr(self.ui, buttonName)
-                button.setStyleSheet(standardButtonStyle)
-        
-        # Apply cancel style to cancel button
-        if hasattr(self.ui, 'cancelButton'):
-            self.ui.cancelButton.setStyleSheet(cancelButtonStyle)
+        """Apply button-specific stylesheets.
+
+        The four sheets spelled out here -- standard and cancel, each in dark
+        and light -- were one 477-character template with seven colours, and
+        dark differed from light only in the two `:disabled` colours. They come
+        from ADTLib now, which reproduces them to the character: the four
+        strings it returns were compared byte for byte with the four this
+        replaced.
+        """
+        apply_button_style(self.ui, self.STANDARD_BUTTONS, "primary", isDarkMode)
+        apply_button_style(self.ui, ("cancelButton",), "danger", isDarkMode)
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -1020,7 +896,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not self._parameterNode.MeasurementsFolder:
             self._parameterNode.MeasurementsFolder = ""
 
-    def setParameterNode(self, inputParameterNode: VFACEParameterNode | None) -> None:
+    def setParameterNode(self, input_parameter_node: VFACEParameterNode | None) -> None:
         """
         Set and observe parameter node.
         Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
@@ -1029,7 +905,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._parameterNode.disconnectGui(self._parameterNodeGuiTag)
             self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self._checkCanApply)
 
-        self._parameterNode = inputParameterNode
+        self._parameterNode = input_parameter_node
 
         if self._parameterNode:
             self._parameterNodeGuiTag = self._parameterNode.connectGui(self.ui)
@@ -1058,8 +934,8 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         # Case 1: Visualization with pre-registered files
         if viz_mode == "Visualization (Heatmaps)" and file_mode == "File already Registered":
-            if (self._parameterNode.InputFolder != "" and 
-                self._parameterNode.OutputFolder != "" and 
+            if (self._parameterNode.InputFolder != "" and
+                self._parameterNode.OutputFolder != "" and
                 t2_path != ""):
                 self.ui.applyButton.toolTip = _("Click to classify patient facial asymmetry")
                 self.ui.applyButton.enabled = True
@@ -1069,9 +945,9 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Case 2: Pre-registered files with measurements
         elif file_mode == "File already Registered":
-            if (self._parameterNode.InputFolder != "" and 
-                self._parameterNode.OutputFolder != "" and 
-                self._parameterNode.MeasurementsFolder != "" and 
+            if (self._parameterNode.InputFolder != "" and
+                self._parameterNode.OutputFolder != "" and
+                self._parameterNode.MeasurementsFolder != "" and
                 t2_path != ""):
                 self.ui.applyButton.toolTip = _("Click to classify patient facial asymmetry")
                 self.ui.applyButton.enabled = True
@@ -1081,7 +957,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Case 3: Visualization only
         elif viz_mode == "Visualization (Heatmaps)":
-            if (self._parameterNode.InputFolder != "" and 
+            if (self._parameterNode.InputFolder != "" and
                 self._parameterNode.OutputFolder != ""):
                 self.ui.applyButton.toolTip = _("Click to classify patient facial asymmetry")
                 self.ui.applyButton.enabled = True
@@ -1091,8 +967,8 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Case 4: Full processing pipeline
         else:
-            if (self._parameterNode.InputFolder != "" and 
-                self._parameterNode.OutputFolder != "" and 
+            if (self._parameterNode.InputFolder != "" and
+                self._parameterNode.OutputFolder != "" and
                 self._parameterNode.MeasurementsFolder != ""):
                 self.ui.applyButton.toolTip = _("Click to classify patient facial asymmetry")
                 self.ui.applyButton.enabled = True
@@ -1102,27 +978,27 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def DownloadAllFiles(self) -> None:
 
-        dic_url = {   
-            "Mirror_matrix": "https://github.com/GaelleLeroux/DCBIA_Apply_matrix/releases/download/AutoMatrixMirror/Mirror.zip",
+        dic_url = {
+            "Mirror_matrix": f"{AUTOMATRIX_MIRROR}/Mirror.zip",
 
             "ASO/ASO_CBCT/Reference": {
-                "Occlusal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Occlusal_Midsagittal_Plane.zip",
-                "Frankfurt Horizontal and Midsagittal Plane": "https://github.com/lucanchling/ASO_CBCT/releases/download/v01_goldmodels/Frankfurt_Horizontal_Midsagittal_Plane.zip"},
+                "Occlusal and Midsagittal Plane": f"{ASO_CBCT_GOLD}/Occlusal_Midsagittal_Plane.zip",
+                "Frankfurt Horizontal and Midsagittal Plane": f"{ASO_CBCT_GOLD}/Frankfurt_Horizontal_Midsagittal_Plane.zip"},
 
-            "AREG/AREG_CBCT/Models/Segmentation": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/AMASSS_CBCT/AMASSS_Models.zip",
+            "AREG/AREG_CBCT/Models/Segmentation": f"{AMASSS_CBCT}/AMASSS_Models.zip",
 
             
             "ALI/ALI_CBCT/Models/Landmark": {
-                "Cranial Base": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Cranial_Base.zip",
-                "Lower Bones 1": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Bones_1.zip",
-                "Lower Bones 2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Bones_2.zip",
-                "Lower Left Teeth": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Left_Teeth.zip",
-                "Lower_Right_Teeth": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Lower_Right_Teeth.zip",
-                "Upper Bones v2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Upper_Bones_v2.zip",
-                "Upper Left Teeth v2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Upper_Left_Teeth_v2.zip",
-                "Upper Right Teeth v2": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/v0.1-v2.0_models/Upper_Right_Teeth_v2.zip",
+                "Cranial Base": f"{ADT_MODELS}/Cranial_Base.zip",
+                "Lower Bones 1": f"{ADT_MODELS}/Lower_Bones_1.zip",
+                "Lower Bones 2": f"{ADT_MODELS}/Lower_Bones_2.zip",
+                "Lower Left Teeth": f"{ADT_MODELS}/Lower_Left_Teeth.zip",
+                "Lower_Right_Teeth": f"{ADT_MODELS}/Lower_Right_Teeth.zip",
+                "Upper Bones v2": f"{ADT_MODELS}/Upper_Bones_v2.zip",
+                "Upper Left Teeth v2": f"{ADT_MODELS}/Upper_Left_Teeth_v2.zip",
+                "Upper Right Teeth v2": f"{ADT_MODELS}/Upper_Right_Teeth_v2.zip",
             },
-            "V_FACE": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/VFACE/V_FACE_Models.zip",
+            "V_FACE": f"{VFACE_MODELS}/V_FACE_Models.zip",
         }
 
         # A file each archive is known to contain. Without it the folder alone is
@@ -1289,7 +1165,11 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     f"({installed}/{total})... (this may take a while)"
                 )
                 try:
-                    slicer.util.pip_install(TORCH_REQUIREMENT)
+                    requirement = torch_install_arguments()
+                    if requirement is None:
+                        logger.info("the installed torch already serves this GPU")
+                    else:
+                        slicer.util.pip_install(requirement)
                 except Exception as e:
                     logger.error(f"Failed to install torch: {str(e)}")
                     raise
@@ -1385,7 +1265,6 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._checkCanApply()
 
     def onApplyButton(self) -> None:
-        import time
 
         # Every step downstream reports "0 file" on an input folder holding nothing
         # it can read, and the run walks its whole plan producing nothing. Say so
@@ -1396,8 +1275,8 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.CliStartTime = time.time()
         slicer.app.processEvents()
 
-        self.list_process = CreateListProcess(InputFolder = self._parameterNode.InputFolder
-                               ,OutputFolder = self._parameterNode.OutputFolder
+        self.list_process = CreateListProcess(VFACERequest(input_folder = self._parameterNode.InputFolder
+                               ,output_folder = self._parameterNode.OutputFolder
                                ,model_folder = os.path.join(self.SlicerDownloadPath,"AREG/AREG_CBCT/Models/Segmentation"),
                                model_folder_ali = os.path.join(self.SlicerDownloadPath,"ALI/ALI_CBCT/Models/Landmark"),
                                reg_type = self.ui.comboBox.currentText,
@@ -1409,7 +1288,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                                 mode = self.ui.comboBox3.currentText,
                                 t2_folder = self.ui.PathLineEdit_4.currentPath,
                                 mode2 = self.ui.comboBox4.currentText,
-                                model_vface = os.path.join(self.SlicerDownloadPath,"V_FACE"))
+                                model_vface = os.path.join(self.SlicerDownloadPath,"V_FACE")))
 
         if self.list_process:
             self.applyReviewSelection()
@@ -1500,96 +1379,158 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             self.OnEndProcess()
     
-    # VFACE has no test archive of its own, and its T1 input is a plain CBCT:
-    # AREG's orientation set holds exactly that, unoriented, which is what the
-    # full pipeline expects. Replace with a VFACE release asset if one is ever
+    # VFACE publishes no test archive of its own, and what it reads is one
+    # plain CBCT per patient: AREG's CBCT sets are exactly that. Which of the
+    # two fits depends on the mode, and the names inside say which is which --
+    # `Or_FullyAuto` is the set of AREG's "Orientation and Registration", so
+    # its scans are unoriented (C_0001_T1.nii.gz), and `FullyAuto` the set of
+    # the method that skips orientation, so its scans are already oriented
+    # (C_0001_T1_Or.nii.gz). Replace with a VFACE release asset if one is ever
     # published.
-    TEST_FILES_NAME = "Oriented-Automated"
-    TEST_FILES_URL = (
-        "https://github.com/lucanchling/Areg_CBCT/releases/download/TestFiles/"
-        "Or_FullyAuto.zip"
-    )
+    #
+    # The dataset names are AREG's own and the root is not this module's, so
+    # whichever module asks first pays the download and the other one finds it
+    # already there. Sharing only holds as long as nobody edits what was
+    # extracted: this button reads the set, it never writes into it. An
+    # earlier version deleted the T2 here -- the very folder a "Longitudinal
+    # studies" run needs, and the one AREG registers against.
+    TEST_FILES = {
+        "Full pipeline": (
+            "Oriented-Automated",
+            f"{AREG_CBCT_TEST_FILES}/Or_FullyAuto.zip",
+        ),
+        "File already Oriented": (
+            "Fully-Automated",
+            f"{AREG_CBCT_TEST_FILES}/FullyAuto.zip",
+        ),
+    }
+
+    def testFilesRoot(self) -> str:
+        """Where the shared test datasets live, one directory per dataset."""
+        return os.path.join(self.SlicerDownloadPath, "Test_Files")
+
+    def sampleTimepoint(self, dataset, timepoint):
+        """The folder of one timepoint of a sample set, None with a reason shown."""
+        folder = os.path.join(dataset, timepoint)
+        if not os.path.isdir(folder):
+            logger.error(f"No {timepoint} folder in the test files: {folder}")
+            PopUpWindow(
+                title="Test files incomplete",
+                text=f"The sample set holds no {timepoint} folder:\n\n{folder}",
+            ).exec_()
+            return None
+
+        if NumberScan(folder) == 0:
+            logger.error(f"No scan found in the test files: {folder}")
+            PopUpWindow(
+                title="No scan found",
+                text=f"No readable scan in the downloaded {timepoint} folder:\n\n{folder}",
+            ).exec_()
+            return None
+
+        return folder
 
     def onTestFilesButton(self) -> None:
         """
-        Download a sample CBCT and point the T1 input at it.
+        Fetch the sample set the selected mode needs and fill in its fields.
 
-        The archive carries a T1 and a T2; only the T1 is of any use here, so
-        that is the folder the input is set to.
+        Every input the mode asks for is pointed at the sample -- the T1, the
+        T2 of a longitudinal or already-registered run, the measurement lists
+        -- so that the only thing left to do is press Run. The output folder
+        is the exception: one the user already chose is theirs to keep.
         """
-        if not os.path.exists(self.SlicerDownloadPath):
-            os.makedirs(self.SlicerDownloadPath)
+        file_mode = self.ui.comboBox3.currentText
+        entry = self.TEST_FILES.get(file_mode)
+        if entry is None:
+            # "File already Registered" reads a T2 already brought onto its
+            # T1. No such pair is published -- the sets available are two
+            # timepoints as acquired -- and filling the fields with them would
+            # run the whole analysis on scans that are not aligned.
+            logger.error(f"No test set is published for the mode: {file_mode}")
+            PopUpWindow(
+                title="No sample for this mode",
+                text=(
+                    f'No sample is published for "{file_mode}": this mode reads a\n'
+                    "T2 already registered onto its T1, and the sets available are\n"
+                    "two timepoints as acquired.\n\n"
+                    'Pick "Full pipeline" or "File already Oriented" to try the\n'
+                    "module on a sample."
+                ),
+            ).exec_()
+            return
 
-        # Under V_FACE, next to DefaultList: the archive is borrowed from AREG
-        # but the copy belongs to this module, and uninstalling one must not
-        # take the other's sample away.
-        folder_name = os.path.join("V_FACE", "Test_Files", self.TEST_FILES_NAME)
+        name, url = entry
         try:
-            self.DownloadUnzip(
-                url=self.TEST_FILES_URL,
-                directory=self.SlicerDownloadPath,
-                folder_name=folder_name,
-                check_file="T1",
+            dataset = ensure_with_progress(
+                url,
+                self.testFilesRoot(),
+                name,
+                parent=self.parent,
+                title=f"Downloading the {name} test files...",
             )
-        except Exception as e:
+        except (TestDataError, OSError, zipfile.BadZipFile) as e:
             logger.error(f"Could not download the test files: {e}")
             PopUpWindow(
                 title="Download failed",
-                text=f"The sample scan could not be downloaded:\n\n{e}",
+                text=f"The sample scans could not be downloaded:\n\n{e}",
             ).exec_()
             return
 
-        # The archive is AREG's, so it carries a second timepoint. VFACE makes
-        # its own T2 by mirroring the T1 and never reads one from disk, so that
-        # half is dropped rather than left to take up room for nothing.
-        t2_folder = os.path.join(self.SlicerDownloadPath, folder_name, "T2")
-        if os.path.isdir(t2_folder):
-            try:
-                shutil.rmtree(t2_folder)
-                logger.info("Test files: dropped the T2 this module has no use for")
-            except OSError as e:
-                logger.warning(f"Could not remove the unused T2 folder: {e}")
-
-        t1_folder = os.path.join(self.SlicerDownloadPath, folder_name, "T1")
-        if not os.path.isdir(t1_folder):
-            logger.error(f"No T1 folder in the test files: {t1_folder}")
-            PopUpWindow(
-                title="Test files incomplete",
-                text=f"The archive holds no T1 folder:\n\n{t1_folder}",
-            ).exec_()
+        t1_folder = self.sampleTimepoint(dataset, "T1")
+        if t1_folder is None:
             return
 
-        nb_scan = NumberScan(t1_folder)
-        if nb_scan == 0:
-            logger.error(f"No scan found in the test files: {t1_folder}")
-            PopUpWindow(
-                title="No scan found",
-                text=f"No readable scan in the downloaded folder:\n\n{t1_folder}",
-            ).exec_()
-            return
+        # A second timepoint is read in exactly the two cases the interface
+        # shows the field in: a study over time, and a pair registered
+        # beforehand. The other modes build their T2 by mirroring the T1.
+        needs_t2 = (file_mode == "File already Registered"
+                    or self.ui.comboBox4.currentText == "Longitudinal studies")
+        t2_folder = None
+        if needs_t2:
+            t2_folder = self.sampleTimepoint(dataset, "T2")
+            if t2_folder is None:
+                return
 
         self.ui.PathLineEdit.setCurrentPath(t1_folder)
-        logger.info(f"Test files ready: {nb_scan} patient(s) in {t1_folder}")
+        logger.info(f"Test files ready: {NumberScan(t1_folder)} patient(s) in {t1_folder}")
+        if t2_folder:
+            self.ui.PathLineEdit_4.setCurrentPath(t2_folder)
+            logger.info(f"Test files: T2 set to {t2_folder}")
 
-        # Somewhere to write, beside the scans it will read, so the sample runs
-        # on a single click. A folder the user already chose is left alone.
-        if not self._parameterNode.OutputFolder:
-            output = os.path.join(self.SlicerDownloadPath, folder_name, "Output")
+        # Somewhere to write, outside the sample: what was extracted is shared
+        # with the other modules and with the next click on this button, so
+        # nothing of ours is written inside it. A folder the user already chose
+        # is left alone.
+        if not self.ui.PathLineEdit_2.currentPath:
+            output = os.path.join(self.SlicerDownloadPath, "V_FACE", "Test_Output")
+            os.makedirs(output, exist_ok=True)
             self.ui.PathLineEdit_2.setCurrentPath(output)
             logger.info(f"Test files: output set to {output}")
 
-        # The sample is only runnable with the measurement lists beside it, so
-        # fetch those too rather than leaving the user one unexplained click
-        # short. A folder they already chose is left alone.
-        if not self.ui.PathLineEdit_3.currentPath:
-            self.onDefaultButton()
+        # Every analysis but the heatmaps reads a list of measurements, and the
+        # sample is not runnable without one: fetch the default list rather
+        # than leave the user one unexplained click short.
+        if self.ui.comboBox2.currentText != "Visualization (Heatmaps)":
+            try:
+                self.onDefaultButton()
+            except (OSError, zipfile.BadZipFile) as e:
+                logger.error(f"Could not download the default measurement list: {e}")
+                PopUpWindow(
+                    title="Measurement list missing",
+                    text=(
+                        "The sample scans are ready, but the default list of\n"
+                        f"measurements could not be downloaded:\n\n{e}"
+                    ),
+                ).exec_()
+
+        self._checkCanApply()
 
     def onDefaultButton(self):
         if not os.path.exists(self.SlicerDownloadPath):
             os.makedirs(self.SlicerDownloadPath)
 
         self.DownloadUnzip(
-            url="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/VFACE/DefaultList.zip",
+            url=f"{VFACE_MODELS}/DefaultList.zip",
             directory=self.SlicerDownloadPath,
             folder_name="V_FACE/DefaultList",
         )
@@ -1602,13 +1543,13 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         Displays confirmation dialog before canceling the current process.
         """
-        msgBox = qt.QMessageBox()
-        msgBox.setWindowTitle("Confirm Cancellation")
-        msgBox.setText("Are you sure you want to cancel the current process?")
-        msgBox.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
-        msgBox.setDefaultButton(qt.QMessageBox.No)
+        msg_box = qt.QMessageBox()
+        msg_box.setWindowTitle("Confirm Cancellation")
+        msg_box.setText("Are you sure you want to cancel the current process?")
+        msg_box.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
+        msg_box.setDefaultButton(qt.QMessageBox.No)
         
-        result = msgBox.exec_()
+        result = msg_box.exec_()
         
         if result == qt.QMessageBox.Yes:
             self.cancelProcess()
@@ -1907,18 +1848,6 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         logger.info(f"{kept} step(s) will pause for review")
         return kept
 
-    def shouldPauseAfterProcess(self, process_info: dict) -> bool:
-        """
-        Determine if process execution should pause for visualization review.
-
-        Args:
-            process_info: Process information dictionary
-
-        Returns:
-            bool: True if pause is requested, False otherwise
-        """
-        return process_info.get("pause_for_visualization", False)
-
     def runPatientIds(self) -> set:
         """The patients this run is about, read from the folder it was given.
 
@@ -1943,21 +1872,6 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 if name.endswith(wanted):
                     ids.add(patientIdFromFileName(name))
         return ids
-
-    @staticmethod
-    def belongsToRun(patient: str, wanted_ids: set) -> bool:
-        """Whether a produced file's id names one of the run's patients.
-
-        Usually the ids match outright. Some steps append a marker that
-        patientIdFromFileName does not know how to strip - the heatmaps come out
-        as "C_0001_Mandible_ModelDistance" - which leaves a longer id built on
-        the patient's own. Those still belong to the run, so accept an id that
-        extends an expected one at a separator. "C_0001" must not swallow
-        "C_00011", hence the boundary rather than a bare startswith.
-        """
-        if patient in wanted_ids:
-            return True
-        return any(patient.startswith(w + "_") for w in wanted_ids)
 
     def buildPauseQueue(self, process_info: dict) -> list:
         """
@@ -2024,7 +1938,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     continue
                 patient = patientIdFromFileName(name)
                 path = os.path.join(root, name)
-                if wanted_ids is not None and not self.belongsToRun(patient, wanted_ids):
+                if wanted_ids is not None and not self.logic.belongsToRun(patient, wanted_ids):
                     skipped.add(patient)
                     held_back.setdefault(patient, []).append(path)
                     continue
@@ -2106,7 +2020,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Returns:
             bool: True if the run is now paused and must not advance
         """
-        if not self.shouldPauseAfterProcess(process_info):
+        if not self.logic.shouldPauseAfterProcess(process_info):
             return False
         if not self.ui.checkBox_2.isChecked():
             return False
@@ -2393,18 +2307,8 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             display.SetPointLabelsVisibility(True)
 
         self.pause_markups_nodes.append(node)
-        self.pause_markups_start[node.GetID()] = self.markupsPositions(node)
+        self.pause_markups_start[node.GetID()] = self.logic.markupsPositions(node)
         return node
-
-    @staticmethod
-    def markupsPositions(node) -> list:
-        """Control point positions of a markups node, in order."""
-        positions = []
-        for i in range(node.GetNumberOfControlPoints()):
-            position = [0.0, 0.0, 0.0]
-            node.GetNthControlPointPosition(i, position)
-            positions.append(tuple(position))
-        return positions
 
     def savePauseEdits(self) -> None:
         """
@@ -2421,7 +2325,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 continue
 
             before = self.pause_markups_start.get(node.GetID())
-            after = self.markupsPositions(node)
+            after = self.logic.markupsPositions(node)
             if before == after:
                 logger.info(f"{os.path.basename(path)} unchanged, not rewritten")
                 continue
@@ -2453,7 +2357,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         matrix = vtk.vtkMatrix4x4()
         transform.GetMatrixTransformToParent(matrix)
-        if self.isIdentityMatrix(matrix):
+        if self.logic.isIdentityMatrix(matrix):
             logger.info(f"{item['patient']}: registration left as AREG produced it")
             return
 
@@ -2487,7 +2391,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # leaves two matrices in a file every other tool expects to hold one, and
         # a second manual correction would stack a third. The product is exactly
         # equivalent - checked point by point - so there is nothing to lose.
-        composed = self.flattenIfAffine(composed, areg, nudge.GetInverse())
+        composed = self.logic.flattenIfAffine(composed, areg, nudge.GetInverse())
 
         try:
             sitk.WriteTransform(composed, path)
@@ -2497,47 +2401,6 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             return
 
         self.saveAdjustedVolume(item, transform)
-
-    @staticmethod
-    def flattenIfAffine(composite, first, second):
-        """One matrix instead of two, when both parts are affine.
-
-        CompositeTransform([A, B]) moves a point as A(B(p)), which is the product
-        of their matrices. Collapsing keeps the file to a single transform, so
-        nothing downstream has to know an adjustment happened - which is what the
-        pipeline assumed all along.
-
-        Returns the composite untouched if either part is not affine: correctness
-        first, tidiness second.
-
-        Args:
-            composite: The composed transform, returned as-is on any doubt
-            first: Transform applied second to a point
-            second: Transform applied first to a point
-
-        Returns:
-            A single AffineTransform, or the composite unchanged
-        """
-        import numpy as np
-        import SimpleITK as sitk
-
-        def as_matrix(t):
-            affine = sitk.AffineTransform(t)      # raises unless truly affine
-            m = np.eye(4)
-            m[:3, :3] = np.array(affine.GetMatrix()).reshape(3, 3)
-            m[:3, 3] = affine.GetTranslation()
-            return m
-
-        try:
-            product = as_matrix(first) @ as_matrix(second)
-        except Exception as e:
-            logger.info(f"Keeping a composite transform, not both parts are affine: {e}")
-            return composite
-
-        flat = sitk.AffineTransform(3)
-        flat.SetMatrix(product[:3, :3].flatten().tolist())
-        flat.SetTranslation(product[:3, 3].tolist())
-        return flat
 
     def saveAdjustedVolume(self, item: dict, transform) -> None:
         """
@@ -2565,25 +2428,6 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             except Exception as e:
                 logger.error(f"Could not save the adjusted scan to {path}: {e}")
             return
-
-    @staticmethod
-    def isIdentityMatrix(matrix, tolerance: float = 1e-9) -> bool:
-        """
-        Tell whether a 4x4 holds no displacement at all.
-
-        Args:
-            matrix: vtkMatrix4x4 to test
-            tolerance: Largest deviation still counted as identity
-
-        Returns:
-            bool: True if the matrix is the identity within tolerance
-        """
-        for row in range(4):
-            for col in range(4):
-                expected = 1.0 if row == col else 0.0
-                if abs(matrix.GetElement(row, col) - expected) > tolerance:
-                    return False
-        return True
 
     def clearPauseNodes(self) -> None:
         """Remove the nodes the previous review item put in the scene."""
@@ -3020,18 +2864,18 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Args:
             item: Review item currently on screen
         """
-        layoutManager = slicer.app.layoutManager()
+        layout_manager = slicer.app.layoutManager()
         surfaces_only = not item.get("volume") and all(
             f.endswith(self.MODEL_EXT) for f in item["files"]
         )
 
         if surfaces_only:
-            layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView)
-            widget = layoutManager.threeDWidget(0)
+            layout_manager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView)
+            widget = layout_manager.threeDWidget(0)
             if widget:
                 widget.threeDView().resetFocalPoint()
         else:
-            layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
+            layout_manager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
             slicer.util.resetSliceViews()
 
     def applyPendingRestriction(self, process_info: dict) -> dict:
@@ -3068,7 +2912,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.CliStepTime = time.time()
         self.module_name = process_info["Module"]
         self.displayModule = process_info["Display"]
-        self.current_process_info = process_info  # Stocker les infos du processus actuel
+        self.current_process_info = process_info  # Keep the info of the current process
         # Kept in order: going back means finding what ran before this step.
         self.executed_steps.append(process_info)
         
@@ -3121,18 +2965,37 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def startPythonProcess(self):
         """Start a Python process"""
-        import time
 
         started = time.time()
         log_path = None
         try:
             if callable(self.python_process):
-                with self.outputToFile() as log_path:
+                with self.logic.outputToFile() as log_path:
                     result = self.python_process(**self.python_parameters)
-                logger.info(
-                    f"Result of {self.module_name}: {result} "
-                    f"(in {self.readableDuration(time.time() - started)})"
-                )
+                elapsed = self.logic.readableDuration(time.time() - started)
+                # A step that returns False says it failed. This was an INFO
+                # line and nothing else, so the chain carried on: the five BDS
+                # segmentations each returned False, the three ModelToModel
+                # distances then had nothing to measure and returned None, and
+                # the run ended with empty Heatmaps and VTK Files folders while
+                # every line read like success. Measured on 2026-09-29.
+                #
+                # `None` is NOT judged here: several steps legitimately return
+                # it -- AQ3DC, ModelToModel -- and calling that a failure would
+                # fire on a working run.
+                if result is False:
+                    # The ERROR level is what carries this: `python_process_error`
+                    # is set here like the exception branch below sets it, but
+                    # NOTHING in this module reads that field -- a step's failure
+                    # is recorded nowhere and stops nothing. Making it stop the
+                    # chain is a separate decision; being able to see it is not.
+                    logger.error(
+                        f"{self.module_name} reported failure (in {elapsed}); "
+                        "its own output above says why"
+                    )
+                    self.python_process_error = f"{self.module_name} returned False"
+                else:
+                    logger.info(f"Result of {self.module_name}: {result} (in {elapsed})")
                 self.python_process_completed = True
             else:
                 logger.error(f"Error: {self.python_process} is not a callable function")
@@ -3141,7 +3004,6 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         except Exception as e:
             logger.error(f"Error during the execution of {self.module_name}: {e}")
-            import traceback
             traceback.print_exc()
             self.python_process_error = str(e)
             self.python_process_completed = True
@@ -3156,59 +3018,10 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         import qt
         qt.QTimer.singleShot(100, self.checkPythonProcessStatus)
 
-    @contextlib.contextmanager
-    def outputToFile(self):
-        """
-        Send everything a step prints to a file instead of Slicer's own pipe.
-
-        Slicer captures its standard output into a pipe it drains from the Qt
-        event loop. A python step runs with that loop stopped, so nothing drains
-        the pipe while it prints: a talkative one - the segmentation prints per
-        epoch - fills it and the main thread blocks in write() for ever, with a
-        window that never comes back. Writing to a file cannot block, which is
-        why the heatmap workers already do this.
-
-        The redirection is at file-descriptor level on purpose: torch and the
-        segmentation write from C, straight to fd 1, where swapping sys.stdout
-        would not catch them.
-
-        Yields:
-            str: path of the file the step's output was written to
-        """
-        handle = tempfile.NamedTemporaryFile(
-            mode="w+", suffix=".log", prefix="vface_step_", delete=False
-        )
-        saved_out, saved_err = None, None
-        saved_sys_out, saved_sys_err = sys.stdout, sys.stderr
-        try:
-            for stream in (sys.stdout, sys.stderr):
-                try:
-                    stream.flush()
-                except Exception:
-                    pass
-            saved_out = os.dup(1)
-            saved_err = os.dup(2)
-            os.dup2(handle.fileno(), 1)
-            os.dup2(handle.fileno(), 2)
-            sys.stdout, sys.stderr = handle, handle
-            yield handle.name
-        finally:
-            sys.stdout, sys.stderr = saved_sys_out, saved_sys_err
-            try:
-                handle.flush()
-            except Exception:
-                pass
-            if saved_out is not None:
-                os.dup2(saved_out, 1)
-                os.close(saved_out)
-            if saved_err is not None:
-                os.dup2(saved_err, 2)
-                os.close(saved_err)
-            try:
-                handle.close()
-            except Exception:
-                pass
-
+    # No decorator here: this one yields nothing and is called plainly, at line
+    # 2989. Decorated, the call returned a context manager object and the body
+    # never ran at all -- the step's last lines never reached the log, and the
+    # temporary file its `finally` removes was leaked once per step.
     def _reportStepOutput(self, log_path: str, keep_lines: int = 12) -> None:
         """
         Put the tail of a step's own output back in the log, and drop the file.
@@ -3234,24 +3047,6 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         skipped = len(lines) - len(shown)
         prefix = f"[{skipped} earlier line(s) not shown]\n" if skipped else ""
         logger.info(f"{self.module_name} said:\n{prefix}" + "\n".join(shown))
-
-    @staticmethod
-    def readableDuration(seconds: float) -> str:
-        """
-        Spell out a duration the way the CLI steps already report theirs.
-
-        Args:
-            seconds: Elapsed seconds
-
-        Returns:
-            str: Human readable duration
-        """
-        seconds = int(seconds)
-        if seconds < 60:
-            return f"{seconds}s"
-        if seconds < 3600:
-            return f"{seconds // 60}min and {seconds % 60}s"
-        return f"{seconds // 3600}h, {seconds % 3600 // 60}min and {seconds % 60}s"
 
     def checkPythonProcessStatus(self):
         """Check Python process status"""
@@ -3280,20 +3075,6 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # fills the pipe and blocks the main thread for good - Slicer goes black and
     # never comes back. Slicer already logs each CLI's full standard output
     # itself, so echoing a bounded tail here is enough.
-    MAX_CLI_OUTPUT_CHARS = 8000
-
-    @classmethod
-    def _briefCliOutput(cls, text) -> str:
-        """The tail of a CLI's output, small enough to never fill the stdout pipe."""
-        text = text or ""
-        if len(text) <= cls.MAX_CLI_OUTPUT_CHARS:
-            return text
-        kept = text[-cls.MAX_CLI_OUTPUT_CHARS:]
-        return (
-            f"[... {len(text) - len(kept)} characters omitted, "
-            f"full output in the Slicer log ...]\n{kept}"
-        )
-
     def onCliUpdated(self, caller, event):
         """Drive the run from the CLI node that just reported in.
 
@@ -3337,8 +3118,6 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def _onCliUpdated(self, caller, event):
         import time
-        import json
-        import subprocess
 
         # Only the node the pipeline is currently waiting on may advance it.
         # Observers can outlive their step, so a stale callback would start the
@@ -3351,14 +3130,14 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if caller.GetID() != self.cliNode.GetID():
             return
 
-        cliNode = caller
+        cli_node = caller
 
-        status = cliNode.GetStatus()
+        status = cli_node.GetStatus()
 
         if status & slicer.vtkMRMLCommandLineModuleNode.Completed or \
            status & slicer.vtkMRMLCommandLineModuleNode.Cancelled:
 
-            self.removeObserver(cliNode, vtk.vtkCommand.ModifiedEvent, self.onCliUpdated)
+            self.removeObserver(cli_node, vtk.vtkCommand.ModifiedEvent, self.onCliUpdated)
 
             # Deferred on purpose: Slicer captures its own stdout into a pipe
             # that it drains from the Qt event loop, and this method runs inside
@@ -3370,7 +3149,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # output, but _briefCliOutput keeps only a tail and a longer run
             # could push it out.
             self.collectMissingLandmarks(full_output)
-            cli_output = self._briefCliOutput(full_output)
+            cli_output = self.logic._briefCliOutput(full_output)
 
             # CompletedWithErrors is Completed | ErrorsMask, so the test above is
             # also true of a CLI that died. Without this branch the failure was
@@ -3379,7 +3158,7 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # the empty folders the dead one never filled, reporting success.
             if status & slicer.vtkMRMLCommandLineModuleNode.ErrorsMask:
                 failed_module = self.module_name
-                cli_error = self._briefCliOutput(caller.GetErrorText())
+                cli_error = self.logic._briefCliOutput(caller.GetErrorText())
                 qt.QTimer.singleShot(0, lambda: logger.error(
                     f"\n\n ========= {failed_module} FAILED ========= \n{cli_output}"
                     f"\n ========= ERROR DETAILS ========= \n{cli_error}"
@@ -3406,9 +3185,9 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         progress = caller.GetProgress()
         if progress == 0:
-            self.updateProgessBar = False
+            self.updateProgressBar = False
 
-        if self.displayModule.isProgress(progress=progress, updateProgessBar=self.updateProgessBar):
+        if self.displayModule.isProgress(progress=progress, updateProgressBar=self.updateProgressBar):
             progress_bar, message = self.displayModule()
             self.ui.progressBar.setValue(progress_bar)
 
@@ -3434,7 +3213,6 @@ class VFACEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def OnEndProcess(self):
         from pathlib import Path
-        import time
         act_time = time.time()
         total_time = act_time-self.CliStartTime
 
@@ -3541,7 +3319,7 @@ class VFACELogic(ScriptedLoadableModuleLogic):
     def process(self,
                 inputVolume: vtkMRMLScalarVolumeNode,
                 outputVolume: vtkMRMLScalarVolumeNode,
-                imageThreshold: float,
+                image_threshold: float,
                 invert: bool = False,
                 showResult: bool = True) -> None:
         """
@@ -3557,24 +3335,264 @@ class VFACELogic(ScriptedLoadableModuleLogic):
         if not inputVolume or not outputVolume:
             raise ValueError("Input or output volume is invalid")
 
-        import time
 
-        startTime = time.time()
+        start_time = time.time()
         logger.info("Processing started")
 
         # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-        cliParams = {
+        cli_params = {
             "InputVolume": inputVolume.GetID(),
             "OutputVolume": outputVolume.GetID(),
-            "ThresholdValue": imageThreshold,
+            "ThresholdValue": image_threshold,
             "ThresholdType": "Above" if invert else "Below",
         }
-        cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
+        cli_node = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cli_params, wait_for_completion=True, update_display=showResult)
         # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-        slicer.mrmlScene.RemoveNode(cliNode)
+        slicer.mrmlScene.RemoveNode(cli_node)
 
-        stopTime = time.time()
-        logger.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
+        stop_time = time.time()
+        logger.info(f"Processing completed in {stop_time-start_time:.2f} seconds")
+
+    @staticmethod
+    def belongsToRun(patient: str, wanted_ids: set) -> bool:
+        """Whether a produced file's id names one of the run's patients.
+
+        Usually the ids match outright. Some steps append a marker that
+        patientIdFromFileName does not know how to strip - the heatmaps come out
+        as "C_0001_Mandible_ModelDistance" - which leaves a longer id built on
+        the patient's own. Those still belong to the run, so accept an id that
+        extends an expected one at a separator. "C_0001" must not swallow
+        "C_00011", hence the boundary rather than a bare startswith.
+        """
+        if patient in wanted_ids:
+            return True
+        return any(patient.startswith(w + "_") for w in wanted_ids)
+
+    @staticmethod
+    def markupsPositions(node) -> list:
+        """Control point positions of a markups node, in order."""
+        positions = []
+        for i in range(node.GetNumberOfControlPoints()):
+            position = [0.0, 0.0, 0.0]
+            node.GetNthControlPointPosition(i, position)
+            positions.append(tuple(position))
+        return positions
+
+    @staticmethod
+    def flattenIfAffine(composite, first, second):
+        """One matrix instead of two, when both parts are affine.
+
+        CompositeTransform([A, B]) moves a point as A(B(p)), which is the product
+        of their matrices. Collapsing keeps the file to a single transform, so
+        nothing downstream has to know an adjustment happened - which is what the
+        pipeline assumed all along.
+
+        Returns the composite untouched if either part is not affine: correctness
+        first, tidiness second.
+
+        Args:
+            composite: The composed transform, returned as-is on any doubt
+            first: Transform applied second to a point
+            second: Transform applied first to a point
+
+        Returns:
+            A single AffineTransform, or the composite unchanged
+        """
+        import numpy as np
+        import SimpleITK as sitk
+
+        def as_matrix(t):
+            affine = sitk.AffineTransform(t)      # raises unless truly affine
+            m = np.eye(4)
+            m[:3, :3] = np.array(affine.GetMatrix()).reshape(3, 3)
+            m[:3, 3] = affine.GetTranslation()
+            return m
+
+        try:
+            product = as_matrix(first) @ as_matrix(second)
+        except Exception as e:
+            logger.info(f"Keeping a composite transform, not both parts are affine: {e}")
+            return composite
+
+        flat = sitk.AffineTransform(3)
+        flat.SetMatrix(product[:3, :3].flatten().tolist())
+        flat.SetTranslation(product[:3, 3].tolist())
+        return flat
+
+    @staticmethod
+    def isIdentityMatrix(matrix, tolerance: float = 1e-9) -> bool:
+        """
+        Tell whether a 4x4 holds no displacement at all.
+
+        Args:
+            matrix: vtkMatrix4x4 to test
+            tolerance: Largest deviation still counted as identity
+
+        Returns:
+            bool: True if the matrix is the identity within tolerance
+        """
+        for row in range(4):
+            for col in range(4):
+                expected = 1.0 if row == col else 0.0
+                if abs(matrix.GetElement(row, col) - expected) > tolerance:
+                    return False
+        return True
+
+    @staticmethod
+    def readableDuration(seconds: float) -> str:
+        """
+        Spell out a duration the way the CLI steps already report theirs.
+
+        Args:
+            seconds: Elapsed seconds
+
+        Returns:
+            str: Human readable duration
+        """
+        seconds = int(seconds)
+        if seconds < 60:
+            return f"{seconds}s"
+        if seconds < 3600:
+            return f"{seconds // 60}min and {seconds % 60}s"
+        return f"{seconds // 3600}h, {seconds % 3600 // 60}min and {seconds % 60}s"
+
+    #: Short enough never to fill the pipe Slicer captures its own output
+    #: into. It lived on the Widget while this method is its only reader: the
+    #: move to the Logic left it behind, and `cls.MAX_CLI_OUTPUT_CHARS` raised
+    #: an AttributeError on the first CLI that finished.
+    MAX_CLI_OUTPUT_CHARS = 8000
+
+    @classmethod
+    def _briefCliOutput(cls, text) -> str:
+        """The tail of a CLI's output, small enough to never fill the stdout pipe."""
+        text = text or ""
+        if len(text) <= cls.MAX_CLI_OUTPUT_CHARS:
+            return text
+        kept = text[-cls.MAX_CLI_OUTPUT_CHARS:]
+        return (
+            f"[... {len(text) - len(kept)} characters omitted, "
+            f"full output in the Slicer log ...]\n{kept}"
+        )
+
+    def shouldPauseAfterProcess(self, process_info: dict) -> bool:
+        """
+        Determine if process execution should pause for visualization review.
+
+        Args:
+            process_info: Process information dictionary
+
+        Returns:
+            bool: True if pause is requested, False otherwise
+        """
+        return process_info.get("pause_for_visualization", False)
+
+    # Without it this is a plain generator, and `with self.logic.outputToFile()`
+    # raised "'generator' object does not support the context manager protocol"
+    # before the step it wraps ever ran -- every python step of every VFACE run.
+    # Worse, the redirection this function exists for never happened either, so
+    # the pipe-flood the docstring below describes was left unguarded.
+    @contextlib.contextmanager
+    def outputToFile(self):
+        """
+        Send everything a step prints to a file instead of Slicer's own pipe.
+
+        Slicer captures its standard output into a pipe it drains from the Qt
+        event loop. A python step runs with that loop stopped, so nothing drains
+        the pipe while it prints: a talkative one - the segmentation prints per
+        epoch - fills it and the main thread blocks in write() for ever, with a
+        window that never comes back. Writing to a file cannot block, which is
+        why the heatmap workers already do this.
+
+        The redirection is at file-descriptor level on purpose: torch and the
+        segmentation write from C, straight to fd 1, where swapping sys.stdout
+        would not catch them.
+
+        Yields:
+            str: path of the file the step's output was written to
+        """
+        handle = tempfile.NamedTemporaryFile(
+            mode="w+", suffix=".log", prefix="vface_step_", delete=False
+        )
+        saved_out, saved_err = None, None
+        saved_sys_out, saved_sys_err = sys.stdout, sys.stderr
+        try:
+            for stream in (sys.stdout, sys.stderr):
+                try:
+                    stream.flush()
+                except (AttributeError, OSError, ValueError):
+                    # The stream may already be closed, or be None when Slicer
+                    # runs without a console. No logging here: it would write
+                    # into the very stream we are taking apart.
+                    pass
+            saved_out = os.dup(1)
+            saved_err = os.dup(2)
+            os.dup2(handle.fileno(), 1)
+            os.dup2(handle.fileno(), 2)
+            sys.stdout, sys.stderr = handle, handle
+            yield handle.name
+        finally:
+            sys.stdout, sys.stderr = saved_sys_out, saved_sys_err
+            try:
+                handle.flush()
+            except (OSError, ValueError):
+                pass
+            if saved_out is not None:
+                os.dup2(saved_out, 1)
+                os.close(saved_out)
+            if saved_err is not None:
+                os.dup2(saved_err, 2)
+                os.close(saved_err)
+            try:
+                handle.close()
+            except (OSError, ValueError):
+                pass
+
+    @staticmethod
+    def widenCapturedPipes() -> None:
+        """Give Slicer's captured output more room than the default 64 KB.
+
+        Precaution, not a proven cure. What is established: long VFACE runs have
+        frozen several times with the main thread in `pipe_write` on the pipe
+        Slicer captures its own stdout into, zero CPU, never recovering. What is
+        not established: what fills it. Writing 200 KB from inside a VTK observer
+        callback - the shape the freeze was blamed on - does NOT deadlock, with
+        or without a main window, so that explanation is wrong or incomplete.
+
+        Widening suppresses no output and changes no behaviour; it only raises
+        the ceiling from 64 KB to whatever the kernel allows, typically 1 MB,
+        against a whole run's console output of roughly 100 KB. If the freeze
+        really is an accumulation, this removes it; if it is something else, this
+        costs nothing. Do not read it as the fix until a run confirms it.
+
+        Fails quietly wherever it does not apply - Windows, output redirected to
+        a file rather than a pipe, a kernel that refuses - because a smaller pipe
+        is not worth failing over.
+        """
+        try:
+            import fcntl
+        except ImportError:
+            return  # not a POSIX platform; nothing to widen
+        F_SETPIPE_SZ, F_GETPIPE_SZ = 1031, 1032
+        try:
+            with open("/proc/sys/fs/pipe-max-size") as fh:
+                target = int(fh.read().strip())
+        except (OSError, ValueError):
+            target = 1024 * 1024
+        for fd in (1, 2):
+            try:
+                if not stat.S_ISFIFO(os.fstat(fd).st_mode):
+                    continue
+                before = fcntl.fcntl(fd, F_GETPIPE_SZ)
+                if before >= target:
+                    continue
+                fcntl.fcntl(fd, F_SETPIPE_SZ, target)
+                logger.info(
+                    f"Captured output fd{fd} widened {before} -> "
+                    f"{fcntl.fcntl(fd, F_GETPIPE_SZ)} bytes"
+                )
+            except (OSError, ValueError) as e:
+                logger.warning(f"Could not widen fd{fd}, leaving it as it is: {e}")
+
 
 
 #
@@ -3617,14 +3635,14 @@ class VFACETest(ScriptedLoadableModuleTest):
         import SampleData
 
         registerSampleData()
-        inputVolume = SampleData.downloadSample("VFACE1")
+        input_volume = SampleData.downloadSample("VFACE1")
         self.delayDisplay("Loaded test data set")
 
-        inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(inputScalarRange[0], 0)
-        self.assertEqual(inputScalarRange[1], 695)
+        input_scalar_range = input_volume.GetImageData().GetScalarRange()
+        self.assertEqual(input_scalar_range[0], 0)
+        self.assertEqual(input_scalar_range[1], 695)
 
-        outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+        output_volume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
         threshold = 100
 
         # Test the module logic
@@ -3632,15 +3650,15 @@ class VFACETest(ScriptedLoadableModuleTest):
         logic = VFACELogic()
 
         # Test algorithm with non-inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, True)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], threshold)
+        logic.process(input_volume, output_volume, threshold, True)
+        output_scalar_range = output_volume.GetImageData().GetScalarRange()
+        self.assertEqual(output_scalar_range[0], input_scalar_range[0])
+        self.assertEqual(output_scalar_range[1], threshold)
 
         # Test algorithm with inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, False)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], inputScalarRange[1])
+        logic.process(input_volume, output_volume, threshold, False)
+        output_scalar_range = output_volume.GetImageData().GetScalarRange()
+        self.assertEqual(output_scalar_range[0], input_scalar_range[0])
+        self.assertEqual(output_scalar_range[1], input_scalar_range[1])
 
         self.delayDisplay("Test passed")

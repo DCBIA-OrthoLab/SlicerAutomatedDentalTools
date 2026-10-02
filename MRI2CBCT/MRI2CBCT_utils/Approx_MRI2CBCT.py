@@ -1,39 +1,27 @@
 from .Method import Method
-from .utils_CBCT import GetDictPatients, GetPatients
-import os, sys
+from .utils_CBCT import GetDictPatients
+import os
 
 import glob
 import json
 import vtk
 import numpy as np
 
-from glob import iglob
 import slicer
-import time
 import qt
 import platform
-import re
 
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_Approx")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("MRI2CBCT_Approx")
 
 class Approximation_MRI2CBCT(Method):
     def __init__(self, widget):
         super().__init__(widget)
-        documentsLocation = qt.QStandardPaths.DocumentsLocation
-        documents = qt.QStandardPaths.writableLocation(documentsLocation)
+        documents_location = qt.QStandardPaths.DocumentsLocation
+        documents = qt.QStandardPaths.writableLocation(documents_location)
         self._lastOutputFolder = None
         self._keepResultInScene = False
 
@@ -146,8 +134,8 @@ class Approximation_MRI2CBCT(Method):
             cbct_point = data["cbct_point_ras"]
             mri_point_rotated = data["mri_point_rotated_ras"]
 
-            mriNode = None
-            transformNode = None
+            mri_node = None
+            transform_node = None
             try:
                 translation = self._matchPointsWithFiducialRegistration(cbct_point, mri_point_rotated)
 
@@ -158,13 +146,13 @@ class Approximation_MRI2CBCT(Method):
                         matrix.SetElement(i, j, float(rotation[i, j]))
                     matrix.SetElement(i, 3, float(translation[i]))
 
-                transformNode = slicer.mrmlScene.AddNewNodeByClass(
+                transform_node = slicer.mrmlScene.AddNewNodeByClass(
                     "vtkMRMLLinearTransformNode", f"{patient_id}_ApproxTransform")
-                transformNode.SetMatrixTransformToParent(matrix)
+                transform_node.SetMatrixTransformToParent(matrix)
 
-                mriNode = slicer.util.loadVolume(mri_path)
-                mriNode.SetAndObserveTransformNodeID(transformNode.GetID())
-                slicer.vtkSlicerTransformLogic().hardenTransform(mriNode)
+                mri_node = slicer.util.loadVolume(mri_path)
+                mri_node.SetAndObserveTransformNodeID(transform_node.GetID())
+                slicer.vtkSlicerTransformLogic().hardenTransform(mri_node)
 
                 mri_basename = os.path.basename(mri_path)
                 for ext in (".nii.gz", ".nii"):
@@ -172,46 +160,46 @@ class Approximation_MRI2CBCT(Method):
                         mri_basename = mri_basename[: -len(ext)]
                         break
                 out_volume_path = os.path.join(output_folder, f"{mri_basename}_approximate.nii.gz")
-                slicer.util.saveNode(mriNode, out_volume_path)
+                slicer.util.saveNode(mri_node, out_volume_path)
 
                 out_transform_path = os.path.join(output_folder, f"{patient_id}_MRI_approximate.tfm")
-                slicer.util.saveNode(transformNode, out_transform_path)
+                slicer.util.saveNode(transform_node, out_transform_path)
 
                 if self._keepResultInScene:
-                    mriNode.SetName(f"{mri_basename}_approximate")
-                    mriNode = None  # don't remove it below, leave it loaded for the user
+                    mri_node.SetName(f"{mri_basename}_approximate")
+                    mri_node = None  # don't remove it below, leave it loaded for the user
 
                 logger.info(f"{patient_id}: approximation finalized -> {out_volume_path}")
             except Exception as e:
                 logger.error(f"Failed to finalize approximation for {patient_id}: {e}")
             finally:
-                if mriNode is not None:
-                    slicer.mrmlScene.RemoveNode(mriNode)
-                if transformNode is not None:
-                    slicer.mrmlScene.RemoveNode(transformNode)
+                if mri_node is not None:
+                    slicer.mrmlScene.RemoveNode(mri_node)
+                if transform_node is not None:
+                    slicer.mrmlScene.RemoveNode(transform_node)
 
-    def _matchPointsWithFiducialRegistration(self, fixedPoint, movingPoint):
+    def _matchPointsWithFiducialRegistration(self, fixed_point, moving_point):
         """Use Slicer's own FiducialRegistration CLI module to compute the
         translation that matches a single fixed/moving point pair."""
-        fixedFid = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "ApproxFixedPoint")
-        movingFid = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "ApproxMovingPoint")
-        regTransform = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "ApproxFidRegTransform")
+        fixed_fid = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "ApproxFixedPoint")
+        moving_fid = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "ApproxMovingPoint")
+        reg_transform = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "ApproxFidRegTransform")
         try:
-            fixedFid.AddControlPoint(vtk.vtkVector3d(*fixedPoint))
-            movingFid.AddControlPoint(vtk.vtkVector3d(*movingPoint))
+            fixed_fid.AddControlPoint(vtk.vtkVector3d(*fixed_point))
+            moving_fid.AddControlPoint(vtk.vtkVector3d(*moving_point))
 
             params = {
-                "fixedLandmarks": fixedFid,
-                "movingLandmarks": movingFid,
+                "fixedLandmarks": fixed_fid,
+                "movingLandmarks": moving_fid,
                 "transformType": "Translation",
-                "saveTransform": regTransform,
+                "saveTransform": reg_transform,
             }
             slicer.cli.runSync(slicer.modules.fiducialregistration, None, params)
 
             matrix = vtk.vtkMatrix4x4()
-            regTransform.GetMatrixTransformToParent(matrix)
+            reg_transform.GetMatrixTransformToParent(matrix)
             return np.array([matrix.GetElement(i, 3) for i in range(3)])
         finally:
-            slicer.mrmlScene.RemoveNode(fixedFid)
-            slicer.mrmlScene.RemoveNode(movingFid)
-            slicer.mrmlScene.RemoveNode(regTransform)
+            slicer.mrmlScene.RemoveNode(fixed_fid)
+            slicer.mrmlScene.RemoveNode(moving_fid)
+            slicer.mrmlScene.RemoveNode(reg_transform)

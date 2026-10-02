@@ -1,71 +1,14 @@
-import os
 import vtk
 import numpy as np
-import json
 
-import sys
-import logging
+from ADTLib.geometry import VTKMatrixToNumpy  # noqa: F401  (re-exporte)
+from ADTLib.io.landmarks import LoadJsonLandmarks  # noqa: F401  (re-exporte)
+from ADTLib.io.surface import ReadSurf, WriteSurf  # noqa: F401  (re-exporte)
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("FlexReg_CLI_utils")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
 
-
-def ReadSurf(fileName):
-
-    fname, extension = os.path.splitext(fileName)
-    extension = extension.lower()
-    if extension == ".vtk":
-        reader = vtk.vtkPolyDataReader()
-        reader.SetFileName(fileName)
-        reader.Update()
-        surf = reader.GetOutput()
-    elif extension == ".vtp":
-        reader = vtk.vtkXMLPolyDataReader()
-        reader.SetFileName(fileName)
-        reader.Update()
-        surf = reader.GetOutput()
-    elif extension == ".stl":
-        reader = vtk.vtkSTLReader()
-        reader.SetFileName(fileName)
-        reader.Update()
-        surf = reader.GetOutput()
-    elif extension == ".obj":
-        if os.path.exists(fname + ".mtl"):
-            obj_import = vtk.vtkOBJImporter()
-            obj_import.SetFileName(fileName)
-            obj_import.SetFileNameMTL(fname + ".mtl")
-            textures_path = os.path.normpath(os.path.dirname(fname) + "/../images")
-            if os.path.exists(textures_path):
-                obj_import.SetTexturePath(textures_path)
-            obj_import.Read()
-
-            actors = obj_import.GetRenderer().GetActors()
-            actors.InitTraversal()
-            append = vtk.vtkAppendPolyData()
-
-            for i in range(actors.GetNumberOfItems()):
-                surfActor = actors.GetNextActor()
-                append.AddInputData(surfActor.GetMapper().GetInputAsDataSet())
-
-            append.Update()
-            surf = append.GetOutput()
-
-        else:
-            reader = vtk.vtkOBJReader()
-            reader.SetFileName(fileName)
-            reader.Update()
-            surf = reader.GetOutput()
-
-    return surf
+logger = get_logger("FlexReg_CLI_utils")
 
 
 def ComputeNormals(surf):
@@ -92,77 +35,3 @@ def GetColorArray(surf, array_name):
         colored_points.InsertNextTuple3(rgb[0], rgb[1], rgb[2])
     return colored_points
 
-
-def LoadJsonLandmarks(ldmk_path, full_landmark=True, list_landmark=[]):
-    """
-    Load landmarks from json file
-
-    Parameters
-    ----------
-    img : sitk.Image
-        Image to which the landmarks belong
-
-    Returns
-    -------
-    dict
-        Dictionary of landmarks
-
-    Raises
-    ------
-    ValueError
-        If the json file is not valid
-    """
-
-    with open(ldmk_path) as f:
-        data = json.load(f)
-
-    markups = data["markups"][0]["controlPoints"]
-
-    landmarks = {}
-    for markup in markups:
-        lm_ph_coord = np.array(
-            [markup["position"][0], markup["position"][1], markup["position"][2]]
-        )
-        lm_coord = lm_ph_coord.astype(np.float64)
-        landmarks[markup["label"]] = lm_coord
-
-    if not full_landmark:
-        out = {}
-        for lm in list_landmark:
-            out[lm] = landmarks[lm]
-        landmarks = out
-    return landmarks
-
-
-def VTKMatrixToNumpy(matrix):
-    """
-    Copies the elements of a vtkMatrix4x4 into a numpy array.
-
-    Parameters
-    ----------
-    matrix : vtkMatrix4x4
-        Matrix to be copied
-
-    Returns
-    -------
-    numpy array
-        Numpy array with the elements of the vtkMatrix4x4
-    """
-    m = np.ones((4, 4))
-    for i in range(4):
-        for j in range(4):
-            m[i, j] = matrix.GetElement(i, j)
-    return m
-
-
-def WriteSurf(surf, output_folder, name, inname):
-    dir, name = os.path.split(name)
-    name, extension = os.path.splitext(name)
-
-    if not os.path.exists(output_folder):
-        os.mkdir(output_folder)
-
-    writer = vtk.vtkPolyDataWriter()
-    writer.SetFileName(os.path.join(output_folder, f"{name}{inname}{extension}"))
-    writer.SetInputData(surf)
-    writer.Update()

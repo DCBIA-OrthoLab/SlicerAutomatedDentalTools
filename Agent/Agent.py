@@ -8,6 +8,17 @@ from slicer.i18n import translate
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 from slicer.parameterNodeWrapper import parameterNodeWrapper
+import json
+import platform
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import zipfile
 
 # Max number of automatic "fix the parameters from the error and retry"
 # attempts after a real tool execution fails (see AgentWidget.runToolWithRepair).
@@ -64,7 +75,6 @@ def _ollama_env(binary):
 
 def _ollama_responding(timeout=0.5):
     """True if an Ollama server answers on the default port (127.0.0.1:11434)."""
-    import socket
     s = socket.socket()
     s.settimeout(timeout)
     try:
@@ -104,11 +114,6 @@ def install_official_ollama():
     Returns the path to the ollama binary. Raises on any failure so the caller
     can fall back to the manual-install message.
     """
-    import platform
-    import tarfile
-    import zipfile
-    import tempfile
-    import subprocess
 
     system = platform.system()
     machine = platform.machine().lower()
@@ -163,8 +168,6 @@ def ensure_ollama_server(binary):
 
     Returns True once the server answers, False on timeout.
     """
-    import platform
-    import subprocess
 
     if _ollama_responding():
         return True
@@ -198,7 +201,6 @@ def ensure_agent_ollama_running():
     at dependency-check time and before each conversation, since a server we
     launched ourselves does not survive a Slicer restart.
     """
-    import shutil
     if _ollama_responding():
         return True
     binary = shutil.which("ollama") or _bundled_ollama_binary()
@@ -319,7 +321,11 @@ class AgentParameterNode:
     """
 
     prompt: str
-    folders: list
+    # list[str], not a bare list: the serializer logs
+    # "Unexpected list[] type arg length" at every Slicer start for the bare
+    # form, then falls back to list[Any]. The paths put here come from
+    # os.path.normpath, so they are strings.
+    folders: list[str]
     modeagent: str
 
 #
@@ -377,9 +383,9 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath("UI/Agent.ui"))
-        self.layout.addWidget(uiWidget)
-        self.ui = slicer.util.childWidgetVariables(uiWidget)
+        ui_widget = slicer.util.loadUI(self.resourcePath("UI/Agent.ui"))
+        self.layout.addWidget(ui_widget)
+        self.ui = slicer.util.childWidgetVariables(ui_widget)
 
         self.dropZone = DropZone(objectName="dropZoneInput")
 
@@ -444,30 +450,30 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         te = self.ui.textEdit_2
 
         fm = te.fontMetrics()
-        lineHeight = fm.lineSpacing()
+        line_height = fm.lineSpacing()
 
-        minLines = 1
-        maxLines = 6
+        min_lines = 1
+        max_lines = 6
 
-        minHeight = int(lineHeight * minLines + te.frameWidth * 2 + 8)
-        maxHeight = int(lineHeight * maxLines + te.frameWidth * 2 + 8)
+        min_height = int(line_height * min_lines + te.frameWidth * 2 + 8)
+        max_height = int(line_height * max_lines + te.frameWidth * 2 + 8)
 
-        te.setMinimumHeight(minHeight)
-        te.setMaximumHeight(maxHeight)
+        te.setMinimumHeight(min_height)
+        te.setMaximumHeight(max_height)
 
         te.setVerticalScrollBarPolicy(qt.Qt.ScrollBarAsNeeded)
 
         te.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Fixed)
 
-        te.setFixedHeight(minHeight)
+        te.setFixedHeight(min_height)
 
         def _autoResizeTextEdit():
-            docHeight = te.document.size.height()
-            h = int(docHeight) + 10  # little padding
-            if h < minHeight:
-                h = minHeight
-            if h > maxHeight:
-                h = maxHeight
+            doc_height = te.document.size.height()
+            h = int(doc_height) + 10  # little padding
+            if h < min_height:
+                h = min_height
+            if h > max_height:
+                h = max_height
             te.setFixedHeight(h)
 
         te.textChanged.connect(_autoResizeTextEdit)
@@ -475,7 +481,7 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
         # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
         # "setMRMLScene(vtkMRMLScene*)" slot.
-        uiWidget.setMRMLScene(slicer.mrmlScene)
+        ui_widget.setMRMLScene(slicer.mrmlScene)
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
@@ -569,12 +575,12 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._parameterNode.modeagent = "Agent (Automated)"
 
 
-    def setParameterNode(self, inputParameterNode: AgentParameterNode | None) -> None:
+    def setParameterNode(self, input_parameter_node: AgentParameterNode | None) -> None:
         """
         Set and observe parameter node.
         Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
         """
-        self._parameterNode = inputParameterNode
+        self._parameterNode = input_parameter_node
 
         if self._parameterNode:
             self.ui.textEdit_2.blockSignals(True)
@@ -640,19 +646,6 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.SaveButton.toolTip = _(f"Start a chat with the LLM to be able to save it")
             self.ui.SaveButton.enabled = False
 
-    def to_html(self, text):
-        """Escape text for HTML while preserving basic formatting (newlines, spaces)."""
-        text = text.replace("&", "&amp;")
-        text = text.replace("<", "&lt;")
-        text = text.replace(">", "&gt;")
-        text = text.replace('"', "&quot;")
-        text = text.replace("'", "&#39;")
-
-        text = text.replace("\n", "<br>")
-
-        text = text.replace("  ", "&nbsp;&nbsp;")
-        return text
-
     def _isDarkBackground(self, widget):
         """
         Sample the actual rendered pixels of `widget` to tell light from
@@ -683,15 +676,15 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         cause as the chat bubbles, so reuse the pixel-sampling detection
         and bake in a literal color instead of trusting palette roles.
         """
-        baseStyle = self.ui.textEdit.property("_baseStyleSheet")
-        if baseStyle is None:
-            baseStyle = self.ui.textEdit.styleSheet
-            self.ui.textEdit.setProperty("_baseStyleSheet", baseStyle)
+        base_style = self.ui.textEdit.property("_baseStyleSheet")
+        if base_style is None:
+            base_style = self.ui.textEdit.styleSheet
+            self.ui.textEdit.setProperty("_baseStyleSheet", base_style)
 
-        isDark = self._isDarkBackground(self.ui.textEdit)
-        placeholderColor = "#cfd8dc" if isDark else "#5a6268"
+        is_dark = self._isDarkBackground(self.ui.textEdit)
+        placeholder_color = "#cfd8dc" if is_dark else "#5a6268"
         self.ui.textEdit.setStyleSheet(
-            f"{baseStyle}\nQTextEdit {{ color: {placeholderColor}; }}"
+            f"{base_style}\nQTextEdit {{ color: {placeholder_color}; }}"
         )
 
     def _scrollChatToEnd(self):
@@ -729,14 +722,14 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def add_user_message(self, msg):
         accent = "#5dade2" if self._isDarkBackground(self.ui.textEdit) else "#3498db"
-        self._insertChatBubble(self.to_html(msg), accent, "right")
+        self._insertChatBubble(self.logic.to_html(msg), accent, "right")
 
         content = msg[2:] if msg.startswith("👨:") else msg
         self._appendHistory("user", content)
 
     def add_agent_message(self, msg):
-        textColor = "#ecf0f1" if self._isDarkBackground(self.ui.textEdit) else "#1c2833"
-        self._insertChatBubble(f'<b>🤖:</b> {self.to_html(msg)}', textColor, "left")
+        text_color = "#ecf0f1" if self._isDarkBackground(self.ui.textEdit) else "#1c2833"
+        self._insertChatBubble(f'<b>🤖:</b> {self.logic.to_html(msg)}', text_color, "left")
 
         self._appendHistory("assistant", msg)
 
@@ -749,20 +742,7 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if len(self.conversationHistory) > MAX_HISTORY_ENTRIES:
             self.conversationHistory = self.conversationHistory[-MAX_HISTORY_ENTRIES:]
 
-    def normalize_folders(self,folders):
-        if folders is None:
-            return []
-        if isinstance(folders, (list, tuple)):
-            return list(folders)
-        try:
-            # ObservedList, Qt list, etc.
-            return list(folders)
-        except TypeError:
-            return [str(folders)]
-
     def onApplyButton(self) -> None:
-        import time
-        import json
         self.CliStartTime = time.time()
         self.ui.label_4.setVisible(True)
         slicer.app.processEvents()
@@ -774,28 +754,28 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Snapshot history BEFORE adding this turn's user message, since
         # Agent_CLI.py appends the current prompt itself - including it here
         # too would duplicate the last user turn.
-        historySnapshot = list(self.conversationHistory)
+        history_snapshot = list(self.conversationHistory)
 
         message = "👨:" + self._parameterNode.prompt
         self.add_user_message(message)
 
-        self.droppedInputPaths = self.normalize_folders(self.droppedInputPaths)
+        self.droppedInputPaths = self.logic.normalize_folders(self.droppedInputPaths)
 
         if not self.droppedInputPaths:
             self.droppedInputPaths.append('nothing')
 
-        cliParams = {
+        cli_params = {
             # Agent_CLI declares `folders` as a plain string parameter and
             # splits it on "," - pass a comma-separated string, not a list.
             "folders": ",".join(self.droppedInputPaths),
             "prompt": self._parameterNode.prompt,
             "modeagent": self._parameterNode.modeagent,
             "temp_folder":slicer.util.tempDirectory(),
-            "history": json.dumps(historySnapshot)
+            "history": json.dumps(history_snapshot)
         }
         CLI = slicer.modules.agent_cli
             
-        self.cliNode = slicer.cli.run(CLI, None, cliParams)
+        self.cliNode = slicer.cli.run(CLI, None, cli_params)
 
         if 'nothing' in self.droppedInputPaths:
             self.droppedInputPaths.remove('nothing')
@@ -807,43 +787,40 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     def onCliUpdated(self, caller, event):
-        import time
-        import json
-        import subprocess
-        cliNode = caller
+        cli_node = caller
 
-        status = cliNode.GetStatus()
+        status = cli_node.GetStatus()
 
         if status & slicer.vtkMRMLCommandLineModuleNode.Completed or \
            status & slicer.vtkMRMLCommandLineModuleNode.Cancelled:
 
-            self.removeObserver(cliNode, vtk.vtkCommand.ModifiedEvent, self.onCliUpdated)
+            self.removeObserver(cli_node, vtk.vtkCommand.ModifiedEvent, self.onCliUpdated)
 
             self.ui.applyButton.enabled = True
 
-            output_text = cliNode.GetOutputText()
+            output_text = cli_node.GetOutputText()
             print(output_text)
 
             if self._parameterNode.modeagent == "Agent (Automated)":
                 try:
                     message = json.loads(output_text)
                 except (json.JSONDecodeError, TypeError):
-                    error_text = cliNode.GetErrorText() or "no output from Agent_CLI."
+                    error_text = cli_node.GetErrorText() or "no output from Agent_CLI."
                     self.add_agent_message(
                         f"Agent_CLI failed to run.\n\n{error_text[-1000:]}\n\n"
-                        f"{self._suggestFixFor(error_text)}"
+                        f"{self.logic._suggestFixFor(error_text)}"
                     )
                     self.ui.label_4.setVisible(False)
                     self._checkCanApply()
                     return
 
                 if message.get("error"):
-                    traceback_text = cliNode.GetErrorText()
+                    traceback_text = cli_node.GetErrorText()
                     details = f"\n\nFull traceback (see also the Slicer Python console):\n{traceback_text[-1500:]}" if traceback_text else ""
                     self.add_agent_message(
                         f"The agent hit an error and couldn't process your request:\n\n{message['error']}"
                         f"{details}\n\n"
-                        f"{self._suggestFixFor(message['error'] + ' ' + (traceback_text or ''))}"
+                        f"{self.logic._suggestFixFor(message['error'] + ' ' + (traceback_text or ''))}"
                     )
                     self.ui.label_4.setVisible(False)
                     self._checkCanApply()
@@ -897,48 +874,8 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         act_time = time.time()
         total_time = round(act_time-self.CliStartTime,2)
-        newText = f"LLM is thinking ({total_time}s)"
-        self.ui.label_4.setText(newText)
-
-    def _suggestFixFor(self, error_text):
-        """Best-effort, keyword-based remediation hint for an Agent_CLI failure."""
-        import re
-
-        text = (error_text or "")
-        lower = text.lower()
-
-        model_match = re.search(r"model ['\"]([^'\"]+)['\"] not found", lower)
-        if model_match:
-            model_name = model_match.group(1)
-            return (
-                f"The Ollama model '{model_name}' isn't pulled on this machine yet. Run this in a "
-                f"terminal: ollama pull {model_name.split(':')[0]}\nThen try again."
-            )
-        if "modulenotfounderror" in lower or "no module named" in lower:
-            return (
-                "A required Python package is missing in Slicer's environment. "
-                "Click the 'Check' button to (re)install the dependencies, then try again."
-            )
-        if "nameerror" in lower and "'nn'" in lower:
-            return (
-                "Known regression in transformers>=4.53.0 (a missing 'import torch.nn as nn' in "
-                "transformers/integrations/accelerate.py - see huggingface/transformers#43784), not "
-                "a bug in the agent. Click 'Check' to reinstall with the pinned, working version, "
-                "or run manually in Slicer's Python console: "
-                "slicer.util.pip_install('transformers<4.53.0')"
-            )
-        if "numpy is not available" in lower:
-            return (
-                "Likely a numpy 2.x / torch ABI mismatch (numpy>=2 breaks most pip-installed torch "
-                "wheels' .numpy() calls). Click 'Check' to reinstall with numpy pinned below 2, or "
-                "run manually in Slicer's Python console: slicer.util.pip_install('numpy<2')"
-            )
-        if "ollama" in lower or "connection" in lower:
-            return (
-                "This usually means Ollama isn't installed/running - install it from "
-                "https://ollama.com, make sure 'ollama serve' is running, then try again."
-            )
-        return "Click the 'Check' button to verify dependencies, then try again."
+        new_text = f"LLM is thinking ({total_time}s)"
+        self.ui.label_4.setText(new_text)
 
     def runToolWithRepair(self, tool_name, params, cli_args):
         """
@@ -948,7 +885,6 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         confirmation is required before each retry since these are real,
         potentially expensive medical-imaging jobs.
         """
-        import subprocess
 
         attempt = 0
         current_params = dict(params or {})
@@ -984,7 +920,7 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 f"{tool_name} failed (exit code {result.returncode}). Trying to fix the parameters from the error..."
             )
 
-            repaired = self._proposeRepair(tool_name, current_params, current_cli_args, stderr)
+            repaired = self.logic._proposeRepair(tool_name, current_params, current_cli_args, stderr)
             if repaired is None:
                 self.add_agent_message(f"I couldn't propose a fix for this error.\n\nLast error:\n{stderr[-1000:]}")
                 return
@@ -1012,66 +948,7 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             current_params, current_cli_args = new_params, new_cli_args
             attempt += 1
 
-    def _proposeRepair(self, tool_name, params, cli_args, stderr):
-        """
-        Ask the LLM to correct `params` given the failing `cli_args`/`stderr`.
-        Returns (new_params, new_cli_args), or None if no usable correction
-        could be produced. Reuses Agent_CLI_utils (no duplicated extraction
-        logic) by adding Agent_CLI's own directory to sys.path.
-        """
-        import sys
-        import json
-
-        agent_cli_dir = os.path.dirname(slicer.modules.agent_cli.path)
-        if agent_cli_dir not in sys.path:
-            sys.path.insert(0, agent_cli_dir)
-
-        from Agent_CLI_utils.utils import (
-            load_manifest, build_repair_prompt, build_cli_args, complete_with_defaults,
-            get_tool_def, chat_with_auto_pull, get_router_model
-        )
-        from Agent_CLI_utils.parameter_validator import ParameterValidator
-
-        manifest_path = os.path.join(agent_cli_dir, "manifest.yaml")
-        if not os.path.isfile(manifest_path):
-            manifest_path = os.path.join(agent_cli_dir, "Resources", "manifest.yaml")
-
-        try:
-            manifest = load_manifest(manifest_path)
-            tool_spec = get_tool_def(manifest, tool_name)
-            if not tool_spec:
-                return None
-
-            prompt = build_repair_prompt(tool_name, tool_spec, params, cli_args, stderr)
-            model = get_router_model()
-
-            response = chat_with_auto_pull(
-                model,
-                messages=[
-                    {"role": "system", "content": "You are a parameter-repair expert. Output ONLY valid JSON on one line."},
-                    {"role": "user", "content": prompt}
-                ],
-                format="json"
-            )
-            data = json.loads(response["message"]["content"])
-            corrections = data.get("extracted", {})
-            if not corrections:
-                return None
-
-            merged = dict(params)
-            merged.update(corrections)
-
-            validator = ParameterValidator(manifest_path)
-            validation_result = validator.validate(tool_name, merged)
-            new_params = complete_with_defaults(manifest, tool_name, validation_result["params"])
-            new_cli_args = build_cli_args(tool_name, new_params, manifest, agent_cli_dir)
-            return new_params, new_cli_args
-        except Exception as e:
-            print(f"Repair attempt failed: {e}")
-            return None
-
     def OnSaveButton(self):
-        import time
         from pathlib import Path
 
         text = self.ui.textEdit.toPlainText()
@@ -1139,8 +1016,6 @@ class AgentWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._checkCanApply()
 
     def CheckDependencies(self):
-        import subprocess
-        import shutil
 
         # Python packages required by Agent_CLI. Order matters: the pinned
         # versions must be installed before the packages that would otherwise
@@ -1323,21 +1198,139 @@ class AgentLogic(ScriptedLoadableModuleLogic):
         :return: the CLI output text
         """
 
-        import time
-        startTime = time.time()
+        start_time = time.time()
         logging.info("Processing started")
 
         # Delegate the actual work to the Agent_CLI command-line module.
-        cliParams = {
+        cli_params = {
             "folders": folders,
             "prompt": prompt
         }
         CLI = slicer.modules.agent_cli
-        self.cliNode = slicer.cli.run(CLI, None, cliParams, wait=False)
+        self.cliNode = slicer.cli.run(CLI, None, cli_params, wait=False)
         output_text = self.cliNode.GetOutputText()
-        stopTime = time.time()
-        logging.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
+        stop_time = time.time()
+        logging.info(f"Processing completed in {stop_time-start_time:.2f} seconds")
         return output_text
+    def to_html(self, text):
+        """Escape text for HTML while preserving basic formatting (newlines, spaces)."""
+        text = text.replace("&", "&amp;")
+        text = text.replace("<", "&lt;")
+        text = text.replace(">", "&gt;")
+        text = text.replace('"', "&quot;")
+        text = text.replace("'", "&#39;")
+
+        text = text.replace("\n", "<br>")
+
+        text = text.replace("  ", "&nbsp;&nbsp;")
+        return text
+
+    def normalize_folders(self,folders):
+        if folders is None:
+            return []
+        if isinstance(folders, (list, tuple)):
+            return list(folders)
+        try:
+            # ObservedList, Qt list, etc.
+            return list(folders)
+        except TypeError:
+            return [str(folders)]
+
+    def _suggestFixFor(self, error_text):
+        """Best-effort, keyword-based remediation hint for an Agent_CLI failure."""
+
+        text = (error_text or "")
+        lower = text.lower()
+
+        model_match = re.search(r"model ['\"]([^'\"]+)['\"] not found", lower)
+        if model_match:
+            model_name = model_match.group(1)
+            return (
+                f"The Ollama model '{model_name}' isn't pulled on this machine yet. Run this in a "
+                f"terminal: ollama pull {model_name.split(':')[0]}\nThen try again."
+            )
+        if "modulenotfounderror" in lower or "no module named" in lower:
+            return (
+                "A required Python package is missing in Slicer's environment. "
+                "Click the 'Check' button to (re)install the dependencies, then try again."
+            )
+        if "nameerror" in lower and "'nn'" in lower:
+            return (
+                "Known regression in transformers>=4.53.0 (a missing 'import torch.nn as nn' in "
+                "transformers/integrations/accelerate.py - see huggingface/transformers#43784), not "
+                "a bug in the agent. Click 'Check' to reinstall with the pinned, working version, "
+                "or run manually in Slicer's Python console: "
+                "slicer.util.pip_install('transformers<4.53.0')"
+            )
+        if "numpy is not available" in lower:
+            return (
+                "Likely a numpy 2.x / torch ABI mismatch (numpy>=2 breaks most pip-installed torch "
+                "wheels' .numpy() calls). Click 'Check' to reinstall with numpy pinned below 2, or "
+                "run manually in Slicer's Python console: slicer.util.pip_install('numpy<2')"
+            )
+        if "ollama" in lower or "connection" in lower:
+            return (
+                "This usually means Ollama isn't installed/running - install it from "
+                "https://ollama.com, make sure 'ollama serve' is running, then try again."
+            )
+        return "Click the 'Check' button to verify dependencies, then try again."
+
+    def _proposeRepair(self, tool_name, params, cli_args, stderr):
+        """
+        Ask the LLM to correct `params` given the failing `cli_args`/`stderr`.
+        Returns (new_params, new_cli_args), or None if no usable correction
+        could be produced. Reuses Agent_CLI_utils (no duplicated extraction
+        logic) by adding Agent_CLI's own directory to sys.path.
+        """
+
+        agent_cli_dir = os.path.dirname(slicer.modules.agent_cli.path)
+        if agent_cli_dir not in sys.path:
+            sys.path.insert(0, agent_cli_dir)
+
+        from Agent_CLI_utils.utils import (
+            load_manifest, build_repair_prompt, build_cli_args, complete_with_defaults,
+            get_tool_def, chat_with_auto_pull, get_router_model
+        )
+        from Agent_CLI_utils.parameter_validator import ParameterValidator
+
+        manifest_path = os.path.join(agent_cli_dir, "manifest.yaml")
+        if not os.path.isfile(manifest_path):
+            manifest_path = os.path.join(agent_cli_dir, "Resources", "manifest.yaml")
+
+        try:
+            manifest = load_manifest(manifest_path)
+            tool_spec = get_tool_def(manifest, tool_name)
+            if not tool_spec:
+                return None
+
+            prompt = build_repair_prompt(tool_name, tool_spec, params, cli_args, stderr)
+            model = get_router_model()
+
+            response = chat_with_auto_pull(
+                model,
+                messages=[
+                    {"role": "system", "content": "You are a parameter-repair expert. Output ONLY valid JSON on one line."},
+                    {"role": "user", "content": prompt}
+                ],
+                format="json"
+            )
+            data = json.loads(response["message"]["content"])
+            corrections = data.get("extracted", {})
+            if not corrections:
+                return None
+
+            merged = dict(params)
+            merged.update(corrections)
+
+            validator = ParameterValidator(manifest_path)
+            validation_result = validator.validate(tool_name, merged)
+            new_params = complete_with_defaults(manifest, tool_name, validation_result["params"])
+            new_cli_args = build_cli_args(tool_name, new_params, manifest, agent_cli_dir)
+            return new_params, new_cli_args
+        except Exception as e:
+            print(f"Repair attempt failed: {e}")
+            return None
+
 
 
 #
@@ -1372,11 +1365,11 @@ class AgentTest(ScriptedLoadableModuleTest):
         self.delayDisplay("Starting the test")
 
         logic = AgentLogic()
-        parameterNode = logic.getParameterNode()
+        parameter_node = logic.getParameterNode()
 
         # The parameter node should expose the module's parameters.
-        self.assertTrue(hasattr(parameterNode, "prompt"))
-        self.assertTrue(hasattr(parameterNode, "folders"))
-        self.assertTrue(hasattr(parameterNode, "modeagent"))
+        self.assertTrue(hasattr(parameter_node, "prompt"))
+        self.assertTrue(hasattr(parameter_node, "folders"))
+        self.assertTrue(hasattr(parameter_node, "modeagent"))
 
         self.delayDisplay("Test passed")

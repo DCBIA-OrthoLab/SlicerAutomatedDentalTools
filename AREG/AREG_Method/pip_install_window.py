@@ -110,8 +110,8 @@ class PipInstallWindow:
     def appendLine(self, line):
         self._lines.append(line)
         self._logText.appendPlainText(line)
-        scrollBar = self._logText.verticalScrollBar()
-        scrollBar.setValue(scrollBar.maximum)
+        scroll_bar = self._logText.verticalScrollBar()
+        scroll_bar.setValue(scroll_bar.maximum)
 
     def log(self):
         """Everything pip printed since the window opened."""
@@ -162,10 +162,10 @@ class PipInstallWindow:
             slicer.app.processEvents()
             qt.QThread.msleep(10)
 
-        returnCode = result["returnCode"]
-        if returnCode != 0:
-            self.appendLine(f"pip exited with code {returnCode}")
-        return returnCode == 0
+        return_code = result["returnCode"]
+        if return_code != 0:
+            self.appendLine(f"pip exited with code {return_code}")
+        return return_code == 0
 
     def _installBlocking(self, requirement):
         """Fallback for Slicer versions without the non-blocking pip API."""

@@ -22,6 +22,8 @@ include(${Slicer_USE_FILE})
 
 #-----------------------------------------------------------------------------
 # Extension modules
+# Shared code, declared before the modules that import it.
+add_subdirectory(ADT)
 add_subdirectory(AMASSS)
 add_subdirectory(AMASSS_CLI)
 add_subdirectory(ALI)
@@ -39,9 +41,6 @@ add_subdirectory(Automatrix_CLI)
 add_subdirectory(AutoCrop3D)
 add_subdirectory(FlexReg)
 add_subdirectory(FlexReg_CLI)
-# Replaced by CNE 
-# add_subdirectory(MedX)
-# add_subdirectory(MedX_CLI)
 add_subdirectory(MRI2CBCT)
 add_subdirectory(MRI2CBCT_CLI)
 add_subdirectory(BATCHDENTALSEG)

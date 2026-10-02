@@ -1,28 +1,68 @@
 import numpy as np
 import time
-import logging
 from collections import deque
-import sys
 
 import os
 
-from ALI_CBCT_utils.constants import bcolors, DEVICE
+from ALI_CBCT_utils.constants import bcolors
 
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("ALI_CBCT_Agent")
-logger.setLevel(logging.INFO)
+from ADTLib.logging_setup import get_logger
 
-logger.propagate = False
+logger = get_logger("ALI_CBCT_Agent")
 
-if logger.handlers:
-    logger.handlers.clear()
+# How much work one search may spend, in STEPS -- one network forward pass
+# each. It used to be a number of SECONDS (15 on a GPU, 60 otherwise), which
+# made the result depend on the machine: the same scan converged or not
+# depending on whether the GPU was busy, the disk slow, or another module
+# running. A step count is the same everywhere, so two runs of the same scan
+# land on the same landmark.
+#
+# 1000 is about six times the longest search measured over ninety searches on
+# three scans with the shipped models (32 to 171 steps, median around 100),
+# and it is only ever reached by a search that is not converging.
+#
+# Override with ALI_SEARCH_MAX_STEPS. Raise it for an unusually large volume
+# or a fine spacing, where crossing the scan takes more steps.
+DEFAULT_MAX_STEPS = 1000
 
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
+# A guard rail, not a budget. Nothing below decides on it in the normal case;
+# it exists so that a machine slow enough to turn the step budget into hours
+# -- CPU-only inference, mainly -- still gives the operator its scan back.
+# Override with ALI_SEARCH_TIME_GUARD, in seconds.
+DEFAULT_TIME_GUARD = 900.0
 
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+# How many steps in a row an agent may take without reaching a single
+# position it has not already stood on. Past that it is going round a ring
+# rather than searching, and no amount of budget will get it out. See
+# Agent.Cycling. Sixty-four is one field of view worth of steps, which is
+# far above anything a converging search does: over ninety searches measured
+# on three scans with the shipped models, the count never left zero -- every
+# single step of every one of them landed on ground the agent had not stood
+# on before.
+STALL_STEPS = 64
+
+
+def _env_number(name, default, cast):
+    """An environment override, or the default if it is not a number."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return cast(raw)
+    except ValueError:
+        logger.warning(f"{name}={raw!r} is not a number, keeping {default}")
+        return default
+
+
+def SearchStepBudget():
+    """How many steps one search may take. See DEFAULT_MAX_STEPS."""
+    return _env_number("ALI_SEARCH_MAX_STEPS", DEFAULT_MAX_STEPS, int)
+
+
+def SearchTimeGuard():
+    """Seconds after which a search is cut short. See DEFAULT_TIME_GUARD."""
+    return _env_number("ALI_SEARCH_TIME_GUARD", DEFAULT_TIME_GUARD, float)
 
 def GetAgentLst(agents_param):
     """Generate a list of agents with error handling."""
@@ -107,7 +147,15 @@ class Agent :
             self.search_atempt = 0
             self.speed_per_scale = speed_per_scale
             self.speed = self.speed_per_scale[0]
-            
+
+            # Every position stood on since the current attempt began, and
+            # how many steps in a row landed on one of them. See Cycling.
+            self.ground = set()
+            self.steps_on_known_ground = 0
+
+            # Why the last Search returned -1, in words. See Search.
+            self.failure_reason = None
+
             logger.debug(f"Agent initialized for landmark: {targeted_landmark}")
         except Exception as e:
             logger.error(f"Error initializing Agent for landmark '{targeted_landmark}': {e}")
@@ -158,6 +206,10 @@ class Agent :
         self.position = self.environement.GetSize(self.scale_keys[self.scale_state])/2
 
     def SetRandomPos(self):
+        # A respawn starts an attempt over: what the previous one had walked
+        # says nothing about whether this one is going in circles.
+        self.ground = set()
+        self.steps_on_known_ground = 0
         if self.scale_state == 0:
             rand_coord = np.random.randint(1, self.environement.GetSize(self.scale_keys[self.scale_state]), dtype=np.int16)
             self.start_position = rand_coord
@@ -226,22 +278,42 @@ class Agent :
         )
         radius = 4
         final_pos = np.array([0,0,0], dtype=np.float64)
+        # `while not found` with nothing else to stop it: a probe that keeps
+        # moving without ever landing twice inside the short memory hangs the
+        # whole run, with no budget above it to cut it short -- Focus is
+        # called after the search loop has ended. The same step budget bounds
+        # it. A probe normally settles in a handful of steps, so reaching the
+        # budget means this one is not converging; the others still vote.
+        max_steps = SearchStepBudget()
         for pos in explore_pos:
             found = False
+            step = 0
             self.position_shortmem[self.scale_state].clear()
             self.position = start_pos + radius*pos
-            while  not found:
+            while not found and step < max_steps:
+                step += 1
                 action = self.PredictAction()
                 self.Move(action)
                 if self.Visited():
                     found = True
                 self.SavePos()
+            if not found:
+                logger.warning(
+                    f"Focus probe {pos} for {self.target} did not settle "
+                    f"within {max_steps} steps; its last position is used")
             final_pos += self.position
         return final_pos/len(explore_pos)
 
     def Search(self):
-        """Search for landmark with comprehensive error handling."""
+        """Search for landmark with comprehensive error handling.
+
+        Returns the number of steps it took, or -1 when the landmark was not
+        placed. On -1 `self.failure_reason` says which of the ways it was --
+        the caller puts that in front of the operator, since a landmark that
+        is simply absent from the output file is a result nobody can read.
+        """
         tic = time.time()
+        self.failure_reason = None
         logger.info(f"Starting search for landmark: {self.target}")
         
         try:
@@ -256,28 +328,51 @@ class Agent :
             self.GoToScale()
             self.SetPosAtCenter()
             self.SavePos()
-            
+            self.ground = set()
+            self.steps_on_known_ground = 0
+
             found = False
             tot_step = 0
-            # Each search step does a CPU/GPU forward pass; CPU-only inference
-            # needs much longer than a GPU to converge, so give it a bigger
-            # default budget. Override with the ALI_SEARCH_MAX_TIME env var
-            # if either default still doesn't fit your hardware.
-            default_max_time = 15 if DEVICE.type == "cuda" else 60
-            max_time = float(os.environ.get("ALI_SEARCH_MAX_TIME", default_max_time))  # seconds
-            
-            while not found and time.time() - tic < max_time:
+            max_steps = SearchStepBudget()
+            time_guard = SearchTimeGuard()
+
+            while not found and tot_step < max_steps:
                 tot_step += 1
-                
+
+                if time.time() - tic > time_guard:
+                    logger.error(
+                        f"Landmark {self.target} abandoned after {tot_step} "
+                        f"steps: the {time_guard}s guard rail fired before the "
+                        f"{max_steps} step budget. This machine is too slow "
+                        "for the budget it was given -- see ALI_SEARCH_MAX_STEPS "
+                        "and ALI_SEARCH_TIME_GUARD.")
+                    self.search_atempt = 0
+                    self.failure_reason = (
+                        f"the {time_guard}s guard rail fired after "
+                        f"{tot_step} steps")
+                    return -1
+
                 try:
                     action = self.PredictAction()
                     self.Move(action)
                     
                     if self.Visited():
                         found = True
-                    
+
                     self.SavePos()
-                    
+
+                    if not found and self.Cycling():
+                        logger.warning(
+                            f"Landmark {self.target} is going in circles at "
+                            f"scale {self.scale_state}, step {tot_step}: "
+                            f"{STALL_STEPS} steps without reaching one "
+                            f"position it had not already stood on, out of "
+                            f"{len(self.ground)} of them. Respawning "
+                            f"(attempt {self.search_atempt + 1}).")
+                        self.ClearShortMem()
+                        self.SetRandomPos()
+                        self.search_atempt += 1
+
                     if found:
                         logger.debug(f"Landmark {self.target} found at scale: {self.scale_state}")
                         logger.debug(f"Agent position: {self.position}")
@@ -288,15 +383,35 @@ class Agent :
                     if self.search_atempt > 2:
                         logger.warning(f"Landmark {self.target} not found after {self.search_atempt} attempts")
                         self.search_atempt = 0
+                        self.failure_reason = (
+                            f"gave up after {tot_step} steps and three "
+                            "respawns: the agent kept leaving the zone it "
+                            "can read, or going round in circles")
                         return -1
                         
                 except Exception as e:
-                    logger.error(f"Error during search step for {self.target}: {e}")
-                    continue
+                    # `continue` here: a real fault -- an index out of range,
+                    # a tensor of the wrong shape -- was logged once per step
+                    # and the loop started over on the SAME state, so it
+                    # failed the same way until the budget ran out. What the
+                    # operator was then told was "not found", never the
+                    # cause. Nothing about a step changes when it fails, so
+                    # there is nothing to retry: the error goes up, where the
+                    # handler below names the landmark and the caller counts
+                    # the scan as failed.
+                    logger.error(
+                        f"Search for {self.target} failed at step {tot_step}, "
+                        f"scale {self.scale_state}, position {self.position}: {e}")
+                    self.failure_reason = f"failed at step {tot_step}: {e}"
+                    raise
 
-            if not found:  # Took too much time
-                logger.warning(f"Landmark {self.target} search timed out after {max_time} seconds")
+            if not found:  # Spent its whole budget without settling
+                logger.warning(
+                    f"Landmark {self.target} not found within its budget of "
+                    f"{max_steps} steps")
                 self.search_atempt = 0
+                self.failure_reason = (
+                    f"never settled within its budget of {max_steps} steps")
                 return -1
 
             try:
@@ -306,11 +421,36 @@ class Agent :
                 return tot_step
             except Exception as e:
                 logger.error(f"Error in focus phase for {self.target}: {e}")
+                self.failure_reason = f"found, but the focus phase failed: {e}"
                 return -1
-                
+
         except Exception as e:
             logger.error(f"Fatal error during search for {self.target}: {e}")
+            if self.failure_reason is None:
+                self.failure_reason = str(e)
             return -1
+
+    def Cycling(self):
+        """Is the agent walking a ring it has already been round?
+
+        `Visited()` only compares against the last `shortmem_size` positions
+        -- ten. A cycle longer than that never satisfies it, so an agent
+        caught in one used to keep going until its budget ran out, and the
+        operator was told the landmark could not be found, not that the
+        search had been turning on the spot.
+
+        Here every position stood on since the attempt began is kept, and
+        the answer is yes once STALL_STEPS go by without the agent reaching
+        one it had not already stood on. Both counters restart on a respawn,
+        in SetRandomPos.
+        """
+        key = (self.scale_state,) + tuple(int(c) for c in self.position)
+        if key in self.ground:
+            self.steps_on_known_ground += 1
+        else:
+            self.ground.add(key)
+            self.steps_on_known_ground = 0
+        return self.steps_on_known_ground >= STALL_STEPS
 
     def Visited(self):
         visited = False

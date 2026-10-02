@@ -1,20 +1,11 @@
 import numpy as np
 import vtk
 
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("FlexReg_transform")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("FlexReg_transform")
 
 def RotationMatrix(axis, theta):
     """
@@ -49,11 +40,11 @@ def RotationMatrix(axis, theta):
 
 def RotateTransform(surf, transform):
 
-    transformFilter = vtk.vtkTransformPolyDataFilter()
-    transformFilter.SetTransform(transform)
-    transformFilter.SetInputData(surf)
-    transformFilter.Update()
-    return transformFilter.GetOutput()
+    transform_filter = vtk.vtkTransformPolyDataFilter()
+    transform_filter.SetTransform(transform)
+    transform_filter.SetInputData(surf)
+    transform_filter.Update()
+    return transform_filter.GetOutput()
 
 def TransformSurf(surf,matrix):
     assert isinstance(surf,vtk.vtkPolyData)

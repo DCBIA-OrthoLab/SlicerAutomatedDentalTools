@@ -4,24 +4,14 @@ import argparse
 import numpy as np
 import nibabel as nib
 import SimpleITK as sitk
-import torch.nn.functional as F
 from sklearn.model_selection import ParameterSampler
 from torchreg import AffineRegistration
 
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_CLI_utils_crop_approx")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("MRI2CBCT_CLI_utils_crop_approx")
 
 from MRI2CBCT_CLI_utils.nmi import NMI
 
@@ -40,7 +30,7 @@ def save_as_nifti(moving_tensor, static_path, output_path):
     # Create a new Nifti1Image using the numpy data and the affine from the reference image
     try:
         new_nifti = nib.Nifti1Image(moving_tensor.cpu().numpy(), static_nifti.affine, static_nifti.header)
-    except:
+    except Exception:
         new_nifti = nib.Nifti1Image(moving_tensor, static_nifti.affine, static_nifti.header)
     
     # Save the new NIfTI image to disk
@@ -256,10 +246,10 @@ def get_transformation(cbct_folder, mean_folder, output_folder):
                         nmi_loss_function_rigid = NMI(intensity_range=None, nbins=64, sigma=params['sigma_rigid'], use_mask=False)
 
                         # Initialize AffineRegistration for Rigid registration
-                        reg_rigid = AffineRegistration(scales=(4, 2), iterations=(100, 30), is_3d=True, 
-                                                       learning_rate=params['learning_rate_rigid'], verbose=True, 
-                                                       dissimilarity_function=nmi_loss_function_rigid.metric, optimizer=torch.optim.Adam, 
-                                                       with_translation=True, with_rotation=True, with_zoom=False, with_shear=False, 
+                        reg_rigid = AffineRegistration(scales=(4, 2), iterations=(100, 30), is_3d=True,
+                                                       learning_rate=params['learning_rate_rigid'], verbose=True,
+                                                       dissimilarity_function=nmi_loss_function_rigid.metric, optimizer=torch.optim.Adam,
+                                                       with_translation=True, with_rotation=True, with_zoom=False, with_shear=False,
                                                        align_corners=True, interp_mode="trilinear", padding_mode='zeros')
 
                         # Perform rigid registration
@@ -287,7 +277,7 @@ def get_transformation(cbct_folder, mean_folder, output_folder):
                     logger.info(f"Best parameters: {best_params}")
                     logger.info(f"Best NMI loss: {best_loss}")
                     
-def crop_volume(ROI_file, transformation_folder, first_approximation_folder, cbct_folder, cropped_cbct_folder):
+def crop_volume(roi_file, transformation_folder, first_approximation_folder, cbct_folder, cropped_cbct_folder):
     """
     Crops the CBCT volumes and first approximated MRIs based on the ROI and saves the results.
 
@@ -299,7 +289,7 @@ def crop_volume(ROI_file, transformation_folder, first_approximation_folder, cbc
         cropped_cbct_folder (str): Path to the folder where the cropped images will be saved.
     """
     # Load the ROI file
-    roi_image = sitk.ReadImage(ROI_file)
+    roi_image = sitk.ReadImage(roi_file)
 
     # Iterate over the files in the first approximation folder
     for root, _, files in os.walk(first_approximation_folder):
@@ -354,7 +344,7 @@ def main():
     
     args = parser.parse_args()
 
-    get_transformation(args.cbct_folder, args.mean_folder, args.output_folder) 
+    get_transformation(args.cbct_folder, args.mean_folder, args.output_folder)
     
 if __name__ == "__main__":
     main()

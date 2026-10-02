@@ -1,31 +1,19 @@
 from ALI_Method.Method import Method
 from ALI_Method.Progress import DisplayCrownSeg, DisplayALIIOS
 import slicer
-import webbrowser
-import glob
 import os
 import vtk
 import shutil
 import platform
 import csv
-import logging
-import sys
+from ADTLib.env.conda import windows_to_linux_path as windows_to_linux_path_shared
 
 # --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("ALI_IOS_Process")
-logger.setLevel(logging.INFO)
+from ADTLib.logging_setup import get_logger
+from ADTLib.model_registry import ALI_IOS_MODELS, ALIDDM_TEST_FILES, ASO_IOS_GOLD
+import re
 
-logger.propagate = False
-
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+logger = get_logger("ALI_IOS_Process")
 
 
 class Auto_IOS(Method):
@@ -45,7 +33,6 @@ class Auto_IOS(Method):
         return 0
     
     def NumberLandmark(self, landmarks: str):
-        import re
         if not landmarks:
             return 0
         cleaned = re.sub(r"[\[\]\"']", "", landmarks)
@@ -71,7 +58,7 @@ class Auto_IOS(Method):
             out = None
         return out
 
-    def TestModel(self, model_folder: str, lineEditName) -> str:
+    def TestModel(self, model_folder: str, line_edit_name) -> str:
         out = None
         if model_folder == "":
             out = "Please five folder with one .pht file"
@@ -93,11 +80,11 @@ class Auto_IOS(Method):
             writer = csv.writer(fichier)
             writer.writerow(["surf"])
 
-            # Parcourir le dossier et ses sous-dossiers
+            # Walk the folder and its subfolders
             for root, dirs, files in os.walk(input_dir):
                 for file in files:
                     if file.endswith(".vtk") or file.endswith(".stl"):
-                        if platform.system() != "Windows" and not self.is_wsl():    
+                        if platform.system() != "Windows" and not self.is_wsl():
                             writer.writerow([os.path.join(root, file)])
                         else :
                             file_path = os.path.join(root, file)
@@ -107,19 +94,9 @@ class Auto_IOS(Method):
 
         return csv_file
     
-    def windows_to_linux_path(self,windows_path):
-        '''
-        Convert a windows path to a wsl path
-        '''
-        windows_path = windows_path.strip()
-
-        path = windows_path.replace('\\', '/')
-
-        if ':' in path:
-            drive, path_without_drive = path.split(':', 1)
-            path = "/mnt/" + drive.lower() + path_without_drive
-
-        return path
+    def windows_to_linux_path(self, windows_path):
+        """A Windows path as WSL sees it."""
+        return windows_to_linux_path_shared(windows_path)
 
     def TestReference(self, ref_folder: str):
 
@@ -148,9 +125,18 @@ class Auto_IOS(Method):
         return out
 
     def getTestFileList(self):
+        """The test scans: one arch does not make a dataset.
+
+        ALI IOS works on a folder of arches, and the two arches of the same
+        patient are published separately -- both are brought down into the
+        same folder, which is then usable as it is.
+        """
         return (
             "ALI_test_scan",
-            "https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.4/T1_01_U_segmented.vtk",
+            {
+                "Upper": f"{ALIDDM_TEST_FILES}/T1_01_U_segmented.vtk",
+                "Lower": f"{ALIDDM_TEST_FILES}/T1_01_L_segmented.vtk",
+            },
         )
 
     def getModel(self, path, extension="ckpt"):
@@ -161,10 +147,10 @@ class Auto_IOS(Method):
     
     def getModelUrl(self):
         return {
-            "Segmentation": "https://github.com/HUTIN1/ASO/releases/download/v1.0.0/segmentation_model.zip",
+            "Segmentation": f"{ASO_IOS_GOLD}/segmentation_model.zip",
             # Occlusal, Cervical and Mucogingival models. Same content as the
             # historical ALIDDM v1.0.3 archive plus Lower_MG_v6.pth
-            "Prediction": "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/ALI_IOS_models/Models.zip",
+            "Prediction": f"{ALI_IOS_MODELS}/Models.zip",
         }
 
     def getReferenceList(self):
@@ -173,17 +159,17 @@ class Auto_IOS(Method):
     def getALIModelList(self):
         return super().getALIModelList()
 
-    def TestProcess(self, **kwargs) -> str:
+    def TestProcess(self, request) -> str:
         out = ""
 
-        scan = self.TestScan(kwargs["input_folder"])
+        scan = self.TestScan(request.input_folder)
         if isinstance(scan, str):
             out = out + f"{scan}\n"
 
-        if kwargs["output_dir"] == "":
+        if request.output_folder == "":
             out = out + "Please select output folder\n"
 
-        if kwargs["dir_models"] == "":
+        if request.model_folder == "":
             out = out + "Please select folder for the landmark identification model\n"
 
         if out != "":
@@ -239,7 +225,7 @@ class Auto_IOS(Method):
         logger.debug(f"File segmented: {out}, Path: {path}")
         return out
 
-    def Process(self, **kwargs):
+    def Process(self, request):
 
         path_tmp = slicer.util.tempDirectory()
         path_input = os.path.join(path_tmp, "input_seg")
@@ -247,12 +233,12 @@ class Auto_IOS(Method):
         
         os.makedirs(path_seg, exist_ok=True)
         os.makedirs(path_input, exist_ok=True)
-        os.makedirs(kwargs["output_dir"], exist_ok=True)
+        os.makedirs(request.output_folder, exist_ok=True)
 
-        path_error = os.path.join(kwargs["output_dir"], "Error")
+        path_error = os.path.join(request.output_folder, "Error")
 
         number_scan_toseg = self.__BypassCrownseg__(
-            kwargs["input_folder"], path_input, path_seg
+            request.input_folder, path_input, path_seg
         )
         slicer_path = slicer.app.applicationDirPath()
         dentalmodelseg_path = os.path.join(slicer_path,"..","lib","Python","bin","dentalmodelseg")
@@ -260,12 +246,12 @@ class Auto_IOS(Method):
         surf = "None"
         input_csv = "None"
         vtk_folder = "None"
-        if os.path.isfile(kwargs["input_folder"]):
-            extension = os.path.splitext(kwargs["input_folder"])[1]
+        if os.path.isfile(request.input_folder):
+            extension = os.path.splitext(request.input_folder)[1]
             if extension == ".vtk" or extension == ".stl":
-              surf = kwargs["input_folder"]
+              surf = request.input_folder
               
-        elif os.path.isdir(kwargs["input_folder"]):
+        elif os.path.isdir(request.input_folder):
           input_csv = self.create_csv(path_input,"liste_csv_file")
           vtk_folder = path_input
 
@@ -286,15 +272,15 @@ class Auto_IOS(Method):
         # Key order matters: values are passed positionally to the ALI_IOS CLI
         parameter_ali = {
             "input": path_seg,
-            "dir_models": kwargs["dir_models"],
-            "lm_type": kwargs["lm_type"],
-            "teeth": kwargs["teeth"],
-            "teeth_mg": kwargs.get("teeth_mg", "None"),
-            "output_dir": kwargs["output_dir"],
+            "dir_models": request.model_folder,
+            "lm_type": request.lm_type,
+            "teeth": request.teeth,
+            "teeth_mg": request.teeth_mg,
+            "output_dir": request.output_folder,
             "image_size": "224",
             "blur_radius": "0",
             "faces_per_pixel": "1",
-            "log_path": kwargs["logPath"],
+            "log_path": request.log_path,
         }
 
         logger.debug("=" * 70)
@@ -303,15 +289,15 @@ class Auto_IOS(Method):
         logger.debug(f"Landmark parameters: {parameter_ali}")
         logger.debug("=" * 70)
 
-        LandmarkProcess = slicer.modules.ali_ios
+        landmark_process = slicer.modules.ali_ios
 
         numberscan = self.NumberScan(
-            kwargs["input_folder"]
+            request.input_folder
         )
         number_lm = self.NumberLandmark(
-            kwargs["teeth"]
+            request.teeth
         ) + self.NumberLandmark(
-            kwargs.get("teeth_mg", "None")
+            request.teeth_mg
         )
 
         list_process = []
@@ -332,14 +318,14 @@ class Auto_IOS(Method):
                 "Parameter": parameter_segteeth,
                 "Module": "CrownSegmentationcli",
                 "Display": DisplayCrownSeg(
-                    number_scan_toseg, kwargs["logPath"]
+                    number_scan_toseg, request.log_path
                 ),
             })
         else:
             logger.info("All scans are already segmented, skipping crown segmentation")
 
         list_process.append({
-            "Process": LandmarkProcess,
+            "Process": landmark_process,
             "Parameter": parameter_ali,
             "Module": "ALI_IOS",
             "Display": DisplayALIIOS(

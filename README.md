@@ -38,7 +38,6 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [AReg](#areg-module) | Perform automatic registration on IOS or CBCT files. |
 | [AutoCrop3D](#autocrop3d-module) | Automatically crop a folder of CBCT scans with the same region of interest. |
 | [AutoMatrix](#automatrix-module)| Automatically apply one or different matrix to a folder of IOS or CBCT scans. |
-| [MedX](#medx-module) | Summarize clinical notes and generate a comprehensive comorbidity dashboard. |
 | [Medical Data Anonymizer](#medical-data-anonymizer-module) | Automatically anonymize sensitive information in medical documents (DOCX, PDF, TXT, CSV, XML, ODT). |
 | [MRI2CBCT](#mri2cbct-module) | Contains the steps to perform the registration of MRI and CBCT scans.|
 | [FlexReg](#flex-reg) | Registration of IOS patient per patient with customizable patch creation. |
@@ -73,8 +72,6 @@ Additionally, the following modules are implemented as python scripted command-l
 | [AReg-CBCT](AREG_CBCT) | Perform automatic registration of CBCT scans |
 | [AReg-IOS](AREG_IOS) | Perform automatic registration of IOS scans |
 | [AutoMatrix-CLI](Automatrix_CLI) | Apply transformation matrices to input volumes or landmarks |
-| [MedX-Dashboard](MedX_CLI/MedX_Dashboard) | CCreate a visual dashboard from structured comorbidity summaries |
-| [MedX-Summarize](MedX_CLI/MedX_Summarize) | Extract TMJ-related comorbidities from unstructured clinical notes using a fine-tuned LLM |
 | [Medical Data Anonymizer](#medical-data-anonymizer-module) | Automatically anonymized text files. |
 | [MRI2CBCT_APPROX](MRI2CBCT_CLI/MRI2CBCT_APPROX) | Perform automatic approximation of an MRI to a CBCT |
 | [MRI2CBCT_LR_CROP](MRI2CBCT_CLI/MRI2CBCT_LR_CROP) | Separate volumes into left and right halves for bilateral analysis |
@@ -421,27 +418,6 @@ There is button "Mirror" that will automatically download the matrix mirror and 
 | **CBCT** | .nii.gz | .tfm .npy .h5 .mat .txt |
 | **IOS** | .vtk .stl .vtp .off .obj | .tfm .npy .h5 .mat .txt|
 | **Landmark** | .mrk.json | .tfm .npy .h5 .mat .txt|
-
-## MedX Module
-<img src="MedX/Resources/Icons/MedX.png" alt="Extension Logo" width="70"/>
-
-The **MedX** module provides a unified interface to extract clinical insight from raw notes and visualize patient-level comorbidities.
-
-### Features
-
-1. **Summarization:**
-   - **Input:** Folder to the clinical notes (`.pdf`, `.docx`, or `.txt`).
-   - **Model Selection:** 
-     - Click Download to fetch the pre-trained model.
-     - Or set a custom model path manually.
-   - **Output:** Folder where `.txt` summaries will be saved.
-
-2. **Dashboard:**
-   - **Input:** Folder with `.txt` summaries.
-   - **Optional:** Enable *"Load in 3D Slicer"* to preview the dashboard image in the slice viewer.
-   - **Output:**
-     - `dashboard.png`: Composite image summarizing comorbidities.
-     - `patient_data.csv`: Tabular summary of extracted conditions.
 
 ## Medical Data Anonymizer Module
 

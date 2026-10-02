@@ -7,9 +7,8 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 from .Progress import DisplayASOCBCT,DisplayAMASSS,DisplayAREGCBCT,DisplayALICBCT
-from glob import iglob
 import slicer
-from .functionaq3dc import AQ3DCLogic, AQ3DCWidget, patientIdFromFileName
+from .functionaq3dc import AQ3DCLogic, patientIdFromFileName
 import qt
 import re
 import shutil
@@ -18,19 +17,11 @@ from pathlib import Path
 import pandas as pd
 import traceback
 
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("VFACE_createlistprocess")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("VFACE_createlistprocess")
 
 try:
     import psutil
@@ -38,6 +29,11 @@ except ImportError:
     psutil = None
     logger.warning("Warning: psutil not available - memory monitoring disabled")
 import gc
+from ADTLib.naming import patient_id as read_patient_id
+from ADTLib.io.fs import search
+import ast
+import subprocess
+import time
 
 def check_memory_usage(threshold_percent=80):
     if psutil is None:
@@ -115,30 +111,30 @@ class LocalAQ3DCLogic(AQ3DCLogic):
         
         return super().computeMeasurement(list_measure, dict_patient)
 
-def CreateListProcess(**kwargs):
+def CreateListProcess(request):
 
     list_process = []
 
     # Load all slicer modules at the beginning
-    ResampleProcess = slicer.modules.mri2cbct_resample_cbct_mri
-    PreOrientProcess = slicer.modules.pre_aso_cbct
-    ALIProcess = slicer.modules.ali_cbct
-    SEMI_ASOProcess = slicer.modules.semi_aso_cbct
-    AMASSSProcess = slicer.modules.amasss_cli
-    AutomatrixProcess = slicer.modules.automatrix_cli
-    AREGProcess = slicer.modules.areg_cbct
-    AsymProcess = slicer.modules.vface_cli
+    resample_process = slicer.modules.mri2cbct_resample_cbct_mri
+    pre_orient_process = slicer.modules.pre_aso_cbct
+    ali_process = slicer.modules.ali_cbct
+    semi_aso_process = slicer.modules.semi_aso_cbct
+    amasss_process = slicer.modules.amasss_cli
+    automatrix_process = slicer.modules.automatrix_cli
+    areg_process = slicer.modules.areg_cbct
+    asym_process = slicer.modules.vface_cli
 
     # NumberScan is just len(GetPatients(...)), so scan the input folder once.
-    patients = GetPatients(kwargs["InputFolder"], time_point="T1")
+    patients = GetPatients(request.input_folder, time_point="T1")
     nb_scan = len(patients)
 
-    if kwargs["bool_quantification"]:
-        cb_measurements_path, mand_measurements_path, max_measurements_path,feature_path = SplitMeasurements(kwargs["measurements_folder"],kwargs["mode2"])
+    if request.bool_quantification:
+        cb_measurements_path, mand_measurements_path, max_measurements_path,feature_path = SplitMeasurements(request.measurements_folder,request.mode2)
         
         if not cb_measurements_path or not max_measurements_path or not mand_measurements_path:
             logger.warning("There is an issue, it miss measurements lists in the list of measurements folder")
-        elif not feature_path and kwargs["mode2"] != "Longitudinal studies":
+        elif not feature_path and request.mode2 != "Longitudinal studies":
                 logger.warning("There is an issue, it miss feature list in the ML folder")
         
         # The MAND and CB measurement lists share landmarks, and concatenating them
@@ -155,13 +151,13 @@ def CreateListProcess(**kwargs):
         list_measure_max = create_list_measure(max_measurements_path)
         list_measure_mand = create_list_measure(mand_measurements_path)
 
-    if kwargs["mode"] != "File already Registered":
-        documentsLocation = qt.QStandardPaths.DocumentsLocation
-        documents = qt.QStandardPaths.writableLocation(documentsLocation)
-        tempAMASSS_folder = os.path.join(documents, slicer.app.applicationName + "_temp_AMASSS")
+    if request.mode != "File already Registered":
+        documents_location = qt.QStandardPaths.DocumentsLocation
+        documents = qt.QStandardPaths.writableLocation(documents_location)
+        temp_amasss_folder = os.path.join(documents, slicer.app.applicationName + "_temp_AMASSS")
 
-        if kwargs["mode2"] != "Longitudinal studies":
-            t2scan_folder_path = os.path.join(kwargs["OutputFolder"],"T2_Scan")
+        if request.mode2 != "Longitudinal studies":
+            t2scan_folder_path = os.path.join(request.output_folder,"T2_Scan")
             os.makedirs(t2scan_folder_path, exist_ok=True)
 
             t2scan_max_folder_path = os.path.join(t2scan_folder_path,"MAX")
@@ -170,10 +166,10 @@ def CreateListProcess(**kwargs):
             t2scan_cb_folder_path = os.path.join(t2scan_folder_path,"CB")
             os.makedirs(t2scan_cb_folder_path, exist_ok=True)
         else:
-            t2_centered_folder_path = os.path.join(kwargs["OutputFolder"],"T2 Centered")
+            t2_centered_folder_path = os.path.join(request.output_folder,"T2 Centered")
             os.makedirs(t2_centered_folder_path, exist_ok=True)
 
-    orientation_folder_path = os.path.join(kwargs["OutputFolder"],"Oriented T1 Scans")
+    orientation_folder_path = os.path.join(request.output_folder,"Oriented T1 Scans")
     os.makedirs(orientation_folder_path, exist_ok=True)
 
     orientation_cb_folder_path = os.path.join(orientation_folder_path,"CB")
@@ -182,8 +178,8 @@ def CreateListProcess(**kwargs):
     orientation_max_folder_path = os.path.join(orientation_folder_path,"MAX")
     os.makedirs(orientation_max_folder_path, exist_ok=True)
 
-    if kwargs["mode"] != "Full pipeline":
-        oriented_files = SplitOriented(kwargs["InputFolder"])
+    if request.mode != "Full pipeline":
+        oriented_files = SplitOriented(request.input_folder)
 
         if oriented_files:
             for file_info in oriented_files:
@@ -197,22 +193,22 @@ def CreateListProcess(**kwargs):
 
     else:
 
-        resample_folder_path = os.path.join(kwargs["OutputFolder"],"T1 Resample")
+        resample_folder_path = os.path.join(request.output_folder,"T1 Resample")
         os.makedirs(resample_folder_path, exist_ok=True)
 
-        preaso_folder_path = os.path.join(kwargs["OutputFolder"],"Centered T1 Scans")
+        preaso_folder_path = os.path.join(request.output_folder,"Centered T1 Scans")
         os.makedirs(preaso_folder_path, exist_ok=True)
 
-        preaso_CB_folder_path = os.path.join(preaso_folder_path,"CB")
-        os.makedirs(preaso_CB_folder_path, exist_ok=True)
+        preaso_cb_folder_path = os.path.join(preaso_folder_path,"CB")
+        os.makedirs(preaso_cb_folder_path, exist_ok=True)
 
-        preaso_MAX_folder_path = os.path.join(preaso_folder_path,"MAX")
-        os.makedirs(preaso_MAX_folder_path, exist_ok=True)
+        preaso_max_folder_path = os.path.join(preaso_folder_path,"MAX")
+        os.makedirs(preaso_max_folder_path, exist_ok=True)
 
         parameter_resample = {
             "input_folder_MRI": "None",
             "input_folder_T2_MRI": "None",
-            "input_folder_CBCT": kwargs["InputFolder"],
+            "input_folder_CBCT": request.input_folder,
             "input_folder_T2_CBCT": "None",
             "input_folder_Seg": "None",
             "input_folder_T2_Seg": "None",
@@ -223,7 +219,7 @@ def CreateListProcess(**kwargs):
         }
         list_process.append(
             {
-                "Process": ResampleProcess,
+                "Process": resample_process,
                 "Parameter": parameter_resample,
                 "Module": "Resample T1",
                 "Display": DisplayASOCBCT(
@@ -234,7 +230,7 @@ def CreateListProcess(**kwargs):
 
         parameter_pre_aso_max = {
             "input": os.path.join(resample_folder_path, "CBCT"),
-            "output_folder": preaso_MAX_folder_path,
+            "output_folder": preaso_max_folder_path,
             "model_folder": False,
             "SmallFOV": False,
             "temp_folder": _unique_temp_dir("work"),
@@ -242,7 +238,7 @@ def CreateListProcess(**kwargs):
         }
         list_process.append(
             {
-                "Process": PreOrientProcess,
+                "Process": pre_orient_process,
                 "Parameter": parameter_pre_aso_max,
                 "Module": "Centering T1",
                 "Display": DisplayASOCBCT(
@@ -252,10 +248,10 @@ def CreateListProcess(**kwargs):
         )
         
         parameter_ali_aso_max = {
-            "input": preaso_MAX_folder_path,
-            "dir_models": kwargs["model_folder_ali"],
+            "input": preaso_max_folder_path,
+            "dir_models": request.model_folder_ali,
             "lm_type": "'ANS','IF','PNS','UL6O','UR1O','UR6O'",
-            "output_dir": preaso_MAX_folder_path,
+            "output_dir": preaso_max_folder_path,
             "temp_fold": _unique_temp_dir("work"),
             "DCMInput": False,
             "spacing": "[1,0.3]",
@@ -266,7 +262,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": ALIProcess,
+                "Process": ali_process,
                 "Parameter": parameter_ali_aso_max,
                 "Module": "Orient T1 (MAX)",
                 "Display": DisplayALICBCT(6,
@@ -276,8 +272,8 @@ def CreateListProcess(**kwargs):
                 "ReviewHint": (
                     "These points decide how the scan is oriented, and every step after it inherits that orientation. Drag any that sits off its anatomy. Your changes are saved when you click Continue - you do not need to save in Slicer."
                 ),
-                "ReviewFolder": preaso_MAX_folder_path,
-                "ReviewVolumeFolder": preaso_MAX_folder_path,
+                "ReviewFolder": preaso_max_folder_path,
+                "ReviewVolumeFolder": preaso_max_folder_path,
                 "ReviewEditable": True,
                 "ReviewId": "t1_landmarks_orientation_max",
                 "pause_for_visualization": True,
@@ -285,8 +281,8 @@ def CreateListProcess(**kwargs):
         )
         
         parameter_semi_aso_max = {
-            "input": preaso_MAX_folder_path,
-            "gold_folder": os.path.join(kwargs["gold_folder"],"Occlusal and Midsagittal Plane"),
+            "input": preaso_max_folder_path,
+            "gold_folder": os.path.join(request.gold_folder,"Occlusal and Midsagittal Plane"),
             "output_folder": orientation_max_folder_path,
             "add_inname": "MAX_Or",
             "list_landmark": 'ANS IF PNS UL6O UR1O UR6O',
@@ -294,7 +290,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": SEMI_ASOProcess,
+                "Process": semi_aso_process,
                 "Parameter": parameter_semi_aso_max,
                 "Module": "Orient T1 (MAX)",
                 "Display": DisplayASOCBCT(
@@ -314,7 +310,7 @@ def CreateListProcess(**kwargs):
 
         parameter_pre_aso_cb = {
             "input": os.path.join(resample_folder_path, "CBCT"),
-            "output_folder": preaso_CB_folder_path,
+            "output_folder": preaso_cb_folder_path,
             "model_folder": False,
             "SmallFOV": False,
             "temp_folder": _unique_temp_dir("work"),
@@ -323,7 +319,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": PreOrientProcess,
+                "Process": pre_orient_process,
                 "Parameter": parameter_pre_aso_cb,
                 "Module": "Centering T1",
                 "Display": DisplayASOCBCT(
@@ -333,10 +329,10 @@ def CreateListProcess(**kwargs):
         )
 
         parameter_ali_aso_cb = {
-            "input": preaso_CB_folder_path,
-            "dir_models": kwargs["model_folder_ali"],
+            "input": preaso_cb_folder_path,
+            "dir_models": request.model_folder_ali,
             "lm_type": "'Ba', 'LPo', 'N', 'RPo', 'S', 'LOr', 'ROr'",
-            "output_dir": preaso_CB_folder_path,
+            "output_dir": preaso_cb_folder_path,
             "temp_fold": _unique_temp_dir("work"),
             "DCMInput": False,
             "spacing": "[1,0.3]",
@@ -347,7 +343,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": ALIProcess,
+                "Process": ali_process,
                 "Parameter": parameter_ali_aso_cb,
                 "Module": "Orient T1 (CB)",
                 "Display": DisplayALICBCT(6,
@@ -357,17 +353,17 @@ def CreateListProcess(**kwargs):
                 "ReviewHint": (
                     "These points decide how the scan is oriented, and every step after it inherits that orientation. Drag any that sits off its anatomy. Your changes are saved when you click Continue - you do not need to save in Slicer."
                 ),
-                "ReviewFolder": preaso_CB_folder_path,
-                "ReviewVolumeFolder": preaso_CB_folder_path,
+                "ReviewFolder": preaso_cb_folder_path,
+                "ReviewVolumeFolder": preaso_cb_folder_path,
                 "ReviewEditable": True,
                 "ReviewId": "t1_landmarks_orientation_cb",
                 "pause_for_visualization": True,
             }
         )
 
-        parameter_semi_aso_CBMand = {
-            "input": preaso_CB_folder_path,
-            "gold_folder": os.path.join(kwargs["gold_folder"],"Frankfurt Horizontal and Midsagittal Plane"),
+        parameter_semi_aso_cb_mand = {
+            "input": preaso_cb_folder_path,
+            "gold_folder": os.path.join(request.gold_folder,"Frankfurt Horizontal and Midsagittal Plane"),
             "output_folder": orientation_cb_folder_path,
             "add_inname": "CB_Or",
             "list_landmark": 'Ba LPo N RPo S LOr ROr',
@@ -375,8 +371,8 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": SEMI_ASOProcess,
-                "Parameter": parameter_semi_aso_CBMand,
+                "Process": semi_aso_process,
+                "Parameter": parameter_semi_aso_cb_mand,
                 "Module": "Orient T1 (CB)",
                 "Display": DisplayASOCBCT(
                     nb_scan
@@ -393,24 +389,24 @@ def CreateListProcess(**kwargs):
             }
         )
     
-    if kwargs["mode"] != "File already Registered":
+    if request.mode != "File already Registered":
 
-        if kwargs["mode2"] == "Longitudinal studies":
+        if request.mode2 == "Longitudinal studies":
             t2_cb_folder = t2_centered_folder_path
             t2_max_folder = t2_centered_folder_path
         else:
             t2_cb_folder = t2scan_cb_folder_path
             t2_max_folder = t2scan_max_folder_path
 
-        if kwargs["mode2"] == "Longitudinal studies":
+        if request.mode2 == "Longitudinal studies":
 
-            t2_resample_folder_path = os.path.join(kwargs["OutputFolder"],"T2 Resample")
+            t2_resample_folder_path = os.path.join(request.output_folder,"T2 Resample")
             os.makedirs(t2_resample_folder_path, exist_ok=True)
 
             parameter_resample = {
                 "input_folder_MRI": "None",
                 "input_folder_T2_MRI": "None",
-                "input_folder_CBCT": os.path.join(kwargs["t2_folder"]),
+                "input_folder_CBCT": os.path.join(request.t2_folder),
                 "input_folder_T2_CBCT": "None",
                 "input_folder_Seg": "None",
                 "input_folder_T2_Seg": "None",
@@ -421,7 +417,7 @@ def CreateListProcess(**kwargs):
             }
             list_process.append(
                 {
-                    "Process": ResampleProcess,
+                    "Process": resample_process,
                     "Parameter": parameter_resample,
                     "Module": "Resample T2",
                     "Display": DisplayASOCBCT(
@@ -441,7 +437,7 @@ def CreateListProcess(**kwargs):
 
             list_process.append(
                 {
-                    "Process": PreOrientProcess,
+                    "Process": pre_orient_process,
                     "Parameter": parameter_pre_aso,
                     "Module": "Centering T2(CB)",
                     "Display": DisplayASOCBCT(
@@ -450,7 +446,7 @@ def CreateListProcess(**kwargs):
                 }
             )
 
-        mask_folder_path = os.path.join(kwargs["OutputFolder"],"T1 Masks")
+        mask_folder_path = os.path.join(request.output_folder,"T1 Masks")
         os.makedirs(mask_folder_path, exist_ok=True)
 
         full_reg_struct = ["Cranial Base","Mandible"]
@@ -458,7 +454,7 @@ def CreateListProcess(**kwargs):
 
         parameter_amasss_mask_t1 = {
             "inputVolume": orientation_cb_folder_path,
-            "modelDirectory": os.path.join(kwargs["model_folder"], "AMASSS_Models"),
+            "modelDirectory": os.path.join(request.model_folder, "AMASSS_Models"),
             "skullStructure": reg_struct,
             "merge": "SEPARATE",
             "genVtk": False,
@@ -466,13 +462,13 @@ def CreateListProcess(**kwargs):
             "output_folder": mask_folder_path,
             "vtk_smooth": 5,
             "prediction_ID": "seg",
-            "temp_fold": tempAMASSS_folder,
+            "temp_fold": temp_amasss_folder,
             "SegmentInput": False,
             "DCMInput": False,
         }
         list_process.append(
             {
-                "Process": AMASSSProcess,
+                "Process": amasss_process,
                 "Parameter": parameter_amasss_mask_t1,
                 "Module": "Masks Generation for T1 (CB,MAND)",
                 "Display": DisplayAMASSS(
@@ -483,21 +479,21 @@ def CreateListProcess(**kwargs):
 
         parameter_amasss_mask = {
             "inputVolume": orientation_max_folder_path,
-            "modelDirectory": os.path.join(kwargs["model_folder"], "AMASSS_Models"),
-            "skullStructure": TranslateModels(["Maxilla"], True),       
+            "modelDirectory": os.path.join(request.model_folder, "AMASSS_Models"),
+            "skullStructure": TranslateModels(["Maxilla"], True),
             "merge": "SEPARATE",
             "genVtk": False,
             "save_in_folder": False,
             "output_folder": mask_folder_path,
             "vtk_smooth": 5,
             "prediction_ID": "seg",
-            "temp_fold": tempAMASSS_folder,
+            "temp_fold": temp_amasss_folder,
             "SegmentInput": False,
             "DCMInput": False,
         }
         list_process.append(
             {
-                "Process": AMASSSProcess,
+                "Process": amasss_process,
                 "Parameter": parameter_amasss_mask,
                 "Module": "Masks Generation for T1 (MAX)",
                 "Display": DisplayAMASSS(
@@ -514,14 +510,14 @@ def CreateListProcess(**kwargs):
                 "pause_for_visualization": True,
             },
         )
-        if kwargs["mode2"] == "Asymmetry Assesment":
-            if kwargs["reg_type"] == "CMFReg":
-                t2mask_folder_path = os.path.join(kwargs["OutputFolder"],"T2_Masks")
+        if request.mode2 == "Asymmetry Assesment":
+            if request.reg_type == "CMFReg":
+                t2mask_folder_path = os.path.join(request.output_folder,"T2_Masks")
                 os.makedirs(t2mask_folder_path, exist_ok=True)
 
                 parameter_automatrix_mask = {
                     "input_patient": mask_folder_path,
-                    "input_matrix": kwargs["mirror_matrix"],
+                    "input_matrix": request.mirror_matrix,
                     "reference_file": "None",
                     "suffix": "_mir",
                     "matrix_name": False,
@@ -532,7 +528,7 @@ def CreateListProcess(**kwargs):
                 }
                 list_process.append(
                     {
-                        "Process": AutomatrixProcess,
+                        "Process": automatrix_process,
                         "Parameter": parameter_automatrix_mask,
                         "Module": "Mirroring Masks",
                         "Display": DisplayAMASSS(
@@ -551,7 +547,7 @@ def CreateListProcess(**kwargs):
 
             parameter_automatrix_scan = {
                 "input_patient": orientation_cb_folder_path,
-                "input_matrix": kwargs["mirror_matrix"],
+                "input_matrix": request.mirror_matrix,
                 "reference_file": "None",
                 "suffix": "_mir",
                 "matrix_name": False,
@@ -563,7 +559,7 @@ def CreateListProcess(**kwargs):
 
             list_process.append(
                 {
-                    "Process": AutomatrixProcess,
+                    "Process": automatrix_process,
                     "Parameter": parameter_automatrix_scan,
                     "Module": "Mirroring CB Oriented Scan",
                     "Display": DisplayAMASSS(
@@ -574,7 +570,7 @@ def CreateListProcess(**kwargs):
 
             parameter_automatrix_scan_max = {
                 "input_patient": orientation_max_folder_path,
-                "input_matrix": kwargs["mirror_matrix"],
+                "input_matrix": request.mirror_matrix,
                 "reference_file": "None",
                 "suffix": "_mir",
                 "matrix_name": False,
@@ -586,7 +582,7 @@ def CreateListProcess(**kwargs):
 
             list_process.append(
                 {
-                    "Process": AutomatrixProcess,
+                    "Process": automatrix_process,
                     "Parameter": parameter_automatrix_scan_max,
                     "Module": "Mirroring MAX Oriented Scan",
                     "Display": DisplayAMASSS(
@@ -602,7 +598,7 @@ def CreateListProcess(**kwargs):
                     # already share one folder.
                     "ReviewFolder": (
                         t2scan_folder_path
-                        if kwargs["mode2"] != "Longitudinal studies"
+                        if request.mode2 != "Longitudinal studies"
                         else t2_max_folder
                     ),
                     "ReviewId": "mirror_scans",
@@ -610,7 +606,7 @@ def CreateListProcess(**kwargs):
                 },
             )
 
-        registeredscan_folder_path = os.path.join(kwargs["OutputFolder"],"Registered Scan")
+        registeredscan_folder_path = os.path.join(request.output_folder,"Registered Scan")
         os.makedirs(registeredscan_folder_path, exist_ok=True)
 
         parameter_areg_cbct = {
@@ -628,7 +624,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": AREGProcess,
+                "Process": areg_process,
                 "Parameter": parameter_areg_cbct,
                 "Module": "AREG - Registering Scan (CB)",
                 "Display": DisplayAREGCBCT(
@@ -664,7 +660,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": AREGProcess,
+                "Process": areg_process,
                 "Parameter": parameter_areg_cbct_2,
                 "Module": "AREG - Registering Scan (MAX)",
                 "Display": DisplayAREGCBCT(
@@ -700,7 +696,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": AREGProcess,
+                "Process": areg_process,
                 "Parameter": parameter_areg_cbct_3,
                 "Module": "AREG - Registering Scan (MAND)",
                 "Display": DisplayAREGCBCT(
@@ -721,13 +717,13 @@ def CreateListProcess(**kwargs):
             },
         )
     else:
-        registeredscan_folder_path = os.path.join(kwargs["OutputFolder"],"Registered Scan")
+        registeredscan_folder_path = os.path.join(request.output_folder,"Registered Scan")
         os.makedirs(registeredscan_folder_path, exist_ok=True)
 
-        if kwargs["bool_visualization"] and not kwargs["bool_quantification"]:
-            t2_files = SplitT2(kwargs["t2_folder"], transform=False)
+        if request.bool_visualization and not request.bool_quantification:
+            t2_files = SplitT2(request.t2_folder, transform=False)
         else:
-            t2_files = SplitT2(kwargs["t2_folder"], transform=True)
+            t2_files = SplitT2(request.t2_folder, transform=True)
 
         if t2_files:
             for file_info in t2_files:
@@ -744,9 +740,9 @@ def CreateListProcess(**kwargs):
     # user can act on. Behind the visualization block it meant waiting through
     # five segmentations and three distance runs before being able to correct
     # a single point.
-    if kwargs["bool_quantification"]:
+    if request.bool_quantification:
 
-        landmarks_folder_path = os.path.join(kwargs["OutputFolder"],"T1 Landmarks")
+        landmarks_folder_path = os.path.join(request.output_folder,"T1 Landmarks")
         os.makedirs(landmarks_folder_path, exist_ok=True)
 
         landmarks_cb_folder_path = os.path.join(landmarks_folder_path,"CB")
@@ -784,7 +780,7 @@ def CreateListProcess(**kwargs):
 
         parameter_ali = {
                 "input": padded_scans_path,
-                "dir_models": kwargs["model_folder_ali"],
+                "dir_models": request.model_folder_ali,
                 "lm_type": ",".join([f"'{e}'" for e in list_landmark]),
                 "output_dir": landmarks_cb_folder_path,
                 "temp_fold": _unique_temp_dir("ali"),
@@ -797,7 +793,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": ALIProcess,
+                "Process": ali_process,
                 "Parameter": parameter_ali,
                 "Module": "ALI - Identifying T1 Landmarks (CB)",
                 "Display": DisplayALICBCT(30,
@@ -844,8 +840,8 @@ def CreateListProcess(**kwargs):
                 ),
             },
         )
-        if kwargs["mode2"] == "Asymmetry Assesment":
-            mirrored_landmarks_folder_path = os.path.join(kwargs["OutputFolder"],"Mirrored Landmarks")
+        if request.mode2 == "Asymmetry Assesment":
+            mirrored_landmarks_folder_path = os.path.join(request.output_folder,"Mirrored Landmarks")
             os.makedirs(mirrored_landmarks_folder_path, exist_ok=True)
 
             mirrored_landmarks_cb_folder_path = os.path.join(mirrored_landmarks_folder_path,"CB")
@@ -854,9 +850,9 @@ def CreateListProcess(**kwargs):
             mirrored_landmarks_max_folder_path = os.path.join(mirrored_landmarks_folder_path,"MAX")
             os.makedirs(mirrored_landmarks_max_folder_path, exist_ok=True)
 
-            parameter_automatrix_ldm = {        
+            parameter_automatrix_ldm = {
                 "input_patient": landmarks_cb_folder_path,
-                "input_matrix": kwargs["mirror_matrix"],
+                "input_matrix": request.mirror_matrix,
                 "reference_file": "None",
                 "suffix": "_mir",
                 "matrix_name": False,
@@ -868,7 +864,7 @@ def CreateListProcess(**kwargs):
 
             list_process.append(
                 {
-                    "Process": AutomatrixProcess,
+                    "Process": automatrix_process,
                     "Parameter": parameter_automatrix_ldm,
                     "Module": "Mirorring T1 Landmarks (CB)",
                     "Display": DisplayAREGCBCT(
@@ -877,9 +873,9 @@ def CreateListProcess(**kwargs):
                 },
             )
 
-            parameter_automatrix_ldm_max = {        
+            parameter_automatrix_ldm_max = {
                 "input_patient": landmarks_max_folder_path,
-                "input_matrix": kwargs["mirror_matrix"],
+                "input_matrix": request.mirror_matrix,
                 "reference_file": "None",
                 "suffix": "_mir",
                 "matrix_name": False,
@@ -892,7 +888,7 @@ def CreateListProcess(**kwargs):
 
             list_process.append(
                 {
-                    "Process": AutomatrixProcess,
+                    "Process": automatrix_process,
                     "Parameter": parameter_automatrix_ldm_max,
                     "Module": "Mirorring T1 Landmarks (MAX)",
                     "Display": DisplayAREGCBCT(
@@ -901,7 +897,7 @@ def CreateListProcess(**kwargs):
                 },
             )
 
-            mirrored_registered_landmarks_folder_path = os.path.join(kwargs["OutputFolder"],"Mirrored & Registered Landmarks")
+            mirrored_registered_landmarks_folder_path = os.path.join(request.output_folder,"Mirrored & Registered Landmarks")
             os.makedirs(mirrored_registered_landmarks_folder_path, exist_ok=True)
 
             mirrored_registered_cb_landmarks_folder_path = os.path.join(mirrored_registered_landmarks_folder_path,"CB")
@@ -932,7 +928,7 @@ def CreateListProcess(**kwargs):
 
             list_process.append(
                 {
-                    "Process": AutomatrixProcess,
+                    "Process": automatrix_process,
                     "Parameter": parameter_automatrix_register_ldm_cb,
                     "Module": "Apply matrixes T1 to landmarks (CB)",
                     "Display": DisplayAREGCBCT(
@@ -955,7 +951,7 @@ def CreateListProcess(**kwargs):
 
             list_process.append(
                 {
-                    "Process": AutomatrixProcess,
+                    "Process": automatrix_process,
                     "Parameter": parameter_automatrix_register_ldm_mand,
                     "Module": "Apply matrixes T1 to landmarks (MAND)",
                     "Display": DisplayAREGCBCT(
@@ -964,7 +960,7 @@ def CreateListProcess(**kwargs):
                 },
             )
 
-            parameter_automatrix_register_ldm_MAX = {
+            parameter_automatrix_register_ldm_max = {
                 "input_patient": mirrored_landmarks_max_folder_path,
                 "input_matrix": os.path.join(registeredscan_folder_path,"Maxilla"),
                 "reference_file": "None",
@@ -978,8 +974,8 @@ def CreateListProcess(**kwargs):
 
             list_process.append(
                 {
-                    "Process": AutomatrixProcess,
-                    "Parameter": parameter_automatrix_register_ldm_MAX,
+                    "Process": automatrix_process,
+                    "Parameter": parameter_automatrix_register_ldm_max,
                     "Module": "Apply matrixes to T1 landmarks (MAX)",
                     "Display": DisplayAREGCBCT(
                         nb_scan
@@ -987,7 +983,7 @@ def CreateListProcess(**kwargs):
                 },
             )
         else:
-            t2_landmarks_folder_path = os.path.join(kwargs["OutputFolder"],"T2 Landmarks")
+            t2_landmarks_folder_path = os.path.join(request.output_folder,"T2 Landmarks")
             os.makedirs(t2_landmarks_folder_path, exist_ok=True)
 
             t2_landmarks_cb_folder_path = os.path.join(t2_landmarks_folder_path,"CB")
@@ -1001,7 +997,7 @@ def CreateListProcess(**kwargs):
 
             parameter_ali = {
                     "input": os.path.join(registeredscan_folder_path,"Cranial Base"),
-                    "dir_models": kwargs["model_folder_ali"],
+                    "dir_models": request.model_folder_ali,
                     "lm_type": ",".join([f"'{e}'" for e in list_landmark]),
                     "output_dir": t2_landmarks_cb_folder_path,
                     "temp_fold": _unique_temp_dir("ali"),
@@ -1014,7 +1010,7 @@ def CreateListProcess(**kwargs):
 
             list_process.append(
                 {
-                    "Process": ALIProcess,
+                    "Process": ali_process,
                     "Parameter": parameter_ali,
                     "Module": "ALI - Identifying T2 Landmarks (CB)",
                     "Display": DisplayALICBCT(30,
@@ -1025,7 +1021,7 @@ def CreateListProcess(**kwargs):
 
             parameter_ali_max = {
                     "input": os.path.join(registeredscan_folder_path,"Maxilla"),
-                    "dir_models": kwargs["model_folder_ali"],
+                    "dir_models": request.model_folder_ali,
                     "lm_type": ",".join([f"'{e}'" for e in list_landmark_max]),
                     "output_dir": t2_landmarks_max_folder_path,
                     "temp_fold": _unique_temp_dir("ali"),
@@ -1038,7 +1034,7 @@ def CreateListProcess(**kwargs):
 
             list_process.append(
                 {
-                    "Process": ALIProcess,
+                    "Process": ali_process,
                     "Parameter": parameter_ali_max,
                     "Module": "ALI - Identifying T2 Landmarks (MAX)",
                     "Display": DisplayALICBCT(30,
@@ -1049,7 +1045,7 @@ def CreateListProcess(**kwargs):
 
             parameter_ali_mand = {
                     "input": os.path.join(registeredscan_folder_path,"Mandible"),
-                    "dir_models": kwargs["model_folder_ali"],
+                    "dir_models": request.model_folder_ali,
                     "lm_type": ",".join([f"'{e}'" for e in list_landmark_max]),
                     "output_dir": t2_landmarks_mand_folder_path,
                     "temp_fold": _unique_temp_dir("ali"),
@@ -1062,7 +1058,7 @@ def CreateListProcess(**kwargs):
 
             list_process.append(
                 {
-                    "Process": ALIProcess,
+                    "Process": ali_process,
                     "Parameter": parameter_ali_mand,
                     "Module": "ALI - Identifying T2 Landmarks (MAND)",
                     "Display": DisplayALICBCT(30,
@@ -1071,10 +1067,10 @@ def CreateListProcess(**kwargs):
                 },
             )
         
-        measurements_folder_path = os.path.join(kwargs["OutputFolder"],"Measurements")
+        measurements_folder_path = os.path.join(request.output_folder,"Measurements")
         os.makedirs(measurements_folder_path, exist_ok=True)
 
-        if kwargs["mode2"] == "Asymmetry Assesment":
+        if request.mode2 == "Asymmetry Assesment":
             t2_mand_landmarks = mirrored_registered_mand_landmarks_folder_path
             t2_max_landmarks = mirrored_registered_max_landmarks_folder_path
             t2_cb_landmarks = mirrored_registered_cb_landmarks_folder_path
@@ -1091,11 +1087,11 @@ def CreateListProcess(**kwargs):
             "filename":"Measurements_CB.xlsx"
             }
 
-        AQ3DCProcess = run_aq3dc
+        aq3_dc_process = run_aq3dc
 
         list_process.append(
             {
-                "Process": AQ3DCProcess,
+                "Process": aq3_dc_process,
                 "Parameter": parameter_aq3dc_cb,
                 "Module": "AQ3DC - CB Measurements",
                 "Display": DisplayAREGCBCT(
@@ -1114,7 +1110,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": AQ3DCProcess,
+                "Process": aq3_dc_process,
                 "Parameter": parameter_aq3dc_mand,
                 "Module": "AQ3DC - MAND Measurements",
                 "Display": DisplayAREGCBCT(
@@ -1133,7 +1129,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": AQ3DCProcess,
+                "Process": aq3_dc_process,
                 "Parameter": parameter_aq3dc_max,
                 "Module": "AQ3DC - MAX Measurements",
                 "Display": DisplayAREGCBCT(
@@ -1142,8 +1138,8 @@ def CreateListProcess(**kwargs):
             },
         )
 
-        if kwargs["mode2"] == "Asymmetry Assesment":
-            PostProcessAQ3DC = postprocess
+        if request.mode2 == "Asymmetry Assesment":
+            post_process_aq3_dc = postprocess
 
             parameter_postprocessaq3dc = {
                 "cb_path":os.path.join(measurements_folder_path,"Measurements_CB.xlsx"),
@@ -1155,7 +1151,7 @@ def CreateListProcess(**kwargs):
 
             list_process.append(
                 {
-                    "Process": PostProcessAQ3DC,
+                    "Process": post_process_aq3_dc,
                     "Parameter": parameter_postprocessaq3dc,
                     "Module": "Post process AQ3DC",
                     "Display": DisplayAREGCBCT(
@@ -1163,18 +1159,18 @@ def CreateListProcess(**kwargs):
                     ),
                 },
             )
-            classification_folder_path = os.path.join(kwargs["OutputFolder"],"Classification")
+            classification_folder_path = os.path.join(request.output_folder,"Classification")
             os.makedirs(classification_folder_path, exist_ok=True)
 
             parameter_asymclass = {
-                    "model_path": kwargs["model_vface"],
+                    "model_path": request.model_vface,
                     "excel_path": os.path.join(measurements_folder_path,"PostProcess_Measurements.xlsx"),
                     "output_path": os.path.join(classification_folder_path,"Classification.xlsx")
             }
 
             list_process.append(
                 {
-                    "Process": AsymProcess,
+                    "Process": asym_process,
                     "Parameter": parameter_asymclass,
                     "Module": "Asym_Class - Identifying Asymmetry type",
                     "Display": DisplayAREGCBCT(
@@ -1183,12 +1179,12 @@ def CreateListProcess(**kwargs):
                 },
             )
 
-    if kwargs["bool_visualization"]:
+    if request.bool_visualization:
 
-        vtk_folder_path = os.path.join(kwargs["OutputFolder"],"VTK Files")
+        vtk_folder_path = os.path.join(request.output_folder,"VTK Files")
         os.makedirs(vtk_folder_path, exist_ok=True)
 
-        BDSProcess = run_bds
+        bds_process = run_bds
             
         t1_cb_vtk_folder_path = os.path.join(vtk_folder_path,"T1 CB")
         os.makedirs(t1_cb_vtk_folder_path, exist_ok=True)
@@ -1212,7 +1208,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": BDSProcess,
+                "Process": bds_process,
                 "Parameter": parameter_bds_t1_cb,
                 "Module": "BDS - Segmentation T1 CB",
                 "Display": DisplayAREGCBCT(
@@ -1228,7 +1224,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": BDSProcess,
+                "Process": bds_process,
                 "Parameter": parameter_bds_t1_max,
                 "Module": "BDS - Segmentation T1 MAX",
                 "Display": DisplayAREGCBCT(
@@ -1242,12 +1238,12 @@ def CreateListProcess(**kwargs):
             "output_path":t2_cb_vtk_folder_path,
             }
         
-        if kwargs["mode"] == "File already Registered":
+        if request.mode == "File already Registered":
             parameter_bds_t2_cb["input_path"] = os.path.join(registeredscan_folder_path,"Cranial Base")
 
         list_process.append(
             {
-                "Process": BDSProcess,
+                "Process": bds_process,
                 "Parameter": parameter_bds_t2_cb,
                 "Module": "BDS - Segmentation T2 CB",
                 "Display": DisplayAREGCBCT(
@@ -1261,12 +1257,12 @@ def CreateListProcess(**kwargs):
             "output_path":t2_mand_vtk_folder_path,
             }
         
-        if kwargs["mode"] == "File already Registered":
+        if request.mode == "File already Registered":
             parameter_bds_t2_mand["input_path"] = os.path.join(registeredscan_folder_path,"Mandible")
 
         list_process.append(
             {
-                "Process": BDSProcess,
+                "Process": bds_process,
                 "Parameter": parameter_bds_t2_mand,
                 "Module": "BDS - Segmentation T2 MAND",
                 "Display": DisplayAREGCBCT(
@@ -1280,12 +1276,12 @@ def CreateListProcess(**kwargs):
             "output_path":t2_max_vtk_folder_path,
             }
         
-        if kwargs["mode"] == "File already Registered":
+        if request.mode == "File already Registered":
             parameter_bds_t2_max["input_path"] = os.path.join(registeredscan_folder_path,"Maxilla")
 
         list_process.append(
             {
-                "Process": BDSProcess,
+                "Process": bds_process,
                 "Parameter": parameter_bds_t2_max,
                 "Module": "BDS - Segmentation T2 MAX",
                 "Display": DisplayAREGCBCT(
@@ -1311,9 +1307,9 @@ def CreateListProcess(**kwargs):
             },
         )
 
-        heatmap_folder_path = os.path.join(kwargs["OutputFolder"],"Heatmaps")
+        heatmap_folder_path = os.path.join(request.output_folder,"Heatmaps")
         os.makedirs(heatmap_folder_path, exist_ok=True)
-        HeatmapProcess = batch_process
+        heatmap_process = batch_process
 
         parameter_heatmap_cb = {
             "t1_dir":t1_cb_vtk_folder_path,
@@ -1325,7 +1321,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": HeatmapProcess,
+                "Process": heatmap_process,
                 "Parameter": parameter_heatmap_cb,
                 "Module": "ModelToModel Distance CB",
                 "Display": DisplayAREGCBCT(
@@ -1344,7 +1340,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": HeatmapProcess,
+                "Process": heatmap_process,
                 "Parameter": parameter_heatmap_mand,
                 "Module": "ModelToModel Distance MAND",
                 "Display": DisplayAREGCBCT(
@@ -1363,7 +1359,7 @@ def CreateListProcess(**kwargs):
 
         list_process.append(
             {
-                "Process": HeatmapProcess,
+                "Process": heatmap_process,
                 "Parameter": parameter_heatmap_max,
                 "Module": "ModelToModel Distance MAX",
                 "Display": DisplayAREGCBCT(
@@ -1388,9 +1384,9 @@ def run_aq3dc(t1_path, t2_path, list_measure, output_path, filename):
             measure.keep_sign = qt.QCheckBox()
             measure.keep_sign.setChecked(True)
     
-    patient_T1, x = logic.createDictPatient(t1_path)
-    patient_T2,x = logic.createDictPatient(t2_path)
-    cat_patient = logic.concatenateT1T2Patient(patient_T1,patient_T2)
+    patient_t1, x = logic.createDictPatient(t1_path)
+    patient_t2,x = logic.createDictPatient(t2_path)
+    cat_patient = logic.concatenateT1T2Patient(patient_t1,patient_t2)
     compute = logic.computeMeasurement(list_measure,cat_patient)
     compute = reorganizeStat(compute)
         
@@ -1400,7 +1396,6 @@ def run_aq3dc(t1_path, t2_path, list_measure, output_path, filename):
 
 def _ali_group_labels():
     """ALI's landmark-to-group map, read from its source without importing torch."""
-    import ast
 
     constants = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -1771,8 +1766,8 @@ def reorganizeStat(patient_compute):
                 dic_stats["Rotation"].append(str(yaw))
 
                 #3D
-                ThreeD = patient_compute["3D Distance"][i]
-                dic_stats["3D"].append(str(ThreeD))
+                three_d = patient_compute["3D Distance"][i]
+                dic_stats["3D"].append(str(three_d))
 
                 dic_stats["Yaw"].append(str("x"))
                 dic_stats["Pitch"].append(str("x"))
@@ -1836,8 +1831,8 @@ def reorganizeStat(patient_compute):
                 dic_stats["Roll"].append(str(roll))
 
                 #3D
-                ThreeD = patient_compute["3D Distance"][i]
-                dic_stats["3D"].append(str(ThreeD))
+                three_d = patient_compute["3D Distance"][i]
+                dic_stats["3D"].append(str(three_d))
 
 
         keys_to_delete = []
@@ -1859,7 +1854,7 @@ def SplitMeasurements(measurements_folder,mode2):
     measurements_folder = Path(measurements_folder)
     
     cb_path = None
-    mand_path = None 
+    mand_path = None
     max_path = None
     features_path = None
     
@@ -2015,8 +2010,8 @@ def SplitT2(t2_folder, transform):
     
     return t2_files
 
-def TranslateModels(listeModels, mask=False):
-    dicTranslate = {
+def TranslateModels(liste_models, mask=False):
+    dic_translate = {
         "Models": {
             "Mandible": "MAND",
             "Maxilla": "MAX",
@@ -2035,17 +2030,17 @@ def TranslateModels(listeModels, mask=False):
     }
 
     translate = ""
-    for i, model in enumerate(listeModels):
-        if i < len(listeModels) - 1:
+    for i, model in enumerate(liste_models):
+        if i < len(liste_models) - 1:
             if mask:
-                translate += dicTranslate["Masks"][model] + ","
+                translate += dic_translate["Masks"][model] + ","
             else:
-                translate += dicTranslate["Models"][model] + ","
+                translate += dic_translate["Models"][model] + ","
         else:
             if mask:
-                translate += dicTranslate["Masks"][model]
+                translate += dic_translate["Masks"][model]
             else:
-                translate += dicTranslate["Models"][model]
+                translate += dic_translate["Models"][model]
 
     return translate
 
@@ -2174,7 +2169,9 @@ def GetListFiles(folder_path, file_extension):
     # search() already returns every extension at once, and each of its keys walks
     # the tree: calling it once per extension walked the tree len(file_extension)**2
     # times and threw away all but one result each round.
-    found = search(folder_path, file_extension)
+    # sort=True: the local copy sorted the walk, and the processing order of
+    # the patients depends on it.
+    found = search(folder_path, file_extension, sort=True)
     file_list = []
     for extension_type in file_extension:
         file_list += found[extension_type]
@@ -2199,27 +2196,11 @@ def GetPatients(folder_path, time_point="T1", segmentationType=None, folder_mask
     
     patients = {}
 
-    # TIMEPOINT-SUFFIX: only _T1/_T2 are stripped here, so _T3/_T4 inputs break
-    # patient pairing. See the full note above GetPatients in
-    # AREG_CBCT/AREG_CBCT_utils/utils.py before changing this.
+    # TIMEPOINT-SUFFIX: the chain that builds this id now lives in
+    # ADTLib.naming, together with the note on what it would take.
     for file in all_files:
         basename = os.path.basename(file)
-        patient = (
-            basename.split("_Scan")[0]
-            .split("_scan")[0]
-            .split("_Or")[0]
-            .split("_OR")[0]
-            .split("_MAND")[0]
-            .split("_MD")[0]
-            .split("_MAX")[0]
-            .split("_MX")[0]
-            .split("_CB")[0]
-            .split("_lm")[0]
-            .split("_T2")[0]
-            .split("_T1")[0]
-            .split("_Cl")[0]
-            .split(".")[0]
-        )
+        patient = read_patient_id(basename)
 
         if patient not in patients:
             patients[patient] = {}
@@ -2328,10 +2309,7 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
     on the C++ side (cell locators, BSP trees) that neither gc.collect() nor DeepCopy can
     fully free. Only a separate process guarantees memory release via the OS.
     """
-    import subprocess
-    import json
     import tempfile
-    import time
     
     input_dir1 = Path(t1_dir)
     input_dir2 = Path(t2_dir)
@@ -2376,7 +2354,9 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
                 pattern_exact = r'\b' + re.escape(list_patient_clean) + r'\b'
                 if re.search(pattern_exact, patient_id_clean, re.IGNORECASE):
                     return True
-            except:
+            except re.error:
+                # The patient name is escaped before being compiled: an error here
+                # can only come from a pattern that re refuses.
                 pass
             if list_patient_clean.isdigit():
                 if patient_id_clean.lower() == f"pat{list_patient_clean}":
@@ -2387,26 +2367,11 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
                     return True
         return False
 
-    # TIMEPOINT-SUFFIX: only _T1/_T2 are stripped here, so _T3/_T4 inputs break
-    # patient pairing. See the full note above GetPatients in
-    # AREG_CBCT/AREG_CBCT_utils/utils.py before changing this.
+    # TIMEPOINT-SUFFIX: the chain that builds this id now lives in
+    # ADTLib.naming, together with the note on what it would take.
     def clean_patient_id(patient_id):
         return (
-            patient_id.split("_Scan")[0]
-            .split("_scan")[0]
-            .split("_Or")[0]
-            .split("_OR")[0]
-            .split("_MAND")[0]
-            .split("_MD")[0]
-            .split("_MAX")[0]
-            .split("_MX")[0]
-            .split("_CB")[0]
-            .split("_lm")[0]
-            .split("_T2")[0]
-            .split("_T1")[0]
-            .split("_Cl")[0]
-            .split(".")[0]
-        )
+            read_patient_id(patient_id))
 
     t2_files = {}
     for file2 in input_dir2.iterdir():
@@ -2462,7 +2427,9 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
                 if os.path.isfile(c):
                     slicer_python = c
                     break
-        except Exception:
+        except (AttributeError, NameError):
+            # Outside Slicer, slicer.app does not exist: we keep the interpreter
+            # found some other way.
             pass
     
     if slicer_python is None:
@@ -2598,30 +2565,7 @@ def batch_process(t1_dir, t2_dir, patient_list, output_dir, signed=True, output_
     for pair in processed_pairs:
         logger.info(f"  {pair['patient_id']} ({pair['zone']}): {pair['output_file']}")
 
-def search(path, *args):
-    """
-    Return a dictionary with args element as key and a list of file in path directory finishing by args extension for each key
 
-    Example:
-    args = ('json',['.nii.gz','.nrrd'])
-    return:
-        {
-            'json' : ['path/a.json', 'path/b.json','path/c.json'],
-            '.nii.gz' : ['path/a.nii.gz', 'path/b.nii.gz']
-            '.nrrd.gz' : ['path/c.nrrd']
-        }
-    """
-    arguments = []
-    for arg in args:
-        if type(arg) == list:
-            arguments.extend(arg)
-        else:
-            arguments.append(arg)
-    # Walk the tree once and bucket by extension rather than re-globbing per key.
-    entries = sorted(
-        iglob(os.path.normpath("/".join([path, "**", "*"])), recursive=True)
-    )
-    return {key: [i for i in entries if i.endswith(key)] for key in arguments}
 
 def _landmark_label(dic_features, composant, i):
     """Rebuild the "Landmarks" cell a feature column refers to."""

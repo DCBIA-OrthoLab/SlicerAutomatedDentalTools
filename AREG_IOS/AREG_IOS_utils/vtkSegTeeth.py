@@ -1,6 +1,7 @@
 import numpy as np
 from vtk.util.numpy_support import vtk_to_numpy
 import vtk
+from ADTLib.labels import has_label_array, label_array
 
 
 class vtkTeeth:
@@ -13,31 +14,16 @@ class vtkTeeth:
             property = self.GetLabelSurface(surf)
         self.property = property
 
-    def GetLabelSurface(self, surf, Preference="Universal_ID"):
-        out = None
+    def GetLabelSurface(self, surf, preference="Universal_ID"):
+        """The numbering array to use: see `ADTLib.labels`.
 
-        list_label = [
-            surf.GetPointData().GetArrayName(i)
-            for i in range(surf.GetPointData().GetNumberOfArrays())
-        ]
-
-        if len(list_label) != 0:
-            for label in list_label:
-                out = label
-                if Preference == label:
-                    out = Preference
-                    continue
-        return out
+        Four of the five copies did `continue` where `break` was needed, and
+        so returned `Preference` only when it was the last array.
+        """
+        return label_array(surf, preference)
 
     def isLabelSurface(self, surf, property):
-        out = False
-        list_label = [
-            surf.GetPointData().GetArrayName(i)
-            for i in range(surf.GetPointData().GetNumberOfArrays())
-        ]
-        if property in list_label:
-            out = True
-        return out
+        return has_label_array(surf, property)
 
 
 class vtkIterTeeth(vtkTeeth):
@@ -103,7 +89,7 @@ class vtkMeshTeeth(vtkTeeth):
             list_points.append(points)
             size += points.shape[0]
         Points = vtk.vtkPoints()
-        Vertices = vtk.vtkCellArray()
+        vertices = vtk.vtkCellArray()
         labels = vtk.vtkStringArray()
         labels.SetNumberOfValues(size)
         labels.SetName("labels")
@@ -111,14 +97,14 @@ class vtkMeshTeeth(vtkTeeth):
         for points in list_points:
             for i in range(points.shape[0]):
                 sp_id = Points.InsertNextPoint(points[i, :].squeeze(0))
-                Vertices.InsertNextCell(1)
-                Vertices.InsertCellPoint(sp_id)
+                vertices.InsertNextCell(1)
+                vertices.InsertCellPoint(sp_id)
                 labels.SetValue(index, str(index))
                 index += 1
 
         output = vtk.vtkPolyData()
         output.SetPoints(Points)
-        output.SetVerts(Vertices)
+        output.SetVerts(vertices)
         output.GetPointData().AddArray(labels)
 
         return output

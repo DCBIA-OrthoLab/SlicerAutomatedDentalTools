@@ -2,19 +2,11 @@ from abc import ABC, abstractmethod
 import os
 from typing import Tuple
 
-import logging
-import sys
 # ===== Logging Configuration =====
-logger = logging.getLogger("AREG_Progress")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+from ADTLib.progress_protocol import PATIENT_DONE, STEP_DONE, is_event
+
+logger = get_logger("AREG_Progress")
 
 
 class Display(ABC):
@@ -128,7 +120,7 @@ class DisplayAREGCBCT(Display):
 
     def isProgress(self, **kwds) -> bool:
         out = False
-        if kwds["progress"] == 200 and kwds["updateProgessBar"] == False:
+        if is_event(kwds["progress"], PATIENT_DONE) and kwds["updateProgressBar"] == False:
             out = True
         return out
     
@@ -146,7 +138,7 @@ class DisplayAREGIOSCBCT(Display):
 
     def isProgress(self, **kwds) -> bool:
         out = False
-        if kwds["progress"] == 200 and kwds["updateProgessBar"] == False:
+        if is_event(kwds["progress"], PATIENT_DONE) and kwds["updateProgressBar"] == False:
             out = True
         return out
 
@@ -171,30 +163,11 @@ class DisplayAMASSS(Display):
 
     def isProgress(self, **kwds) -> bool:
         out = False
-        if kwds["progress"] == 200:
+        if is_event(kwds["progress"], PATIENT_DONE):
             self.pred_step += 1
-        if kwds["progress"] == 100 and kwds["updateProgessBar"] == False:
+        if is_event(kwds["progress"], STEP_DONE) and kwds["updateProgressBar"] == False:
             if self.pred_step > 3:
                 out = True
-        return out
-
-
-class DisplayAREGIOSCBCT(Display):
-    def __init__(self, nb_progress) -> None:
-        self.nb_progress_total = nb_progress
-        self.time_log = 0
-        super().__init__()
-
-    def __call__(self, **kwds) -> Tuple[float, str]:
-        self.progress += 1
-        self.progress_bar = self.progress / self.nb_progress_total * 100
-        self.message = f"Scan : {self.progress} / {self.nb_progress_total}"
-        return self.progress_bar, self.message
-
-    def isProgress(self, **kwds) -> bool:
-        out = False
-        if kwds["progress"] == 200 and kwds["updateProgessBar"] == False:
-            out = True
         return out
 
 
@@ -212,7 +185,7 @@ class DisplayASOCBCT(Display):
 
     def isProgress(self, **kwds) -> bool:
         out = False
-        if kwds["progress"] == 200 and kwds["updateProgessBar"] == False:
+        if is_event(kwds["progress"], PATIENT_DONE) and kwds["updateProgressBar"] == False:
             out = True
         return out
 
@@ -235,9 +208,9 @@ class DisplayALICBCT(Display):
 
     def isProgress(self, **kwds) -> bool:
         out = False
-        if kwds["progress"] == 200:
+        if is_event(kwds["progress"], PATIENT_DONE):
             self.pred_step += 1
-        if kwds["progress"] == 100 and kwds["updateProgessBar"] == False:
+        if is_event(kwds["progress"], STEP_DONE) and kwds["updateProgressBar"] == False:
             if self.pred_step > 3:
                 out = True
         return out
@@ -260,9 +233,9 @@ class DisplayALIIOS(Display):
 
     def isProgress(self, **kwds) -> bool:
         out = False
-        if kwds["progress"] == 200:
+        if is_event(kwds["progress"], PATIENT_DONE):
             self.pred_step += 1
-        if kwds["progress"] == 100 and kwds["updateProgessBar"] == False:
+        if is_event(kwds["progress"], STEP_DONE) and kwds["updateProgressBar"] == False:
             if self.pred_step > 3:
                 out = True
         return out

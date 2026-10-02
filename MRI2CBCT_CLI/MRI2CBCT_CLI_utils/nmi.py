@@ -4,20 +4,11 @@ from typing import Optional, Tuple
 import torch
 from torch import Tensor
 from torch.nn.modules.loss import _Loss
-import sys
-import logging
 
 # ===== Logging Configuration =====
-logger = logging.getLogger("MRI2CBCT_CLI_utils_nmi")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("MRI2CBCT_CLI_utils_nmi")
 
 def nmi_gauss(x1, x2, x1_bins, x2_bins, sigma=1e-3, e=1e-10):
     assert x1.shape == x2.shape, "Inputs are not of similar shape"
@@ -30,18 +21,18 @@ def nmi_gauss(x1, x2, x1_bins, x2_bins, sigma=1e-3, e=1e-10):
 
     x1_windowed = gaussian_window(x1.flatten(1), x1_bins, sigma)
     x2_windowed = gaussian_window(x2.flatten(1), x2_bins, sigma)
-    p_XY = torch.bmm(x1_windowed, x2_windowed.transpose(1, 2))
-    p_XY += e  # deal with numerical instability
+    p_xy = torch.bmm(x1_windowed, x2_windowed.transpose(1, 2))
+    p_xy += e  # deal with numerical instability
 
-    p_XY = p_XY / p_XY.sum((1, 2))[:, None, None]
+    p_xy = p_xy / p_xy.sum((1, 2))[:, None, None]
 
-    p_X = p_XY.sum(1)
-    p_Y = p_XY.sum(2)
+    p_x = p_xy.sum(1)
+    p_y = p_xy.sum(2)
 
-    I = (p_XY * torch.log(p_XY / (p_X[:, None] * p_Y[:, :, None]))).sum((1, 2))
+    I = (p_xy * torch.log(p_xy / (p_x[:, None] * p_y[:, :, None]))).sum((1, 2))
 
-    marg_ent_0 = (p_X * torch.log(p_X)).sum(1)
-    marg_ent_1 = (p_Y * torch.log(p_Y)).sum(1)
+    marg_ent_0 = (p_x * torch.log(p_x)).sum(1)
+    marg_ent_1 = (p_y * torch.log(p_y)).sum(1)
 
     normalized = -1 * 2 * I / (marg_ent_0 + marg_ent_1)  # harmonic mean
 
@@ -58,18 +49,18 @@ def nmi_gauss_mask(x1, x2, x1_bins, x2_bins, mask, sigma=1e-3, e=1e-10):
 
     x1_windowed = gaussian_window_mask(torch.masked_select(x1, mask), x1_bins, sigma)
     x2_windowed = gaussian_window_mask(torch.masked_select(x2, mask), x2_bins, sigma)
-    p_XY = torch.mm(x1_windowed, x2_windowed.transpose(0, 1))
-    p_XY = p_XY + e  # deal with numerical instability
+    p_xy = torch.mm(x1_windowed, x2_windowed.transpose(0, 1))
+    p_xy = p_xy + e  # deal with numerical instability
 
-    p_XY = p_XY / p_XY.sum()
+    p_xy = p_xy / p_xy.sum()
 
-    p_X = p_XY.sum(0)
-    p_Y = p_XY.sum(1)
+    p_x = p_xy.sum(0)
+    p_y = p_xy.sum(1)
 
-    I = (p_XY * torch.log(p_XY / (p_X[None] * p_Y[:, None]))).sum()
+    I = (p_xy * torch.log(p_xy / (p_x[None] * p_y[:, None]))).sum()
 
-    marg_ent_0 = (p_X * torch.log(p_X)).sum()
-    marg_ent_1 = (p_Y * torch.log(p_Y)).sum()
+    marg_ent_0 = (p_x * torch.log(p_x)).sum()
+    marg_ent_1 = (p_y * torch.log(p_y)).sum()
 
     normalized = -1 * 2 * I / (marg_ent_0 + marg_ent_1)  # harmonic mean
 

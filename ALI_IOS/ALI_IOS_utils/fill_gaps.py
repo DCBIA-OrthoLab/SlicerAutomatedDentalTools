@@ -12,22 +12,13 @@
 #
 # Not at the ends of the arch: there is nothing on one side to follow, and
 # extrapolating there landed 9.7 mm away, none of it within 2 mm.
-import logging
 import re
-import sys
 
 import numpy as np
 
-logger = logging.getLogger("ALI_IOS_gaps")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ALI_IOS_gaps")
 
 # The 13 MG points, in arch order: the position in this list is the parameter
 # the curve is followed along.

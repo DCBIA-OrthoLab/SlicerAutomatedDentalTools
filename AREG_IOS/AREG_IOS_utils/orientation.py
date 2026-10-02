@@ -1,42 +1,15 @@
 import numpy as np
 import vtk
 from AREG_IOS_utils.transformation import RotationMatrix, TransformSurf
-from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 from AREG_IOS_utils.vtkSegTeeth import vtkMeanTeeth
 
-import logging
-import sys
+from ADTLib.geometry import make_vector  # noqa: F401  (re-exported)
 # ===== Logging Configuration =====
-logger = logging.getLogger("AREG_IOS_orientation")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-if logger.handlers:
-    logger.handlers.clear()
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("AREG_IOS_orientation")
 
 cross = lambda a, b: np.cross(a, b)
-
-
-def make_vector(points2, point1):
-    perpen = points2[1] - points2[0]
-    perpen = perpen / np.linalg.norm(perpen)
-
-    vector1 = points2[0] - point1
-    vector1 = vector1 / np.linalg.norm(vector1)
-
-    vector2 = points2[1] - point1
-    vector2 = vector2 / np.linalg.norm(vector2)
-
-    normal = cross(vector1, vector2)
-    normal = normal / np.linalg.norm(normal)
-
-    direction = cross(normal, perpen)
-    direction = direction / np.linalg.norm(direction)
-    return normal, direction
 
 
 def orientation(source, target, landmarks):
@@ -46,10 +19,10 @@ def orientation(source, target, landmarks):
     middle2 = landmarks[2]
     right = landmarks[3]
 
-    meanTeeth = vtkMeanTeeth(
+    mean_teeth = vtkMeanTeeth(
         [int(left), int(middle1), int(middle2), int(right)], property="Universal_ID"
     )
-    mean_source = meanTeeth(source)
+    mean_source = mean_teeth(source)
 
     left_source, middle1_source, middle2_source, right_source = (
         mean_source[left],

@@ -1,54 +1,61 @@
 
-import os, sys, time, logging, zipfile, urllib.request, shutil, glob, re
+import os, sys, time, zipfile, urllib.request, shutil, glob, re
 import vtk, qt, slicer
 from qt import (
     QWidget,
     QGridLayout,
 )
 
-# --- LOGGING CONFIGURATION ---
-logger = logging.getLogger("ALI")
-logger.setLevel(logging.INFO)
-
-logger.propagate = False
-
-if logger.handlers:
-    logger.handlers.clear()
-
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(name)s - %(levelname)s - (%(filename)s:%(lineno)d) - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
 
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin, pip_install, pip_uninstall
+from slicer.util import VTKObservationMixin, pip_install
 import webbrowser
 import textwrap
-import importlib.metadata
 import signal
 
-from pathlib import Path
 import platform
 import threading
 import subprocess
-from multiprocessing import Process, Value
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+# This has to run before the first import of anything local, not just before
+# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("ALI")
 
 from ALI_Method.IOS import Auto_IOS
 from ALI_Method.CBCT import Auto_CBCT
 from ALI_Method.Method import Method
 from ALI_Method.Progress import Display
 
+from ADTLib.format import format_elapsed, elapsed_since
+from ADTLib.theming import update_line_edit_and_combo_box
+from ADTLib.env.deps import check_lib_installed as lib_satisfies, requirement
+from ADTLib.env.conda import (
+    check_pythonpath, conda_quote, give_pythonpath,
+    init_conda as init_conda_call, check_lib_wsl as wsl_libraries_present,
+    windows_to_linux_path as windows_to_linux_path_shared)
+from ADTLib.format import format_timer
+from ADTLib.requests import ALIRequest
+from ADTLib.model_registry import SLICER_TESTING_DATA
+from ADTLib.testdata import TestDataError, ensure_with_progress
+import traceback
+
 
 def check_lib_installed(lib_name, required_version=None):
-  try:
-    installed_version =importlib.metadata.version(lib_name)
-    if required_version and installed_version != required_version:
-      return False
-    return True
-  except importlib.metadata.PackageNotFoundError:
-    return False
+    """Whether the library is installed and satisfies the constraint."""
+    return lib_satisfies(lib_name, required_version)
 
 # import csv
 def install_function(self, libs=None):
@@ -59,15 +66,14 @@ def install_function(self, libs=None):
 
   if libs_to_install:
     message = "The following libraries are not installed or need updating:\n"
-    message += "\n".join([f"{lib}=={version}" if version else lib for lib, version in libs_to_install])
+    message += "\n".join([requirement(lib, version) for lib, version in libs_to_install])
     message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
     user_choice = slicer.util.confirmYesNoDisplay(message)
 
     if user_choice:
       self.ui.label_LibsInstallation.setVisible(True)
       for lib, version in libs_to_install:
-        lib_version = f'{lib}=={version}' if version else lib
-        pip_install(lib_version)
+        pip_install(requirement(lib, version))
     else:
       return False
   return True
@@ -75,18 +81,22 @@ def install_function(self, libs=None):
 #region ========== FUNCTIONS ==========
 
 def PathFromNode(node):
-  storageNode=node.GetStorageNode()
-  if storageNode is not None:
-    filepath=storageNode.GetFullNameFromFileName()
+  storage_node=node.GetStorageNode()
+  if storage_node is not None:
+    filepath=storage_node.GetFullNameFromFileName()
   else:
     filepath=None
   return filepath
 
 
-TEST_SCAN = {
-  "CBCT": 'https://github.com/Maxlo24/AMASSS_CBCT/releases/download/v1.0.1/MG_test_scan.nii.gz',
-  "IOS" : 'https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.4',
-}
+#: ALI publishes no DICOM dataset. The button says so, rather than failing on
+#: a made-up link -- the previous call went looking for a URL that exists
+#: nowhere and ended in "Failed to download test files".
+NO_DCM_TEST_FILES = (
+  "No DICOM test dataset is published for ALI.\n\n"
+  "Pick the \"NIFTI, NRRD, GIPL\" extension to use the published test scan, "
+  "or press Search to point ALI at a DICOM folder of your own."
+)
 
 MODELS_LINK = {
   "CBCT": [
@@ -140,32 +150,10 @@ SURFACE_NETWORK = {
 
   # "Landmarks type" : ['CL','CB','O','DB','MB','R','RIP','OIP']
 
-import json
 
 def condaQuote(conda, value):
-    """Quote `value` only if this SlicerConda joins the command into a shell line.
-
-    Two SlicerConda versions are in circulation and they want the opposite of
-    each other. The older one builds a bash line, where a path holding a space -
-    and the ';' inside a `python -c` body - has to be quoted or the line falls
-    apart. The newer one hands conda an argv list, where nothing ever strips
-    those quotes: they reach PYTHONPATH and argv literally and break exactly what
-    they were meant to protect. Reading the installed source tests the property
-    that decides it, rather than guessing from a version number.
-
-    Only commands going to SlicerConda come through here. The copies of
-    condaRunCommand this extension carries of its own always build a shell line,
-    so what they are given keeps its quotes unconditionally.
-    """
-    try:
-        import inspect
-
-        shell = "shell=True" in inspect.getsource(conda.condaRunCommand)
-    except Exception:
-        # Source unreadable: assume the argv contract, which is the one shipping
-        # now, rather than emitting quotes that would land literally.
-        shell = False
-    return f'"{value}"' if shell else str(value)
+    """Delegated to ADTLib; kept as a module function for the call sites."""
+    return conda_quote(conda, value)
 
 
 class ALI(ScriptedLoadableModule):
@@ -175,16 +163,16 @@ class ALI(ScriptedLoadableModule):
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "ALI"  # TODO: make this more human readable by adding spaces
+    self.parent.title = "ALI"
     self.parent.categories = ["Automated Dental Tools"]  # set categories (folders where the module shows up in the module selector)
-    self.parent.dependencies = ["CondaSetUp"]  # TODO: add here list of module names that this module requires
-    self.parent.contributors = ["Maxime Gillot (UoM), Baptiste Baquero (UoM)"]  # TODO: replace with "Firstname Lastname (Organization)"
-    # TODO: update with short description of the module and a link to online module documentation
+    self.parent.dependencies = ["CondaSetUp"]
+    self.parent.contributors = ["Maxime Gillot (UoM), Baptiste Baquero (UoM)"]
+    
     self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#ALI">module documentation</a>.
+See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools#ALI">module documentation</a>.
 """
-    # TODO: replace with organization, grant and thanks
+    
     self.parent.acknowledgementText = """
 This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
 and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
@@ -205,7 +193,7 @@ def registerSampleData():
   # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
 
   import SampleData
-  iconsPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
+  icons_path = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
 
   # To ensure that the source code repository remains small (can be downloaded and installed quickly)
   # it is recommended to store data sets that are larger than a few MB in a Github release.
@@ -217,9 +205,9 @@ def registerSampleData():
     sampleName='ALI1',
     # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
     # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-    thumbnailFileName=os.path.join(iconsPath, 'ALI1.png'),
+    thumbnailFileName=os.path.join(icons_path, 'ALI1.png'),
     # Download URL and target file name
-    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+    uris=f"{SLICER_TESTING_DATA}/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
     fileNames='ALI1.nrrd',
     # Checksum to ensure file integrity. Can be computed by this command:
     checksums = 'SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
@@ -232,9 +220,9 @@ def registerSampleData():
     # Category and sample name displayed in Sample Data module
     category='ALI',
     sampleName='ALI2',
-    thumbnailFileName=os.path.join(iconsPath, 'ALI2.png'),
+    thumbnailFileName=os.path.join(icons_path, 'ALI2.png'),
     # Download URL and target file name
-    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+    uris=f"{SLICER_TESTING_DATA}/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
     fileNames='ALI2.nrrd',
     checksums = 'SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
     # This node name will be used when the data set is loaded
@@ -311,9 +299,9 @@ class PopUpWindow(qt.QDialog):
             button.setChecked(False)
 
     def onClickedCheckbox(self):
-        TrueFalse = [button.isChecked() for button in self.ListButtons]
+        true_false = [button.isChecked() for button in self.ListButtons]
         self.checked = [
-            self.listename[i] for i in range(len(self.listename)) if TrueFalse[i]
+            self.listename[i] for i in range(len(self.listename)) if true_false[i]
         ]
         self.accept()
 
@@ -376,19 +364,19 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # Load widget from .ui file (created by Qt Designer).
     # Additional widgets can be instantiated manually and added to self.layout.
-    uiWidget = slicer.util.loadUI(self.resourcePath('UI/ALI.ui'))
-    self.layout.addWidget(uiWidget)
-    self.uiWidget = uiWidget  # Store reference for styling
+    ui_widget = slicer.util.loadUI(self.resourcePath('UI/ALI.ui'))
+    self.layout.addWidget(ui_widget)
+    self.uiWidget = ui_widget  # Store reference for styling
 
-    self.ui = slicer.util.childWidgetVariables(uiWidget)
+    self.ui = slicer.util.childWidgetVariables(ui_widget)
     
     # Apply dark mode styling if needed
-    self._applyDarkModeStylesheet(uiWidget)
+    self._applyDarkModeStylesheet(ui_widget)
 
     # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
     # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
     # "setMRMLScene(vtkMRMLScene*)" slot.
-    uiWidget.setMRMLScene(slicer.mrmlScene)
+    ui_widget.setMRMLScene(slicer.mrmlScene)
 
     # Create logic class. Logic implements all computations that should be possible to run
     # in batch mode, without a graphical user interface.
@@ -411,8 +399,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
     
-    documentsLocation = qt.QStandardPaths.DocumentsLocation
-    self.documents = qt.QStandardPaths.writableLocation(documentsLocation)
+    documents_location = qt.QStandardPaths.DocumentsLocation
+    self.documents = qt.QStandardPaths.writableLocation(documents_location)
     self.SlicerDownloadPath = os.path.join(
       self.documents,
       slicer.app.applicationName + "Downloads",
@@ -550,6 +538,15 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.ui.ScanPathLabel.setText('DICOM\'s Folder')
       self.isDCMInput = True
 
+    # The button is disabled in DICOM, and its tooltip says why: ALI publishes
+    # no DICOM dataset, and a button that always fails teaches nothing.
+    self.ui.DownloadTestPushButton.setEnabled(not self.isDCMInput)
+    self.ui.DownloadTestPushButton.setToolTip(
+      NO_DCM_TEST_FILES if self.isDCMInput
+      else "Download the published test scans if they are missing, then fill in "
+           "the scan, model and output folders so the run can be started."
+    )
+
   def SwitchInput(self,index):
 
     if index == 0:
@@ -584,10 +581,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     return selected
 
-  def onTestDownloadButton(self):
-    webbrowser.open(TEST_SCAN[self.type])
-
-
   def onModelDownloadButton(self):
     for link in MODELS_LINK[self.type]:
       webbrowser.open(link)
@@ -601,19 +594,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.output_folder = self.ui.lineEditScanPath.text
       self.ui.SaveFolderLineEdit.text = self.output_folder
 
-  def CountFileWithExtention(self,path,extentions = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"], exception = ["Seg", "seg", "Pred"]):
-
-    count = 0
-    normpath = os.path.normpath("/".join([path, '**', '']))
-    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-        basename = os.path.basename(img_fn)
-
-        if True in [ext in basename for ext in extentions]:
-            if not True in [ex in basename for ex in exception]:
-                count += 1
-
-    return count
-
   def onSearchScanButton(self, lineEdit):
     scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
     if scan_folder != '':
@@ -623,9 +603,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           logger.debug("DICOM format detected")
           nbr_scans = len(os.listdir(scan_folder))
         else:
-          nbr_scans = self.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],[])
+          nbr_scans = self.logic.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],[])
       else:
-        nbr_scans = self.CountFileWithExtention(scan_folder, [".vtk", ".stl"],[])
+        nbr_scans = self.logic.CountFileWithExtention(scan_folder, [".vtk", ".stl"],[])
 
       if nbr_scans == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
@@ -637,51 +617,79 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.CheckScan()
       
         
+  def EnsureTestFiles(self, name, urls):
+    """The folder of test scans for the current mode, fetched only if missing.
+
+    A mode may need more than one file -- ALI IOS wants an upper and a lower
+    arch -- and then `urls` is a dict: every part lands under the one folder
+    the module is given as input, each with its own completeness marker, so
+    an interrupted download is never taken for a finished one.
+    """
+    root = os.path.join(self.SlicerDownloadPath, "Test_Files")
+    if isinstance(urls, str):
+      return ensure_with_progress(urls, root, name, self.parent,
+                                  "Downloading %s..." % name)
+
+    for part, url in urls.items():
+      ensure_with_progress(url, root, os.path.join(name, part), self.parent,
+                           "Downloading %s (%s)..." % (name, part))
+    return os.path.join(root, name)
+
   def TestFiles(self):
-    """Function to download and select all the test files"""
+    """Fetch this mode's test files if they are missing, and fill in every field.
+
+    Filling only the scan folder was not enough: the model folder is required
+    too, so pressing this and then Run answered "Please select folder for the
+    landmark identification model". The models come down the same way the
+    "Download Models" button gets them.
+    """
+    if self.isDCMInput:
+      # Nothing is published in DICOM for ALI: say so, rather than failing
+      # on a made-up link.
+      qt.QMessageBox.information(self.parent, "No DICOM test files",
+                                 NO_DCM_TEST_FILES)
+      return
+
+    name, urls = self.ActualMeth.getTestFileList()
+    logger.debug(f"Test files for {self.type}: {name} from {urls}")
+
     try:
-      if self.isDCMInput:
-        name, url = self.ActualMeth.getTestFileListDCM()
-      else:
-        name, url = self.ActualMeth.getTestFileList()
+      scan_folder = self.EnsureTestFiles(name, urls)
+    except (TestDataError, OSError) as error:
+      logger.error(f"Test files for {self.type} could not be obtained: {error}",
+                   exc_info=True)
+      qt.QMessageBox.warning(self.parent, "Error",
+                             f"Failed to download the test files:\n{error}")
+      return
 
-      logger.debug(f"Test file name: {name}")
-      logger.debug(f"Download URL: {url}")
+    logger.debug(f"Scan folder: {scan_folder}")
+    error = self.ActualMeth.TestScan(scan_folder)
+    if isinstance(error, str):
+      qt.QMessageBox.warning(self.parent, "Warning", error)
+      return
 
-      scan_folder = self.DownloadUnzip(
-        url=url,
-        directory=os.path.join(self.SlicerDownloadPath),
-        folder_name=os.path.join("Test_Files", name)
-        if not self.isDCMInput
-        else os.path.join("Test_Files", "DCM", name),
-      )
+    self.input_path = scan_folder
+    self.ui.lineEditScanPath.setText(scan_folder)
+    self.CheckScan()
 
-      logger.debug(f"Scan folder: {scan_folder}")
+    # The models folder is required too: without it, Run refuses.
+    try:
+      self.downloadModel(self.ui.lineEditModelPath)
+    except (OSError, zipfile.BadZipFile) as error:
+      logger.error(f"Models for {self.type} could not be downloaded: {error}",
+                   exc_info=True)
+      qt.QMessageBox.warning(
+        self.parent, "Error",
+        f"The test scans are in {scan_folder}, but the {self.type} models could "
+        f"not be downloaded:\n{error}")
+      return
 
-      if self.isDCMInput:
-        nb_scans = self.ActualMeth.NumberScanDCM(scan_folder)
-        error = self.ActualMeth.TestScanDCM(scan_folder)
-      else:
-        nb_scans = self.ActualMeth.NumberScan(scan_folder)
-        error = self.ActualMeth.TestScan(scan_folder)
+    # The output field, for its part, is not overwritten: what the user chose
+    # stays.
+    if self.ui.SaveFolderLineEdit.text == "":
+      self.output_folder = os.path.join(scan_folder, "Predicted")
+      self.ui.SaveFolderLineEdit.setText(self.output_folder)
 
-      if isinstance(error, str):
-        qt.QMessageBox.warning(self.parent, "Warning", error)
-      else:
-        self.nb_patient = nb_scans
-        self.ui.lineEditScanPath.setText(scan_folder)
-        self.ui.LabelInfoPreProc.setText(
-            "Number of patients to process: " + str(nb_scans)
-        )
-
-      if self.ui.SaveFolderLineEdit.text == "":
-        dir, spl = os.path.split(scan_folder)
-        self.ui.SaveFolderLineEdit.setText(os.path.join(dir, spl, "Predicted"))
-    
-    except Exception as e:
-      logger.error(f"Error downloading test files: {str(e)}", exc_info=True)
-      qt.QMessageBox.warning(self.parent, "Error", f"Failed to download test files: {str(e)}")
-        
   def DownloadUnzip(
         self, url, directory, folder_name=None, num_downl=1, total_downloads=1
     ):
@@ -798,8 +806,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.lm_tab.FillTab(available_lm, enable=True)
         return True
     else:
-      available_lm = self.GetAvailableSurfLm(model_folder)
-      has_mg_model = self.HasMGModel(model_folder)
+      available_lm = self.logic.GetAvailableSurfLm(model_folder)
+      has_mg_model = self.logic.HasMGModel(model_folder)
 
       if len(available_lm.keys()) == 0 and not has_mg_model:
         qt.QMessageBox.warning(
@@ -863,37 +871,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if model_folder != '':
       self.loadModelFolder(model_folder)
 
-  def GetAvailableSurfLm(self,model_folder):
-    available_lm = {}
-    networks = self.GetNetworks(model_folder)
-    for net in networks:
-      available_lm[net] = SURFACE_LANDMARKS[net]
-
-    return available_lm
-
-  def GetNetworks(self,dir_path):
-    networks = []
-    normpath = os.path.normpath("/".join([dir_path, '**', '']))
-    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-        if os.path.isfile(img_fn) and ".pth" in img_fn:
-          for id, group in SURFACE_NETWORK.items():
-            if id in os.path.basename(img_fn):
-              networks.append(group)
-    return networks
-
-  def HasMGModel(self,dir_path):
-    """True if the folder contains a lower mucogingival model (Lower_MG_*.pth)"""
-    if not dir_path:
-      return False
-    normpath = os.path.normpath("/".join([dir_path, '**', '']))
-    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-      basename = os.path.basename(img_fn)
-      if os.path.isfile(img_fn) and basename.endswith(".pth") and "Lower" in basename:
-        parts = basename.split("_")
-        if len(parts) > 1 and parts[1] == "MG":
-          return True
-    return False
-
   def onSearchSaveButton(self):
     save_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
     if save_folder != '':
@@ -902,23 +879,23 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def onPredictButton(self):
     if self.type == "CBCT":
-      list_libs_CBCT = [('itk', None), ('dicom2nifti', '2.6.2'), ('pydicom', '3.0.2')]
+      list_libs_cbct = [('itk', None), ('dicom2nifti', '>=2.6.2'), ('pydicom', '3.0.2')]
       monai_version = '1.3.2' if sys.version_info >= (3, 10) else '0.7.0'
-      list_libs_CBCT.append(('monai', monai_version))
+      list_libs_cbct.append(('monai', monai_version))
       
-      is_installed = install_function(self,list_libs_CBCT)
+      is_installed = install_function(self,list_libs_cbct)
 
-    else:  
+    else:
       is_installed = False
       check_env = self.onCheckRequirements()
       logger.debug(f"Environment check result: {check_env}")
       
       if check_env:
-        list_libs_IOS = [('itk', None), ('dicom2nifti', '2.6.2'), ('pydicom', '3.0.2')]
+        list_libs_ios = [('itk', None), ('dicom2nifti', '>=2.6.2'), ('pydicom', '3.0.2')]
         monai_version = '1.3.2' if sys.version_info >= (3, 10) else '0.7.0'
-        list_libs_IOS.append(('monai', monai_version))
+        list_libs_ios.append(('monai', monai_version))
 
-        is_installed = install_function(self,list_libs_IOS)
+        is_installed = install_function(self,list_libs_ios)
       
     if not is_installed:
       qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
@@ -939,7 +916,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       if len(selected_tooth_lst) > 0 and len(selected_lm_lst) == 0:
         qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark type for the selected teeth')
         return
-      if len(selected_mg_lst) > 0 and not self.HasMGModel(self.model_folder):
+      if len(selected_mg_lst) > 0 and not self.logic.HasMGModel(self.model_folder):
         qt.QMessageBox.warning(self.parent, 'Warning', 'MGL Lower teeth are selected but no mucogingival model was found\nPlease add a "Lower_MG_*.pth" file to the model folder')
         return
 
@@ -981,24 +958,24 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return
 
     error = self.ActualMeth.TestProcess(
-      input_folder=self.input_path,
-      dir_models=self.model_folder,
-      output_dir=self.ui.SaveFolderLineEdit.text,
-    )
+      ALIRequest(input_folder=self.input_path,
+      model_folder=self.model_folder,
+      output_folder=self.ui.SaveFolderLineEdit.text,
+    ))
     if isinstance(error, str):
       qt.QMessageBox.warning(self.parent, "Warning", error.replace(",", "\n"))
       return
     try:
       self.list_Processes_Parameters = self.ActualMeth.Process(
-        input_folder=self.input_path,
-        dir_models=self.model_folder,
+        ALIRequest(input_folder=self.input_path,
+        model_folder=self.model_folder,
         lm_type=self.selected_lm,
         teeth=self.selected_tooth,
         teeth_mg=self.selected_mg_tooth,
-        output_dir=self.ui.SaveFolderLineEdit.text,
-        logPath=self.log_path,
-        DCMInput=self.isDCMInput,
-      )
+        output_folder=self.ui.SaveFolderLineEdit.text,
+        log_path=self.log_path,
+        is_dicom_input=self.isDCMInput,
+      ))
     except RuntimeError as e:
       qt.QMessageBox.warning(self.parent, "Warning", str(e))
       return
@@ -1023,7 +1000,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.run_conda_tool("ali")
       self.OnEndProcess()
      
-    else: 
+    else:
       self.process = slicer.cli.run(
         self.list_Processes_Parameters[0]["Process"],
         None,
@@ -1051,29 +1028,13 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.RunningUI(True)
 
-  def read_txt(self):
-    '''
-    Read a file and return the last line
-    '''
-    script_path = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_path,"tempo.txt")
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
-        return lines[-1] if lines else None
-      
-  def read_log_path(self):
-      with open(self.log_path, 'r') as f:
-          line = f.readline()
-          if line != '':
-              return line
-  
   def onCondaProcessUpdate(self):
       if os.path.isfile(self.log_path):
           self.ui.LabelProgressExtension.setText(
               f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
           )
           time_progress = os.path.getmtime(self.log_path)
-          line = self.read_log_path()
+          line = self.logic.read_log_path(self.log_path)
           if (time_progress != self.time_log) and line:
               progress = line.strip()
           
@@ -1089,12 +1050,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onProcessUpdate(self, caller, event):
         # timer = f"Time : {time.time()-self.startTime:.2f}s"
         currentTime = time.time() - self.startTime
-        if currentTime < 60:
-            timer = f"Time : {int(currentTime)}s"
-        elif currentTime < 3600:
-            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-        else:
-            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+        timer = format_timer(currentTime)
 
         self.ui.TimerLabel.setText(timer)
         progress = caller.GetProgress()
@@ -1112,10 +1068,10 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.nb_change_bystep = 0
 
         if progress == 0:
-            self.updateProgessBar = False
+            self.updateProgressBar = False
 
         if self.displayModule.isProgress(
-            progress=progress, updateProgessBar=self.updateProgessBar
+            progress=progress, updateProgressBar=self.updateProgressBar
         ):
             progress_bar, message = self.displayModule()
             self.ui.progressBar.setValue(progress_bar)
@@ -1126,8 +1082,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if caller.GetStatus() & caller.ErrorsMask:
                 logger.error("========= PROCESSING ERROR =========")
                 logger.error(f"Process output: {self.process.GetOutputText()}")
-                errorText = self.process.GetErrorText()
-                logger.error(f"CLI execution failed: {errorText}")
+                error_text = self.process.GetErrorText()
+                logger.error(f"CLI execution failed: {error_text}")
                 self.onCancel()
 
             else:
@@ -1151,19 +1107,27 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.module_name_before = self.module_name
     self.nb_change_bystep = 0
     total_time = time.time() - self.startTime
-    average_time = total_time / self.nb_patient
     logger.info("Processing completed successfully")
     logger.info(
       f"Processing completed in {int(total_time / 60)} min and {int(total_time % 60)} sec"
     )
-    logger.info(
-      f"Average time per patient: {int(average_time / 60)} min and {int(average_time % 60)} sec"
-    )
+    # A run that processed nobody has no average, and dividing by that zero
+    # raised ZeroDivisionError right here -- inside the end-of-process handler,
+    # so the module never signalled that it had stopped and the caller waited
+    # for its whole ceiling on a run that had failed in the first minute.
+    # AREG already guards the same line; ALI and ASO did not.
+    if self.nb_patient:
+      average_time = total_time / self.nb_patient
+      logger.info(
+        f"Average time per patient: {int(average_time / 60)} min and {int(average_time % 60)} sec"
+      )
+    else:
+      logger.warning("No patient was processed, so there is no average to report")
     self.RunningUI(False)
 
-    stopTime = time.time()
+    stop_time = time.time()
 
-    logger.info(f"Processing completed in {stopTime-self.startTime:.2f} seconds")
+    logger.info(f"Processing completed in {stop_time-self.startTime:.2f} seconds")
 
     s = PopUpWindow(
       title="Process Done",
@@ -1191,21 +1155,21 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.HideComputeItems(run)
     
-  def format_time(self,seconds):
-    """ Convert seconds to H:M:S format. """
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    return f"{hours:02}:{minutes:02}:{secs:02}"
-  
+  def format_time(self, seconds):
+    """Seconds as HH:MM:SS."""
+    return format_elapsed(seconds)
+
   def update_ui_time(self, start_time, previous_time):
-    current_time = time.time()
-    gap=current_time-previous_time
-    if gap>0.3:
-      previous_time = current_time
-      self.elapsed_time = current_time - start_time
-      formatted_time = self.format_time(self.elapsed_time)
-      return formatted_time
+    """Elapsed time since `start_time`, formatted for the installation label.
+
+    `previous_time` is kept for signature parity with the call sites, which
+    pass it but never update their own copy. It used to throttle this to one
+    update every 0.3s and return None in between, which is what wrote
+    "time: None" into the label. Formatting unconditionally is both simpler
+    and correct.
+    """
+    self.elapsed_time = elapsed_since(start_time)
+    return self.format_time(self.elapsed_time)
     
   def run_conda_tool(self, type):
     if type == "seg":
@@ -1246,12 +1210,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if gap>0.3:
           currentTime = time.time() - self.startTime
           previous_time = currentTime
-          if currentTime < 60:
-            timer = f"Time : {int(currentTime)}s"
-          elif currentTime < 3600:
-            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-          else:
-            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+          timer = format_timer(currentTime)
           
           self.ui.TimerLabel.setText(timer)
       
@@ -1286,12 +1245,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if gap>0.3:
           currentTime = time.time() - self.startTime
           previous_time = currentTime
-          if currentTime < 60:
-            timer = f"Time : {int(currentTime)}s"
-          elif currentTime < 3600:
-            timer = f"Time : {int(currentTime/60)}min and {int(currentTime%60)}s"
-          else:
-            timer = f"Time : {int(currentTime/3600)}h, {int(currentTime%3600/60)}min and {int(currentTime%60)}s"
+          timer = format_timer(currentTime)
             
           self.ui.TimerLabel.setText(timer)
 
@@ -1300,12 +1254,12 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
   def onCheckRequirements(self):
     if not self.logic.isCondaSetUp:
-      messageBox = qt.QMessageBox()
+      message_box = qt.QMessageBox()
       text = textwrap.dedent("""
-      SlicerConda is not set up, please click 
+      SlicerConda is not set up, please click
       <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
       """).strip()
-      messageBox.information(None, "Information", text)
+      message_box.information(None, "Information", text)
       return False
     
     if platform.system() == "Windows":
@@ -1316,24 +1270,24 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.label_LibsInstallation.setText(f"WSL installed")
         if not self.logic.check_lib_wsl():
           self.ui.label_LibsInstallation.setText(f"Checking if the required librairies are installed, this task may take a moments")
-          messageBox = qt.QMessageBox()
+          message_box = qt.QMessageBox()
           text = textwrap.dedent("""
-              WSL doesn't have all the necessary libraries, please download the installer 
-              and follow the instructions 
-              <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
+              WSL doesn't have all the necessary libraries, please download the installer
+              and follow the instructions
+              <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
               for installation. The link may be blocked by Chrome, just authorize it.""").strip()
 
-          messageBox.information(None, "Information", text)
+          message_box.information(None, "Information", text)
           return False
         
       else : # if wsl not install, ask user to install it ans stop process
-        messageBox = qt.QMessageBox()
+        message_box = qt.QMessageBox()
         text = textwrap.dedent("""
-            WSL is not installed, please download the installer and follow the instructions 
-            <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a> 
-            for installation. The link may be blocked by Chrome, just authorize it.""").strip()        
+            WSL is not installed, please download the installer and follow the instructions
+            <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
+            for installation. The link may be blocked by Chrome, just authorize it.""").strip()
 
-        messageBox.information(None, "Information", text)
+        message_box.information(None, "Information", text)
         return False
         
     
@@ -1342,11 +1296,11 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     self.ui.label_LibsInstallation.setText(f"Checking if miniconda is installed")
     if "no setup" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
-      messageBox = qt.QMessageBox()
+      message_box = qt.QMessageBox()
       text = textwrap.dedent("""
-      Code can't be launch. \nConda is not setup. 
+      Code can't be launch. \nConda is not setup.
       Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
-      messageBox.information(None, "Information", text)
+      message_box.information(None, "Information", text)
       return False
     
     
@@ -1355,8 +1309,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.ui.label_LibsInstallation.setText(f"Checking if environnement exists")
     if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
-      userResponse = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
-      if userResponse :
+      user_response = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+      if user_response :
         start_time = time.time()
         previous_time = start_time
         formatted_time = self.format_time(0)
@@ -1372,7 +1326,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         previous_time = start_time
         formatted_time = self.format_time(0)
         text = textwrap.dedent(f"""
-        Installation of librairies into the new environnement. 
+        Installation of librairies into the new environnement.
         This task may take a few minutes.\ntime: {formatted_time}""").strip()
         self.ui.label_LibsInstallation.setText(text)
       else:
@@ -1385,7 +1339,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     self.ui.label_LibsInstallation.setText(f"Checking if pytorch3d is installed")
-    if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed 
+    if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed
       process = self.logic.install_pytorch3d()
       start_time = time.time()
       previous_time = start_time
@@ -1394,7 +1348,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         slicer.app.processEvents()
         formatted_time = self.update_ui_time(start_time, previous_time)
         text = textwrap.dedent(f"""
-        Installation of pytorch into the new environnement. 
+        Installation of pytorch into the new environnement.
         This task may take a few minutes.\ntime: {formatted_time}
         """).strip()
         self.ui.label_LibsInstallation.setText(text)
@@ -1402,7 +1356,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.ui.label_LibsInstallation.setText(f"pytorch3d is already installed")
       logger.info("pytorch3d already installed")
 
-    self.all_installed = True   
+    self.all_installed = True
     return True
 
   def _applyDarkModeStylesheet(self, uiWidget) -> None:
@@ -1651,7 +1605,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # so that when the scene is saved and reloaded, these settings are restored.
 
 
-  def setParameterNode(self, inputParameterNode):
+  def setParameterNode(self, input_parameter_node):
     """
     Set and observe parameter node.
     Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
@@ -1666,10 +1620,10 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if self._parameterNode is not None:
       self.removeObserver(
         self._parameterNode,
-        vtk.vtkCommand.ModifiedEvent, 
+        vtk.vtkCommand.ModifiedEvent,
         self.updateGUIFromParameterNode
       )
-    self._parameterNode = inputParameterNode
+    self._parameterNode = input_parameter_node
     if self._parameterNode is not None:
       self.addObserver(
         self._parameterNode,
@@ -1719,7 +1673,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if self._parameterNode is None or self._updatingGUIFromParameterNode:
       return
 
-    wasModified = (
+    was_modified = (
       self._parameterNode.StartModify()  # Modify all properties in a single batch
     )
 
@@ -1737,7 +1691,7 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       "OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID
     )
 
-    self._parameterNode.EndModify(wasModified)
+    self._parameterNode.EndModify(was_modified)
 
 
   def onApplyButton(self):
@@ -1757,7 +1711,6 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     except Exception as e:
       slicer.util.errorDisplay("Failed to compute results: "+str(e))
-      import traceback
       traceback.print_exc()
       
   def HideComputeItems(self, run=False):
@@ -1780,8 +1733,9 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if isinstance(parent, qt.QLabel):
       try:
         parent.setStyleSheet(f"color: #{color.name().lstrip('#')};")
-      except:
-        pass
+      except (AttributeError, RuntimeError):
+          # A widget without that method, or whose C++ object is already gone.
+          pass
     
     # Recursively update all children
     if hasattr(parent, 'children'):
@@ -1796,15 +1750,15 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     if isinstance(parent, qt.QCheckBox):
       try:
         parent.setStyleSheet("color: #ffffff;")
-      except:
-        pass
+      except (AttributeError, RuntimeError):
+          pass
     
     # Update QPushButton text color (for Switch tab selection button in LMTab)
     if isinstance(parent, qt.QPushButton):
       try:
         parent.setStyleSheet("color: #ffffff;")
-      except:
-        pass
+      except (AttributeError, RuntimeError):
+          pass
     
     # Recursively update all children
     if hasattr(parent, 'children'):
@@ -1836,12 +1790,12 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             for child in parent.children():
               try:
                 child.setStyleSheet("color: #ffffff; background-color: #3c3c3c;")
-              except:
-                pass
-        except:
-          pass
-    except:
-      pass
+              except (AttributeError, RuntimeError):
+                  pass
+        except (AttributeError, RuntimeError):
+            pass
+    except (AttributeError, RuntimeError):
+        pass
     
     # Recursively update all children
     if hasattr(parent, 'children'):
@@ -1849,70 +1803,8 @@ class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._updateMRMLNodeComboBoxColor(child)
 
   def _updateLineEditAndComboBoxDarkMode(self, parent):
-    """
-    Recursively apply dark mode styles to QLineEdit, QComboBox, and QLabel widgets.
-    """
-    # Update QLabel
-    if isinstance(parent, qt.QLabel):
-      try:
-        parent.setStyleSheet("""
-          QLabel {
-            color: #ffffff;
-            font-weight: 500;
-          }
-        """)
-      except:
-        pass
-    
-    # Update QLineEdit
-    if isinstance(parent, qt.QLineEdit):
-      try:
-        parent.setStyleSheet("""
-          QLineEdit {
-            background-color: #3c3c3c;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 6px;
-            color: #ffffff;
-          }
-          QLineEdit:focus {
-            border: 2px solid #5dade2;
-          }
-        """)
-      except:
-        pass
-    
-    # Update QComboBox
-    if isinstance(parent, qt.QComboBox):
-      try:
-        parent.setStyleSheet("""
-          QComboBox {
-            background-color: #3c3c3c;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 4px 6px;
-            color: #ffffff;
-          }
-          QComboBox:focus {
-            border: 2px solid #5dade2;
-          }
-          QComboBox::drop-down {
-            width: 20px;
-            border: none;
-          }
-          QComboBox QAbstractItemView {
-            background-color: #3c3c3c;
-            color: #ffffff;
-            selection-background-color: #5dade2;
-          }
-        """)
-      except:
-        pass
-    
-    # Recursively update all children
-    if hasattr(parent, 'children'):
-      for child in parent.children():
-        self._updateLineEditAndComboBoxDarkMode(child)
+    """Shared recursive pass, kept as a method for the existing call sites."""
+    update_line_edit_and_combo_box(parent)
 
 class LMTab:
     def __init__(self) -> None:
@@ -2048,11 +1940,11 @@ class LMTab:
         self.lm_status_dic[lm_id] = state
 
     def GetSelected(self):
-      selectedLM = []
+      selected_lm = []
       for lm,state in self.lm_status_dic.items():
         if state:
-          selectedLM.append(lm)
-      return selectedLM
+          selected_lm.append(lm)
+      return selected_lm
 
     def SelectAll(self):
       self.UpdateAll(True)
@@ -2128,20 +2020,10 @@ class ALILogic(ScriptedLoadableModuleLogic):
     self.pythonVersion = "3.12"  # shared "shapeaxi" env - see FlexReg.py for why
 
   def init_conda(self):
-    # check if CondaSetUp exists
-    try:
-      import CondaSetUp
-    except:
-      return False
-    self.isCondaSetUp = True
-    
-    # set up conda on windows with WSL
-    if platform.system() == "Windows":
-      from CondaSetUp import CondaSetUpCallWsl
-      return CondaSetUpCallWsl()
-    else:
-      from CondaSetUp import CondaSetUpCall
-      return CondaSetUpCall()
+    """The SlicerConda entry point for this platform, or False without it."""
+    call = init_conda_call()
+    self.isCondaSetUp = bool(call)
+    return call
     
   def run_conda_command(self, target, command):
     self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
@@ -2166,15 +2048,15 @@ class ALILogic(ScriptedLoadableModuleLogic):
     return self.conda.condaRunCommand(command)
 
   def install_pytorch3d(self):
-    result_pythonpath = self.check_pythonpath_windows("ALI_Method.install_pytorch")
+    result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
     if not result_pythonpath :
       self.give_pythonpath_windows()
-      result_pythonpath = self.check_pythonpath_windows("ALI_Method.install_pytorch")
+      result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
     
-    if result_pythonpath : 
+    if result_pythonpath :
       conda_exe = self.conda.getCondaExecutable()
       path_pip = self.conda.getCondaPath()+f"/envs/{self.name_env}/bin/pip"
-      command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"ALI_Method.install_pytorch",path_pip]
+      command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"ADTLib.env.install_pytorch",path_pip]
 
     self.run_conda_command(target=self.conda.condaRunCommand, command=(command,))
     
@@ -2188,63 +2070,20 @@ class ALILogic(ScriptedLoadableModuleLogic):
     self.run_conda_command(target=self.condaRunCommand, command=(command,))
     
   def check_lib_wsl(self) -> bool:
-    # Ubuntu versions < 24.04
-    required_libs_old = ["libxrender1", "libgl1-mesa-glx"]
-    # Ubuntu versions >= 24.04
-    required_libs_new = ["libxrender1", "libgl1", "libglx-mesa0"]
+    """Whether WSL carries the system libraries the tools need."""
+    return wsl_libraries_present()
 
-
-    all_installed = lambda libs: all(
-        subprocess.run(
-            f"wsl -- bash -c \"dpkg -l | grep {lib}\"", capture_output=True, text=True
-        ).stdout.encode("utf-16-le").decode("utf-8").replace("\x00", "").find(lib) >= 0
-        for lib in libs
-    )
-
-    return all_installed(required_libs_old) or all_installed(required_libs_new)
-
-  def check_pythonpath_windows(self,file):
-    '''
-    Check if the environment env_name in wsl know the path to a specific file (ex : Crownsegmentationcli.py)
-    return : bool
-    '''
-    conda_exe = self.conda.getCondaExecutable()
-    command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", condaQuote(self.conda, f"import {file} as check;import os; print(os.path.isfile(check.__file__))")]
-    result = self.conda.condaRunCommand(command)
-    if "True" in result :
-      return True
-    return False
+  def check_pythonpath_windows(self, file):
+    """Whether `file` is importable by the Python of this module's environment."""
+    return check_pythonpath(self.conda, self.name_env, file)
 
   def give_pythonpath_windows(self):
-    '''
-    take the pythonpath of Slicer and give it to the environment name_env in wsl.
-    '''
-    paths = slicer.app.moduleManager().factoryManager().searchPaths
-    mnt_paths = []
-    for path in paths :
-      # Quoted only where a shell will strip the quotes again. They used to be
-      # unconditional: under the argv-passing SlicerConda they survived into
-      # PYTHONPATH, Python read each entry as a relative path and prefixed the
-      # cwd, and every sys.path entry pointed nowhere.
-      mnt_paths.append(condaQuote(self.conda, self.windows_to_linux_path(path)))
-    pythonpath_arg = 'PYTHONPATH=' + ':'.join(mnt_paths)
-    conda_exe = self.conda.getCondaExecutable()
-    argument = [conda_exe, 'env', 'config', 'vars', 'set', '-n', self.name_env, pythonpath_arg]
-    results = self.conda.condaRunCommand(argument)
+    """Publish Slicer's module search paths into this module's environment."""
+    give_pythonpath(self.conda, self.name_env)
     
-  def windows_to_linux_path(self,windows_path):
-    '''
-    convert a windows path to a wsl path
-    '''
-    windows_path = windows_path.strip()
-
-    path = windows_path.replace('\\', '/')
-
-    if ':' in path:
-      drive, path_without_drive = path.split(':', 1)
-      path = "/mnt/" + drive.lower() + path_without_drive
-
-    return path
+  def windows_to_linux_path(self, windows_path):
+    """A Windows path as WSL sees it."""
+    return windows_to_linux_path_shared(windows_path)
   
   def cancel_process(self):
     if platform.system() == 'Windows':
@@ -2257,7 +2096,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
     self.cancel = True
 
   def check_cli_script(self):
-    if not self.check_pythonpath_windows("ALI_IOS"): 
+    if not self.check_pythonpath_windows("ALI_IOS"):
       self.give_pythonpath_windows()
       results = self.check_pythonpath_windows("ALI_IOS")
         
@@ -2269,7 +2108,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
     '''
     Runs a command in a specified Conda environment, handling different operating systems.
     
-    copy paste from SlicerConda and change the process line to be able to get the stderr/stdout 
+    copy paste from SlicerConda and change the process line to be able to get the stderr/stdout
     and cancel the process without blocking slicer
     '''
     path_activate = self.conda.getActivateExecutable()
@@ -2286,7 +2125,7 @@ class ALILogic(ScriptedLoadableModuleLogic):
       command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
       logger.info(f"command_to_execute in condaRunCommand : {command_to_execute}")
 
-      self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+      self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
                               creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
                               )
@@ -2310,7 +2149,77 @@ class ALILogic(ScriptedLoadableModuleLogic):
     
     logger.info("PROCESS Error")
     if self.stderr:
-      logger.error(self.stderr)
+      # A subprocess that SUCCEEDED still writes to stderr: torch, monai and
+      # the CUDA runtime all put their warnings there, and one of them -- "Creating
+      # a tensor from a list of numpy.ndarrays is extremely slow" -- came out of
+      # every healthy ALI IOS run. Logged at ERROR, it made a run that worked
+      # indistinguishable from one that did not, for anybody reading the log or
+      # counting error lines in it. The return code is what decides.
+      if self.subpro.returncode == 0:
+        logger.warning(self.stderr)
+      else:
+        logger.error(self.stderr)
     else:
       logger.info("(No error)")
     sys.stdout.flush()
+  def CountFileWithExtention(self,path,extentions = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"], exception = ["Seg", "seg", "Pred"]):
+
+    count = 0
+    normpath = os.path.normpath("/".join([path, '**', '']))
+    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
+        basename = os.path.basename(img_fn)
+
+        if True in [ext in basename for ext in extentions]:
+            if not True in [ex in basename for ex in exception]:
+                count += 1
+
+    return count
+
+  def GetAvailableSurfLm(self,model_folder):
+    available_lm = {}
+    networks = self.GetNetworks(model_folder)
+    for net in networks:
+      available_lm[net] = SURFACE_LANDMARKS[net]
+
+    return available_lm
+
+  def GetNetworks(self,dir_path):
+    networks = []
+    normpath = os.path.normpath("/".join([dir_path, '**', '']))
+    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
+        if os.path.isfile(img_fn) and ".pth" in img_fn:
+          for id, group in SURFACE_NETWORK.items():
+            if id in os.path.basename(img_fn):
+              networks.append(group)
+    return networks
+
+  def HasMGModel(self,dir_path):
+    """True if the folder contains a lower mucogingival model (Lower_MG_*.pth)"""
+    if not dir_path:
+      return False
+    normpath = os.path.normpath("/".join([dir_path, '**', '']))
+    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
+      basename = os.path.basename(img_fn)
+      if os.path.isfile(img_fn) and basename.endswith(".pth") and "Lower" in basename:
+        parts = basename.split("_")
+        if len(parts) > 1 and parts[1] == "MG":
+          return True
+    return False
+
+  def read_txt(self):
+    '''
+    Read a file and return the last line
+    '''
+    script_path = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_path,"tempo.txt")
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+        return lines[-1] if lines else None
+  def read_log_path(self, log_path):
+      with open(log_path, 'r') as f:
+          line = f.readline()
+          if line != '':
+              return line
+  
+
+      
