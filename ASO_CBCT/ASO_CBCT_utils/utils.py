@@ -29,7 +29,10 @@ from vtkmodules.vtkFiltersGeneral import vtkTransformPolyDataFilter
 import dicom2nifti
 
 from ADTLib.geometry import VTKMatrixToNumpy  # noqa: F401  (re-exported)
-from ADTLib.io.landmarks import WriteJson  # noqa: F401  (re-exported)
+from ADTLib.io.landmarks import (
+    WriteJson,  # noqa: F401  (re-exported)
+    IsMarkupsFile,
+)
 from ADTLib.io.fs import search as search_files
 from ADTLib.naming import patient_id as read_patient_id, ASO_CBCT_CLI_MARKERS
 
@@ -63,8 +66,15 @@ def MergeJson(data_dir, extension="MERGED"):
     """
 
     normpath = os.path.normpath("/".join([data_dir, "**", ""]))
+    # Markups only. A landmark folder also holds reports -- ALI_CBCT's
+    # `<patient>_lm_NotFound.json` among them -- and merging one of those blew
+    # up on `data1["markups"]` with KeyError: 'markups', which took the whole
+    # run down with it. Skipping them here also keeps them out of the deletion
+    # pass at the end of this function, which would otherwise have removed the
+    # report without a word.
     json_file = [
-        i for i in sorted(glob.iglob(normpath, recursive=True)) if i.endswith(".json")
+        i for i in sorted(glob.iglob(normpath, recursive=True))
+        if i.endswith(".json") and IsMarkupsFile(i)
     ]
 
     # ==================== ALL JSON classified by patient  ====================
@@ -908,7 +918,10 @@ def ExtractFilesFromFolder(folder_path, scan_extension, lm_extension=None, gold=
     for file in sorted(glob.iglob(normpath, recursive=True)):
         if lm_extension is not None:
             if os.path.isfile(file) and True in [ext in file for ext in lm_extension]:
-                json_files.append(file)
+                # Reports share the folder and the extension; only markups are
+                # landmarks. See IsMarkupsFile.
+                if not file.endswith(".json") or IsMarkupsFile(file):
+                    json_files.append(file)
         if os.path.isfile(file) and True in [ext in file for ext in scan_extension]:
             scan_files.append(file)
 
@@ -935,7 +948,10 @@ def GetPatients(folder_path):
         ]:
             patients[patient]["scan"] = file
 
-        if True in [ext in basename for ext in [".json"]]:
+        # Not every json here is a landmark file: ALI_CBCT's not-found report
+        # carries the patient's name too, and taking it as the landmarks sent
+        # the report into ICP, which failed on the missing "markups" key.
+        if basename.endswith(".json") and IsMarkupsFile(file):
             patients[patient]["json"] = file
         
         if True in [ext in basename for ext in [".tfm"]]:

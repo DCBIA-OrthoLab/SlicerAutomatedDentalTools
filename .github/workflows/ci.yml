@@ -28,8 +28,12 @@ jobs:
         with:
           python-version: "3.12"
       # The suites are synthetic but lean on the mesh libraries; they need
-      # neither Slicer, nor a GPU, nor any data.
-      - run: python -m pip install --upgrade pip numpy vtk pyvista SimpleITK
+      # neither Slicer, nor a GPU, nor any data. Two of these are here because
+      # a suite reaches them and the job was erroring on the import: scipy,
+      # which FlexReg's MGL patch builds its adjacency with, and tqdm, which
+      # ASO_IOS reaches through `PRE_ASO_IOS`. Before removing one, check what
+      # the five test directories import transitively, not just directly.
+      - run: python -m pip install --upgrade pip numpy scipy tqdm vtk pyvista SimpleITK
       - name: unittest
         run: |
           status=0
