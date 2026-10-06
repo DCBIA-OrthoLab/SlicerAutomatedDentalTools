@@ -28,8 +28,11 @@ jobs:
         with:
           python-version: "3.12"
       # The suites are synthetic but lean on the mesh libraries; they need
-      # neither Slicer, nor a GPU, nor any data.
-      - run: python -m pip install --upgrade pip numpy vtk pyvista SimpleITK
+      # neither Slicer, nor a GPU, nor any data. scipy is among them because
+      # FlexReg's MGL patch builds its adjacency with `scipy.sparse`: it has
+      # needed it since the engine was added, and the whole FlexReg suite has
+      # been erroring on the import ever since.
+      - run: python -m pip install --upgrade pip numpy scipy vtk pyvista SimpleITK
       - name: unittest
         run: |
           status=0
