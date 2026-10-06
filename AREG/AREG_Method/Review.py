@@ -14,6 +14,8 @@ import shutil
 import slicer
 import vtk
 
+from ADTLib.io.landmarks import IsMarkupsFile
+
 logger = logging.getLogger(__name__)
 
 VOLUME_EXT = (".nrrd", ".nii.gz", ".nii", ".nrrd.gz", ".gipl.gz", ".gipl")
@@ -179,11 +181,19 @@ class ReviewSession:
             for name in sorted(files):
                 if not name.endswith(wanted):
                     continue
+                path = os.path.join(root, name)
+                # Not every json in a landmark folder is landmarks. ALI drops
+                # `<patient>_lm_NotFound.json` beside its predictions, and
+                # loadMarkups has nothing to make of it: it counted as one more
+                # file to review and opened on an empty view, with an error in
+                # the log and no way for the user to tell what was wrong.
+                if name.endswith(".json") and not IsMarkupsFile(path):
+                    continue
                 patient = patientIdFromFileName(name)
                 if wanted_ids is not None and self._normalisedId(patient) not in wanted_ids:
                     skipped.add(patient)
                     continue
-                by_patient.setdefault(patient, []).append(os.path.join(root, name))
+                by_patient.setdefault(patient, []).append(path)
         if skipped:
             logger.info(
                 f"{len(skipped)} patient(s) left out of the review, not part of this "
