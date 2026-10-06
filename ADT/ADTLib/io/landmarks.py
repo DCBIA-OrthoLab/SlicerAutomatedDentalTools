@@ -139,3 +139,34 @@ def ListLandmarksJson(json_file):
         data["markups"][0]["controlPoints"][i]["label"]
         for i in range(len(data["markups"][0]["controlPoints"]))
     ]
+
+
+def IsMarkupsFile(path):
+    """Whether this json really holds Slicer markups.
+
+    A landmark folder is not only landmarks. ALI_CBCT drops a
+    `<patient>_lm_NotFound.json` beside its predictions listing the points it
+    could not place, and that report carries `patient` and `not_found`, no
+    `markups` at all. Everything downstream that globs `*.json` and reaches
+    straight for `data["markups"]` dies on it with `KeyError: 'markups'` --
+    which is how a whole AREG CBCT run ended on "No patient could be
+    registered" while ALI had in fact worked.
+
+    The test is on the content, not the name: `_lm_NotFound.json` is only the
+    first such file, and a folder may also hold a settings or manifest json
+    that no naming rule will ever catch.
+
+    Returns:
+        bool: True only for a json whose top level is an object carrying a
+            `markups` list. Unreadable or malformed files answer False rather
+            than raising -- the caller is deciding what to skip, not what to
+            trust.
+    """
+    if not str(path).endswith(".json"):
+        return False
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError, UnicodeDecodeError):
+        return False
+    return isinstance(data, dict) and isinstance(data.get("markups"), list)

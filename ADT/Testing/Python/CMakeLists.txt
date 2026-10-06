@@ -70,3 +70,7 @@ slicer_add_python_unittest(SCRIPT test_ali_cbct_missing.py)
 # A landmark whose name has no group: written out or not, it must not cost
 # the patient the thirty others that were found.
 slicer_add_python_unittest(SCRIPT test_ali_cbct_unknown_group.py)
+
+# ALI's not-found report shares the folder with the landmarks: the readers must
+# skip it, not die on its missing "markups" key nor hand it to ICP.
+slicer_add_python_unittest(SCRIPT test_aso_cbct_report_is_not_landmarks.py)

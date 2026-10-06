@@ -39,10 +39,22 @@ class PatientDictTest(unittest.TestCase):
         with open(os.path.join(self.folder, name), "w", encoding="utf-8") as handle:
             handle.write("{}")
 
+    def markups(self, name):
+        """A landmark file carrying the one key that makes it one.
+
+        These fixtures used to be `{}` like the scans, which no longer passes
+        for landmarks: a json counts as a patient's landmarks only when it
+        really holds markups, so that ALI's not-found report is not taken for
+        them. What each case below asserts is unchanged.
+        """
+        body = '{"markups": [{"controlPoints": []}]}'
+        with open(os.path.join(self.folder, name), "w", encoding="utf-8") as handle:
+            handle.write(body)
+
     def test_a_scan_and_its_landmarks_make_a_patient_without_tfm(self):
         """The shape the published Semi-Automated set actually has."""
         self.touch("IC_0005.nii.gz")
-        self.touch("IC_0005_lm_MERGED.mrk.json")
+        self.markups("IC_0005_lm_MERGED.mrk.json")
         patients = GetPatients(self.folder)
         self.assertEqual(sorted(patients), ["IC_0005"])
         self.assertIn("scan", patients["IC_0005"])
@@ -52,7 +64,7 @@ class PatientDictTest(unittest.TestCase):
     def test_a_tfm_beside_them_is_picked_up(self):
         """And when one IS there, it must still be used."""
         self.touch("Pat_0002_Or.nii.gz")
-        self.touch("Pat_0002_lm_Or.mrk.json")
+        self.markups("Pat_0002_lm_Or.mrk.json")
         self.touch("Pat_0002_Or_transform.tfm")
         patients = GetPatients(self.folder)
         entry = patients[sorted(patients)[0]]
@@ -62,7 +74,7 @@ class PatientDictTest(unittest.TestCase):
     def test_reading_the_key_outright_is_what_raised(self):
         """The failure this replaces, kept so the reason stays legible."""
         self.touch("IC_0005.nii.gz")
-        self.touch("IC_0005_lm_MERGED.mrk.json")
+        self.markups("IC_0005_lm_MERGED.mrk.json")
         entry = GetPatients(self.folder)["IC_0005"]
         with self.assertRaises(KeyError):
             entry["tfm"]
