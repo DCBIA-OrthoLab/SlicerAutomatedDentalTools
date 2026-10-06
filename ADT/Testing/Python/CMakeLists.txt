@@ -78,3 +78,8 @@ slicer_add_python_unittest(SCRIPT test_aso_cbct_report_is_not_landmarks.py)
 # A landmark review pause must not offer ALI's not-found report as landmarks:
 # it opened on an empty view and _load swallowed the reason.
 slicer_add_python_unittest(SCRIPT test_areg_review_skips_the_report.py)
+
+# The output folder the user typed survives a change of mode, in AREG and in
+# ASO: it used to be cleared in silence, and a prod run wrote 2.5 GB into the
+# test set's own tree while its author watched the folder they had chosen.
+slicer_add_python_unittest(SCRIPT test_output_folder_survives_mode_switch.py)

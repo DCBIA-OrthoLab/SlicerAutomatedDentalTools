@@ -1102,6 +1102,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.CbModeType.addItem(label)
 
         mode = self.ui.CbModeType.currentIndex
+        previous_method = self.ActualMethName
         if mode in config["methods"]:
             self.ActualMethName = config["methods"][mode]
             self.ActualMeth = self.MethodDic[self.ActualMethName]
@@ -1122,7 +1123,11 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "AREG_" + self.type,
         )
 
-        self.ClearAllLineEdits()
+        # Both combos emit `activated` on every click, re-picking the entry
+        # already selected included, so this ran on gestures that changed
+        # nothing at all and emptied the fields under the user's hands.
+        if self.ActualMethName != previous_method:
+            self.ClearModeSpecificPaths()
 
         self.enableCheckbox()
 
@@ -1141,13 +1146,25 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.rebuildReviewSteps()
 
-    def ClearAllLineEdits(self):
-        """Function to clear all the line edits"""
+    def ClearModeSpecificPaths(self):
+        """Empty the fields that belong to the method, and only those.
+
+        An IOS scan folder means nothing to a CBCT run, and a segmentation
+        model folder even less, so changing method has to let them go.
+
+        The output folder is NOT one of them. It is where the user wants their
+        results, and no change of mode makes that choice wrong. It used to be
+        cleared here with the rest, which cost a whole prod run: the user set
+        it, touched the mode combo, never saw the field empty again because the
+        next `Test Files` click refilled it -- and `FillFromTestFiles` fills it
+        with the TEST SET's own folder, in whichever tree that mode downloads
+        to. The run then wrote 2.5 GB somewhere the user had not asked for,
+        with nothing in the log to say the field had been overwritten.
+        """
         self.ui.lineEditScanT1LmPath.setText("")
         self.ui.lineEditScanT2LmPath.setText("")
         self.ui.lineEditModel2.setText("")
         self.ui.lineEditModel1.setText("")
-        self.ui.lineEditOutputPath.setText("")
 
     def DownloadUnzip(
         self, url, directory, folder_name=None, num_downl=1, total_downloads=1
@@ -1316,9 +1333,16 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     lineEdit=self.ui.lineEditModel3, name="IOS", test=True
                 )
 
+        # Only when the user has chosen nothing: their folder wins. And say
+        # which one, in the log -- a field a button filled in is the last thing
+        # anyone thinks to re-read before pressing Apply, and this one decides
+        # where gigabytes of results land. The split/join round trip this
+        # replaces rebuilt `scan_folder` unchanged.
         if self.ui.lineEditOutputPath.text == "":
-            dir, spl = os.path.split(scan_folder)
-            self.ui.lineEditOutputPath.setText(os.path.join(dir, spl, "Registered"))
+            default_output = os.path.join(scan_folder, "Registered")
+            self.ui.lineEditOutputPath.setText(default_output)
+            logger.info("Output folder was empty, set to this test set's own: "
+                        f"{default_output}")
 
     def CheckScan(self):
         """Function to test both t1 and t2 scan folders"""

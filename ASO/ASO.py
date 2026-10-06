@@ -856,6 +856,7 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         `model_label`. See `ASO_Method.Method`.
         """
         key = (self.ui.CbInputType.currentIndex, self.ui.CbModeType.currentIndex)
+        previous_method = getattr(self, "ActualMeth", None)
         self.ActualMeth = self.MethodDic[self.METHOD_FOR_COMBO[key]]
 
         self.ui.stackedWidget.setCurrentIndex(self.ActualMeth.stacked_page)
@@ -878,7 +879,10 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "ASO_" + self.type,
         )
 
-        self.ClearAllLineEdits()
+        # `MethodDic` holds one instance per method, so identity answers
+        # "did the method really change?" without a second bookkeeping field.
+        if self.ActualMeth is not previous_method:
+            self.ClearModeSpecificPaths()
 
         self.enableCheckbox()
 
@@ -887,13 +891,18 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self.type == "IOS":
             self.isDCMInput = False
 
-    def ClearAllLineEdits(self):
-        """Function to clear all the line edits"""
+    def ClearModeSpecificPaths(self):
+        """Empty the fields that belong to the method, and only those.
+
+        The output folder is not one of them: it is where the user wants their
+        results, and changing mode does not make that choice wrong. AREG
+        carried the same mistake, and there it cost a prod run -- see
+        `AREG.ClearModeSpecificPaths`.
+        """
         self.ui.lineEditScanLmPath.setText("")
         self.ui.lineEditRefFolder.setText("")
         self.ui.lineEditModelAli.setText("")
         self.ui.lineEditModelSegOr.setText("")
-        self.ui.lineEditOutputPath.setText("")
 
     def DownloadUnzip(
         self, url, directory, folder_name=None, num_downl=1, total_downloads=1
