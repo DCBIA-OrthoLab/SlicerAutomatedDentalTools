@@ -2350,7 +2350,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ReviewNextPatientButton.setEnabled(index < total - 1)
 
         # Marking is only worth offering when there is somewhere to go back to.
-        target, _ = self.logic.previousCorrectableStep(self.executed_steps)
+        target, _ = self.previousCorrectableStep()
         self.ui.ReviewFlagButton.setVisible(target is not None)
         if session.isFlagged():
             self.ui.ReviewFlagButton.setText("Cancel - this patient is fine")
@@ -2399,7 +2399,7 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         the results it already has, and a run of fifty does not start over
         because one case was wrong.
         """
-        target, replay = self.logic.previousCorrectableStep(self.executed_steps)
+        target, replay = self.previousCorrectableStep()
         if target is None:
             logger.warning("Nothing correctable behind this step")
             return
@@ -2476,6 +2476,31 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.done_popup.setModal(False)
         self.done_popup.show()
         self.done_popup.raise_()
+
+    def previousCorrectableStep(self):
+        """The nearest step behind this one the user can actually change.
+
+        Looking at a bad orientation is useless without a way back to the
+        landmarks that caused it. Steps that only ever get looked at are
+        skipped over, so the button lands where something can be done.
+
+        Returns:
+            tuple: (step, steps to replay after it), or (None, []) if there is
+                nothing correctable behind the current one
+        """
+        current = self.review_step or {}
+        history = self.executed_steps
+        try:
+            # the last time this step ran, not the first
+            here = len(history) - 1 - history[::-1].index(current)
+        except ValueError:
+            return None, []
+
+        for i in range(here - 1, -1, -1):
+            kind = Review.describe(history[i].get("ReviewId", "")).get("kind")
+            if kind in (Review.LANDMARKS, Review.REGISTRATION):
+                return history[i], history[i + 1:here + 1]
+        return None, []
 
     def resetReviewUi(self):
         """Put the panel back the way it was before the pause."""
@@ -3529,29 +3554,3 @@ class AREGLogic(ScriptedLoadableModuleLogic):
             f"[... {len(text) - len(kept)} characters omitted, "
             f"full output in the Slicer log ...]\n{kept}"
         )
-    def previousCorrectableStep(self, executed_steps):
-        """The nearest step behind this one the user can actually change.
-
-        Looking at a bad orientation is useless without a way back to the
-        landmarks that caused it. Steps that only ever get looked at are
-        skipped over, so the button lands where something can be done.
-
-        Returns:
-            tuple: (step, steps to replay after it), or (None, []) if there is
-                nothing correctable behind the current one
-        """
-        current = self.review_step or {}
-        history = executed_steps
-        try:
-            # the last time this step ran, not the first
-            here = len(history) - 1 - history[::-1].index(current)
-        except ValueError:
-            return None, []
-
-        for i in range(here - 1, -1, -1):
-            kind = Review.describe(history[i].get("ReviewId", "")).get("kind")
-            if kind in (Review.LANDMARKS, Review.REGISTRATION):
-                return history[i], history[i + 1:here + 1]
-        return None, []
-
-
