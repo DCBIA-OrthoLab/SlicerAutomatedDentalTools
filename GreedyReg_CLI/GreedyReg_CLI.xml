@@ -32,42 +32,42 @@
     <string>
       <name>maskFolder</name>
       <label>maskFolder</label>
-      <longflag>maskFolder</longflag>
+      <index>2</index>
       <description>Optional folder containing masks (T1 space). Pass an empty string to disable masking.</description>
     </string>
 
     <string>
       <name>initFolder</name>
       <label>initFolder</label>
-      <longflag>initFolder</longflag>
+      <index>3</index>
       <description>Optional folder containing per-case "{patientId}_init.mat" initialization matrices. Cases without a matching file use identity initialization. Pass an empty string to always use identity.</description>
     </string>
 
     <string>
       <name>outputFolder</name>
       <label>outputFolder</label>
-      <index>2</index>
+      <index>4</index>
       <description>Folder where "{patientId}_registered.nii.gz" and "{patientId}_warp.mat" are written</description>
     </string>
 
     <string>
       <name>greedyBinary</name>
       <label>greedyBinary</label>
-      <index>3</index>
+      <index>5</index>
       <description>Path to the Greedy executable</description>
     </string>
 
     <string>
       <name>metric</name>
       <label>metric</label>
-      <index>4</index>
+      <index>6</index>
       <description>Registration similarity metric: NMI, NCC or SSD</description>
     </string>
 
     <string>
       <name>transformType</name>
       <label>transformType</label>
-      <index>5</index>
+      <index>7</index>
       <description>Degrees of freedom for the affine search: Rigid or Affine</description>
     </string>
 

@@ -125,24 +125,6 @@ def buildRegistrationCommand(greedy_binary, fixedPath, movingPath, warpPath, ini
     return cmd
 
 
-def greedyMatToTfm(mat_path, tfm_path):
-    """Convert a Greedy affine (.mat: 4x4 RAS matrix mapping fixed-space points
-    to moving-space points) into an ITK transform file (.tfm) that Slicer loads
-    directly. ITK stores the same fixed->moving direction but in LPS, so only
-    the X and Y axes flip. Loaded in Slicer and applied to the moving (T2)
-    volume, it moves T2 onto T1."""
-    ras_matrix = np.loadtxt(mat_path)
-    flip_xy = np.diag([-1.0, -1.0, 1.0, 1.0])
-    lps_matrix = flip_xy @ ras_matrix @ flip_xy
-    parameters = list(lps_matrix[:3, :3].ravel()) + list(lps_matrix[:3, 3])
-    with open(tfm_path, 'w') as f:
-        f.write("#Insight Transform File V1.0\n")
-        f.write("#Transform 0\n")
-        f.write("Transform: AffineTransform_double_3_3\n")
-        f.write("Parameters: " + " ".join(f"{v:.17g}" for v in parameters) + "\n")
-        f.write("FixedParameters: 0 0 0\n")
-
-
 def runGreedyCase(greedy_binary, fixedPath, movingPath, outputPath, warpPath, initPath,
                    metric, transform_type, maskPath, timeout=600):
     cmd = buildRegistrationCommand(
@@ -184,9 +166,7 @@ def main(args):
         case_tmp_dir = tempfile.mkdtemp(prefix=f"greedyreg_{patient_id}_")
         try:
             output_path = os.path.join(args.outputFolder, f"{patient_id}_registered.nii.gz")
-            tfm_path = os.path.join(args.outputFolder, f"{patient_id}_transform.tfm")
-            # Greedy's own .mat is only an intermediate; the .tfm is the output
-            warp_path = os.path.join(case_tmp_dir, "warp.mat")
+            warp_path = os.path.join(args.outputFolder, f"{patient_id}_warp.mat")
 
             resolved_init_path = init_path
             if not resolved_init_path:
@@ -201,9 +181,8 @@ def main(args):
             runGreedyCase(
                 args.greedyBinary, fixed_path, moving_path, output_path, warp_path,
                 resolved_init_path, args.metric, args.transformType, resolved_mask_path)
-            greedyMatToTfm(warp_path, tfm_path)
 
-            logger.info(f"{patient_id} done -> {output_path}, {tfm_path}")
+            logger.info(f"{patient_id} done -> {output_path}")
         except Exception as e:
             logger.error(f"FAILED on {patient_id}: {e}")
             sys.exit(1)
@@ -219,8 +198,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('t1Folder', type=str)
     parser.add_argument('t2Folder', type=str)
-    parser.add_argument('--maskFolder', type=str, default="")
-    parser.add_argument('--initFolder', type=str, default="")
+    parser.add_argument('maskFolder', type=str)
+    parser.add_argument('initFolder', type=str)
     parser.add_argument('outputFolder', type=str)
     parser.add_argument('greedyBinary', type=str)
     parser.add_argument('metric', type=str)
