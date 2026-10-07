@@ -13,7 +13,6 @@ set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
   ${FOLDER_LIBRARY}/__init__.py
   ${FOLDER_LIBRARY}/Logic.py
-  ${FOLDER_LIBRARY}/greedy_download.py
 )
 
 #-----------------------------------------------------------------------------
