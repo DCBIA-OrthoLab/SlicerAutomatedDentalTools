@@ -8,8 +8,6 @@ import slicer
 from slicer.ScriptedLoadableModule import ScriptedLoadableModuleLogic
 import platform
 import re
-import subprocess
-import tempfile
 
 
 class GreedyRegLogic(ScriptedLoadableModuleLogic):
@@ -106,166 +104,41 @@ class GreedyRegLogic(ScriptedLoadableModuleLogic):
     except ImportError:
       return False
 
-  def downloadGreedyBinary(self, statusCallback=None):
-    """Download and extract the Greedy binary for the current platform
-    into GreedyReg_CLI's bin folder. statusCallback, if given, is called
-    with progress strings. Returns the path to the extracted binary;
-    raises on failure or unsupported platform."""
+  def startGreedyDownload(self, onStatus, onProgress, onFinished):
+    """Download Greedy into GreedyReg_CLI's bin folder in a separate
+    PythonSlicer process (greedy_download.py), so a slow network, a hung
+    installer or a crash can't freeze or take down Slicer. Returns
+    immediately; the callbacks run on the GUI thread:
+      onStatus(text), onProgress(percent 0-100),
+      onFinished(success, errorMessage)."""
+    python_slicer = shutil.which("PythonSlicer")
+    if not python_slicer:
+      raise RuntimeError("PythonSlicer executable not found")
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "greedy_download.py")
+    errors = []
 
-    def report(text):
-      if statusCallback:
-        statusCallback(text)
-
-    system = platform.system()
-    if system == "Windows":
-      return self._downloadGreedyBinaryWindows(report)
-    elif system == "Linux":
-      url = "https://sourceforge.net/projects/itk-snap/files/itk-snap/4.2.2/itksnap-4.2.2-20241202-Linux-x86_64.tar.gz/download"
-      binary_in_archive = "itksnap-4.2.2-20241202-Linux-x86_64/bin/greedy"
-    elif system == "Darwin":
-      url = "https://sourceforge.net/projects/itk-snap/files/itk-snap/4.2.2/itksnap-4.2.2-20241202-MacOS-arm64.tar.gz/download"
-      binary_in_archive = "itksnap-4.2.2-20241202-MacOS-arm64/bin/greedy"
-    else:
-      raise RuntimeError("Unsupported platform!")
-
-    import urllib.request, tarfile, tempfile
-
-    dest_binary = self.greedyBinaryPath()
-    dest_dir = os.path.dirname(dest_binary)
-
-    tmp_file = tempfile.mktemp(suffix=".tar.gz")
-    report("Downloading Greedy (~60MB)...")
-    urllib.request.urlretrieve(url, tmp_file)
-    report("Extracting...")
-    os.makedirs(dest_dir, exist_ok=True)
-    with tarfile.open(tmp_file, "r:gz") as tar:
-      member = tar.getmember(binary_in_archive)
-      member.name = os.path.basename(member.name)
-      tar.extract(member, dest_dir)
-    os.chmod(dest_binary, 0o755)
-    os.remove(tmp_file)
-    return dest_binary
-
-  def _find7zExecutable(self):
-    """Locate a system 7-Zip install, if any. Used to pull greedy.exe
-    straight out of the ITK-SNAP NSIS installer without running it."""
-    candidate = shutil.which("7z") or shutil.which("7z.exe")
-    if candidate:
-      return candidate
-    for env_var in ("ProgramFiles", "ProgramFiles(x86)"):
-      base = os.environ.get(env_var)
-      if base:
-        path = os.path.join(base, "7-Zip", "7z.exe")
-        if os.path.exists(path):
-          return path
-    return None
-
-  def _downloadGreedyBinaryWindows(self, report):
-    """ITK-SNAP only ships Windows builds as an NSIS installer (no portable
-    archive like Linux/Mac), so getting greedy.exe out of it needs an extra
-    step. Two strategies, in order of preference:
-
-    1. If 7-Zip is installed, open the installer as an archive and pull
-       greedy.exe out directly - no install, no admin rights, no leftovers.
-    2. Otherwise, run the installer silently into a throwaway, space-free
-       directory (NSIS's /D= switch cannot be quoted, so a path containing
-       spaces would be truncated at the first space), copy greedy.exe out,
-       then silently uninstall and delete the directory.
-
-    Raises RuntimeError with an actionable message if both fail.
-    """
-    import urllib.request, tempfile, subprocess
-
-    url = "https://sourceforge.net/projects/itk-snap/files/itk-snap/4.2.2/itksnap-4.2.2-20241202-win64-AMD64.exe/download"
-    dest_binary = self.greedyBinaryPath()
-    dest_dir = os.path.dirname(dest_binary)
-    os.makedirs(dest_dir, exist_ok=True)
-
-    installer_path = tempfile.mktemp(suffix=".exe")
-    report("Downloading ITK-SNAP installer (~150MB)...")
-    urllib.request.urlretrieve(url, installer_path)
-
-    try:
-      seven_zip = self._find7zExecutable()
-      if seven_zip:
-        report("Extracting greedy.exe with 7-Zip...")
-        extract_dir = tempfile.mkdtemp(prefix="greedyreg_7z_")
+    def onLine(line):
+      if line.startswith("STATUS: "):
+        onStatus(line[len("STATUS: "):])
+      elif line.startswith("PROGRESS: "):
         try:
-          result = subprocess.run(
-            [seven_zip, "x", installer_path, f"-o{extract_dir}", "-y"],
-            capture_output=True, text=True, timeout=300)
-          if result.returncode == 0:
-            found = self._findFileRecursive(extract_dir, "greedy.exe")
-            if found:
-              shutil.copy2(found, dest_binary)
-              return dest_binary
-          report("7-Zip extraction did not contain greedy.exe, falling back to silent install...")
-        finally:
-          shutil.rmtree(extract_dir, ignore_errors=True)
+          onProgress(int(line[len("PROGRESS: "):]))
+        except ValueError:
+          pass
+      elif line.startswith("ERROR: "):
+        errors.append(line[len("ERROR: "):])
+      else:
+        print(f"[greedy download] {line}")
 
-      return self._installGreedyBinaryWindowsViaNsis(installer_path, dest_binary, report)
-    finally:
-      if os.path.exists(installer_path):
-        os.remove(installer_path)
+    def onCompleted(return_code):
+      success = return_code == 0 and self.isGreedyAvailable()
+      message = "" if success else (errors[-1] if errors else f"download process exited with code {return_code}")
+      onFinished(success, message)
 
-  def _installGreedyBinaryWindowsViaNsis(self, installerPath, destBinary, report):
-
-    # NSIS's /D=dir switch cannot be quoted, so a path containing spaces
-    # gets truncated at the first space. Pick a short, space-free
-    # directory off the system drive instead of reusing destDir (which may
-    # live under a path with spaces or non-ASCII characters).
-    system_drive = os.environ.get("SystemDrive", "C:")
-    install_dir = os.path.join(system_drive + "\\", "_greedyreg_nsis_tmp")
-    if os.path.exists(install_dir):
-      shutil.rmtree(install_dir, ignore_errors=True)
-    try:
-      os.makedirs(install_dir, exist_ok=True)
-    except OSError:
-      install_dir = os.path.join(tempfile.gettempdir(), "_greedyreg_nsis_tmp")
-      if os.path.exists(install_dir):
-        shutil.rmtree(install_dir, ignore_errors=True)
-      os.makedirs(install_dir, exist_ok=True)
-    if " " in install_dir:
-      raise RuntimeError(
-        f"Could not find a space-free directory to silently install ITK-SNAP into "
-        f"(tried '{install_dir}'). Install 7-Zip, or install ITK-SNAP manually and "
-        f"copy its bin\\greedy.exe to: {destBinary}")
-
-    report("Installing ITK-SNAP silently (this can take a minute)...")
-    try:
-      result = subprocess.run(
-        [installerPath, "/S", f"/D={install_dir}"],
-        capture_output=True, text=True, timeout=300)
-      if result.returncode != 0:
-        raise RuntimeError(
-          f"Silent ITK-SNAP install failed (exit code {result.returncode}). "
-          f"Install ITK-SNAP manually and copy its bin\\greedy.exe to: {destBinary}")
-
-      report("Locating greedy.exe...")
-      found = self._findFileRecursive(install_dir, "greedy.exe")
-      if not found:
-        raise RuntimeError(
-          f"greedy.exe not found inside the ITK-SNAP install. "
-          f"Install ITK-SNAP manually and copy its bin\\greedy.exe to: {destBinary}")
-      shutil.copy2(found, destBinary)
-      return destBinary
-    finally:
-      uninstaller = os.path.join(install_dir, "Uninstall.exe")
-      if os.path.exists(uninstaller):
-        try:
-          subprocess.run([uninstaller, "/S", f"_?={install_dir}"],
-                         capture_output=True, timeout=60)
-        except (OSError, subprocess.SubprocessError):
-            # The uninstaller is a cleanup: the directory is erased right
-            # afterwards anyway.
-            pass
-      shutil.rmtree(install_dir, ignore_errors=True)
-
-  def _findFileRecursive(self, root_dir, file_name):
-    for root, _dirs, files in os.walk(root_dir):
-      if file_name in files:
-        return os.path.join(root, file_name)
-    return None
+    return slicer.util.launchConsoleProcess(
+      [python_slicer, script, self.greedyBinaryPath()],
+      useStartupEnvironment=False, blocking=False,
+      logCallback=onLine, completedCallback=onCompleted)
 
   # ------------------------------------------------------------------ #
   #  GreedyReg_CLI parameters
