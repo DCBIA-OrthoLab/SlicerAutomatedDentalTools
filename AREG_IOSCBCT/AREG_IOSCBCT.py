@@ -26,6 +26,7 @@ if os.path.join(_adt_root, "ADT") not in sys.path:
 
 # --- LOGGING CONFIGURATION ---
 from ADTLib.logging_setup import get_logger
+from ADTLib.naming import ARCH_SEP
 import re
 
 logger = get_logger("AREG_IOSCBCT")
@@ -1004,6 +1005,49 @@ def load_data(scan_path,json_path_cbct_u,json_path_cbct_l,json_path_ios_u,json_p
 
     return lm_cbct_u,lm_cbct_l,lm_ios_u,lm_ios_l,cbct_surface,on_enamel
 
+# Lifted out of getPatients so it can be imported and tested: it decides
+# which arch every file belongs to, and a name it cannot read silently
+# costs that patient an arch.
+def extract_jaw(filename):
+    """Extract jaw from filename (_u, _U, u_, _l, _L, l_, _upper, _lower)
+
+    The letter has to be a token of its own, delimited by an underscore,
+    the start of the name or a dot. Matching a bare "u" anywhere used to
+    read "Dupont_003_T1_L.vtk" or "P001_T1_L_Surface.vtk" as upper, which
+    registers the lower arch against the upper CBCT landmarks without any
+    error being raised.
+
+    A name carrying both jaws is refused rather than read as the first one
+    found. ALI_IOS runs the model of each jaw over every scan and names what
+    it writes after both the scan and the model, so a lower arch whose
+    segmentation holds a few upper tooth numbers comes back as
+    "P09_T1_L_SegOr_Upper_O_Pred.json": upper landmarks sitting on a lower
+    arch, which belongs to neither and would have taken the place of that
+    patient's real upper landmarks. Two markers that agree are the ordinary
+    case ("..._U_SegOr_Upper_...") and are read normally.
+    """
+    # The delimiter class comes from ADTLib.naming: this function used to
+    # accept only an underscore, so `pt_020_T1_L _SegOr.vtk` -- a stray,
+    # invisible space -- yielded None, "ios_lower" never reached the patient
+    # dict, and the run died on KeyError: 'ios_lower' AFTER every step had
+    # succeeded. The refusal of a name carrying both arches, below, is this
+    # module's own policy and stays here.
+    upper = re.search(rf'(?:^|{ARCH_SEP})(?:u|upper)(?={ARCH_SEP}|\.|$)',
+                      filename, re.IGNORECASE)
+    lower = re.search(rf'(?:^|{ARCH_SEP})(?:l|lower)(?={ARCH_SEP}|\.|$)',
+                      filename, re.IGNORECASE)
+    if upper and lower:
+        logger.warning(
+            "%s names both an upper and a lower arch, so which one it "
+            "describes cannot be told from it: ignored" % filename)
+        return None
+    if upper:
+        return 'upper'
+    if lower:
+        return 'lower'
+    return None
+
+
 def getPatients(ios_folder, cbct_folder, ios_lm_folder, cbct_lm_folder):
     """
     Scans the 4 folders and generates a dictionary with patient IDs as keys
@@ -1018,37 +1062,6 @@ def getPatients(ios_folder, cbct_folder, ios_lm_folder, cbct_lm_folder):
         """Extract timepoint from filename (T0, T1, T2, t0, t1, t2)"""
         match = re.search(r'[Tt]([0-2])', filename)
         return match.group(0) if match else None
-    
-    def extract_jaw(filename):
-        """Extract jaw from filename (_u, _U, u_, _l, _L, l_, _upper, _lower)
-
-        The letter has to be a token of its own, delimited by an underscore,
-        the start of the name or a dot. Matching a bare "u" anywhere used to
-        read "Dupont_003_T1_L.vtk" or "P001_T1_L_Surface.vtk" as upper, which
-        registers the lower arch against the upper CBCT landmarks without any
-        error being raised.
-
-        A name carrying both jaws is refused rather than read as the first one
-        found. ALI_IOS runs the model of each jaw over every scan and names what
-        it writes after both the scan and the model, so a lower arch whose
-        segmentation holds a few upper tooth numbers comes back as
-        "P09_T1_L_SegOr_Upper_O_Pred.json": upper landmarks sitting on a lower
-        arch, which belongs to neither and would have taken the place of that
-        patient's real upper landmarks. Two markers that agree are the ordinary
-        case ("..._U_SegOr_Upper_...") and are read normally.
-        """
-        upper = re.search(r'(?:^|_)(?:u|upper)(?=_|\.|$)', filename, re.IGNORECASE)
-        lower = re.search(r'(?:^|_)(?:l|lower)(?=_|\.|$)', filename, re.IGNORECASE)
-        if upper and lower:
-            logger.warning(
-                "%s names both an upper and a lower arch, so which one it "
-                "describes cannot be told from it: ignored" % filename)
-            return None
-        if upper:
-            return 'upper'
-        if lower:
-            return 'lower'
-        return None
     
     def extract_patient_id(filename):
         """Extract patient ID from filename (letter + digits before timepoint)"""

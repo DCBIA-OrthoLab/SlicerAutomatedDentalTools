@@ -23,6 +23,8 @@ logger = get_logger("ASO_IOS_utils")
 #     letter matched anywhere made "Dupont_03_L.vtk" an upper on the strength of
 #     the u in the name, and the old "_U_" wanted a trailing separator the very
 #     common "P1_T1_U.vtk" does not have.
+from ADTLib.naming import ARCH_SEP
+
 _JAW_WORD = {"Upper": "upper", "Lower": "lower"}
 
 #: What sets a one-letter arch marker off from the rest of the name. A SPACE
@@ -32,9 +34,10 @@ _JAW_WORD = {"Upper": "upper", "Lower": "lower"}
 #: jaw's type" after the CBCT half had already succeeded. Space-separated
 #: names like `P1 T1 U.vtk` failed the same way, which is a whole naming
 #: habit the detector never supported.
-#: Defined once: the stripper below built the same class by hand, and two
-#: copies of a delimiter list drift.
-_JAW_SEP = r"[_\-\s]"
+#: Defined in ADTLib so AREG_IOSCBCT reads the same answer: it carried a third
+#: copy of this class, accepting only an underscore, and that is what `KeyError:
+#: 'ios_lower'` was.
+_JAW_SEP = ARCH_SEP
 _JAW_LETTER = {
     "Upper": re.compile(rf"(?:^|{_JAW_SEP})u(?={_JAW_SEP}|\.|$)", re.IGNORECASE),
     "Lower": re.compile(rf"(?:^|{_JAW_SEP})l(?={_JAW_SEP}|\.|$)", re.IGNORECASE),

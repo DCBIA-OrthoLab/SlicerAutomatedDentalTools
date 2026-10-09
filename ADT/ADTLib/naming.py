@@ -77,6 +77,26 @@ TMJ_CROP_MARKERS = PATIENT_ID_MARKERS[:-1] + (
     "_CBCT", "_MRI", "_MR", ".",
 )
 
+#: What sets a one-letter arch marker off from the rest of a file name.
+#:
+#: ONE definition, because three copies of this class had drifted apart and the
+#: narrowest of them cost a production run. On 2026-10-09 an IOS-to-CBCT run on
+#: `pt_020_T1_L .stl` -- an underscore before the L, a stray space after it,
+#: invisible in any listing -- died twice from the same name: first in
+#: `PRE_ASO_IOS` on "dont found the jaw's type", then, once that was fixed, in
+#: `AREG_IOSCBCT` on `KeyError: 'ios_lower'`, because that module carried its own
+#: stricter regex accepting only an underscore.
+#:
+#: A space is a separator people really use (`P1 T1 U.vtk`), and a name that
+#: says its arch perfectly well must not be read as neither.
+#:
+#: What this does NOT settle is what to do with a name carrying BOTH arches:
+#: ASO_IOS keeps the last marker written, AREG_IOSCBCT refuses the file. Those
+#: policies are deliberate and stay with their callers; only the question "is
+#: this letter a marker at all" is answered here.
+ARCH_SEP = r"[_\-\s]"
+
+
 #: Strip the suffix of a landmark file, without touching the rest of the name.
 #: Used where the full identifier is not what is being looked for.
 LANDMARK_SUFFIX_MARKERS = ("_lm", "_Or", ".")
