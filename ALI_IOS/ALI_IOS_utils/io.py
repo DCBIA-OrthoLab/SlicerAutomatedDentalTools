@@ -5,6 +5,7 @@ import os
 # --- LOGGING CONFIGURATION ---
 from ADTLib.logging_setup import get_logger
 import re
+from ADTLib.naming import ARCH_SEP
 
 logger = get_logger("ALI_IOS_IO")
 
@@ -207,8 +208,16 @@ def ScanJawFromName(path):
     """
 
     name = os.path.basename(path)
-    upper = re.search(r'(?:^|_)(?:u|upper|max|mx)(?=_|\.|$)', name, re.IGNORECASE)
-    lower = re.search(r'(?:^|_)(?:l|lower|mand|md)(?=_|\.|$)', name, re.IGNORECASE)
+    # Delimiter class from ADTLib.naming, like every other reader of an arch
+    # marker. This was the FOURTH copy, and the docstring above already noted
+    # the duplication without sharing the code. Accepting only an underscore is
+    # what made `pt_020_T1_L .stl` -- a stray, invisible space -- belong to no
+    # arch. The vocabulary below (max/mx, mand/md) and the refusal of a name
+    # carrying both are this module's own and stay here.
+    upper = re.search(rf'(?:^|{ARCH_SEP})(?:u|upper|max|mx)(?={ARCH_SEP}|\.|$)',
+                      name, re.IGNORECASE)
+    lower = re.search(rf'(?:^|{ARCH_SEP})(?:l|lower|mand|md)(?={ARCH_SEP}|\.|$)',
+                      name, re.IGNORECASE)
     if upper and lower:
         logger.warning(f"{name} names both jaws, so it cannot say which one it is")
         return None

@@ -326,3 +326,82 @@ class RegistrationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ArchFromNameTest(unittest.TestCase):
+    """Which arch a file name names, as this module reads it.
+
+    `getPatients` keys its patient dict on this, and a name it cannot read
+    silently costs that patient an arch: `patient_data["ios_lower"]` then raises
+    `KeyError: 'ios_lower'` at the end of a run where every step succeeded.
+    That is what an IOS-to-CBCT run died of on 2026-10-09, on a file called
+    `pt_020_T1_L .stl` -- a stray space, invisible in any listing.
+    """
+
+    @staticmethod
+    def jaw(name):
+        """The module's own function, not a copy of it.
+
+        It was lifted out of `getPatients` for exactly this: a test that
+        reimplements the rule it is checking passes on a broken module.
+        """
+        from AREG_IOSCBCT import extract_jaw
+        return extract_jaw(name)
+
+    def test_a_space_sets_the_marker_off(self):
+        """The four families getPatients has to pair, as produced on 2026-10-09."""
+        self.assertEqual(self.jaw("pt_020_T1_L _SegOr.vtk"), "lower")
+        self.assertEqual(self.jaw("pt_020_T1_U_SegOr.vtk"), "upper")
+        self.assertEqual(self.jaw("pt_020_T1_L _SegOr_Lower_O_Pred.json"), "lower")
+        self.assertEqual(self.jaw("pt_020_T1_CBCT_Or_lm_Pred_L.mrk.json"), "lower")
+
+    def test_the_underscore_form_is_untouched(self):
+        self.assertEqual(self.jaw("P1_T1_U.vtk"), "upper")
+        self.assertEqual(self.jaw("P1_T1_L_Surface.vtk"), "lower")
+        self.assertEqual(self.jaw("P1_T1_Lower_Seg.vtk"), "lower")
+
+    def test_a_name_carrying_both_arches_is_still_refused(self):
+        """This module's own policy, and the reason it cannot just call
+        JawFromFileName: ALI_IOS writes upper landmarks onto a lower arch as
+        `..._L_SegOr_Upper_O_Pred.json`, which belongs to neither."""
+        self.assertIsNone(self.jaw("P09_T1_L_SegOr_Upper_O_Pred.json"))
+
+    def test_a_word_beginning_with_the_letter_is_not_a_marker(self):
+        self.assertIsNone(self.jaw("P1_T1_Left_Seg.vtk"))
+        self.assertIsNone(self.jaw("P1T1U.vtk"))
+
+
+class OneDelimiterClassTest(unittest.TestCase):
+    """No module may declare its own idea of what sets an arch marker off.
+
+    Three copies of that class existed and disagreed; the narrowest of them is
+    what `KeyError: 'ios_lower'` was. This walks the source so a fourth copy
+    cannot be added without a failure here.
+    """
+
+    def test_no_module_hardcodes_an_arch_delimiter_class(self):
+        import re as _re
+        root = os.path.normpath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "..", "..", ".."))
+        # `(?:^|_)` or `(?:^|[_-])` immediately before a u/l marker: the shape
+        # every copy had. ARCH_SEP is how it is spelled now.
+        shape = _re.compile(r"\(\?:\^\|\[?_[^)\]]*\]?\)\(\?:(?:u|l)\b")
+        offenders = []
+        for folder, _, files in os.walk(root):
+            if any(part in folder for part in (".git", "__pycache__")):
+                continue
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                path = os.path.join(folder, name)
+                try:
+                    with open(path, encoding="utf-8", errors="replace") as handle:
+                        body = handle.read()
+                except OSError:
+                    continue
+                if shape.search(body):
+                    offenders.append(os.path.relpath(path, root))
+        self.assertEqual(sorted(offenders), [],
+                         "these declare their own arch delimiter class instead "
+                         "of using ADTLib.naming.ARCH_SEP: %s" % offenders)

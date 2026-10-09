@@ -23,10 +23,24 @@ logger = get_logger("ASO_IOS_utils")
 #     letter matched anywhere made "Dupont_03_L.vtk" an upper on the strength of
 #     the u in the name, and the old "_U_" wanted a trailing separator the very
 #     common "P1_T1_U.vtk" does not have.
+from ADTLib.naming import ARCH_SEP
+
 _JAW_WORD = {"Upper": "upper", "Lower": "lower"}
+
+#: What sets a one-letter arch marker off from the rest of the name. A SPACE
+#: counts, and that is the whole point: `pt_020_T1_L .stl` -- an underscore
+#: before the L, a stray space after it -- named its arch perfectly well and
+#: was read as neither jaw, so PRE_ASO_IOS stopped the run on "dont found the
+#: jaw's type" after the CBCT half had already succeeded. Space-separated
+#: names like `P1 T1 U.vtk` failed the same way, which is a whole naming
+#: habit the detector never supported.
+#: Defined in ADTLib so AREG_IOSCBCT reads the same answer: it carried a third
+#: copy of this class, accepting only an underscore, and that is what `KeyError:
+#: 'ios_lower'` was.
+_JAW_SEP = ARCH_SEP
 _JAW_LETTER = {
-    "Upper": re.compile(r"(?:^|[_\-])u(?=[_\-.]|$)", re.IGNORECASE),
-    "Lower": re.compile(r"(?:^|[_\-])l(?=[_\-.]|$)", re.IGNORECASE),
+    "Upper": re.compile(rf"(?:^|{_JAW_SEP})u(?={_JAW_SEP}|\.|$)", re.IGNORECASE),
+    "Lower": re.compile(rf"(?:^|{_JAW_SEP})l(?={_JAW_SEP}|\.|$)", re.IGNORECASE),
 }
 
 
@@ -72,10 +86,13 @@ def StripJawFromFileName(name_file):
     identical for the two of them: "P1_T1_U_Seg" and "P1_T1_L_Seg" both reduce
     to "P1_T1_Seg", and so does "P1_T1_Upper_Seg".
     """
-    out = re.sub(r"(?:^|[_\-])(?:u|l)(?=[_\-.]|$)", "_", name_file, flags=re.IGNORECASE)
+    out = re.sub(rf"(?:^|{_JAW_SEP})(?:u|l)(?={_JAW_SEP}|\.|$)", "_",
+                 name_file, flags=re.IGNORECASE)
     out = re.sub(r"upper|lower", "_", out, flags=re.IGNORECASE)
-    out = re.sub(r"[_\-]{2,}", "_", out)
-    return out.strip("_-")
+    # Spaces collapse with the rest: both arches must reduce to ONE key, and
+    # `P1_T1_L _Seg` leaves "_ _" behind where `P1_T1_U_Seg` leaves "__".
+    out = re.sub(rf"({_JAW_SEP}){{2,}}", "_", out)
+    return out.strip("_- \t")
 
 
 def UpperOrLower(path_filename):

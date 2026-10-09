@@ -139,6 +139,29 @@ class JawFromNameTest(unittest.TestCase):
         self.assertEqual(JawFromFileName("Dupont_03_L.vtk"), "Lower")
         self.assertEqual(JawFromFileName("P001_T1_L_Surface.vtk"), "Lower")
 
+    def test_a_space_sets_the_letter_off_just_as_well(self):
+        """What a run on ssh1 died of, on 2026-10-08.
+
+        `pt_020_T1_L .stl` -- an underscore before the L, a stray space after
+        it -- named its arch perfectly well and was read as neither jaw. The
+        CBCT half of AREG IOS-to-CBCT had already succeeded (resampling,
+        orientation, 1/1 registered) when PRE_ASO_IOS stopped the run on
+        "dont found the jaw's type", and the message told the operator to do
+        what they had already done.
+        """
+        self.assertEqual(JawFromFileName("pt_020_T1_L .stl"), "Lower")
+        self.assertEqual(JawFromFileName("pt_020_T1_L _Seg.vtk"), "Lower")
+
+    def test_a_name_separated_by_spaces_is_read_at_all(self):
+        """A whole naming habit the detector never supported."""
+        self.assertEqual(JawFromFileName("P1 T1 U.vtk"), "Upper")
+        self.assertEqual(JawFromFileName("P1 T1 L.vtk"), "Lower")
+
+    def test_a_word_beginning_with_the_letter_is_still_not_a_marker(self):
+        """The space must not turn every L-word into a lower arch."""
+        self.assertIsNone(JawFromFileName("P1_T1_Left_Seg.vtk"))
+        self.assertIsNone(JawFromFileName("P1 T1 Universal.vtk"))
+
     def test_only_the_base_name_is_read(self):
         self.assertEqual(JawFromFileName("/data/lower_arches/P1_T1_U.vtk"), "Upper")
 
@@ -150,7 +173,11 @@ class JawFromNameTest(unittest.TestCase):
     def test_both_arches_reduce_to_the_same_pairing_key(self):
         for upper, lower in (("P1_T1_U_Seg", "P1_T1_L_Seg"),
                              ("P1_T1_Upper_Seg", "P1_T1_Lower_Seg"),
-                             ("P1_T1_U", "P1_T1_L")):
+                             ("P1_T1_U", "P1_T1_L"),
+                             # The stray space must not cost the pairing: one
+                             # key or the mouth is never assembled.
+                             ("pt_020_T1_U_Seg", "pt_020_T1_L _Seg"),
+                             ("P1 T1 U", "P1 T1 L")):
             self.assertEqual(StripJawFromFileName(upper),
                              StripJawFromFileName(lower))
 
@@ -176,6 +203,15 @@ class PairingTest(unittest.TestCase):
     def test_a_missing_arch_is_not_a_mouth(self):
         folder = FolderOf(["P4_T1_U_Seg.vtk"])
         self.assertEqual(Files_vtk_link(folder).list_file, [])
+
+    def test_an_arch_named_with_a_stray_space_still_pairs(self):
+        """The ssh1 case, end to end: the mouth has to be assembled."""
+        folder = FolderOf(["pt_020_T1_U_Seg.vtk", "pt_020_T1_L _Seg.vtk"])
+        mouths = Files_vtk_link(folder).list_file
+
+        self.assertEqual(len(mouths), 1)
+        self.assertEqual(os.path.basename(mouths[0].Upper), "pt_020_T1_U_Seg.vtk")
+        self.assertEqual(os.path.basename(mouths[0].Lower), "pt_020_T1_L _Seg.vtk")
 
     def test_names_without_a_trailing_separator_still_pair(self):
         """"P1_T1_U.vtk" used to raise, taking the whole folder down with it."""
