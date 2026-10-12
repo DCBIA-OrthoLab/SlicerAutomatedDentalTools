@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <index>0</index>
+  <title>SurgMovPred_CLI</title>
+  <version>0.1.0.</version>
+  <license/>
+  
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>inputFolder</name>
+      <label>inputFolder</label>
+      <index>0</index>
+      <description>Path to the input directory.</description>
+    </string>
+
+    <string>
+      <name>modelPath</name>
+      <label>modelPath</label>
+      <index>1</index>
+      <description>Path to the Model directory.</description>
+    </string>
+
+    <string>
+      <name>outputFolder</name>
+      <label>outputFolder</label>
+      <index>2</index>
+      <description>Path to the output directory.</description>
+    </string>
+    
+  </parameters>
+
+</executable>
