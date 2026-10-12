@@ -81,7 +81,14 @@ class OutputFolderIsNeverClearedTest(unittest.TestCase):
                 self.assertTrue(os.path.isfile(path), path)
                 self.assertIsNotNone(_function(path, "SwitchType"))
 
-    def test_nothing_empties_the_output_field(self):
+    #: The one place allowed to empty the output field, and only inside a branch
+    #: guarded by `_auto_output` -- i.e. only the path `Test Files` itself wrote.
+    #: This exception did not exist on 2026-10-09: the rule then was "nothing
+    #: empties it", which protected the user's folder and froze ours, so clicking
+    #: `Test Files` in one mode kept offering another mode's path.
+    MAY_CLEAR_WHEN_GUARDED = {"SwitchType"}
+
+    def test_nothing_empties_the_output_field_unconditionally(self):
         """The whole defect in one assertion, for both modules."""
         for module, (path, _) in MODULES.items():
             with self.subTest(module=module):
@@ -89,9 +96,26 @@ class OutputFolderIsNeverClearedTest(unittest.TestCase):
                     node.name for node in ast.walk(_tree(path))
                     if isinstance(node, ast.FunctionDef)
                     and OUTPUT_FIELD in _fields_set_to_empty(node)
+                    and node.name not in self.MAY_CLEAR_WHEN_GUARDED
                 )
                 self.assertEqual(culprits, [],
                                  f"{module}: {culprits} empties {OUTPUT_FIELD}")
+
+    def test_the_one_exception_is_really_guarded(self):
+        """`SwitchType` may clear it, but only the path it filled in itself."""
+        for module, (path, _) in MODULES.items():
+            switch = _function(path, "SwitchType")
+            if switch is None or OUTPUT_FIELD not in _fields_set_to_empty(switch):
+                continue
+            with self.subTest(module=module):
+                guarded = [b for b in ast.walk(switch)
+                           if isinstance(b, ast.If)
+                           and "_auto_output" in ast.dump(b.test)
+                           and OUTPUT_FIELD in _fields_set_to_empty(b)]
+                self.assertTrue(
+                    guarded,
+                    f"{module}: SwitchType empties {OUTPUT_FIELD} outside any "
+                    "branch that checks it was auto-filled")
 
     def test_the_mode_specific_paths_are_still_cleared(self):
         """The fix must not turn into "clear nothing": an IOS path left in a
@@ -159,3 +183,84 @@ class ClearingIsGuardedTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutoFilledOutputFollowsTheModeTest(unittest.TestCase):
+    """`Test Files` fills the output folder; that path belongs to the mode.
+
+    Protecting the user's folder from a change of mode is one half of the rule.
+    The other half was missed and showed up three days later: a path THIS button
+    had filled in survived into another mode, where it is simply wrong -- every
+    mode downloads its own test set, under its own scan type. Clicking
+    `Test Files` in IOS-to-CBCT kept offering
+    `AREG_CBCT/Test_Files/Oriented-Automated/Registered`, a CBCT path from a
+    CBCT session, because `== ""` cannot replace a field that is not empty.
+
+    The two are told apart by memory, not by guessing: `_auto_output` holds what
+    the button wrote, and the field counts as ours only while it still matches.
+    """
+
+    AREG = MODULES["AREG"][0]
+
+    def source(self):
+        with open(self.AREG, encoding="utf-8") as handle:
+            return handle.read()
+
+    def function(self, name, inside="AREGWidget"):
+        """A method of the WIDGET class.
+
+        Not the first `__init__` in the file: that one belongs to the
+        ScriptedLoadableModule and sets `title`, `categories` and such. Looking
+        it up by name alone is how the first version of this test failed.
+        """
+        for cls in ast.walk(ast.parse(self.source())):
+            if not (isinstance(cls, ast.ClassDef) and cls.name == inside):
+                continue
+            for node in ast.walk(cls):
+                if isinstance(node, ast.FunctionDef) and node.name == name:
+                    return node
+        return None
+
+    def test_the_auto_filled_path_is_remembered(self):
+        """Without this attribute there is nothing to compare against."""
+        self.assertTrue("_auto_output" in self.source(),
+                        "AREG.py never mentions _auto_output")
+        init = self.function("__init__")
+        assigned = {t.attr for node in ast.walk(init)
+                    if isinstance(node, ast.Assign)
+                    for t in node.targets
+                    if isinstance(t, ast.Attribute)}
+        self.assertIn("_auto_output", assigned,
+                      "_auto_output must start empty, or the first comparison "
+                      "raises AttributeError")
+
+    def test_test_files_no_longer_refuses_a_non_empty_field(self):
+        """`== ""` alone is what left the stale CBCT path in place."""
+        fill = self.function("FillFromTestFiles")
+        self.assertIsNotNone(fill)
+        body = ast.dump(fill)
+        self.assertTrue("_auto_output" in body,
+                      "FillFromTestFiles must compare the field against what "
+                      "it last wrote, not only against the empty string")
+
+    def test_a_change_of_method_drops_our_path_and_only_ours(self):
+        switch = self.function("SwitchType")
+        self.assertIsNotNone(switch)
+        guarded = [branch for branch in ast.walk(switch)
+                   if isinstance(branch, ast.If)
+                   and "_auto_output" in ast.dump(branch.test)]
+        self.assertTrue(guarded,
+                        "SwitchType must drop the auto-filled output folder "
+                        "when the method changes")
+        for branch in guarded:
+            # it may only clear it, never set it to something else
+            cleared = [c for c in ast.walk(branch)
+                       if isinstance(c, ast.Call)
+                       and isinstance(c.func, ast.Attribute)
+                       and c.func.attr == "setText"]
+            for call in cleared:
+                self.assertTrue(
+                    call.args and isinstance(call.args[0], ast.Constant)
+                    and call.args[0].value == "",
+                    "a change of mode may clear the field, not refill it")
+
