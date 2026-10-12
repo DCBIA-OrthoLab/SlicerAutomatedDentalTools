@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <index>1</index>
+  <title>CNE_Dashboard</title>
+  <description><![CDATA[Draws a patient dashboard from the extraction files CNE wrote: one PNG and the table it was drawn from.]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools</documentation-url>
+  <license>Slicer</license>
+  <contributor>DCBIA-OrthoLab</contributor>
+  <acknowledgements>Ported from MedX_Dashboard, which CNE replaced without taking this half with it.</acknowledgements>
+
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>summary_folder</name>
+      <label>summary_folder</label>
+      <index>0</index>
+      <description>Folder of Extraction_*.txt files written by CNE</description>
+    </string>
+
+    <string>
+      <name>output_folder</name>
+      <label>output_folder</label>
+      <index>1</index>
+      <description>Folder where dashboard.png and patient_data.csv are written</description>
+    </string>
+
+  </parameters>
+</executable>
