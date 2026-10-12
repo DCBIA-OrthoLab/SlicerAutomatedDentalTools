@@ -57,6 +57,8 @@ add_subdirectory(GreedyReg)
 add_subdirectory(GreedyReg_CLI)
 add_subdirectory(Agent)
 add_subdirectory(Agent_CLI)
+add_subdirectory(SurgMovPred)
+add_subdirectory(SurgMovPred_CLI)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
