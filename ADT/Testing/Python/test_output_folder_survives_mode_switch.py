@@ -200,20 +200,24 @@ class AutoFilledOutputFollowsTheModeTest(unittest.TestCase):
     the button wrote, and the field counts as ours only while it still matches.
     """
 
-    AREG = MODULES["AREG"][0]
+    #: Both modules fill this field from their test-files button and both had
+    #: the same `== ""`, so both froze the path they had written. ALI has no
+    #: such button and is untouched.
+    WIDGETS = {"AREG": "AREGWidget", "ASO": "ASOWidget"}
 
-    def source(self):
-        with open(self.AREG, encoding="utf-8") as handle:
+    def source(self, module="AREG"):
+        with open(MODULES[module][0], encoding="utf-8") as handle:
             return handle.read()
 
-    def function(self, name, inside="AREGWidget"):
+    def function(self, name, module="AREG", inside=None):
         """A method of the WIDGET class.
 
         Not the first `__init__` in the file: that one belongs to the
         ScriptedLoadableModule and sets `title`, `categories` and such. Looking
         it up by name alone is how the first version of this test failed.
         """
-        for cls in ast.walk(ast.parse(self.source())):
+        inside = inside or self.WIDGETS[module]
+        for cls in ast.walk(ast.parse(self.source(module))):
             if not (isinstance(cls, ast.ClassDef) and cls.name == inside):
                 continue
             for node in ast.walk(cls):
@@ -223,16 +227,19 @@ class AutoFilledOutputFollowsTheModeTest(unittest.TestCase):
 
     def test_the_auto_filled_path_is_remembered(self):
         """Without this attribute there is nothing to compare against."""
-        self.assertTrue("_auto_output" in self.source(),
-                        "AREG.py never mentions _auto_output")
-        init = self.function("__init__")
-        assigned = {t.attr for node in ast.walk(init)
-                    if isinstance(node, ast.Assign)
-                    for t in node.targets
-                    if isinstance(t, ast.Attribute)}
-        self.assertIn("_auto_output", assigned,
-                      "_auto_output must start empty, or the first comparison "
-                      "raises AttributeError")
+        for module in self.WIDGETS:
+            with self.subTest(module=module):
+                self.assertTrue("_auto_output" in self.source(module),
+                                f"{module} never mentions _auto_output")
+                init = self.function("__init__", module)
+                self.assertIsNotNone(init, f"{module}: no widget __init__")
+                assigned = {t.attr for node in ast.walk(init)
+                            if isinstance(node, ast.Assign)
+                            for t in node.targets
+                            if isinstance(t, ast.Attribute)}
+                self.assertIn("_auto_output", assigned,
+                              f"{module}: _auto_output must start empty, or "
+                              "the first comparison raises AttributeError")
 
     def test_test_files_no_longer_refuses_a_non_empty_field(self):
         """`== ""` alone is what left the stale CBCT path in place."""
@@ -244,8 +251,13 @@ class AutoFilledOutputFollowsTheModeTest(unittest.TestCase):
                       "it last wrote, not only against the empty string")
 
     def test_a_change_of_method_drops_our_path_and_only_ours(self):
-        switch = self.function("SwitchType")
-        self.assertIsNotNone(switch)
+        for module in self.WIDGETS:
+            with self.subTest(module=module):
+                self._guarded_clear(module)
+
+    def _guarded_clear(self, module):
+        switch = self.function("SwitchType", module)
+        self.assertIsNotNone(switch, f"{module}: no SwitchType")
         guarded = [branch for branch in ast.walk(switch)
                    if isinstance(branch, ast.If)
                    and "_auto_output" in ast.dump(branch.test)]
