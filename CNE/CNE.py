@@ -99,6 +99,16 @@ def check_dependencies() -> bool:
         if not check_lib_installed("docx"):
             missing_libs.append("python-docx")
 
+        # The dashboard draws with matplotlib on a pandas frame. Slicer ships
+        # neither, and the figure is built in the CLI, where a missing import is
+        # an ImportError with no interface to report it -- so it is checked here,
+        # with the rest, rather than at the moment the button is pressed.
+        if not check_lib_installed("matplotlib"):
+            missing_libs.append("matplotlib")
+
+        if not check_lib_installed("pandas"):
+            missing_libs.append("pandas")
+
         if not missing_libs:
             logger.info("All dependencies verified and available.")
             return True
@@ -221,6 +231,7 @@ class CNEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
         self.ui.applyButton.connect("clicked(bool)", self.onApplyButton)
         self.ui.downloadTestFilesButton.connect("clicked(bool)", self.onRunTestFilesButton)
+        self.ui.dashboardButton.connect("clicked(bool)", self.onDashboardButton)
 
         self.ui.notesTypeTMJRadioButton.connect("toggled(bool)", self._updateParameterNodeFromGUI)
         self.ui.notesTypeOrthoRadioButton.connect("toggled(bool)", self._updateParameterNodeFromGUI)
@@ -343,6 +354,38 @@ class CNEWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 notes_folder_input,
                 notes_type, notes_folder_output
             )
+
+            if cli_node:
+                self.cliProgressBar.setCommandLineModuleNode(cli_node)
+                self.cliProgressBar.visible = True
+                self.cliCancelButton.visible = True
+                self.addObserver(cli_node, slicer.vtkMRMLCommandLineModuleNode.StatusModifiedEvent, self.onCliFinished)
+
+
+    def onDashboardButton(self) -> None:
+        """Draw the dashboard from the extractions already in the output folder.
+
+        It reads what Run wrote; it does not extract anything itself. That is why
+        it takes the output folder as its input: the extractions live there.
+        """
+
+        if not check_dependencies():
+            return
+
+        with slicer.util.tryWithErrorDisplay(_("Failed to draw the dashboard."), waitCursor=True):
+
+            logger.info("CNE Dashboard")
+            self._updateParameterNodeFromGUI()
+
+            extractions_folder = self._parameterNode.notesFolder_output
+            if not extractions_folder:
+                slicer.util.errorDisplay("Select the output folder first: the dashboard "
+                                         "is drawn from the extractions it holds.")
+                return
+
+            logger.info(f"Extractions folder : {extractions_folder}")
+
+            cli_node = self.logic.dashboard(extractions_folder)
 
             if cli_node:
                 self.cliProgressBar.setCommandLineModuleNode(cli_node)
@@ -579,6 +622,28 @@ class CNELogic(ScriptedLoadableModuleLogic):
 
         logger.info(f"Launching CLI with model: {model_path}")
         self.cliNode = slicer.cli.run(cli_module, None, parameters)
+        self.cliNode.AddObserver(slicer.vtkMRMLCommandLineModuleNode.StatusModifiedEvent, self.onCliModified)
+
+        return self.cliNode
+
+    def dashboard(self, extractions_folder: str):
+        """Run CNE_Dashboard on a folder of extractions.
+
+        No model is involved: the dashboard reads the `Extraction_*.txt` files
+        already written and draws from them, so it needs neither llama_cpp nor a
+        download. The figure and the table land beside the extractions.
+        """
+        if not os.path.isdir(extractions_folder):
+            slicer.util.errorDisplay(f"Folder not found: {extractions_folder}")
+            return None
+
+        parameters = {
+            "summary_folder": extractions_folder,
+            "output_folder": extractions_folder,
+        }
+
+        logger.info(f"Launching the dashboard on {extractions_folder}")
+        self.cliNode = slicer.cli.run(slicer.modules.cne_dashboard, None, parameters)
         self.cliNode.AddObserver(slicer.vtkMRMLCommandLineModuleNode.StatusModifiedEvent, self.onCliModified)
 
         return self.cliNode

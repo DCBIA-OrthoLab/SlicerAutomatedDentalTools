@@ -169,6 +169,19 @@ QProgressBar::chunk {
        </property>
       </widget>
      </item>
+     <item>
+      <widget class="QPushButton" name="dashboardButton">
+       <property name="enabled">
+      <bool>true</bool>
+       </property>
+       <property name="toolTip">
+      <string>Draw a dashboard from the extractions already in the output folder.</string>
+       </property>
+       <property name="text">
+      <string>Dashboard</string>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
    <item>
