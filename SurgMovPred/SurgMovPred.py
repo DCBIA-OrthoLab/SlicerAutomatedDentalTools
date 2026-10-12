@@ -231,7 +231,10 @@ class SurgMovPred(ScriptedLoadableModule):
         self.parent.dependencies = []
         self.parent.contributors = ["Paul Dumont, University of North Carolina, Chapell Hill"]
         self.parent.helpText = _("""
-        This tool helps to create summaries of clinical notes.
+        Predicts surgical movement targets from a table of patient measurements.
+        Give it a folder of csv, xlsx or ods files and a folder of trained models;
+        it loads every stacking_package.pkl it finds, predicts each target variable,
+        and writes one result table per input file.
         See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools">documentation</a>.
         """)
         self.parent.acknowledgementText = _("""
@@ -246,12 +249,12 @@ class SurgMovPred(ScriptedLoadableModule):
 @parameterNodeWrapper
 class SurgMovPredParameterNode:
     """
-    Parameters for Clinical Notes Extraction UI.
+    Parameters for the Surgical Movement Prediction UI.
 
-    notesFolder_input - Folder containing clinical notes (.docx/.pdf/.txt).
-    modelType - Model type selection: 'Mini' (Light/Fast) or 'Max' (Heavy/Precise).
-    notesType - Notes type selection: 'TMJ' or 'Ortho'.
-    notesFolder_output - Folder for summary output.
+    inputFolder - Folder of measurement tables to predict on (.csv/.xlsx/.ods).
+    modelPath - Root folder of the trained models; every stacking_package.pkl
+                found underneath it is loaded.
+    outputFolder - Folder where the result tables are written.
     """
 
     inputFolder: str = ""
@@ -810,7 +813,12 @@ class SurgMovPredLogic(ScriptedLoadableModuleLogic):
         return SurgMovPredParameterNode(super().getParameterNode())
 
     def process(self, notesFolder_input: str, modelPath: str, notesFolder_output: str) -> bool:
-        """Process clinical notes using the selected model and parameters."""
+        """Predict every target of the measurement tables with the selected models.
+
+        The three parameter names below still read as folders of notes; they are
+        the input table folder, the model root and the output folder. Renaming
+        them is a separate change: every caller passes them positionally.
+        """
 
         if not notesFolder_input or not modelPath or not notesFolder_output:
             missing = []
