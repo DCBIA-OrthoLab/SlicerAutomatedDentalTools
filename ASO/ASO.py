@@ -622,6 +622,10 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.nb_patient = 0  # number of scans in the input folder
         self.time_log = 0  # time of the last log update
 
+        #: The output folder the test-files button filled in, or "" -- what
+        #: tells an auto-filled path from one the user typed.
+        self._auto_output = ""
+
     def setup(self):
         """
         Called when the user opens the module the first time and the widget is initiASOzed.
@@ -883,6 +887,11 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # "did the method really change?" without a second bookkeeping field.
         if self.ActualMeth is not previous_method:
             self.ClearModeSpecificPaths()
+            # Ours to drop, theirs to keep: see FillFromTestFiles above.
+            if (self._auto_output
+                    and self.ui.lineEditOutputPath.text == self._auto_output):
+                self.ui.lineEditOutputPath.setText("")
+                self._auto_output = ""
 
         self.enableCheckbox()
 
@@ -1007,9 +1016,21 @@ class ASOWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 )
                 self.enableCheckbox()
 
-                if self.ui.lineEditOutputPath.text == "":
-                    dir, spl = os.path.split(scan_folder)
-                    self.ui.lineEditOutputPath.setText(os.path.join(dir, spl + "Or"))
+                # Same rule as AREG: the folder the USER chose is theirs and is
+                # never touched; the one this button filled in is ours, and it
+                # has to follow the mode, since each mode downloads its own test
+                # set. `== ""` alone could never replace a path left over from
+                # another mode, because it is not empty.
+                dir, spl = os.path.split(scan_folder)
+                default_output = os.path.join(dir, spl + "Or")
+                current = self.ui.lineEditOutputPath.text
+                if current == "" or current == self._auto_output:
+                    self.ui.lineEditOutputPath.setText(default_output)
+                    self._auto_output = default_output
+                    logger.info("Output folder set to this test set's own: "
+                                f"{default_output}")
+                elif current != default_output:
+                    logger.info(f"Output folder left as the user set it: {current}")
 
     def SearchReference(self, test=False):
         """Function to search the reference folder and to check if the reference is valid"""

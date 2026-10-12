@@ -495,6 +495,10 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.review_flagged_carry = []
         self.review_temp_folders = []
 
+        #: The output folder `Test Files` filled in, or "" -- what tells an
+        #: auto-filled path from one the user typed. See FillFromTestFiles.
+        self._auto_output = ""
+
     def setup(self):
         """
         Called when the user opens the module the first time and the widget is initiAREGzed.
@@ -1128,6 +1132,13 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # nothing at all and emptied the fields under the user's hands.
         if self.ActualMethName != previous_method:
             self.ClearModeSpecificPaths()
+            # Each mode has its own test set, under its own scan type, so a
+            # path WE filled in for the previous one no longer means anything.
+            # The user's own choice survives: only ours is dropped.
+            if (self._auto_output
+                    and self.ui.lineEditOutputPath.text == self._auto_output):
+                self.ui.lineEditOutputPath.setText("")
+                self._auto_output = ""
 
         self.enableCheckbox()
 
@@ -1333,16 +1344,25 @@ class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     lineEdit=self.ui.lineEditModel3, name="IOS", test=True
                 )
 
-        # Only when the user has chosen nothing: their folder wins. And say
-        # which one, in the log -- a field a button filled in is the last thing
-        # anyone thinks to re-read before pressing Apply, and this one decides
-        # where gigabytes of results land. The split/join round trip this
-        # replaces rebuilt `scan_folder` unchanged.
-        if self.ui.lineEditOutputPath.text == "":
-            default_output = os.path.join(scan_folder, "Registered")
+        # The folder the USER chose is theirs and is never touched. The one this
+        # button filled in is ours, and it has to follow the mode: each mode
+        # downloads its own test set, under its own scan type, so a path left
+        # from a CBCT session ("AREG_CBCT/Test_Files/Oriented-Automated") is
+        # simply wrong once the mode is IOS-to-CBCT -- and `== ""` never
+        # replaced it, because it is not empty.
+        #
+        # Telling the two apart needs no guessing: remember what was written
+        # here, and treat the field as ours only while it still holds exactly
+        # that. One keystroke by the user and it becomes theirs for good.
+        default_output = os.path.join(scan_folder, "Registered")
+        current = self.ui.lineEditOutputPath.text
+        if current == "" or current == self._auto_output:
             self.ui.lineEditOutputPath.setText(default_output)
-            logger.info("Output folder was empty, set to this test set's own: "
+            self._auto_output = default_output
+            logger.info("Output folder set to this test set's own: "
                         f"{default_output}")
+        elif current != default_output:
+            logger.info(f"Output folder left as the user set it: {current}")
 
     def CheckScan(self):
         """Function to test both t1 and t2 scan folders"""
