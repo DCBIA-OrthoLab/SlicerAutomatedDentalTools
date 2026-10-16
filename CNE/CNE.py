@@ -515,7 +515,7 @@ class CNELogic(ScriptedLoadableModuleLogic):
 
         # 1. Configuration of the model based on UI selection
         if notesType == "Ortho":
-                repo_id = "DCBIA-OrthoLab/Meta-Llama-3.1-8B-Instruct-Ortho"
+                repo_id = "DCBIA-OrthoLab/Llama-3.1-8B-Instruct-Ortho"
                 file_name = "model-q4_k_m.gguf"
                 local_model_name = "Meta-Llama-3.1-8B-Ortho.gguf"
                 dialog_text = "Downloading Max Ortho AI model (approx. 4.9 GB)..."
