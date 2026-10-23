@@ -36,7 +36,14 @@ from ASO_IOS_utils.utils import (  # noqa: E402
     JawFromFileName, PatientNumber, StripJawFromFileName, UpperOrLower)
 from ASO_IOS_utils.data_file import Files_vtk_link  # noqa: E402
 from ASO_IOS_utils.icp import npSameNumberPoint  # noqa: E402
-import PRE_ASO_IOS  # noqa: E402
+import importlib.util  # noqa: E402
+
+# PRE_ASO_IOS imports tqdm, which the tool installs at its first run and Slicer
+# does not ship: a fresh Slicer, such as the one the extensions factory tests
+# with, does not have it. Only the end-to-end orientation test needs that script.
+_MISSING = [name for name in ("tqdm",) if importlib.util.find_spec(name) is None]
+if not _MISSING:
+    import PRE_ASO_IOS  # noqa: E402
 
 
 # Universal ids of the teeth each arch is oriented on, and where they sit along
@@ -223,6 +230,7 @@ class PairingTest(unittest.TestCase):
         self.assertEqual(os.path.basename(mouths[0].Lower), "P5_T1_L.vtk")
 
 
+@unittest.skipIf(_MISSING, "not installed in this Python: " + ", ".join(_MISSING))
 class OrientationTest(unittest.TestCase):
     """PRE_ASO_IOS end to end, on two arches displaced independently.
 

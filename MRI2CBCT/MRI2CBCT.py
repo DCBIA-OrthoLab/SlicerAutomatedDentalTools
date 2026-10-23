@@ -208,7 +208,10 @@ class MRI2CBCT(ScriptedLoadableModule):
         self.parent.title = _("MRI2CBCT")
       
         self.parent.categories = ["Automated Dental Tools"]
-        self.parent.dependencies = ["SlicerNNUNet"]
+        # SlicerNNUNet stays an extension dependency (EXTENSION_DEPENDS); a hard module
+        # dependency makes this module fail to load wherever its modules are not
+        # registered, as on the extensions factory test runs.
+        self.parent.dependencies = []
         self.parent.contributors = ["Gaelle Leroux (UoM), Alexandre Buisson (UoM), Raphael Barret (UoM)"]
         
         # _() function marks text as translatable to other languages

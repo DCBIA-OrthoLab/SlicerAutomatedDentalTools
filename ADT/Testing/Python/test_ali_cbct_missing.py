@@ -26,7 +26,14 @@ sys.modules.setdefault("dicom2nifti", types.ModuleType("dicom2nifti"))
 
 # `ALI_CBCT/ALI_CBCT.py`, the entry point, and not the folder of the same
 # name: it is the folder that sits on sys.path, not the repository root.
-from ALI_CBCT import _report_missing_landmarks  # noqa: E402
+import importlib.util  # noqa: E402
+
+# torch, monai and itk are installed by the tool itself at its first run, not
+# shipped with Slicer: a fresh Slicer, such as the one the extensions factory
+# tests with, does not have them. The tests are skipped there rather than failed.
+_MISSING = [name for name in ("torch", "monai", "itk") if importlib.util.find_spec(name) is None]
+if not _MISSING:
+    from ALI_CBCT import _report_missing_landmarks  # noqa: E402
 
 
 class MissingLandmarkReportTest(unittest.TestCase):
@@ -83,6 +90,18 @@ class MissingLandmarkReportTest(unittest.TestCase):
                 os.path.join(blocked, "output"))
         self.assertIsNone(path)
         self.assertIn("Me", "\n".join(logged.output))
+
+
+def load_tests(loader, tests, pattern):
+    """Skip the whole module when a package it needs is not installed."""
+    if not _MISSING:
+        return tests
+
+    @unittest.skip("not installed in this Python: " + ", ".join(_MISSING))
+    def skipped():
+        pass
+
+    return unittest.TestSuite([unittest.FunctionTestCase(skipped)])
 
 
 if __name__ == "__main__":
