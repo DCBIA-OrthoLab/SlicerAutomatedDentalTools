@@ -29,11 +29,18 @@ sys.modules.setdefault("dicom2nifti", types.ModuleType("dicom2nifti"))
 
 import numpy as np  # noqa: E402
 
-from ALI_CBCT_utils import agent as agent_module  # noqa: E402
-from ALI_CBCT_utils.agent import (  # noqa: E402
-    Agent, DEFAULT_MAX_STEPS, SearchStepBudget, SearchTimeGuard,
-)
-from ALI_CBCT_utils.constants import MOVEMENTS  # noqa: E402
+import importlib.util  # noqa: E402
+
+# torch, monai and itk are installed by the tool itself at its first run, not
+# shipped with Slicer: a fresh Slicer, such as the one the extensions factory
+# tests with, does not have them. The tests are skipped there rather than failed.
+_MISSING = [name for name in ("torch", "monai", "itk") if importlib.util.find_spec(name) is None]
+if not _MISSING:
+    from ALI_CBCT_utils import agent as agent_module  # noqa: E402
+    from ALI_CBCT_utils.agent import (  # noqa: E402
+        Agent, DEFAULT_MAX_STEPS, SearchStepBudget, SearchTimeGuard,
+    )
+    from ALI_CBCT_utils.constants import MOVEMENTS  # noqa: E402
 
 FOV = [64, 64, 64]
 SCALE = "1"
@@ -281,6 +288,18 @@ class BudgetSettingTest(unittest.TestCase):
     def test_the_time_guard_stays_far_above_the_step_budget(self):
         """It is no longer what decides in the ordinary case."""
         self.assertGreater(SearchTimeGuard(), 60.0)
+
+
+def load_tests(loader, tests, pattern):
+    """Skip the whole module when a package it needs is not installed."""
+    if not _MISSING:
+        return tests
+
+    @unittest.skip("not installed in this Python: " + ", ".join(_MISSING))
+    def skipped():
+        pass
+
+    return unittest.TestSuite([unittest.FunctionTestCase(skipped)])
 
 
 if __name__ == "__main__":

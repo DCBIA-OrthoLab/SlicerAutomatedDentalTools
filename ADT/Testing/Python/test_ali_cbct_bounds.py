@@ -42,8 +42,15 @@ sys.modules.setdefault("dicom2nifti", types.ModuleType("dicom2nifti"))
 
 import numpy as np  # noqa: E402
 
-from ALI_CBCT_utils.agent import InsideSamplableZone  # noqa: E402
-from ALI_CBCT_utils.environment import Environment  # noqa: E402
+import importlib.util  # noqa: E402
+
+# torch, monai and itk are installed by the tool itself at its first run, not
+# shipped with Slicer: a fresh Slicer, such as the one the extensions factory
+# tests with, does not have them. The tests are skipped there rather than failed.
+_MISSING = [name for name in ("torch", "monai", "itk") if importlib.util.find_spec(name) is None]
+if not _MISSING:
+    from ALI_CBCT_utils.agent import InsideSamplableZone  # noqa: E402
+    from ALI_CBCT_utils.environment import Environment  # noqa: E402
 
 # Ce qu'ALI passe vraiment : agent_FOV [64,64,64], donc padding FOV/2 + 1.
 FOV = np.array([64, 64, 64])
@@ -138,6 +145,18 @@ class SamplableZoneTest(unittest.TestCase):
         self.assertTrue(InsideSamplableZone(SIZE / 2, low, high))
         self.assertFalse(
             InsideSamplableZone(np.array([-1.5, 60.0, 60.0]), low, high))
+
+
+def load_tests(loader, tests, pattern):
+    """Skip the whole module when a package it needs is not installed."""
+    if not _MISSING:
+        return tests
+
+    @unittest.skip("not installed in this Python: " + ", ".join(_MISSING))
+    def skipped():
+        pass
+
+    return unittest.TestSuite([unittest.FunctionTestCase(skipped)])
 
 
 if __name__ == "__main__":

@@ -235,12 +235,16 @@ def checkAtStartup():
     """Looks for the shared environment once, and offers to build it if absent."""
     if slicer.app.commandOptions().noMainWindow or slicer.util.mainWindow() is None:
         return
+    # A test run (--testing, as on the extensions factory) has nobody to answer a
+    # modal dialog: it would block the run until the test times out.
+    if slicer.app.testingEnabled():
+        return
     if _settings().value(SKIP_KEY, "") == "true":
         return
 
     conda = _condaCall()
     if conda is None:
-        # SlicerConda is a declared dependency of the modules; its absence is
+        # SlicerConda is a declared dependency of the extension; its absence is
         # already reported by the extension manager, not this check's business.
         return
 
