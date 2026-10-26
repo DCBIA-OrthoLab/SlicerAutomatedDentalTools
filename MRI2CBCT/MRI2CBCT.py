@@ -14,15 +14,12 @@ The work itself lives in MRI2CBCT_core (no Slicer imports) and in the
 MRI2CBCT_* CLIs; this file is the panel and the step chaining.
 """
 import csv
-import glob
-import json
 import os
 import sys
 import time
 
 import qt
 import ctk
-import vtk
 import slicer
 from slicer.ScriptedLoadableModule import (
     ScriptedLoadableModule, ScriptedLoadableModuleWidget,
@@ -287,8 +284,8 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget):
         try:
             with open(os.path.join(self.output, layout.STEPS, "run.log"), "a") as f:
                 f.write(text + "\n")
-        except Exception:
-            pass
+        except OSError:
+            pass   # the log file is a copy of the panel; the run must not stop for it
 
     # ------------------------------------------------------------------ run
     def onRun(self):
