@@ -23,6 +23,11 @@ DATASET516_URL = os.environ.get(
     "MRI2CBCT_DATASET516_URL",
     "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/"
     "MRI2CBCT_Dataset516/Dataset516_MRICBManual.zip")
+#: Same release. The zip holds mri/, cbct/ and reference/ (the expected result) at its root.
+TESTFILES_URL = os.environ.get(
+    "MRI2CBCT_TESTFILES_URL",
+    "https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/"
+    "MRI2CBCT_Dataset516/MRI2CBCT_TestFiles.zip")
 OPEN3D = "open3d==0.19.0"
 OPEN3D_LINUX_TAG = "manylinux_2_31_x86_64"
 PY_ABI = f"cp{sys.version_info.major}{sys.version_info.minor}"
@@ -42,6 +47,11 @@ def home():
 def dataset516_root():
     """Where the downloaded zip is unpacked (ADTLib.testdata marks it complete)."""
     return os.path.join(home(), "Models", "Dataset516")
+
+
+def testfiles_root():
+    """Where the test files are unpacked, and where their output goes."""
+    return home()
 
 
 def dataset516():
