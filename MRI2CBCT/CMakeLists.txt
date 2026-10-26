@@ -1,24 +1,28 @@
 #-----------------------------------------------------------------------------
 set(MODULE_NAME MRI2CBCT)
-set(FOLDER_LIBRARY MRI2CBCT_utils)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  ${FOLDER_LIBRARY}/Approx_MRI2CBCT.py
-  ${FOLDER_LIBRARY}/ManualApprox_MRI2CBCT.py
-  ${FOLDER_LIBRARY}/Method.py
-  ${FOLDER_LIBRARY}/Preprocess_CBCT_MRI.py
-  ${FOLDER_LIBRARY}/Preprocess_MRI.py
-  ${FOLDER_LIBRARY}/Reg_MRI2CBCT.py
-  ${FOLDER_LIBRARY}/LR_crop.py
-  ${FOLDER_LIBRARY}/TMJ_crop.py
-  ${FOLDER_LIBRARY}/utils_CBCT.py
+  MRI2CBCT_core/__init__.py
+  MRI2CBCT_core/env.py
+  MRI2CBCT_core/frames.py
+  MRI2CBCT_core/ladder.py
+  MRI2CBCT_core/layout.py
+  MRI2CBCT_core/mri_prep.py
+  MRI2CBCT_core/pairing.py
+  MRI2CBCT_core/plan.py
+  MRI2CBCT_core/requirements.py
+  MRI2CBCT_core/seg516.py
+  MRI2CBCT_core/reg/__init__.py
+  MRI2CBCT_core/reg/global_reg.py
+  MRI2CBCT_core/reg/itk_io.py
+  MRI2CBCT_core/reg/pipeline.py
+  MRI2CBCT_core/reg/surface.py
   )
 
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
-  Resources/UI/${MODULE_NAME}.ui
   )
 
 #-----------------------------------------------------------------------------

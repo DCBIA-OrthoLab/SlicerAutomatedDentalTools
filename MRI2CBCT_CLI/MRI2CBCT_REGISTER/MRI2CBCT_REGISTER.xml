@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <title>MRI2CBCT_REGISTER</title>
+  <description><![CDATA[FPFH + RANSAC + ICP registration of each joint, with the FLIP ladder. Run by the MRI2CBCT module; every argument is required.]]></description>
+  <version>2.0.0</version>
+  <contributor>MRI2CBCT</contributor>
+  <parameters>
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+    <string>
+      <name>output_folder</name>
+      <label>output_folder</label>
+      <index>0</index>
+      <description><![CDATA[output_folder]]></description>
+    </string>
+    <string>
+      <name>on_cbct_grid</name>
+      <label>on_cbct_grid</label>
+      <index>1</index>
+      <description><![CDATA[on_cbct_grid]]></description>
+    </string>
+    <string>
+      <name>workers</name>
+      <label>workers</label>
+      <index>2</index>
+      <description><![CDATA[workers]]></description>
+    </string>
+  </parameters>
+</executable>

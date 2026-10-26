@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <title>MRI2CBCT_SEGMENT_MRI</title>
+  <description><![CDATA[Dataset516 cranial base on the prepared MRI joints. Run by the MRI2CBCT module; every argument is required.]]></description>
+  <version>2.0.0</version>
+  <contributor>MRI2CBCT</contributor>
+  <parameters>
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+    <string>
+      <name>output_folder</name>
+      <label>output_folder</label>
+      <index>0</index>
+      <description><![CDATA[output_folder]]></description>
+    </string>
+    <string>
+      <name>model_folder</name>
+      <label>model_folder</label>
+      <index>1</index>
+      <description><![CDATA[model_folder]]></description>
+    </string>
+    <string>
+      <name>folds</name>
+      <label>folds</label>
+      <index>2</index>
+      <description><![CDATA[folds]]></description>
+    </string>
+  </parameters>
+</executable>

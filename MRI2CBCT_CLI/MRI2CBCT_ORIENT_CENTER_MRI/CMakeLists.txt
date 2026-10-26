@@ -1,7 +1,0 @@
-
-set(MODULE_NAME MRI2CBCT_ORIENT_CENTER_MRI)
-
-SlicerMacroBuildScriptedCLI(
-  NAME ${MODULE_NAME}
-)
-

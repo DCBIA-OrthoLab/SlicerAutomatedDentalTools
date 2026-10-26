@@ -68,15 +68,15 @@ def GetListFiles(folder_path, file_extension):
 #
 # Accepting any _T<digit> means replacing the split chain with
 # re.sub(r"_[Tt]\d+$", "", ...) in ADTLib.naming.patient_id, which the six
-# identical chains now share, AND in the four sites that still carry a chain of
-# their own with a different marker list: ASO_Method/CBCT.py,
-# ASO_CBCT_utils/utils.py, AREG_Method/IOSCBCT.py and MRI2CBCT_CLI_utils/
-# TMJ_crop.py. The order of the markers is load-bearing and is now a property
-# of ADTLib.naming, checked by its test.
+# identical chains now share, AND in the three sites that still carry a chain
+# of their own with a different marker list: ASO_Method/CBCT.py,
+# ASO_CBCT_utils/utils.py and AREG_Method/IOSCBCT.py. The order of the
+# markers is load-bearing and is now a property of ADTLib.naming, checked by
+# its test.
 #
 # Left as is deliberately: the supported answer today is to rename the inputs
-# to _T1/_T2, and a rewrite touches two modules (ASO, MRI2CBCT) that nothing
-# in the current test set covers.
+# to _T1/_T2, and a rewrite touches a module (ASO) that nothing in the current
+# test set covers.
 def GetPatients(folder_path, time_point="T1", segmentationType=None, mask_folder=None):
     """Return a dictionary with patient id as key"""
     file_extension = [".nii.gz", ".nii", ".nrrd", ".nrrd.gz", ".gipl", ".gipl.gz"]

@@ -26,11 +26,6 @@ def format_timer(seconds):
         5      -> "Time : 5s"
         192    -> "Time : 3min and 12s"
         3723   -> "Time : 1h, 2min and 3s"
-
-    A thirteenth copy exists, in `MRI2CBCT.py`, and it writes `"Time: "`
-    without a space before the colon. It stays where it is: aligning it would
-    change a label the user reads during their run, which is not what this pass
-    is about.
     """
     if seconds < 60:
         return f"Time : {int(seconds)}s"
