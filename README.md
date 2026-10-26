@@ -512,6 +512,8 @@ The whole registration runs from one button. Choose an MRI folder, a CBCT folder
 
 For each patient and side the output folder holds the registered MRI, its mask and the transform, plus the CBCT mask and a `summary.csv` with a quality check per joint.
 
+**Use test files** downloads a sample patient (one CBCT, two MRIs) once and fills in the three folders, so pressing Run is all that is left; the expected result is next to it, in `reference/`.
+
 ## FlexReg Module
 
 <img src="FlexReg/Resources/Icons/FlexReg.png" alt="Extension Logo" width="70"/>

@@ -17,6 +17,7 @@ import csv
 import os
 import sys
 import time
+import zipfile
 
 import qt
 import ctk
@@ -90,6 +91,12 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget):
         box.text = "Inputs"
         self.layout.addWidget(box)
         form = qt.QFormLayout(box)
+        self.testFilesButton = qt.QPushButton("Use test files")
+        self.testFilesButton.toolTip = (
+            "Download a sample patient (one CBCT, two MRIs) once, and fill in the three "
+            "folders below. The expected result sits beside it, in reference/.")
+        self.testFilesButton.clicked.connect(self.onTestFiles)
+        form.addRow(self.testFilesButton)
         self.mriPath = self._dir_edit("mri")
         self.cbctPath = self._dir_edit("cbct")
         self.outPath = self._dir_edit("out")
@@ -264,6 +271,27 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget):
         if ok:
             slicer.util.infoDisplay("MRI2CBCT is set up on this computer.")
 
+    def onTestFiles(self):
+        from ADTLib import testdata
+        try:
+            folder = testdata.ensure_with_progress(
+                env.TESTFILES_URL, env.testfiles_root(), "TestFiles", parent=self.parent,
+                title="Downloading the MRI2CBCT test files...")
+        except (testdata.TestDataError, OSError, zipfile.BadZipFile) as e:
+            slicer.util.errorDisplay(
+                f"The test files could not be downloaded:\n{env.TESTFILES_URL}\n\n{e}")
+            return
+        # The output folder is filled too: it is a saved setting, so it almost always
+        # holds an earlier run's folder, and the sample's result belongs in its own.
+        out = os.path.join(env.testfiles_root(), "TestFiles_output")
+        os.makedirs(out, exist_ok=True)
+        self.mriPath.currentPath = os.path.join(folder, "mri")
+        self.cbctPath.currentPath = os.path.join(folder, "cbct")
+        self.outPath.currentPath = out
+        self.log.appendPlainText(
+            f"Test files ready in {folder}. Press Run; the expected result is in "
+            f"{os.path.join(folder, 'reference')}.")
+
     def _dir_edit(self, key):
         e = ctk.ctkPathLineEdit()
         e.filters = ctk.ctkPathLineEdit.Dirs
@@ -345,6 +373,7 @@ class MRI2CBCTWidget(ScriptedLoadableModuleWidget):
 
     def _running_ui(self, on):
         self.runButton.enabled = not on
+        self.testFilesButton.enabled = not on
         self.cancelButton.visible = on
         self.progress.visible = on
 
