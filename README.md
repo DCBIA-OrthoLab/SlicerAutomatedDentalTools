@@ -39,7 +39,7 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [AutoCrop3D](#autocrop3d-module) | Automatically crop a folder of CBCT scans with the same region of interest. |
 | [AutoMatrix](#automatrix-module)| Automatically apply one or different matrix to a folder of IOS or CBCT scans. |
 | [Medical Data Anonymizer](#medical-data-anonymizer-module) | Automatically anonymize sensitive information in medical documents (DOCX, PDF, TXT, CSV, XML, ODT). |
-| [MRI2CBCT](#mri2cbct-module) | Contains the steps to perform the registration of MRI and CBCT scans.|
+| [MRI2CBCT](#mri2cbct-module) | Register TMJ MRIs onto their CBCTs in one run.|
 | [FlexReg](#flex-reg) | Registration of IOS patient per patient with customizable patch creation. |
 | [DOCShapeAXI](#doc-shapeaxi) | Automatic classification of 3D Shape. DOC-ShapeAXI is an acronym for Dental Oral and Craniofacial Shape Analysis eXplainability and Interpretability. |
 | [BatchDentalSegmentator](#BatchDentalSeg) | DentalSegmentator in batch for mixed or permanent dentition |
@@ -73,12 +73,10 @@ Additionally, the following modules are implemented as python scripted command-l
 | [AReg-IOS](AREG_IOS) | Perform automatic registration of IOS scans |
 | [AutoMatrix-CLI](Automatrix_CLI) | Apply transformation matrices to input volumes or landmarks |
 | [Medical Data Anonymizer](#medical-data-anonymizer-module) | Automatically anonymized text files. |
-| [MRI2CBCT_APPROX](MRI2CBCT_CLI/MRI2CBCT_APPROX) | Perform automatic approximation of an MRI to a CBCT |
-| [MRI2CBCT_LR_CROP](MRI2CBCT_CLI/MRI2CBCT_LR_CROP) | Separate volumes into left and right halves for bilateral analysis |
-| [MRI2CBCT_ORIENT_CENTER_MRI](MRI2CBCT_CLI/MRI2CBCT_ORIENT_CENTER_MR) | Perform orientation and centering of MRI scans |
-| [MRI2CBCT_RESAMPLE_CBCT_MRI](MRI2CBCT_CLI/MRI2CBCT_RESAMPLE_CBCT_MRI) | Perform resample of MRI and CBCT scans |
-| [MRI2CBCT_REG](MRI2CBCT_CLI/MRI2CBCT_REG) | Perform registration of MRI-CBCT scans |
-| [MRI2CBCT_TMJ_CROP](MRI2CBCT_CLI/MRI2CBCT_TMJ_CROP) | Automatically crop the TMJ region from CBCT, segmentations, or MRI |
+| [MRI2CBCT_PREPARE](MRI2CBCT_CLI/MRI2CBCT_PREPARE) | Pair the MRI and CBCT folders by patient and prepare each MRI joint |
+| [MRI2CBCT_SEGMENT_MRI](MRI2CBCT_CLI/MRI2CBCT_SEGMENT_MRI) | Segment the cranial base on the prepared MRI joints (nnU-Net) |
+| [MRI2CBCT_REGISTER](MRI2CBCT_CLI/MRI2CBCT_REGISTER) | Register each MRI joint onto its CBCT from the two cranial base surfaces |
+| [MRI2CBCT_RESAMPLE_CBCT_MRI](MRI2CBCT_CLI/MRI2CBCT_RESAMPLE_CBCT_MRI) | Resample MRI and CBCT scans (used by AReg and VFACE) |
 | [FlexReg_CLI](FlexReg_CLI) | Perform creation of patch and registration on IOS scans. |
 | [DOCShapeAXI](DOCShapeAXI_CLI) | Perform automatic classification of 3D Shape. |
 | [BatchDentalSegmentator](BATCHDENTALSEG) | DentalSegmentator in batch for mixed or permanent dentition |
@@ -503,41 +501,17 @@ The MRI2CBCT module provides a user interface to perform the registration betwee
 
 ### How does the module work?
 
-#### Preprocessing Step:
+The whole registration runs from one button. Choose an MRI folder, a CBCT folder and an output folder; patients are paired by the ID at the start of the file name, with one CBCT and one or two MRIs per patient.
 
-1. **Orient and Center CBCT:**
-   - **Input:** CBCT folder path
-   - **Download Models:** You can download the models required for segmentation and orientation by clicking on "Download."
+1. **Set up this computer** (once): installs the Python packages and downloads the models the pipeline needs.
+2. **MRI preparation:** each MRI is reoriented and, for a bilateral acquisition, split into a left and a right joint using the acquisition slice spacing. It can be resampled to the CBCT resolution (0.3 mm).
+3. **CBCT orientation:** the CBCT is oriented with ASO (PRE_ASO_CBCT, ALI_CBCT, SEMI_ASO_CBCT).
+4. **Cranial base segmentation:** on the CBCT with AMASSS, on each MRI joint with a dedicated nnU-Net model.
+5. **Registration:** each MRI joint is registered onto its CBCT by matching the two cranial base surfaces (FPFH, RANSAC, ICP), with an automatic recovery from flipped solutions.
+6. **Review:** browse the results patient by patient and swap left and right when a side was assigned wrongly.
 
-2. **Orient and Center MRI:**
-   - **Bilateral mode:** When enabled, additional options become available:  
-   This option is intended for bilateral TMJ scans, which contains two slices between left and right separated by a large distance.When such DICOM volumes are saved as NIfTI, the original slice spacing is lost or misrepresented, which distorts the image.  
-   <br>
-   Enabling bilateral mode lets you select a loaded DICOM node to automatically retrieve the true acquisition spacing (from DICOM metadata) and apply it before orientation. This ensures that the image is correctly resampled and anatomically accurate.
-   > If **Bilateral** is disabled, the spacing from the input scan is used as-is.  
-   - **Input:** MRI folder path
-   - **Axis Direction:** You need to choose the new direction for each axis.
+For each patient and side the output folder holds the registered MRI, its mask and the transform, plus the CBCT mask and a `summary.csv` with a quality check per joint.
 
-3. **Left and Right Cropping:**
-   - **Inputs:** Folder paths for CBCT and/or MRI.
-
-#### Resampling Step:
-   - **Options:** You can resample T1 and/or T2 scans for **MRI**, **CBCT**, and **Segmentation** independently.
-   - **Slice/Number of Slices:** Decide the new slices/number of slices or retain the same size as before running it.
-   - **Spacing:** Choose the new spacing or keep the same spacing as in the input.
-   - **Center Image:** When enabled, padding is added equally in all directions to center the content.
-
-#### Approximation:
-This step aligns the MRI and CBCT volumes to prepare for precise registration.
-- **Inputs:** Resampled MRI and CBCT volumes.
-
-#### Cropping (TMJ Region):
-Currently, cropping is done using the AutoCrop method. In the future, this step will be replaced by a trained model that automatically identifies and extracts the TMJ region of interest.
-
-#### Registration:
-- **Inputs:** CBCT, CBCT segmentation, and MRI scans after completing the preprocessing steps, including manual approximation and cropping.
-- **Normalization Options:** Select the normalization method and specify the percentile to apply to both MRI and CBCT scans. Default values are provided for convenience.
-  
 ## FlexReg Module
 
 <img src="FlexReg/Resources/Icons/FlexReg.png" alt="Extension Logo" width="70"/>
