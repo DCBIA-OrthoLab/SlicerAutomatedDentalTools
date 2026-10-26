@@ -503,14 +503,12 @@ class MRI2CBCTLogic(ScriptedLoadableModuleLogic):
     def quick_status(self, downloads):
         """What is missing, checked in well under a second: installed packages and
         download markers only. No torch import, no GPU query - that is ensure_ready's job."""
-        import importlib.util
         from ADTLib.env.deps import check_lib_installed
         from ADTLib import testdata
         missing = [n for n, _v in requirements.missing_packages(check_lib_installed)]
         if not check_lib_installed("torch"):
             missing.append("torch")
-        if importlib.util.find_spec("open3d") is None and \
-                not os.path.isdir(os.path.join(env.py_deps(), "open3d")):
+        if not env.open3d_installed():
             missing.append("open3d")
         missing += [d[0] for d in requirements.downloads_plan(downloads, env.DATASET516_URL,
                                                               env.dataset516_root())
@@ -529,11 +527,7 @@ class MRI2CBCTLogic(ScriptedLoadableModuleLogic):
         except Exception as e:                       # no answer from the GPU: leave torch be
             print(f"MRI2CBCT: could not decide the torch build ({e})")
             torch_args = None
-        try:
-            env.ensure_open3d()
-            need_open3d = False
-        except ImportError:
-            need_open3d = True
+        need_open3d = not env.open3d_installed()
 
         if packages or torch_args or need_open3d:
             lines = [requirement(n, v) for n, v in packages]

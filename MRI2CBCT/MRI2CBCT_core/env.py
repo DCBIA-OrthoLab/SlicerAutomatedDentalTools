@@ -54,6 +54,20 @@ def py_deps():
     return os.environ.get("MRI2CBCT_PY_DEPS", os.path.join(home(), "py_deps"))
 
 
+def open3d_installed():
+    """Whether open3d is on disk, in Slicer's Python or in py_deps.
+
+    Checked on disk rather than by importing: a running Slicer keeps an open3d
+    it has already imported even after its folder is deleted, while every CLI
+    starts a fresh interpreter that would then fail to find it.
+    """
+    from importlib.machinery import PathFinder
+    d = os.path.abspath(py_deps())
+    path = [p for p in sys.path if os.path.abspath(p) != d]
+    return (PathFinder.find_spec("open3d", path) is not None
+            or os.path.isdir(os.path.join(d, "open3d")))
+
+
 def ensure_open3d():
     """Use the interpreter's own open3d, else py_deps."""
     try:
