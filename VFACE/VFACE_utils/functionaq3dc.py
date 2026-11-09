@@ -41,8 +41,20 @@ try:
     import pandas as pd
 
 except Exception:
-    slicer.util.pip_install("pandas")
-    import pandas as pd  # news users will not need to refresh the AQ3DC for the first
+    if slicer.app.testingEnabled():
+        # This runs at import time, i.e. in every Slicer process that loads the
+        # ADT modules, including every ctest of every extension tested with ADT
+        # on the extensions factory, where all extensions share one Python.
+        # pip-installing pandas there upgrades NumPy for everyone else.
+        # If pandas is already installed, the import above succeeded and nothing changes.
+        logger.warning(
+            "pandas is not installed and is not pip-installed while Slicer is running with --testing; "
+            "the AQ3DC Excel import/export (pandas) is unavailable in this test run"
+        )
+        pd = None
+    else:
+        slicer.util.pip_install("pandas")
+        import pandas as pd  # news users will not need to refresh the AQ3DC for the first
 
 
 try:
