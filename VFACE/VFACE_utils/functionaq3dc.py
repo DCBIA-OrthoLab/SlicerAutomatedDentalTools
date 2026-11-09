@@ -46,7 +46,11 @@ except Exception:
         # ADT modules, including every ctest of every extension tested with ADT
         # on the extensions factory, where all extensions share one Python.
         # pip-installing pandas there upgrades NumPy for everyone else.
-        logger.warning("pandas is not available; not installing it while Slicer is running with --testing")
+        # If pandas is already installed, the import above succeeded and nothing changes.
+        logger.warning(
+            "pandas is not installed and is not pip-installed while Slicer is running with --testing; "
+            "the AQ3DC Excel import/export (pandas) is unavailable in this test run"
+        )
         pd = None
     else:
         slicer.util.pip_install("pandas")
