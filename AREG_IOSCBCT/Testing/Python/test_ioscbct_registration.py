@@ -18,7 +18,14 @@ import sys
 import unittest
 
 import numpy as np
-import pyvista as pv
+import importlib.util  # noqa: E402
+
+# pyvista is installed by the tool itself at its first run, not shipped with
+# Slicer: a fresh Slicer, such as the one the extensions factory tests with, does
+# not have it. The tests are skipped there rather than failed.
+_MISSING = [name for name in ("pyvista",) if importlib.util.find_spec(name) is None]
+if not _MISSING:
+    import pyvista as pv
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -28,7 +35,8 @@ _ADT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."
 if os.path.isdir(_ADT):
     sys.path.insert(0, _ADT)
 
-import AREG_IOSCBCT as areg  # noqa: E402
+if not _MISSING:
+    import AREG_IOSCBCT as areg  # noqa: E402
 import tempfile
 
 
@@ -322,6 +330,18 @@ class RegistrationTest(unittest.TestCase):
             "align_by_landmarks returns %d values; the callers in this suite "
             "and in AREG_IOSCBCT.py unpack 4 (mesh, matrix, landmarks, kept)."
             % len(result))
+
+
+def load_tests(loader, tests, pattern):
+    """Skip the whole module when a package it needs is not installed."""
+    if not _MISSING:
+        return tests
+
+    @unittest.skip("not installed in this Python: " + ", ".join(_MISSING))
+    def skipped():
+        pass
+
+    return unittest.TestSuite([unittest.FunctionTestCase(skipped)])
 
 
 if __name__ == "__main__":

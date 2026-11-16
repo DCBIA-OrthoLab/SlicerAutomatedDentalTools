@@ -165,7 +165,10 @@ class ALI(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "ALI"
     self.parent.categories = ["Automated Dental Tools"]  # set categories (folders where the module shows up in the module selector)
-    self.parent.dependencies = ["CondaSetUp"]
+    # CondaSetUp (SlicerConda) is imported lazily where it is used; a hard module
+    # dependency makes this module fail to load wherever SlicerConda's modules are
+    # not registered, as on the extensions factory test runs.
+    self.parent.dependencies = []
     self.parent.contributors = ["Maxime Gillot (UoM), Baptiste Baquero (UoM)"]
     
     self.parent.helpText = """

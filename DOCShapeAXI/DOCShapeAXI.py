@@ -56,7 +56,10 @@ class DOCShapeAXI(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "DOCShapeAXI"
     self.parent.categories = ["Automated Dental Tools"]
-    self.parent.dependencies = ["CondaSetUp"]
+    # CondaSetUp (SlicerConda) is imported lazily where it is used; a hard module
+    # dependency makes this module fail to load wherever SlicerConda's modules are
+    # not registered, as on the extensions factory test runs.
+    self.parent.dependencies = []
     
     self.parent.contributors = ["Lucie Dole (University of North Carolina)",
     "Gaelle Leroux (University of Michigan)",

@@ -14,9 +14,6 @@ from slicer.ScriptedLoadableModule import ScriptedLoadableModule, ScriptedLoadab
 from slicer.util import VTKObservationMixin
 import json
 
-# Slicer-Conda helper
-from CondaSetUp import CondaSetUpCall
-
 
 # ADTLib sits next to the modules in an installed build, in the directory Slicer
 # already has on sys.path. A source tree has no such entry -- a module search
@@ -67,6 +64,9 @@ class CLICWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def __init__(self, parent=None):
         super().__init__(parent)
         VTKObservationMixin.__init__(self)
+        # SlicerConda is imported here, not at the top of the file, so that the
+        # module still loads in a Slicer where that extension is missing.
+        from CondaSetUp import CondaSetUpCall
         self.conda = CondaSetUpCall()
         
         # Workaround for the SlicerConda shipped with the 5.13 nightly, which keeps
