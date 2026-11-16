@@ -426,6 +426,9 @@ class FlexRegWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         custom_layout_id=501
 
         layout_manager = slicer.app.layoutManager()
+        if layout_manager is None:
+            # No main window (e.g. a --no-main-window test run): there is no layout to set.
+            return
         layout_manager.layoutLogic().GetLayoutNode().AddLayoutDescription(custom_layout_id, custom_layout)
 
         # Switch to the new custom layout
@@ -962,49 +965,16 @@ class FlexRegTest(ScriptedLoadableModuleTest):
         self.test_FlexReg1()
 
     def test_FlexReg1(self):
-        """ Ideally you should have several levels of tests.  At the lowest level
-        tests should exercise the functionality of the logic with different inputs
-        (both valid and invalid).  At higher levels your tests should emulate the
-        way the user would interact with your code and confirm that it still works
-        the way you intended.
-        One of the most important features of the tests is that it should alert other
-        developers when their changes will have an impact on the behavior of your
-        module.  For example, if a developer removes a feature that you depend on,
-        your test should break so they know that the feature is needed.
+        """Smoke test: the logic of the module can be created.
+
+        The module template's test thresholded a sample volume through
+        logic.process(input, output, threshold, invert), a signature FlexRegLogic
+        does not have, so it always failed. A real registration needs two
+        surfaces and the FlexReg_CLI tool, which a test run does not have.
         """
-
         self.delayDisplay("Starting the test")
-
-        # Get/create input data
-
-        import SampleData
-        registerSampleData()
-        input_volume = SampleData.downloadSample('FlexReg1')
-        self.delayDisplay('Loaded test data set')
-
-        input_scalar_range = input_volume.GetImageData().GetScalarRange()
-        self.assertEqual(input_scalar_range[0], 0)
-        self.assertEqual(input_scalar_range[1], 695)
-
-        output_volume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-        threshold = 100
-
-        # Test the module logic
-
         logic = FlexRegLogic()
-
-        # Test algorithm with non-inverted threshold
-        logic.process(input_volume, output_volume, threshold, True)
-        output_scalar_range = output_volume.GetImageData().GetScalarRange()
-        self.assertEqual(output_scalar_range[0], input_scalar_range[0])
-        self.assertEqual(output_scalar_range[1], threshold)
-
-        # Test algorithm with inverted threshold
-        logic.process(input_volume, output_volume, threshold, False)
-        output_scalar_range = output_volume.GetImageData().GetScalarRange()
-        self.assertEqual(output_scalar_range[0], input_scalar_range[0])
-        self.assertEqual(output_scalar_range[1], input_scalar_range[1])
-
+        self.assertIsNotNone(logic)
         self.delayDisplay('Test passed')
 
 # Class that create a pop up which display the time since the begenning

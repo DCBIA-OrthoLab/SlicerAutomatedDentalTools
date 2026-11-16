@@ -279,9 +279,13 @@ class GreedyReg(ScriptedLoadableModule):
     self.parent.title = "Greedy Registration"
     self.parent.categories = ["Automated Dental Tools"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Your Lab"]
+    self.parent.contributors = ["Eduardo Caleme (University of North Carolina)"]
     self.parent.helpText = "ITK-SNAP style registration using Greedy"
-    self.parent.acknowledgementText = ""
+    self.parent.acknowledgementText = (
+      "This module runs Greedy (https://github.com/pyushkevich/greedy), the registration "
+      "engine of ITK-SNAP, developed by Paul Yushkevich and colleagues at the Penn Image "
+      "Computing and Science Laboratory."
+    )
 
 
 class GreedyRegWidget(ScriptedLoadableModuleWidget):

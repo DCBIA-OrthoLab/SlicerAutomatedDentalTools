@@ -29,8 +29,15 @@ sys.modules.setdefault("dicom2nifti", types.ModuleType("dicom2nifti"))
 
 import numpy as np                                            # noqa: E402
 
-from ALI_CBCT_utils.constants import LABEL_GROUPS              # noqa: E402
-from ALI_CBCT_utils.environment import Environment             # noqa: E402
+import importlib.util  # noqa: E402
+
+# torch, monai and itk are installed by the tool itself at its first run, not
+# shipped with Slicer: a fresh Slicer, such as the one the extensions factory
+# tests with, does not have them. The tests are skipped there rather than failed.
+_MISSING = [name for name in ("torch", "monai", "itk") if importlib.util.find_spec(name) is None]
+if not _MISSING:
+    from ALI_CBCT_utils.constants import LABEL_GROUPS              # noqa: E402
+    from ALI_CBCT_utils.environment import Environment             # noqa: E402
 
 
 class UnknownGroupTest(unittest.TestCase):
@@ -89,6 +96,18 @@ class UnknownGroupTest(unittest.TestCase):
         self.assertEqual(self.env.SavePredictedLandmarks("0-3", self.out),
                          ["UL3OI", "UL3RI"])
         self.assertEqual(self.written(), [])
+
+
+def load_tests(loader, tests, pattern):
+    """Skip the whole module when a package it needs is not installed."""
+    if not _MISSING:
+        return tests
+
+    @unittest.skip("not installed in this Python: " + ", ".join(_MISSING))
+    def skipped():
+        pass
+
+    return unittest.TestSuite([unittest.FunctionTestCase(skipped)])
 
 
 if __name__ == "__main__":

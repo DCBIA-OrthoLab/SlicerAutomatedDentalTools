@@ -5,7 +5,6 @@ from typing import Optional, Callable
 
 import qt
 import slicer
-from github import Github, GithubException
 
 
 # ===== Logging Configuration =====
@@ -96,10 +95,14 @@ class PythonDependencyChecker:
         return not any(dataset.parent.glob("fold_*/*.pth"))
 
     def getLatestReleaseUrl(self):
-        g = Github()
-        repo = g.get_repo(self.repo_path)
-        assets = [asset for release in repo.get_releases() for asset in release.get_assets()]
-        return assets[0].browser_download_url
+        # The GitHub REST API through requests, which Slicer ships. PyGithub
+        # does not come with Slicer: importing it at the top of this file
+        # stopped the whole extension from loading on a fresh install.
+        import requests
+        response = requests.get(f"https://api.github.com/repos/{self.repo_path}/releases", timeout=10)
+        response.raise_for_status()
+        assets = [asset for release in response.json() for asset in release.get("assets", [])]
+        return assets[0]["browser_download_url"]
 
     def areWeightsOutdated(self) -> bool:
         """
@@ -114,7 +117,7 @@ class PythonDependencyChecker:
 
         try:
             return self.getLastDownloadedWeights() != self.getLatestReleaseUrl()
-        except GithubException:
+        except Exception:  # noqa: BLE001  (offline, rate limit or no release: keep the weights)
             return False
 
     def getDestWeightFolder(self):

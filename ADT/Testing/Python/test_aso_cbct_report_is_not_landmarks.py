@@ -21,6 +21,7 @@ import os
 import shutil
 import sys
 import tempfile
+import types
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -28,6 +29,11 @@ _ROOT = os.path.normpath(os.path.join(_HERE, "..", "..", ".."))
 for _path in (os.path.join(_ROOT, "ADT"), os.path.join(_ROOT, "ASO_CBCT")):
     if os.path.isdir(_path) and _path not in sys.path:
         sys.path.insert(0, _path)
+
+# `ASO_CBCT_utils.utils` imports dicom2nifti, which Slicer does not ship (the
+# tool installs it at its first run). It only converts DICOM and nothing here
+# converts any, so a placeholder stands in for it, as in the ALI CBCT tests.
+sys.modules.setdefault("dicom2nifti", types.ModuleType("dicom2nifti"))
 
 from ADTLib.io.landmarks import IsMarkupsFile                   # noqa: E402
 from ASO_CBCT_utils.utils import GetPatients, MergeJson         # noqa: E402
