@@ -8,13 +8,12 @@ if current_dir not in sys.path:
 
 from .Progress import DisplayASOCBCT,DisplayAMASSS,DisplayAREGCBCT,DisplayALICBCT
 import slicer
-from .functionaq3dc import AQ3DCLogic, patientIdFromFileName
+from .functionaq3dc import AQ3DCLogic, patientIdFromFileName, require_pandas
 import qt
 import re
 import shutil
 import tempfile
 from pathlib import Path
-import pandas as pd
 import traceback
 
 
@@ -2057,6 +2056,7 @@ def GetListNamesSegType(segmentationType):
 
 def create_list_measure(df_path):
 
+    pd = require_pandas()
     df = pd.read_excel(df_path,sheet_name=None)
     list_measure = []
 
@@ -2151,6 +2151,7 @@ def pad_scans_for_landmarks(input_folder, output_folder, margin_mm=30):
 
 def create_list_landmark(df_path):
 
+    pd = require_pandas()
     df = pd.read_excel(df_path)
     list_landmark = []
 
@@ -2613,6 +2614,7 @@ def _index_measurements(df):
 
 
 def postprocess (cb_path,mand_path,max_path,exemple_path,outputfolder):
+    pd = require_pandas()
     file_cb = pd.read_excel(cb_path)
     file_mand = pd.read_excel(mand_path)
     file_max = pd.read_excel(max_path)

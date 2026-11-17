@@ -37,12 +37,26 @@ from typing import Union
 #
 # AQ3DC
 #
-try:
-    import pandas as pd
+def require_pandas():
+    """Return pandas, installing it the first time an Excel feature needs it.
 
-except Exception:
-    slicer.util.pip_install("pandas")
-    import pandas as pd  # news users will not need to refresh the AQ3DC for the first
+    This used to run at import time, i.e. in every Slicer process that loads the
+    ADT modules, ctest included. On the extensions factory all extensions share
+    one Python, and installing pandas there upgrades NumPy for everyone (pandas 3
+    needs numpy>=2), which breaks the extensions tested afterwards. Under
+    --testing nothing is installed: a missing pandas raises ImportError, but only
+    for the feature that needs it, and the module still loads.
+    """
+    try:
+        import pandas
+    except ImportError as error:
+        if slicer.app.testingEnabled():
+            raise ImportError(
+                "pandas is not installed and is not pip-installed while Slicer is running with --testing"
+            ) from error
+        slicer.util.pip_install("pandas")
+        import pandas
+    return pandas
 
 
 try:
@@ -1853,6 +1867,7 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
                 dict_data_angl["Line 1"].append(next(iterinformation))
                 dict_data_angl["Line 2"].append(next(iterinformation))
 
+        pd = require_pandas()
         with pd.ExcelWriter(path_file) as writer:
             if len(dict_data_dist_pp["Type of measurement"]) > 0:
                 df_dist_pp = pd.DataFrame(dict_data_dist_pp)
@@ -1902,6 +1917,7 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
     Returns:
         list: list of measure
     """
+        pd = require_pandas()
         reader = pd.read_excel(path_file, sheet_name=None)
         newreader = {
             "Distance between 2 points": {
@@ -2188,6 +2204,7 @@ class AQ3DCLogic(ScriptedLoadableModuleLogic):
         path (str): file's path
         name_file (str): file name
     """
+        pd = require_pandas()
         if "Patient" in dict_patient__computation:
             if len(dict_patient__computation["Patient"]) > 0:
                 df = pd.DataFrame(dict_patient__computation)
@@ -2423,6 +2440,7 @@ class AQ3DCTest(ScriptedLoadableModuleTest):
 
         logic.writeMeasurementExcel(compute,folder,'computatation_test.xlsx')
 
+        pd = require_pandas()
         reader_computation_test = pd.read_excel(os.path.join(folder,'computatation_test.xlsx'), sheet_name=None)
         reader_grounthruth = pd.read_excel(os.path.join(folder,'computatation_groundtruth.xlsx'), sheet_name=None)
         logger.info(f' file ground thruth : {os.path.join(folder,"computatation_groundtruth.xlsx")}, file test {os.path.join(folder,"computatation_test.xlsx")}')
