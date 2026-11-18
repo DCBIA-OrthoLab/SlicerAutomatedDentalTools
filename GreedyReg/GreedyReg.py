@@ -1440,6 +1440,13 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
     for i in range(3):
       matrix.SetElement(i, 3, current.GetElement(i, 3) + fixed_c[i] - moved_c[i])
     self.transformNode.SetMatrixTransformToParent(matrix)  # observer rebases sliders
+    # Put the slice views back to standard Axial/Sagittal/Coronal (Slicer may
+    # have rotated them to an oblique MRI's plane) and centre them on the
+    # fixed image, so the result is not mistaken for a rotated volume.
+    for name in slicer.app.layoutManager().sliceViewNames():
+      slice_node = slicer.app.layoutManager().sliceWidget(name).mrmlSliceNode()
+      slice_node.SetOrientationToDefault()
+      slice_node.JumpSliceByCentering(*fixed_c)
     d = [fixed_c[i] - moved_c[i] for i in range(3)]
     self.statusLabel.setText(f"Centered! shifted {d[0]:.1f}, {d[1]:.1f}, {d[2]:.1f} mm")
 
