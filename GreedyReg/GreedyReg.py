@@ -501,6 +501,13 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
     self.hardenButton.clicked.connect(self.onHardenTransform)
     manual_tools_layout.addRow(self.hardenButton)
 
+    self.exportTfmButton = qt.QPushButton("Export Registration Transform (.tfm)...")
+    self.exportTfmButton.setToolTip(
+      "Saves the full moving->fixed transform (everything hardened so far "
+      "plus the current manual transform) as a Slicer/ITK .tfm file.")
+    self.exportTfmButton.clicked.connect(self.onExportRegistrationTransform)
+    manual_tools_layout.addRow(self.exportTfmButton)
+
     #-- Sensitivity Demo (standalone, not tied to Slicer Transforms) -
     # Prototype for evaluating whether variable-sensitivity dragging is
     # worth building into Slicer's own transform interaction widget:
@@ -812,12 +819,68 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
       self.interactiveHint.setVisible(False)
       self.stopInteractiveTool()
 
+  def _registrationNodeFor(self, node):
+    """Transform node that keeps the cumulative hardened transform of `node`,
+    so hardening never throws the registration away."""
+    if not hasattr(self, "_registrationNodes"):
+      self._registrationNodes = {}
+    tn = slicer.mrmlScene.GetNodeByID(self._registrationNodes.get(node.GetID(), ""))
+    if tn is None:
+      tn = slicer.mrmlScene.AddNewNodeByClass(
+        "vtkMRMLLinearTransformNode", f"{node.GetName()}_Registration")
+      self._registrationNodes[node.GetID()] = tn.GetID()
+    return tn
+
+  def _accumulateBeforeHarden(self, node):
+    parent = node.GetParentTransformNode()
+    if parent is None:
+      return
+    current = vtk.vtkMatrix4x4()
+    if not parent.GetMatrixTransformToWorld(current):
+      return  # non-linear: nothing we can store as a matrix
+    tn = self._registrationNodeFor(node)
+    previous = vtk.vtkMatrix4x4()
+    tn.GetMatrixTransformToParent(previous)
+    total = vtk.vtkMatrix4x4()
+    vtk.vtkMatrix4x4.Multiply4x4(current, previous, total)
+    tn.SetMatrixTransformToParent(total)
+
+  def onExportRegistrationTransform(self):
+    moving = self.movingSelector.currentNode()
+    if not moving:
+      self.statusLabel.setText("No moving volume selected!")
+      return
+    hardened = vtk.vtkMatrix4x4()
+    if hasattr(self, "_registrationNodes") and moving.GetID() in self._registrationNodes:
+      self._registrationNodeFor(moving).GetMatrixTransformToParent(hardened)
+    current = vtk.vtkMatrix4x4()
+    parent = moving.GetParentTransformNode()
+    if parent is not None and not parent.GetMatrixTransformToWorld(current):
+      self.statusLabel.setText("Moving volume has a non-linear transform; cannot export as matrix.")
+      return
+    total = vtk.vtkMatrix4x4()
+    vtk.vtkMatrix4x4.Multiply4x4(current, hardened, total)
+    save_path = qt.QFileDialog.getSaveFileName(
+      None, "Export Registration Transform", f"{moving.GetName()}_Registration.tfm",
+      "ITK transform (*.tfm *.h5 *.txt);;All files (*)")
+    if not save_path:
+      return
+    tmp = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "_GreedyRegExportTmp")
+    try:
+      tmp.SetMatrixTransformToParent(total)
+      ok = slicer.util.saveNode(tmp, save_path)
+    finally:
+      slicer.mrmlScene.RemoveNode(tmp)
+    self.statusLabel.setText(f"Transform exported: {save_path}" if ok else "Transform export FAILED")
+
   def onHardenTransform(self):
     moving = self.movingSelector.currentNode()
     if moving:
+        self._accumulateBeforeHarden(moving)
         slicer.vtkSlicerTransformLogic().hardenTransform(moving)
     model = self.modelSelector.currentNode()
     if model:
+        self._accumulateBeforeHarden(model)
         slicer.vtkSlicerTransformLogic().hardenTransform(model)
     if not moving and not model:
         self.statusLabel.setText("No moving volume or model selected!")
@@ -1086,6 +1149,7 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
     self._updateSensitivityDemoStatus()
 
   def onSceneCleared(self, caller, event):
+    self._registrationNodes = {}
     # Recreate transform node
     self.transformNode = slicer.mrmlScene.AddNewNodeByClass(
         "vtkMRMLLinearTransformNode", "GreedyManualTransform")
