@@ -754,8 +754,7 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
 
     self.layout.addStretch()
 
-    self.onFixedVolumeChanged(self.fixedSelector.currentNode())
-    self.onMovingVolumeChanged(self.movingSelector.currentNode())
+    self._syncTransformAttachments()
 
     slicer.mrmlScene.AddObserver(slicer.mrmlScene.EndCloseEvent, self.onSceneCleared)
     slicer.mrmlScene.AddObserver(slicer.mrmlScene.EndImportEvent, self.onSceneCleared)
@@ -776,17 +775,36 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
 
   #-- Volume/Model selection methods ----------------------------
 
+  def _syncTransformAttachments(self):
+    """Attach exactly the current moving volume and model to the manual
+    transform, detach anything this module attached earlier, and keep the
+    fixed volume untransformed. Order-independent, so it works the same
+    whether the data was loaded before or after the module was opened."""
+    tn = getattr(self, "transformNode", None)
+    if tn is None or not slicer.mrmlScene.IsNodePresent(tn):
+      return
+    fixed = self.fixedSelector.currentNode()
+    wanted = [n for n in (self.movingSelector.currentNode(), self.modelSelector.currentNode())
+              if n is not None and n is not fixed]
+    wanted_ids = {n.GetID() for n in wanted}
+    for nid in getattr(self, "_managedNodeIDs", set()) - wanted_ids:
+      n = slicer.mrmlScene.GetNodeByID(nid)
+      if n is not None and n.GetTransformNodeID() == tn.GetID():
+        n.SetAndObserveTransformNodeID(None)
+    if fixed is not None:
+      fixed.SetAndObserveTransformNodeID(None)
+    for n in wanted:
+      n.SetAndObserveTransformNodeID(tn.GetID())
+    self._managedNodeIDs = wanted_ids
+
   def onMovingVolumeChanged(self, node):
-    if node:
-      node.SetAndObserveTransformNodeID(self.transformNode.GetID())
+    self._syncTransformAttachments()
 
   def onFixedVolumeChanged(self, node):
-    if node:
-      node.SetAndObserveTransformNodeID(None)
+    self._syncTransformAttachments()
 
   def onModelChanged(self, node):
-    if node:
-      node.SetAndObserveTransformNodeID(self.transformNode.GetID())
+    self._syncTransformAttachments()
 
   def onSegmentationSelected(self, node):
     if hasattr(self, 'segmentEditorWidget'):
@@ -1149,7 +1167,15 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
     self._updateSensitivityDemoStatus()
 
   def onSceneCleared(self, caller, event):
+    # EndImportEvent also fires when a scene file is loaded on top of the
+    # current one: if our transform node survived, nothing was cleared, so
+    # keep the current state and just re-sync the attachments.
+    if getattr(self, "transformNode", None) is not None and \
+        slicer.mrmlScene.IsNodePresent(self.transformNode):
+      self._syncTransformAttachments()
+      return
     self._registrationNodes = {}
+    self._managedNodeIDs = set()
     # Recreate transform node
     self.transformNode = slicer.mrmlScene.AddNewNodeByClass(
         "vtkMRMLLinearTransformNode", "GreedyManualTransform")
