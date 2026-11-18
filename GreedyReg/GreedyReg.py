@@ -1373,6 +1373,11 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
     if not fixed or not moving:
       self.statusLabel.setText("Please select fixed and moving volumes!")
       return
+    if fixed is moving:
+      self.statusLabel.setText("Fixed and moving are the same volume - pick a different moving volume!")
+      return
+    # Make sure only the moving side follows the transform (fixed stays put)
+    self._syncTransformAttachments()
     tx, ty, tz = self.logic.computeCenteringTranslation(fixed, moving)
     matrix = vtk.vtkMatrix4x4()
     matrix.Identity()
