@@ -317,6 +317,7 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
     # Create transform node for manual alignment
     self.transformNode = slicer.mrmlScene.AddNewNodeByClass(
       "vtkMRMLLinearTransformNode", "GreedyManualTransform")
+    self._observeManualTransform()
 
     #-- Volume selectors ------------------------------------------
     volumes_box = ctk.ctkCollapsibleButton()
@@ -799,6 +800,8 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
 
   def onMovingVolumeChanged(self, node):
     self._syncTransformAttachments()
+    if hasattr(self, "rotX"):
+      self._rebaseManualTransform()  # new pivot = new moving image centre
 
   def onFixedVolumeChanged(self, node):
     self._syncTransformAttachments()
@@ -1179,6 +1182,7 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
     # Recreate transform node
     self.transformNode = slicer.mrmlScene.AddNewNodeByClass(
         "vtkMRMLLinearTransformNode", "GreedyManualTransform")
+    self._observeManualTransform()
     self.transformDisplayWidget.setMRMLTransformNode(self.transformNode)
     self.transformDisplayWidget.setVisible(False)
 
@@ -1219,22 +1223,67 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
     self.onFixedVolumeChanged(self.fixedSelector.currentNode())
     self.onMovingVolumeChanged(self.movingSelector.currentNode())
 
+  #-- Manual transform = slider adjustment on top of a base pose ----
+  # Center, the interactive handles, Harden/Reset, loaded matrices and
+  # Distant Registration all set the transform node directly. Each such
+  # change becomes the new base pose (sliders go back to 0), and the
+  # sliders are applied relative to it, rotating about the moving image
+  # centre. Before, the sliders rebuilt the matrix from scratch (wiping
+  # centring/handle edits) and Center wiped the slider rotation.
+
+  def _observeManualTransform(self):
+    self._baseMatrix = None
+    self.transformNode.AddObserver(
+      slicer.vtkMRMLTransformNode.TransformModifiedEvent, self._onManualTransformModified)
+
+  def _onManualTransformModified(self, caller, event):
+    if getattr(self, "_settingFromSliders", False):
+      return
+    self._rebaseManualTransform()
+
+  def _movingLocalCenter(self):
+    moving = self.movingSelector.currentNode() if hasattr(self, "movingSelector") else None
+    if moving is None or moving.GetImageData() is None:
+      return None
+    d = moving.GetImageData().GetDimensions()
+    m = vtk.vtkMatrix4x4()
+    moving.GetIJKToRASMatrix(m)
+    # same centre convention as Logic.computeCenteringTranslation (dims / 2)
+    return list(m.MultiplyPoint([d[0] / 2, d[1] / 2, d[2] / 2, 1]))[:3]
+
+  def _rebaseManualTransform(self):
+    """Adopt the transform node's current matrix as the base pose and zero
+    the sliders (without firing them)."""
+    self._baseMatrix = vtk.vtkMatrix4x4()
+    self.transformNode.GetMatrixTransformToParent(self._baseMatrix)
+    c = self._movingLocalCenter()
+    self._pivot = list(self._baseMatrix.MultiplyPoint(c + [1]))[:3] if c else [0.0, 0.0, 0.0]
+    for slider in [getattr(self, n, None) for n in ("rotX", "rotY", "rotZ", "tranX", "tranY", "tranZ")]:
+      if slider is not None:
+        slider.blockSignals(True)
+        slider.value = 0
+        slider.blockSignals(False)
+
   def onManualTransformChanged(self):
-    moving = self.movingSelector.currentNode()
-    if moving:
-      moving.SetAndObserveTransformNodeID(self.transformNode.GetID())
-    model = self.modelSelector.currentNode()
-    if model:
-      model.SetAndObserveTransformNodeID(self.transformNode.GetID())
-    transform = vtk.vtkTransform()
-    transform.Identity()
+    self._syncTransformAttachments()
+    if getattr(self, "_baseMatrix", None) is None:
+      self._rebaseManualTransform()
+    p = self._pivot
+    transform = vtk.vtkTransform()  # pre-multiply: T(tran) T(p) Rx Ry Rz T(-p) Base
     transform.Translate(self.tranX.value, self.tranY.value, self.tranZ.value)
+    transform.Translate(p[0], p[1], p[2])
     transform.RotateX(self.rotX.value)
     transform.RotateY(self.rotY.value)
     transform.RotateZ(self.rotZ.value)
+    transform.Translate(-p[0], -p[1], -p[2])
+    transform.Concatenate(self._baseMatrix)
     matrix = vtk.vtkMatrix4x4()
     transform.GetMatrix(matrix)
-    self.transformNode.SetMatrixTransformToParent(matrix)
+    self._settingFromSliders = True
+    try:
+      self.transformNode.SetMatrixTransformToParent(matrix)
+    finally:
+      self._settingFromSliders = False
 
   #-- Registration methods (delegates the actual work to GreedyReg_CLI) --
 
@@ -1378,15 +1427,21 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
       return
     # Make sure only the moving side follows the transform (fixed stays put)
     self._syncTransformAttachments()
+    # Shift the CURRENT pose so the moving centre lands on the fixed centre;
+    # any rotation already applied is kept (translation only).
     tx, ty, tz = self.logic.computeCenteringTranslation(fixed, moving)
+    current = vtk.vtkMatrix4x4()
+    self.transformNode.GetMatrixTransformToParent(current)
+    c = self._movingLocalCenter()
+    fixed_c = [c[0] + tx, c[1] + ty, c[2] + tz]          # fixed centre (RAS)
+    moved_c = current.MultiplyPoint(c + [1])[:3]         # moving centre now
     matrix = vtk.vtkMatrix4x4()
-    matrix.Identity()
-    matrix.SetElement(0, 3, tx)
-    matrix.SetElement(1, 3, ty)
-    matrix.SetElement(2, 3, tz)
-    self.transformNode.SetMatrixTransformToParent(matrix)
-    moving.SetAndObserveTransformNodeID(self.transformNode.GetID())
-    self.statusLabel.setText(f"Centered! {tx:.1f}, {ty:.1f}, {tz:.1f} mm")
+    matrix.DeepCopy(current)
+    for i in range(3):
+      matrix.SetElement(i, 3, current.GetElement(i, 3) + fixed_c[i] - moved_c[i])
+    self.transformNode.SetMatrixTransformToParent(matrix)  # observer rebases sliders
+    d = [fixed_c[i] - moved_c[i] for i in range(3)]
+    self.statusLabel.setText(f"Centered! shifted {d[0]:.1f}, {d[1]:.1f}, {d[2]:.1f} mm")
 
   #-- Distant Registration methods (ALI landmarks via slicer.modules.ali_cbct) --
 
