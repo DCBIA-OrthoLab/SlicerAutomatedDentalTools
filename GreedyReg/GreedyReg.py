@@ -317,6 +317,7 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
     # Create transform node for manual alignment
     self.transformNode = slicer.mrmlScene.AddNewNodeByClass(
       "vtkMRMLLinearTransformNode", "GreedyManualTransform")
+    self._observeManualTransform()
 
     #-- Volume selectors ------------------------------------------
     volumes_box = ctk.ctkCollapsibleButton()
@@ -500,6 +501,13 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
       "font-weight: bold; padding: 6px; border-radius: 4px; }")
     self.hardenButton.clicked.connect(self.onHardenTransform)
     manual_tools_layout.addRow(self.hardenButton)
+
+    self.exportTfmButton = qt.QPushButton("Export Registration Transform (.tfm)...")
+    self.exportTfmButton.setToolTip(
+      "Saves the full moving->fixed transform (everything hardened so far "
+      "plus the current manual transform) as a Slicer/ITK .tfm file.")
+    self.exportTfmButton.clicked.connect(self.onExportRegistrationTransform)
+    manual_tools_layout.addRow(self.exportTfmButton)
 
     #-- Sensitivity Demo (standalone, not tied to Slicer Transforms) -
     # Prototype for evaluating whether variable-sensitivity dragging is
@@ -747,8 +755,7 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
 
     self.layout.addStretch()
 
-    self.onFixedVolumeChanged(self.fixedSelector.currentNode())
-    self.onMovingVolumeChanged(self.movingSelector.currentNode())
+    self._syncTransformAttachments()
 
     slicer.mrmlScene.AddObserver(slicer.mrmlScene.EndCloseEvent, self.onSceneCleared)
     slicer.mrmlScene.AddObserver(slicer.mrmlScene.EndImportEvent, self.onSceneCleared)
@@ -769,17 +776,38 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
 
   #-- Volume/Model selection methods ----------------------------
 
+  def _syncTransformAttachments(self):
+    """Attach exactly the current moving volume and model to the manual
+    transform, detach anything this module attached earlier, and keep the
+    fixed volume untransformed. Order-independent, so it works the same
+    whether the data was loaded before or after the module was opened."""
+    tn = getattr(self, "transformNode", None)
+    if tn is None or not slicer.mrmlScene.IsNodePresent(tn):
+      return
+    fixed = self.fixedSelector.currentNode()
+    wanted = [n for n in (self.movingSelector.currentNode(), self.modelSelector.currentNode())
+              if n is not None and n is not fixed]
+    wanted_ids = {n.GetID() for n in wanted}
+    for nid in getattr(self, "_managedNodeIDs", set()) - wanted_ids:
+      n = slicer.mrmlScene.GetNodeByID(nid)
+      if n is not None and n.GetTransformNodeID() == tn.GetID():
+        n.SetAndObserveTransformNodeID(None)
+    if fixed is not None:
+      fixed.SetAndObserveTransformNodeID(None)
+    for n in wanted:
+      n.SetAndObserveTransformNodeID(tn.GetID())
+    self._managedNodeIDs = wanted_ids
+
   def onMovingVolumeChanged(self, node):
-    if node:
-      node.SetAndObserveTransformNodeID(self.transformNode.GetID())
+    self._syncTransformAttachments()
+    if hasattr(self, "rotX"):
+      self._rebaseManualTransform()  # new pivot = new moving image centre
 
   def onFixedVolumeChanged(self, node):
-    if node:
-      node.SetAndObserveTransformNodeID(None)
+    self._syncTransformAttachments()
 
   def onModelChanged(self, node):
-    if node:
-      node.SetAndObserveTransformNodeID(self.transformNode.GetID())
+    self._syncTransformAttachments()
 
   def onSegmentationSelected(self, node):
     if hasattr(self, 'segmentEditorWidget'):
@@ -812,12 +840,68 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
       self.interactiveHint.setVisible(False)
       self.stopInteractiveTool()
 
+  def _registrationNodeFor(self, node):
+    """Transform node that keeps the cumulative hardened transform of `node`,
+    so hardening never throws the registration away."""
+    if not hasattr(self, "_registrationNodes"):
+      self._registrationNodes = {}
+    tn = slicer.mrmlScene.GetNodeByID(self._registrationNodes.get(node.GetID(), ""))
+    if tn is None:
+      tn = slicer.mrmlScene.AddNewNodeByClass(
+        "vtkMRMLLinearTransformNode", f"{node.GetName()}_Registration")
+      self._registrationNodes[node.GetID()] = tn.GetID()
+    return tn
+
+  def _accumulateBeforeHarden(self, node):
+    parent = node.GetParentTransformNode()
+    if parent is None:
+      return
+    current = vtk.vtkMatrix4x4()
+    if not parent.GetMatrixTransformToWorld(current):
+      return  # non-linear: nothing we can store as a matrix
+    tn = self._registrationNodeFor(node)
+    previous = vtk.vtkMatrix4x4()
+    tn.GetMatrixTransformToParent(previous)
+    total = vtk.vtkMatrix4x4()
+    vtk.vtkMatrix4x4.Multiply4x4(current, previous, total)
+    tn.SetMatrixTransformToParent(total)
+
+  def onExportRegistrationTransform(self):
+    moving = self.movingSelector.currentNode()
+    if not moving:
+      self.statusLabel.setText("No moving volume selected!")
+      return
+    hardened = vtk.vtkMatrix4x4()
+    if hasattr(self, "_registrationNodes") and moving.GetID() in self._registrationNodes:
+      self._registrationNodeFor(moving).GetMatrixTransformToParent(hardened)
+    current = vtk.vtkMatrix4x4()
+    parent = moving.GetParentTransformNode()
+    if parent is not None and not parent.GetMatrixTransformToWorld(current):
+      self.statusLabel.setText("Moving volume has a non-linear transform; cannot export as matrix.")
+      return
+    total = vtk.vtkMatrix4x4()
+    vtk.vtkMatrix4x4.Multiply4x4(current, hardened, total)
+    save_path = qt.QFileDialog.getSaveFileName(
+      None, "Export Registration Transform", f"{moving.GetName()}_Registration.tfm",
+      "ITK transform (*.tfm *.h5 *.txt);;All files (*)")
+    if not save_path:
+      return
+    tmp = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "_GreedyRegExportTmp")
+    try:
+      tmp.SetMatrixTransformToParent(total)
+      ok = slicer.util.saveNode(tmp, save_path)
+    finally:
+      slicer.mrmlScene.RemoveNode(tmp)
+    self.statusLabel.setText(f"Transform exported: {save_path}" if ok else "Transform export FAILED")
+
   def onHardenTransform(self):
     moving = self.movingSelector.currentNode()
     if moving:
+        self._accumulateBeforeHarden(moving)
         slicer.vtkSlicerTransformLogic().hardenTransform(moving)
     model = self.modelSelector.currentNode()
     if model:
+        self._accumulateBeforeHarden(model)
         slicer.vtkSlicerTransformLogic().hardenTransform(model)
     if not moving and not model:
         self.statusLabel.setText("No moving volume or model selected!")
@@ -1086,9 +1170,19 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
     self._updateSensitivityDemoStatus()
 
   def onSceneCleared(self, caller, event):
+    # EndImportEvent also fires when a scene file is loaded on top of the
+    # current one: if our transform node survived, nothing was cleared, so
+    # keep the current state and just re-sync the attachments.
+    if getattr(self, "transformNode", None) is not None and \
+        slicer.mrmlScene.IsNodePresent(self.transformNode):
+      self._syncTransformAttachments()
+      return
+    self._registrationNodes = {}
+    self._managedNodeIDs = set()
     # Recreate transform node
     self.transformNode = slicer.mrmlScene.AddNewNodeByClass(
         "vtkMRMLLinearTransformNode", "GreedyManualTransform")
+    self._observeManualTransform()
     self.transformDisplayWidget.setMRMLTransformNode(self.transformNode)
     self.transformDisplayWidget.setVisible(False)
 
@@ -1129,22 +1223,67 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
     self.onFixedVolumeChanged(self.fixedSelector.currentNode())
     self.onMovingVolumeChanged(self.movingSelector.currentNode())
 
+  #-- Manual transform = slider adjustment on top of a base pose ----
+  # Center, the interactive handles, Harden/Reset, loaded matrices and
+  # Distant Registration all set the transform node directly. Each such
+  # change becomes the new base pose (sliders go back to 0), and the
+  # sliders are applied relative to it, rotating about the moving image
+  # centre. Before, the sliders rebuilt the matrix from scratch (wiping
+  # centring/handle edits) and Center wiped the slider rotation.
+
+  def _observeManualTransform(self):
+    self._baseMatrix = None
+    self.transformNode.AddObserver(
+      slicer.vtkMRMLTransformNode.TransformModifiedEvent, self._onManualTransformModified)
+
+  def _onManualTransformModified(self, caller, event):
+    if getattr(self, "_settingFromSliders", False):
+      return
+    self._rebaseManualTransform()
+
+  def _movingLocalCenter(self):
+    moving = self.movingSelector.currentNode() if hasattr(self, "movingSelector") else None
+    if moving is None or moving.GetImageData() is None:
+      return None
+    d = moving.GetImageData().GetDimensions()
+    m = vtk.vtkMatrix4x4()
+    moving.GetIJKToRASMatrix(m)
+    # same centre convention as Logic.computeCenteringTranslation (dims / 2)
+    return list(m.MultiplyPoint([d[0] / 2, d[1] / 2, d[2] / 2, 1]))[:3]
+
+  def _rebaseManualTransform(self):
+    """Adopt the transform node's current matrix as the base pose and zero
+    the sliders (without firing them)."""
+    self._baseMatrix = vtk.vtkMatrix4x4()
+    self.transformNode.GetMatrixTransformToParent(self._baseMatrix)
+    c = self._movingLocalCenter()
+    self._pivot = list(self._baseMatrix.MultiplyPoint(c + [1]))[:3] if c else [0.0, 0.0, 0.0]
+    for slider in [getattr(self, n, None) for n in ("rotX", "rotY", "rotZ", "tranX", "tranY", "tranZ")]:
+      if slider is not None:
+        slider.blockSignals(True)
+        slider.value = 0
+        slider.blockSignals(False)
+
   def onManualTransformChanged(self):
-    moving = self.movingSelector.currentNode()
-    if moving:
-      moving.SetAndObserveTransformNodeID(self.transformNode.GetID())
-    model = self.modelSelector.currentNode()
-    if model:
-      model.SetAndObserveTransformNodeID(self.transformNode.GetID())
-    transform = vtk.vtkTransform()
-    transform.Identity()
+    self._syncTransformAttachments()
+    if getattr(self, "_baseMatrix", None) is None:
+      self._rebaseManualTransform()
+    p = self._pivot
+    transform = vtk.vtkTransform()  # pre-multiply: T(tran) T(p) Rx Ry Rz T(-p) Base
     transform.Translate(self.tranX.value, self.tranY.value, self.tranZ.value)
+    transform.Translate(p[0], p[1], p[2])
     transform.RotateX(self.rotX.value)
     transform.RotateY(self.rotY.value)
     transform.RotateZ(self.rotZ.value)
+    transform.Translate(-p[0], -p[1], -p[2])
+    transform.Concatenate(self._baseMatrix)
     matrix = vtk.vtkMatrix4x4()
     transform.GetMatrix(matrix)
-    self.transformNode.SetMatrixTransformToParent(matrix)
+    self._settingFromSliders = True
+    try:
+      self.transformNode.SetMatrixTransformToParent(matrix)
+    finally:
+      self._settingFromSliders = False
 
   #-- Registration methods (delegates the actual work to GreedyReg_CLI) --
 
@@ -1283,15 +1422,33 @@ class GreedyRegWidget(ScriptedLoadableModuleWidget):
     if not fixed or not moving:
       self.statusLabel.setText("Please select fixed and moving volumes!")
       return
+    if fixed is moving:
+      self.statusLabel.setText("Fixed and moving are the same volume - pick a different moving volume!")
+      return
+    # Make sure only the moving side follows the transform (fixed stays put)
+    self._syncTransformAttachments()
+    # Shift the CURRENT pose so the moving centre lands on the fixed centre;
+    # any rotation already applied is kept (translation only).
     tx, ty, tz = self.logic.computeCenteringTranslation(fixed, moving)
+    current = vtk.vtkMatrix4x4()
+    self.transformNode.GetMatrixTransformToParent(current)
+    c = self._movingLocalCenter()
+    fixed_c = [c[0] + tx, c[1] + ty, c[2] + tz]          # fixed centre (RAS)
+    moved_c = current.MultiplyPoint(c + [1])[:3]         # moving centre now
     matrix = vtk.vtkMatrix4x4()
-    matrix.Identity()
-    matrix.SetElement(0, 3, tx)
-    matrix.SetElement(1, 3, ty)
-    matrix.SetElement(2, 3, tz)
-    self.transformNode.SetMatrixTransformToParent(matrix)
-    moving.SetAndObserveTransformNodeID(self.transformNode.GetID())
-    self.statusLabel.setText(f"Centered! {tx:.1f}, {ty:.1f}, {tz:.1f} mm")
+    matrix.DeepCopy(current)
+    for i in range(3):
+      matrix.SetElement(i, 3, current.GetElement(i, 3) + fixed_c[i] - moved_c[i])
+    self.transformNode.SetMatrixTransformToParent(matrix)  # observer rebases sliders
+    # Put the slice views back to standard Axial/Sagittal/Coronal (Slicer may
+    # have rotated them to an oblique MRI's plane) and centre them on the
+    # fixed image, so the result is not mistaken for a rotated volume.
+    for name in slicer.app.layoutManager().sliceViewNames():
+      slice_node = slicer.app.layoutManager().sliceWidget(name).mrmlSliceNode()
+      slice_node.SetOrientationToDefault()
+      slice_node.JumpSliceByCentering(*fixed_c)
+    d = [fixed_c[i] - moved_c[i] for i in range(3)]
+    self.statusLabel.setText(f"Centered! shifted {d[0]:.1f}, {d[1]:.1f}, {d[2]:.1f} mm")
 
   #-- Distant Registration methods (ALI landmarks via slicer.modules.ali_cbct) --
 
