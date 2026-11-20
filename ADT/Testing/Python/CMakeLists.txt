@@ -87,3 +87,7 @@ slicer_add_python_unittest(SCRIPT test_output_folder_survives_mode_switch.py)
 # Where ALI CBCT's agent is allowed to stand: the line that decided accepted
 # negative coordinates and refused the padded margin.
 slicer_add_python_unittest(SCRIPT test_ali_cbct_bounds.py)
+
+# The inputs and buttons look: one call gives a panel the extension's theme in
+# both palettes, and a module that does not call it is untouched.
+slicer_add_python_unittest(SCRIPT test_theme.py)
