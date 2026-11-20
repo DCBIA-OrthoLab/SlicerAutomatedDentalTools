@@ -1,0 +1,205 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ui version="4.0">
+ <class>TMJ_Crop</class>
+ <widget class="qMRMLWidget" name="TMJ_Crop">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>560</width><height>760</height></rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="labelIntro">
+     <property name="text">
+      <string>Crops both temporomandibular joints of a CBCT. The scan is oriented to the Frankfurt horizontal frame, the mandible is segmented, and a box of 96 x 112 x 80 voxels at 0.3 mm is cut around each condyle. The left crop is mirrored so both joints look alike.</string>
+     </property>
+     <property name="wordWrap"><bool>true</bool></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="CollapsibleButtonInput">
+     <property name="text"><string>Input and output</string></property>
+     <layout class="QGridLayout" name="gridLayoutInput">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_inputType">
+        <property name="text"><string>Scans</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="inputType">
+        <item><property name="text"><string>Folder of scans</string></property></item>
+        <item><property name="text"><string>One scan file</string></property></item>
+       </widget>
+      </item>
+   <item row="1" column="0">
+    <widget class="QLabel" name="label_lineEditInput">
+     <property name="text"><string>Input</string></property>
+    </widget>
+   </item>
+   <item row="1" column="1">
+    <widget class="QLineEdit" name="lineEditInput">
+     <property name="toolTip"><string>A CBCT (.nii.gz, .nrrd, .gipl) or a folder of them. Every scan needs its own file name.</string></property>
+    </widget>
+   </item>
+   <item row="1" column="2">
+    <widget class="QPushButton" name="buttonInput">
+     <property name="text"><string>Browse</string></property>
+    </widget>
+   </item>
+   <item row="2" column="0">
+    <widget class="QLabel" name="label_lineEditOutput">
+     <property name="text"><string>Output folder</string></property>
+    </widget>
+   </item>
+   <item row="2" column="1">
+    <widget class="QLineEdit" name="lineEditOutput">
+     <property name="toolTip"><string>Where the crops and the reports are written.</string></property>
+    </widget>
+   </item>
+   <item row="2" column="2">
+    <widget class="QPushButton" name="buttonOutput">
+     <property name="text"><string>Browse</string></property>
+    </widget>
+   </item>
+      <item row="3" column="0">
+       <widget class="QPushButton" name="buttonTestFiles">
+        <property name="text"><string>Test Files</string></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="CollapsibleButtonModels">
+     <property name="text"><string>Reference and models</string></property>
+     <layout class="QGridLayout" name="gridLayoutModels">
+   <item row="0" column="0">
+    <widget class="QLabel" name="label_lineEditReference">
+     <property name="text"><string>Reference folder</string></property>
+    </widget>
+   </item>
+   <item row="0" column="1">
+    <widget class="QLineEdit" name="lineEditReference">
+     <property name="toolTip"><string>The Frankfurt horizontal and midsagittal plane reference.</string></property>
+    </widget>
+   </item>
+   <item row="0" column="2">
+    <widget class="QPushButton" name="buttonReference">
+     <property name="text"><string>Browse</string></property>
+    </widget>
+   </item>
+   <item row="0" column="3">
+    <widget class="QPushButton" name="buttonDownloadReference">
+     <property name="text"><string>Download</string></property>
+    </widget>
+   </item>
+   <item row="1" column="0">
+    <widget class="QLabel" name="label_lineEditModelAli">
+     <property name="text"><string>Landmark models</string></property>
+    </widget>
+   </item>
+   <item row="1" column="1">
+    <widget class="QLineEdit" name="lineEditModelAli">
+     <property name="toolTip"><string>ALI models for Ba, S, N, RPo, LPo, ROr and LOr.</string></property>
+    </widget>
+   </item>
+   <item row="1" column="2">
+    <widget class="QPushButton" name="buttonModelAli">
+     <property name="text"><string>Browse</string></property>
+    </widget>
+   </item>
+   <item row="1" column="3">
+    <widget class="QPushButton" name="buttonDownloadModelAli">
+     <property name="text"><string>Download</string></property>
+    </widget>
+   </item>
+   <item row="2" column="0">
+    <widget class="QLabel" name="label_lineEditModelAmasss">
+     <property name="text"><string>Mandible models</string></property>
+    </widget>
+   </item>
+   <item row="2" column="1">
+    <widget class="QLineEdit" name="lineEditModelAmasss">
+     <property name="toolTip"><string>The AMASSS model folder holding MAND (about 2 GB to download).</string></property>
+    </widget>
+   </item>
+   <item row="2" column="2">
+    <widget class="QPushButton" name="buttonModelAmasss">
+     <property name="text"><string>Browse</string></property>
+    </widget>
+   </item>
+   <item row="2" column="3">
+    <widget class="QPushButton" name="buttonDownloadModelAmasss">
+     <property name="text"><string>Download</string></property>
+    </widget>
+   </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="CollapsibleButtonOptions">
+     <property name="text"><string>Options</string></property>
+     <layout class="QGridLayout" name="gridLayoutOptions">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_sides">
+        <property name="text"><string>Joints to crop</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="comboSides">
+        <item><property name="text"><string>Left and Right</string></property></item>
+        <item><property name="text"><string>Left</string></property></item>
+        <item><property name="text"><string>Right</string></property></item>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="applyButton">
+     <property name="text"><string>Crop</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="cancelButton">
+     <property name="text"><string>Cancel</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="labelStep">
+     <property name="text"><string/></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QProgressBar" name="progressBar">
+     <property name="value"><number>0</number></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="labelTimer">
+     <property name="text"><string/></property>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation"><enum>Qt::Vertical</enum></property>
+     <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ctkCollapsibleButton</class>
+   <extends>QWidget</extends>
+   <header>ctkCollapsibleButton.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>qMRMLWidget</class>
+   <extends>QWidget</extends>
+   <header>qMRMLWidget.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,2 @@
+add_subdirectory(TMJ_Crop_CLI)
+add_subdirectory(TMJ_Crop_UI)

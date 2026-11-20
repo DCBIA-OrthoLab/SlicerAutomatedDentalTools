@@ -47,6 +47,7 @@ Slicer automated dental tools is an extension that allows users to perform autom
 | [VFACE](#vface-module) | Visual Facial Asymmetry Classification Engine. Automated classification of facial asymmetry. |
 | [GreedyReg](#greedyreg-module) | ITK-SNAP style registration of CBCT scans using the Greedy engine (manual, automatic and distant modes, single or batch). |
 | [Agent](#agent-module) | AI assistant that runs the other modules from a natural-language request, using a local LLM. |
+| [TMJ_Crop](#tmj_crop-module) | Crop both temporomandibular joints of a CBCT into fixed-size volumes. |
 
 These modules provide a convenient user interface, are available through the `Automated Dental Tools` module category, and share common features :
 
@@ -84,6 +85,7 @@ Additionally, the following modules are implemented as python scripted command-l
 | [VFACE_CLI](VFACE_CLI) | Classify automatically facial asymmetry based on linear and angluar measurements |
 | [GreedyReg_CLI](GreedyReg_CLI) | Run Greedy-based registration of CBCT scans |
 | [Agent_CLI](Agent_CLI) | Route a natural-language request to the right tool, extract its parameters and build the command to run |
+| [TMJ_Crop_CLI](TMJ_Crop/TMJ_Crop_CLI) | Crop the temporomandibular joints of oriented CBCT scans, from the folders the chain of TMJ_Crop leaves |
 
 
 ## Requirements
@@ -871,6 +873,36 @@ The agent runs **fully locally**: it is powered by the `qwen3:8b` model through 
 
 The routing, parameter extraction and command building are handled by the internal [Agent_CLI](Agent_CLI) module.
 
+
+## TMJ_Crop Module
+
+<img src="TMJ_Crop/TMJ_Crop_UI/Resources/Icons/TMJ_Crop.png" alt="Extension Logo" width="60"/>
+
+TMJ_Crop crops both temporomandibular joints of a CBCT into fixed-size volumes, so each joint can be handed to a viewer or a model without cutting the scan by hand. It is the Slicer version of the tool of the same name in [SADT-VISOR](https://github.com/DCBIA-OrthoLab/SADT-VISOR), with the same options, the same outputs and the same geometry.
+
+### How does the module work?
+
+1. **Orientation:** the scan is centred (PRE_ASO_CBCT), seven landmarks are placed on it (ALI_CBCT), and it is rotated onto the Frankfurt horizontal frame (SEMI_ASO_CBCT), as the Fully-Automated mode of ASO does.
+2. **Mandible:** AMASSS_CLI segments the mandible on the oriented scan.
+3. **Crop:** TMJ_Crop_CLI finds the top of each condyle near its porion, and cuts a box of 96 x 112 x 80 voxels at 0.3 mm (28.8 x 33.6 x 24.0 mm) around the head. **The left crop is mirrored** so every joint has the right-side orientation.
+
+### Input
+
+| Input | Extension |
+|-------|-----------|
+| **File or Folder of CBCT scans** | .nii, .nii.gz, .nrrd, .nrrd.gz, .gipl, .gipl.gz |
+
+Every scan needs a file name of its own. The module needs the reference of the Frankfurt horizontal plane, the landmark models and the mandible models of AMASSS: each has a `Download` button (the mandible models are about 2 GB), or select a folder you already have.
+
+### Options
+
+* **Joints to crop:** `Left and Right` (default), `Left` or `Right`.
+
+### Output
+
+Per scan: `<scan>_R.nii.gz` and `<scan>_L.nii.gz` (the crops), `<scan>.json` (the report), `<scan>_qc.png` (a quick view), and `<scan>_oriented.nii.gz` and `<scan>_mandible.nii.gz` (the oriented scan and the mandible segmentation, in the space of the crops' source). One `run_report.json` tells, for each scan, whether it is `ok`, `partial` (a joint was not found or is flagged) or failed, and why.
+
+The crops are written in the frame of the **oriented** scan, so they open on top of it. The left crop is mirrored in its array only: a loader that reorients to RAS undoes the mirror.
 
 
 
