@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Automated Dental Tools.Advanced</category>
+  <index>0</index>
+  <title>TMJ_Crop_CLI</title>
+  <description><![CDATA[Crops both temporomandibular joints of oriented CBCT scans.]]></description>
+  <version>0.1.0.</version>
+  <documentation-url>https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools</documentation-url>
+  <license/>
+  <contributor>Jules Grivot Pélisson (UNC)</contributor>
+  <acknowledgements><![CDATA[This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN]]></acknowledgements>
+
+  <parameters>
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>oriented_folder</name>
+      <label>oriented_folder</label>
+      <index>0</index>
+      <description>Output of SEMI_ASO_CBCT: the oriented scans and their landmarks.</description>
+    </string>
+
+    <string>
+      <name>landmarks_folder</name>
+      <label>landmarks_folder</label>
+      <index>1</index>
+      <description>The landmarks that went into SEMI_ASO_CBCT.</description>
+    </string>
+
+    <string>
+      <name>mask_folder</name>
+      <label>mask_folder</label>
+      <index>2</index>
+      <description>Output of AMASSS_CLI: one mandible mask per oriented scan.</description>
+    </string>
+
+    <string>
+      <name>reference_folder</name>
+      <label>reference_folder</label>
+      <index>3</index>
+      <description>The reference SEMI_ASO_CBCT registered onto (Frankfurt horizontal).</description>
+    </string>
+
+    <string>
+      <name>output_folder</name>
+      <label>output_folder</label>
+      <index>4</index>
+      <description>Where the crops and the reports are written.</description>
+    </string>
+
+    <string>
+      <name>input_folder</name>
+      <label>input_folder</label>
+      <longflag>input_folder</longflag>
+      <description>The folder the scans came from, to report the ones that were not oriented.</description>
+      <default></default>
+    </string>
+
+  </parameters>
+
+  <parameters>
+
+    <label>Options</label>
+    <description><![CDATA[What to crop and what to return]]></description>
+
+    <string>
+      <name>sides</name>
+      <label>sides</label>
+      <longflag>sides</longflag>
+      <description>Left and Right, Left or Right.</description>
+      <default>Left and Right</default>
+    </string>
+
+    <string>
+      <name>outputs</name>
+      <label>outputs</label>
+      <longflag>outputs</longflag>
+      <description>Extra outputs, comma-separated: Oriented scan, Mandible segmentation.</description>
+      <default></default>
+    </string>
+
+    <string>
+      <name>scale_by</name>
+      <label>scale_by</label>
+      <longflag>scale_by</longflag>
+      <description>none, or mandible-volume to scale the box with the mandible. For research use.</description>
+      <default>none</default>
+    </string>
+
+    <double>
+      <name>scale</name>
+      <label>scale</label>
+      <longflag>scale</longflag>
+      <description>A fixed scale factor, overriding scale_by; 0 means not given. For research use.</description>
+      <default>0</default>
+    </double>
+
+    <string>
+      <name>add_inname</name>
+      <label>add_inname</label>
+      <longflag>add_inname</longflag>
+      <description>The suffix SEMI_ASO_CBCT gave the oriented scans.</description>
+      <default>Or</default>
+    </string>
+
+    <string>
+      <name>prediction_id</name>
+      <label>prediction_id</label>
+      <longflag>prediction_id</longflag>
+      <description>The prediction ID AMASSS_CLI gave the masks.</description>
+      <default>Pred</default>
+    </string>
+
+  </parameters>
+
+</executable>
