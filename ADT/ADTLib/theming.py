@@ -243,6 +243,13 @@ def update_line_edit_and_combo_box(parent):
 BUTTON_ACCENTS = {
     "primary": (("#4ba3ff", "#3498db"), ("#5cb3ff", "#2980b9"), ("#2980b9", "#1f618d")),
     "danger": (("#e74c3c", "#c0392b"), ("#ec7063", "#a93226"), ("#a93226", "#922b21")),
+    # Quiet slate for the buttons that are not the point of the panel
+    # (Browse, Download, Test Files): the same shape, so it sits beside the others.
+    "secondary": (("#6c7a89", "#5d6d7e"), ("#7b8a99", "#6c7a89"), ("#5d6d7e", "#4d5b6a")),
+    # Two more, for buttons a panel wants told apart from Browse: a transfer
+    # (Download) and a trial run (Test Files).
+    "violet": (("#a569bd", "#8e44ad"), ("#b07cc6", "#7d3c98"), ("#7d3c98", "#6c3483")),
+    "orange": (("#f5b041", "#e67e22"), ("#f8c471", "#ca6f1e"), ("#ca6f1e", "#af601a")),
 }
 
 #: Background and foreground of a disabled button, per palette.
@@ -293,3 +300,159 @@ def apply_button_style(ui, names, accent="primary", dark=None):
         widget = getattr(ui, name, None)
         if widget is not None:
             widget.setStyleSheet(sheet)
+
+
+# ---------------------------------------------------------------------------
+# The same look for the inputs and the drop-down lists, in both palettes.
+#
+# `update_line_edit_and_combo_box` above paints them for the dark palette only,
+# with the colours written into the call, so under a light palette a panel showed
+# Slicer's own fields next to styled buttons. One template, two colour sets: the
+# dark set is the one the function above already uses, colour for colour. The
+# old `::drop-down { border: none }` rule hid the arrow; here the arrow is
+# painted back, in the text colour, so a list looks like a list.
+# ---------------------------------------------------------------------------
+
+#: background, border, text, focus border and selection, per palette.
+INPUT_COLORS = {
+    True: ("#3c3c3c", "#555555", "#ffffff", "#5dade2", "#5dade2"),
+    False: ("#ffffff", "#bdc3c7", "#2c3e50", "#3498db", "#3498db"),
+}
+
+
+def input_stylesheet(dark=None, arrow=None):
+    """The stylesheet of a QLineEdit and a QComboBox, for one palette.
+
+    `dark` defaults to what the application currently shows. `arrow` is the path
+    of an image for the drop-down arrow (see `_arrow_image`): without one the
+    list is styled but Qt draws no arrow of its own once its background is set,
+    and a list with no arrow does not look like a list.
+    """
+    if dark is None:
+        dark = is_dark_mode()
+    (background, border, text, focus, selection) = INPUT_COLORS[bool(dark)]
+    arrow_rules = ""
+    if arrow:
+        arrow_rules = (
+            "            QComboBox::drop-down {\n"
+            "              subcontrol-origin: padding;\n"
+            "              subcontrol-position: center right;\n"
+            "              width: 22px;\n"
+            "              border: none;\n"
+            "            }\n"
+            "            QComboBox::down-arrow {\n"
+            "              image: url(" + arrow.replace("\\", "/") + ");\n"
+            "              width: 10px;\n"
+            "              height: 6px;\n"
+            "            }\n"
+        )
+    return (
+        "\n"
+        "            QLineEdit {\n"
+        "              background-color: " + background + ";\n"
+        "              border: 1px solid " + border + ";\n"
+        "              border-radius: 4px;\n"
+        "              padding: 6px;\n"
+        "              color: " + text + ";\n"
+        "            }\n"
+        "            QLineEdit:focus {\n"
+        "              border: 2px solid " + focus + ";\n"
+        "            }\n"
+        "            QComboBox {\n"
+        "              background-color: " + background + ";\n"
+        "              border: 1px solid " + border + ";\n"
+        "              border-radius: 4px;\n"
+        "              padding: 4px 6px;\n"
+        "              color: " + text + ";\n"
+        "            }\n"
+        "            QComboBox:focus {\n"
+        "              border: 2px solid " + focus + ";\n"
+        "            }\n"
+        + arrow_rules +
+        "            QComboBox QAbstractItemView {\n"
+        "              background-color: " + background + ";\n"
+        "              color: " + text + ";\n"
+        "              selection-background-color: " + selection + ";\n"
+        "            }\n"
+        "            "
+    )
+
+
+_ARROW_FOLDER = "adtlib-arrows"
+
+
+def _arrow_image(color):
+    """Path of a small down-pointing triangle of `color`, drawn once and kept.
+
+    A stylesheet can only point at an image file, and the extension installs
+    none, so the arrow is painted at run time into the temporary folder.
+    """
+    import os
+    import tempfile
+    folder = os.path.join(tempfile.gettempdir(), _ARROW_FOLDER)
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, "down_%s.png" % color.lstrip("#"))
+    if not os.path.isfile(path):
+        pixmap = qt.QPixmap(10, 6)
+        pixmap.fill(qt.QColor(0, 0, 0, 0))
+        painter = qt.QPainter(pixmap)
+        painter.setRenderHint(qt.QPainter.Antialiasing)
+        painter.setPen(qt.Qt.NoPen)
+        painter.setBrush(qt.QColor(color))
+        triangle = qt.QPolygonF()
+        for x, y in ((0.5, 0.5), (9.5, 0.5), (5.0, 5.5)):
+            triangle.append(qt.QPointF(x, y))
+        painter.drawPolygon(triangle)
+        painter.end()
+        pixmap.save(path, "PNG")
+    return path
+
+
+def _named_widgets(ui):
+    """The widgets a `slicer.util.childWidgetVariables(...)` result holds, by name."""
+    return {name: widget for name, widget in vars(ui).items() if not name.startswith("_")}
+
+
+def apply_input_style(ui, dark=None):
+    """Give every QLineEdit and QComboBox of `ui` the input sheet of the palette."""
+    if dark is None:
+        dark = is_dark_mode()
+    try:
+        arrow = _arrow_image(INPUT_COLORS[bool(dark)][2])
+    except Exception:  # no arrow rather than no panel
+        arrow = None
+    sheet = input_stylesheet(dark, arrow)
+    for widget in _named_widgets(ui).values():
+        if isinstance(widget, (qt.QLineEdit, qt.QComboBox)):
+            try:
+                widget.setStyleSheet(sheet)
+            except (AttributeError, RuntimeError):
+                # A widget whose C++ object is already gone.
+                pass
+
+
+def apply_theme(ui_widget, ui, *, primary=(), danger=(), secondary=None, accents=None):
+    """One call that gives a panel the extension's look, dark or light.
+
+    `ui_widget` is the loaded panel and `ui` its `childWidgetVariables`.
+    The inputs and the drop-down lists get the input sheet; the buttons named in
+    `primary` and `danger` get those accents; every other QPushButton gets
+    `secondary`, unless `secondary` is a tuple of names, in which case only
+    those do. Pass `secondary=()` to leave the other buttons as Slicer draws them.
+    `accents` names more groups, `{"violet": ("download",), "orange": ("test",)}`:
+    any key of `BUTTON_ACCENTS`.
+    A module can call it, or keep its own styling: nothing else depends on it.
+    """
+    dark = is_dark_mode()
+    apply_dark_mode(ui_widget)  # does nothing under a light palette
+    apply_input_style(ui, dark)
+    apply_button_style(ui, primary, "primary", dark)
+    apply_button_style(ui, danger, "danger", dark)
+    accents = accents or {}
+    for accent, names in accents.items():
+        apply_button_style(ui, names, accent, dark)
+    if secondary is None:
+        taken = set(primary) | set(danger) | {name for names in accents.values() for name in names}
+        secondary = [name for name, widget in _named_widgets(ui).items()
+                     if isinstance(widget, qt.QPushButton) and name not in taken]
+    apply_button_style(ui, secondary, "secondary", dark)
