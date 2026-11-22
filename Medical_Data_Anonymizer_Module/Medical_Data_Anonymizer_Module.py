@@ -677,14 +677,29 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
         mappings_df = pd.DataFrame(file_mappings)
         if not mappings_df.empty:
             mappings_df.to_csv(csv_file_path, index=False)
-            self.statusLabel.setText(f"Complete! Processed {len(supported_files)} files.")
             logger.info(f"Anonymization complete. File mappings saved to {csv_file_path}.")
-            
-            qt.QMessageBox.information(
-                slicer.util.mainWindow(),
-                'Anonymization Complete',
-                f'Successfully processed {len(supported_files)} files.\n\nMappings saved to:\n{csv_file_path}'
-            )
+
+            failed = [m["Original File Name"] for m in file_mappings
+                      if m["Anonymized File Name"] == "ERROR"]
+            if failed:
+                summary = f"{len(failed)} of {len(supported_files)} files could not be anonymized"
+                self.statusLabel.setText(f"{summary}.")
+                listed = "\n".join(failed[:10])
+                if len(failed) > 10:
+                    listed += f"\n... and {len(failed) - 10} more"
+                qt.QMessageBox.warning(
+                    slicer.util.mainWindow(),
+                    'Anonymization Incomplete',
+                    f'{summary}, and no output was saved for them:\n\n{listed}\n\n'
+                    f'Details in:\n{csv_file_path}'
+                )
+            else:
+                self.statusLabel.setText(f"Complete! Processed {len(supported_files)} files.")
+                qt.QMessageBox.information(
+                    slicer.util.mainWindow(),
+                    'Anonymization Complete',
+                    f'Successfully processed {len(supported_files)} files.\n\nMappings saved to:\n{csv_file_path}'
+                )
         else:
             self.statusLabel.setText("No valid files were processed.")
             logger.info("No valid files were processed. CSV file not created.")
@@ -756,7 +771,7 @@ class Medical_Data_Anonymizer_ModuleLogic(ScriptedLoadableModuleLogic):
 
         except Exception as e:
             logger.error(f"Error in Presidio anonymization: {e}")
-            return text  # Return original text if anonymization fails
+            raise  # never hand back the original: it would be saved as anonymized
 
     def extract_text_from_xml(self, element):
         """Recursively extract text from XML elements"""
