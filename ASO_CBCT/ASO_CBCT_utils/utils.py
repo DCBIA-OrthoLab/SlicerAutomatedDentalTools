@@ -33,6 +33,7 @@ from ADTLib.io.landmarks import (
     WriteJson,  # noqa: F401  (re-exported)
     IsMarkupsFile,
 )
+from ADTLib.io.dicom import convert_single_volume
 from ADTLib.io.fs import search as search_files
 from ADTLib.naming import patient_id as read_patient_id, ASO_CBCT_CLI_MARKERS
 
@@ -442,6 +443,7 @@ def convertdicom2nifti(input_folder, output_folder=None):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
+    failed_patients = []
     for patient in patients_folders:
         if not os.path.exists(os.path.join(output_folder, patient + ".nii.gz")):
             logger.info("Converting patient: {}...".format(patient))
@@ -460,9 +462,18 @@ def convertdicom2nifti(input_folder, output_folder=None):
                     ),
                 )
             except RuntimeError:
-                dicom2nifti.convert_directory(current_directory, output_folder)
-                nifti_file = search(output_folder, "nii.gz")["nii.gz"][0]
-                os.rename(nifti_file, os.path.join(output_folder, patient + ".nii.gz"))
+                try:
+                    convert_single_volume(
+                        current_directory,
+                        os.path.join(output_folder, patient + ".nii.gz"),
+                        dicom2nifti.convert_directory,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to convert patient {patient}: {e}")
+                    failed_patients.append(patient)
+
+    if failed_patients and len(failed_patients) == len(patients_folders):
+        raise RuntimeError(f"No DICOM folder of {input_folder} could be converted")
 
 
 """

@@ -34,6 +34,10 @@ slicer_add_python_unittest(SCRIPT test_surface.py)
 # differently, and nothing else.
 slicer_add_python_unittest(SCRIPT test_fs.py)
 
+# A DICOM folder converted under its own patient's name: the fallback renamed
+# the first file of the shared folder, which could be the previous patient's.
+slicer_add_python_unittest(SCRIPT test_dicom_conversion.py)
+
 # The tooth numbering array: the preferred array was ignored as soon as it was
 # not the last array of the mesh.
 slicer_add_python_unittest(SCRIPT test_labels.py)

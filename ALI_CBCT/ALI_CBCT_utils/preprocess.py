@@ -4,7 +4,7 @@ import itk
 import SimpleITK as sitk
 import dicom2nifti
 
-from ALI_CBCT_utils.io import search
+from ADTLib.io.dicom import convert_single_volume
 
 # --- LOGGING CONFIGURATION ---
 from ADTLib.logging_setup import get_logger
@@ -229,24 +229,20 @@ def convertdicom2nifti(input_folder, output_folder=None):
                     dicom_names = reader.GetGDCMSeriesFileNames(current_directory)
                     
                     if not dicom_names:
-                        logger.warning(f"No DICOM files found in {current_directory}, trying alternative method")
-                        dicom2nifti.convert_directory(current_directory, output_folder)
-                        nifti_file = search(output_folder, 'nii.gz')['nii.gz'][0]
-                        os.rename(nifti_file, output_file)
-                    else:
-                        reader.SetFileNames(dicom_names)
-                        image = reader.Execute()
-                        sitk.ProcessObject_SetGlobalWarningDisplay(True)
-                        sitk.WriteImage(image, output_file)
+                        raise RuntimeError(f"No DICOM files found in {current_directory}")
+                    reader.SetFileNames(dicom_names)
+                    image = reader.Execute()
+                    sitk.ProcessObject_SetGlobalWarningDisplay(True)
+                    sitk.WriteImage(image, output_file)
                     
                     logger.info(f"Successfully converted: {patient}")
                     
                 except Exception as e:
                     logger.warning(f"Standard conversion failed for {patient}, trying alternative method: {e}")
                     try:
-                        dicom2nifti.convert_directory(current_directory, output_folder)
-                        nifti_file = search(output_folder, 'nii.gz')['nii.gz'][0]
-                        os.rename(nifti_file, output_file)
+                        convert_single_volume(
+                            current_directory, output_file, dicom2nifti.convert_directory
+                        )
                         logger.info(f"Successfully converted with alternative method: {patient}")
                     except Exception as alt_e:
                         logger.error(f"Failed to convert patient {patient}: {alt_e}")
