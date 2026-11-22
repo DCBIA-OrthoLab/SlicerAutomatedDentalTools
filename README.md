@@ -469,7 +469,7 @@ The **Medical Data Anonymizer** module provides automated anonymization of sensi
    - **Choose Entity Types**: Select which types of sensitive information to anonymize
    - **Advanced Options**:
      - **Anonymization Method**: Choose how to handle detected sensitive data
-     - **Confidence Threshold**: Set detection sensitivity (0.0-1.0, default: 0.5)
+     - **Confidence Threshold**: Set detection sensitivity (0.0-1.0, default: 0.5). Phone numbers are never held to more than 0.4, the score Presidio gives them; rows of decimal measurements are not taken for phone numbers at that score
 
 4. **Process Files:**
    - Click "Anonymize Files" to start processing
