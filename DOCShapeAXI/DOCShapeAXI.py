@@ -1,834 +1,130 @@
-import os
-import vtk, qt, slicer
-from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin
-import subprocess
-import platform
-import sys
-import time
-import threading
-import signal
-import textwrap
+"""DOCShapeAXI - surface grading, computed on the tool server.
 
-# ADTLib sits next to the modules in an installed build, in the directory Slicer
-# already has on sys.path. A source tree has no such entry -- a module search
-# path only gets there once Slicer finds a module in it, and ADT holds none --
-# so the entry points walk up to the holder directory and add it themselves.
-# This has to run before the first import of anything local, not just before
-# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
-_adt_root = os.path.dirname(os.path.realpath(__file__))
-while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
-        and _adt_root != os.path.dirname(_adt_root):
-    _adt_root = os.path.dirname(_adt_root)
-if os.path.join(_adt_root, "ADT") not in sys.path:
-    sys.path.append(os.path.join(_adt_root, "ADT"))
+Replaces the former local module (a Slicer widget driving DOCShapeAXI_CLI, a
+conda `shapeaxi` environment, a WSL detour on Windows, and a checkpoint
+downloaded from a GitHub release on every run). Nothing is computed in Slicer
+any more: the panel is generated from the server's `GET /tools` entry, the
+surfaces go up, the grades and the GradCAM surfaces come back.
+DOCShapeAXI_utils/ went with it and is no longer in the tree.
 
-from ADTLib.logging_setup import get_logger
+Two things about DOCShapeAXI's schema are worth knowing when reading this file:
 
-from ADTLib.format import format_elapsed, elapsed_since
-from ADTLib.theming import apply_dark_mode, update_line_edit_and_combo_box
-from ADTLib.env.conda import (
-    check_pythonpath, conda_quote, give_pythonpath,
-    init_conda as init_conda_call, check_lib_wsl as wsl_libraries_present,
-    windows_to_linux_path as windows_to_linux_path_shared)
+* **`task` narrows itself to the anatomy.** Only the nasopharynx airway has a
+  model for each of binary, severity and regression; the mandibular condyle and
+  the alveolar cleft have one four-grade model each. That is an `options_when`
+  rule in the schema, so the combo box re-populates itself when the anatomy
+  changes and there is no code for it here. The old panel offered all three
+  and reached the four-class model regardless.
+* **The result is two things, and the second is the point.** A prediction
+  table, and one copy of each surface carrying a GradCAM array per grade. The
+  arrays are what let a clinician see WHERE the model was looking, so the
+  surfaces are what this module offers to load into the scene - not the table.
+"""
 
-#
-# DOCShapeAXI
-#
+import logging
 
+import slicer
+from slicer.i18n import tr as _
+from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-# ===== Logging Configuration =====
-logger = get_logger("DOCShapeAXI")
+from ServerToolsCoreLib import slicer_io
+from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
 
-
-
-def condaQuote(conda, value):
-    """Delegated to ADTLib; kept as a module function for the call sites."""
-    return conda_quote(conda, value)
+logger = logging.getLogger("DOCShapeAXI")
 
 
 class DOCShapeAXI(ScriptedLoadableModule):
-  """Uses ScriptedLoadableModule base class, available at:
-  https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-
-  def __init__(self, parent):
-    ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "DOCShapeAXI"
-    self.parent.categories = ["Automated Dental Tools"]
-    # CondaSetUp (SlicerConda) is imported lazily where it is used; a hard module
-    # dependency makes this module fail to load wherever SlicerConda's modules are
-    # not registered, as on the extensions factory test runs.
-    self.parent.dependencies = []
-    
-    self.parent.contributors = ["Lucie Dole (University of North Carolina)",
-    "Gaelle Leroux (University of Michigan)",
-    "Lucia Cevidanes (University of Michigan)",
-    "Juan Carlos Prieto (University of North Carolina)"]
-    
-    self.parent.helpText = textwrap.dedent("""
-    This extension provides a Graphical User Interface (GUI)
-    for a deep learning automated classification of Alveolar Bone Defect in Cleft,
-    Nasopharynx Airway Obstruction and Mandibular Condyles.<br>
-
-    - The input file must be a folder containing a list of vtk files.<br>
-
-    - data type for classification: Mandibular Condyle, Nasopharynx Airway
-    Obstruction and Alveolar Bone Defect in Cleft.<br>
-
-    - output directory: a folder that will contain all the outputs
-    (models, prediction and explainability results)<br>
-
-    When prediction is over, you can open the output csv file which will containing
-    the path of each .vtk file as well as the predicted class. <br><br>
-
-    More help can be found on the <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools">Github repository</a>
-    for the extension.
-    """).strip()
-
-    self.parent.acknowledgementText = """
-    This file was developed by Lucie Dole, (University of North Carolina) and
-    Gaelle Leroux (University of Michigan), and was supported by R01-DE024450.
+    """Uses ScriptedLoadableModule base class, available at:
+    https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
-
-      
-class DOCShapeAXIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
-  """Uses ScriptedLoadableModuleWidget base class, available at:
-  https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-
-  def __init__(self, parent=None) -> None:
-    """Called when the user opens the module the first time and the widget is initialized."""
-    ScriptedLoadableModuleWidget.__init__(self, parent)
-    VTKObservationMixin.__init__(self)  # needed for parameter node observation
-
-    # self.logic = None
-    self._parameterNode = None
-    self._parameterNodeGuiTag = None
-    self._updatingGUIFromParameterNode = False
-
-    self.all_installed = False
-
-    self.time_log = 0 # for progress bar
-    self.progress = 0
-    self.previous_time = 0
-    self.start_time = 0
-
-  def setup(self) -> None:
-    self.removeObservers()
-
-    """Called when the user opens the module the first time and the widget is initialized."""
-    ScriptedLoadableModuleWidget.setup(self)
-
-    # Load widget from .ui file (created by Qt Designer).
-    # Additional widgets can be instantiated manually and added to self.layout.
-    ui_widget = slicer.util.loadUI(self.resourcePath("UI/DOCShapeAXI.ui"))
-    self.layout.addWidget(ui_widget)
-    self.uiWidget = ui_widget  # Store reference for styling
-    self.ui = slicer.util.childWidgetVariables(ui_widget)
-
-    # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
-    ui_widget.setMRMLScene(slicer.mrmlScene)
-
-    # Create logic class. Logic implements all computations that should be possible to run
-    # in batch mode, without a graphical user interface.
-    self.logic = DOCShapeAXILogic()
-
-    # Connections
-    # These connections ensure that we update parameter node when scene is closed
-    self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
-    self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
-
-    # UI elements
-
-    self.ui.browseDirectoryButton.connect('clicked(bool)',self.onBrowseOutputButton)
-    self.ui.browseMountPointButton.connect('clicked(bool)',self.onBrowseMountPointButton)
-    self.ui.cancelButton.connect('clicked(bool)', self.onCancel)
-
-    self.ui.dataTypeComboBox.currentTextChanged.connect(self.onDataType)
-    self.ui.resetButton.connect('clicked(bool)',self.onReset)
-
-    self.ui.outputLineEdit.textChanged.connect(self.onEditOutputLine)
-    self.ui.mountPointLineEdit.textChanged.connect(self.onEditMountPointLine)
-
-    # initialize variables
-    self.logic.output_dir = self.ui.outputLineEdit.text
-    self.logic.input_dir = self.ui.mountPointLineEdit.text
-    self.logic.data_type = self.ui.dataTypeComboBox.currentText
-
-    self.ui.cancelButton.setHidden(True)
-    self.ui.doneLabel.setHidden(True)
-
-    
-    self.time_log = 0
-    self.progress = 0
-    self.logic.cancel = False
-
-    self.ui.errorLabel.setVisible(False)
-    self.ui.timeLabel.setVisible(True)
-    self.ui.labelBar.setVisible(False)
-    self.ui.labelBar.setStyleSheet(f"""QLabel{{font-size: 12px; qproperty-alignment: AlignCenter;}}""")
-    self.ui.progressLabel.setVisible(False)
-    self.ui.progressLabel.setStyleSheet(f"""QLabel{{font-size: 16px; qproperty-alignment: AlignCenter;}}""")
-    self.ui.progressBar.setVisible(False)
-    self.ui.progressBar.setRange(0,100)
-    self.ui.progressBar.setTextVisible(True)
-
-    self.ui.applyChangesButton.connect('clicked(bool)',self.onApplyChangesButton)
-    self.initializeParameterNode()
-    qt.QTimer.singleShot(100, self.onCheckRequirements)
-    
-    # Apply dark mode styling
-    self.applyDarkModeStyles()
-
-  def applyDarkModeStyles(self):
-    """Give this module's widget the palette shared by the extension."""
-    apply_dark_mode(self.uiWidget)
-
-  def _updateLineEditAndComboBoxDarkMode(self, parent):
-    """Shared recursive pass, kept as a method for the existing call sites."""
-    update_line_edit_and_combo_box(parent)
-
-  def cleanup(self) -> None:
-    """Called when the application closes and the module widget is destroyed."""
-    self.removeObservers()
-
-  def enter(self) -> None:
-    """Called each time the user opens this module."""
-    # Make sure parameter node exists and observed
-    self.initializeParameterNode()
-
-  def exit(self) -> None:
-    """Called each time the user opens a different module."""
-    # Do not react to parameter node changes (GUI will be updated when the user enters into the module)
-    self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-
-  def onSceneStartClose(self, caller, event) -> None:
-    """Called just before the scene is closed."""
-    # Parameter node will be reset, do not use it anymore
-    self.setParameterNode(None)
-
-  def onSceneEndClose(self, caller, event) -> None:
-    """Called just after the scene is closed."""
-    # If this module is shown while the scene is closed then recreate a new parameter node immediately
-    if self.parent.isEntered:
-      self.initializeParameterNode()
-
-  def initializeParameterNode(self) -> None:
-    """Ensure parameter node exists and observed."""
-    # Parameter node stores all user choices in parameter values, node selections, etc.
-    # so that when the scene is saved and reloaded, these settings are restored.
-
-    self.setParameterNode(self.logic.getParameterNode())
-
-  def setParameterNode(self, input_parameter_node) -> None:
-    """
-    Set and observe parameter node.
-    Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
-    """
-
-    if self._parameterNode:
-      self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-    self._parameterNode = input_parameter_node
-    if self._parameterNode:
-      self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-
-    # Initial GUI update
-    self.updateGUIFromParameterNode()
-
-  def updateGUIFromParameterNode(self, caller=None, event=None):
-    """
-    This method is called whenever parameter node is changed.
-    The module GUI is updated to show the current state of the parameter node.
-    """
-
-    if self._parameterNode is None or self._updatingGUIFromParameterNode:
-      return
-    # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
-    self._updatingGUIFromParameterNode = True
-
-    # All the GUI updates are done
-    self._updatingGUIFromParameterNode = False
-
-  def updateParameterNodeFromGUI(self, caller=None, event=None):
-    """
-    This method is called when the user makes any change in the GUI.
-    The changes are saved into the parameter node (so that they are restored when the scene is saved and loaded).
-    """
-    if self._parameterNode is None or self._updatingGUIFromParameterNode:
-      return
-    was_modified = self._parameterNode.StartModify()  # Modify all properties in a single batch
-    self._parameterNode.EndModify(was_modified)
-
-
-  ##
-  ## Inputs
-  ##
-
-  def onBrowseMountPointButton(self):
-    mount_point = qt.QFileDialog.getExistingDirectory(self.parent, "Select a folder containing vtk files")
-    if mount_point != '':
-      self.logic.input_dir = mount_point
-      self.ui.mountPointLineEdit.setText(self.logic.input_dir)
-
-  def onEditMountPointLine(self):
-    self.logic.input_dir = self.ui.mountPointLineEdit.text
-
-  def onDataType(self):
-    self.logic.data_type = self.ui.dataTypeComboBox.currentText
-  
-  ##
-  ## Output
-  ##
-    
-  def onBrowseOutputButton(self):
-    newoutput_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a directory")
-    if newoutput_folder != '':
-      if newoutput_folder[-1] != "/":
-        newoutput_folder += '/'
-    self.outputFolder = newoutput_folder
-    self.ui.outputLineEdit.setText(self.outputFolder)
-
-  def onEditOutputLine(self):
-    self.logic.output_dir = self.ui.outputLineEdit.text
-
-  ##
-  ##  Process
-  ##
-  def check_input_parameters(self):
-    msg = qt.QMessageBox()
-    if not(os.path.isdir(self.logic.output_dir)):
-      if not(os.path.isdir(self.logic.output_dir)):
-        msg.setText("Output directory : \nIncorrect path.")
-        logger.error('Error: Incorrect path for output directory.')
-        self.ui.outputLineEdit.setText('')
-        logger.info(f'output folder : {self.logic.output_dir}')
-      else:
-        msg.setText('Unknown error.')
-
-      msg.setWindowTitle("Error")
-      msg.exec_()
-      return False
-
-    elif not(os.path.isdir(self.logic.input_dir)):
-      msg.setText("input file : \nIncorrect path.")
-      logger.error('Error: Incorrect path for input directory.')
-      self.ui.mountPointLineEdit.setText('')
-
-      msg.setWindowTitle("Error")
-      msg.exec_()
-      return False
-    else:
-      return True
-
-  def onCheckRequirements(self):
-    self.ui.labelBar.setVisible(False)
-    self.ui.progressLabel.setVisible(False)
-
-    if not self.logic.isCondaSetUp:
-      self.ui.timeLabel.setText(f"Checking if SlicerConda is installed")
-      message_box = qt.QMessageBox()
-      text = textwrap.dedent("""
-      SlicerConda is not set up, please click
-      <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
-      """).strip()
-      message_box.information(None, "Information", text)
-      return False
-
-    ## wsl
-    if platform.system() == "Windows":
-
-      self.ui.timeLabel.setHidden(False)
-      self.ui.timeLabel.setText(f"Checking if wsl is installed, this task may take a moments")
-
-      if self.logic.conda.testWslAvailable() : # if wsl is install
-        self.ui.timeLabel.setText("WSL installed")
-        if not self.logic.check_lib_wsl() : # if lib required are not install
-          self.ui.timeLabel.setText(f"Checking if the required librairies are installed, this task may take a moments")
-          message_box = qt.QMessageBox()
-          # text = "Code can't be launch. \nWSL doen't have all the necessary libraries, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip may be blocked by Chrome, this is normal, just authorize it."
-          text = textwrap.dedent("""
-            WSL doesn't have all the necessary libraries, please download the installer
-            nd follow the instructions
-            <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
-            for installation. The link may be blocked by Chrome, just authorize it.""").strip()
-
-          message_box.information(None, "Information", text)
-          return False
-      else : # if wsl not install, ask user to install it ans stop process
-        message_box = qt.QMessageBox()
-        # text = "Code can't be launch. \nWSL is not installed, please download the installer and follow the instructin here : https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip may be blocked by Chrome, this is normal, just authorize it."
-        text = textwrap.dedent("""
-          WSL is not installed, please download the installer and follow the instructions
-          <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
-          for installation. The link may be blocked by Chrome, just authorize it.""").strip()
-
-        message_box.information(None, "Information", text)
-        return False
-    
-
-    ## MiniConda
-
-    self.ui.timeLabel.setText(f"Checking if miniconda is installed")
-    if "no setup" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
-      message_box = qt.QMessageBox()
-      text = textwrap.dedent("""
-      Code can't be launch. \nConda is not setup.
-      Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
-      message_box.information(None, "Information", text)
-      return False
-
-    ## shapeAXI
-
-    self.ui.timeLabel.setText(f"Checking if environnement exists")
-    if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
-      user_response = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
-      if user_response :
-        start_time = time.time()
-        previous_time = start_time
-        formatted_time = self.format_time(0)
-        self.ui.timeLabel.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
-        process = self.logic.install_shapeaxi()
-        
-        while self.logic.process.is_alive():
-          slicer.app.processEvents()
-          formatted_time = self.update_ui_time(start_time, previous_time)
-          self.ui.timeLabel.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
-    
-        start_time = time.time()
-        previous_time = start_time
-        formatted_time = self.format_time(0)
-        text = textwrap.dedent(f"""
-        Installation of librairies into the new environnement.
-        This task may take a few minutes.\ntime: {formatted_time}""").strip()
-        self.ui.timeLabel.setText(text)
-      else:
-        return False
-    else:
-      self.ui.timeLabel.setText(f"Ennvironnement already exists")
-    
-    ## pytorch3d
-
-    self.ui.timeLabel.setText(f"Checking if pytorch3d is installed")
-    if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed
-      process = self.logic.install_pytorch3d()
-      start_time = time.time()
-      previous_time = start_time
-    
-      while self.logic.process.is_alive():
-        slicer.app.processEvents()
-        formatted_time = self.update_ui_time(start_time, previous_time)
-        text = textwrap.dedent(f"""
-        Installation of pytorch into the new environnement.
-        This task may take a few minutes.\ntime: {formatted_time}
-        """).strip()
-        self.ui.timeLabel.setText(text)
-    else:
-      self.ui.timeLabel.setText(f"pytorch3d is already installed")
-      logger.info("pytorch3d already installed")
-
-    self.all_installed = True
-
-
-  def update_ui_time(self, start_time, previous_time):
-    """Elapsed time since `start_time`, formatted for the installation label.
-
-    `previous_time` is kept for signature parity with the call sites, which
-    pass it but never update their own copy. It used to throttle this to one
-    update every 0.3s and return None in between, which is what wrote
-    "time: None" into the label. Formatting unconditionally is both simpler
-    and correct.
-    """
-    self.elapsed_time = elapsed_since(start_time)
-    return self.format_time(self.elapsed_time)
-
-  def onApplyChangesButton(self):
-    '''
-    This function is called when the user want to run the prediction and explainabity script of ShapeAXI
-    '''
-    self.ui.applyChangesButton.setEnabled(False)
-  
-    if self.check_input_parameters() :
-
-      self.ui.timeLabel.setHidden(False)
-      self.ui.timeLabel.setText('time: 0.0s')
-      slicer.app.processEvents()
-
-      self.logic.check_cli_script()
-
-      if 'Airway' in self.logic.data_type.split(' '):
-        for task in ['binary', 'severity', 'regression']:
-          if not self.logic.cancel :
-            self.logic.task = task
-
-            self.logic.setup_cli_command()
-            self.onProcessStarted()
-
-            start_time = time.time()
-            previous_time = start_time
-
-            while self.logic.process.is_alive():
-              slicer.app.processEvents()
-              self.onProcessUpdate()
-              formatted_time = self.update_ui_time(start_time, previous_time)
-              self.ui.timeLabel.setText(f"time : {formatted_time}")
-
-            self.resetProgressBar()
-        self.onProcessCompleted()
-      else:
-        self.logic.task = 'severity'
-        self.logic.setup_cli_command()
-        self.onProcessStarted()
-
-        start_time = time.time()
-        previous_time = start_time
-        while self.logic.process.is_alive():
-          slicer.app.processEvents()
-          self.onProcessUpdate()
-          formatted_time = self.update_ui_time(start_time, previous_time)
-          self.ui.timeLabel.setText(f"time : {formatted_time}")
-        self.onProcessCompleted()
-
-      self.ui.applyChangesButton.setEnabled(True)
-      self.ui.cancelButton.setHidden(True)
-  
-  def resetProgressBar(self):
-    self.ui.progressBar.setValue(0)
-    self.logic.progress = 0
-    self.logic.previous_saxi_task='predict'
-
-    self.ui.timeLabel.setVisible(False)
-    self.ui.labelBar.setVisible(False)
-    self.ui.progressLabel.setText('Prediction in progress...')
-    self.ui.progressLabel.setVisible(False)
-    
-    self.ui.progressBar.setVisible(False)
-    self.ui.progressBar.setRange(0,100)
-    self.ui.progressBar.setTextVisible(True)
-    self.ui.progressBar.setValue(0)
-    self.ui.progressBar.setFormat("")
-
-  def onProcessStarted(self):
-    self.logic.count_num_subjects()
-    self.ui.progressBar.setValue(0)
-    self.ui.labelBar.setText(f'Loading {self.logic.task} model...')
-    
-    self.ui.applyChangesButton.setEnabled(False)
-    self.ui.doneLabel.setHidden(True)
-    self.ui.cancelButton.setHidden(False)
-    self.ui.labelBar.setHidden(False)
-    self.ui.timeLabel.setHidden(False)
-    self.ui.progressLabel.setHidden(False)
-    self.ui.progressBar.setHidden(False)
-    formatted_time = self.format_time(0)
-    self.ui.timeLabel.setText(f"time : {formatted_time}")
-
-  def onProcessUpdate(self):
-    if os.path.isfile(self.logic.log_path):
-      time_progress = os.path.getmtime(self.logic.log_path)
-      line = self.logic.read_log_path()
-      if (time_progress != self.time_log) and line:
-        self.task, current_saxi_task, progress, num_classes = line.strip().split(',')
-
-        if progress == 'NaN':
-          self.ui.labelBar.setText(f'Loading {self.task} model...')
-        else:
-          self.progress = int(progress)
-          if self.logic.previous_saxi_task != current_saxi_task:
-            self.progress = 0
-            self.logic.previous_saxi_task = current_saxi_task
-            self.ui.progressBar.setValue(0)
-
-          self.ui.progressLabel.setText(f'{current_saxi_task} in progress...')
-          self.ui.labelBar.setText(f"{self.task} model \nNumber of processed subjects : {self.progress}/{self.logic.nbSubjects}")
-          progressbar_value = round((self.progress) /self.logic.nbSubjects * 100,2)
-          self.time_log = time_progress
-
-          self.ui.progressBar.setValue(progressbar_value)
-          self.ui.progressBar.setFormat(str(progressbar_value)+"%")
-
-  def onProcessCompleted(self):
-
-    if self.logic.cancel:
-      self.ui.doneLabel.setText("Process cancelled by user")
-      self.ui.doneLabel.setStyleSheet(f"""QLabel{{font-size: 20px; qproperty-alignment: AlignCenter; color:'red';}}""")
-
-    elif self.logic.stderr == '':
-      self.ui.doneLabel.setText("Process completed successfully")
-      self.ui.doneLabel.setStyleSheet(f"""QLabel{{font-size: 20px; qproperty-alignment: AlignCenter; color:'green';}}""")
-
-    else:
-      self.ui.doneLabel.setText("An error has occured.\nSee below the error message.")
-      self.ui.doneLabel.setStyleSheet(f"""QLabel{{font-size: 20px; qproperty-alignment: AlignCenter; color:'red';}}""")
-      self.ui.errorLabel.setText(self.logic.stderr)
-      self.ui.errorLabel.setVisible(True)
-
-    self.ui.applyChangesButton.setEnabled(True)
-    self.ui.resetButton.setEnabled(True)
-    self.ui.progressLabel.setHidden(False)
-    self.ui.cancelButton.setHidden(True)
-    self.resetProgressBar()
-    self.ui.doneLabel.setHidden(False)
-    
-    formatted_time = self.format_time(self.elapsed_time)
-    self.ui.timeLabel.setText(f"time : {formatted_time}")
-    self.ui.timeLabel.setHidden(False)
-
-    self.ui.doneLabel.setHidden(False)
-      
-  def onReset(self):
-    self.logic.cancel = False
-    self.ui.outputLineEdit.setText("")
-    self.ui.mountPointLineEdit.setText("")
-    self.ui.errorLabel.setText("Error: ")
-    self.ui.errorLabel.setVisible(False)
-
-    self.ui.applyChangesButton.setEnabled(True)
-    self.resetProgressBar()
-    self.ui.progressLabel.setHidden(True)
-    self.ui.doneLabel.setHidden(True)
-    self.ui.timeLabel.setHidden(True)
-    formatted_time = self.format_time(0)
-    self.ui.timeLabel.setText(f"time : {formatted_time}")
-    self.ui.progressBar.setEnabled(False)
-    self.ui.progressBar.setRange(0,100)
-    self.removeObservers()
-    self.ui.cancelButton.setEnabled(True)
-
-  def onCancel(self):
-    self.ui.labelBar.setText(f'Cancelling process...')
-
-    self.logic.cancel_process()
-
-    self.ui.cancelButton.setEnabled(False)
-    self.removeObservers()
-    self.onReset()
-
-  def format_time(self, seconds):
-    """Seconds as HH:MM:SS."""
-    return format_elapsed(seconds)
-
-
-class DOCShapeAXILogic(ScriptedLoadableModuleLogic):
-  """This class should implement all the actual
-  computation done by your module.  The interface
-  should be such that other python code can import
-  this class and make use of the functionality without
-  requiring an instance of the Widget.
-  Uses ScriptedLoadableModuleLogic base class, available at:
-  https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
-
-  """
-
-  def __init__(self):
-    
-    """Called when the logic class is instantiated. Can be used for initializing member variables."""
-    ScriptedLoadableModuleLogic.__init__(self)
-
-    self.isCondaSetUp = False
-    self.isWsl = False
-    self.name_env = 'shapeaxi'
-  
-    self.cancel = False
-    self.progress = 0
-    self.previous_saxi_task='predict'
-
-    self.check_log_path()
-    self.conda = self.init_conda()
-
-  def check_log_path(self):
-    # Written next to the module until now, which needs the extension install
-    # to be writable -- and this runs from the Logic's __init__, so on a
-    # packaged install the module failed before doing anything at all.
-    self.log_path = os.path.normpath(os.path.join(slicer.util.tempDirectory(), 'process.log'))
-    
-    if '\\' in self.log_path:
-      self.log_path = self.log_path.replace('\\', '/')
-    
-    with open(self.log_path, mode='w') as f: pass
-
-  def init_conda(self):
-    """The SlicerConda entry point for this platform, or False without it."""
-    call = init_conda_call()
-    self.isCondaSetUp = bool(call)
-    return call
-
-  def run_conda_command(self, target, command):
-    self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
-    self.process.start()
-
-  def install_shapeaxi(self):
-        # Only SimpleITK here. Everything that depends on torch - torch itself,
-        # torchvision, ocnn, pytorch3d, shapeaxi - is installed afterwards by
-        # install_pytorch, which is the only place that can pass the
-        # --index-url selecting a CUDA build. Asked for here, pip took PyPI's
-        # default variant (2.12.1+cu130) and no pytorch3d wheel is published
-        # for it; shapeaxi on top of that fails outright, since it declares
-        # pytorch3d and PyPI carries no distribution for it at all.
-        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,"3.12",["SimpleITK"],)) #run in parallel to not block slicer
-
-  def check_if_pytorch3d(self):
-    conda_exe = self.conda.getCondaExecutable()
-    # Unquoted where nothing strips the quotes: kept, they turn the body
-    # into a single string literal that Python evaluates and exits 0 on,
-    # so the check reported pytorch3d present in an env without it.
-    command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", condaQuote(self.conda, "import pytorch3d;import pytorch3d.renderer;import shapeaxi.dental_model_seg as d;d.saxi_nets_lightning.DentalModelSeg")]
-    return self.conda.condaRunCommand(command)
-    
-  def install_pytorch3d(self):
-    result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
-    if not result_pythonpath :
-      self.give_pythonpath_windows()
-      result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
-      
-    if result_pythonpath :
-      conda_exe = self.conda.getCondaExecutable()
-      path_pip = self.conda.getCondaPath()+f"/envs/{self.name_env}/bin/pip"
-      command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"ADTLib.env.install_pytorch",path_pip]
-
-    self.run_conda_command(target=self.conda.condaRunCommand, command=(command,))
-
-  def setup_cli_command(self):
-
-    args = self.find_cli_parameters()
-    conda_exe = self.conda.getCondaExecutable()
-    command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"DOCShapeAXI_CLI"]
-    for arg in args :
-      command.append("\""+arg+"\"")
-
-    self.run_conda_command(target=self.condaRunCommand, command=(command,))
-
-  def check_lib_wsl(self) -> bool:
-    """Whether WSL carries the system libraries the tools need."""
-    return wsl_libraries_present()
-
-  def check_pythonpath_windows(self, file):
-    """Whether `file` is importable by the Python of this module's environment."""
-    return check_pythonpath(self.conda, self.name_env, file)
-
-  def give_pythonpath_windows(self):
-    """Publish Slicer's module search paths into this module's environment."""
-    give_pythonpath(self.conda, self.name_env)
-
-  def windows_to_linux_path(self, windows_path):
-    """A Windows path as WSL sees it."""
-    return windows_to_linux_path_shared(windows_path)
-  
-  def check_cli_script(self):
-    if not self.check_pythonpath_windows("DOCShapeAXI_CLI") :
-      self.give_pythonpath_windows()
-      results = self.check_pythonpath_windows("DOCShapeAXI_CLI")
-
-  
-  def condaRunCommand(self, command: list[str]):
-    '''
-    Runs a command in a specified Conda environment, handling different operating systems.
-    
-    copy paste from SlicerConda and change the process line to be able to get the stderr/stdout
-    and cancel the process without blocking slicer
-    '''
-    path_activate = self.conda.getActivateExecutable()
-
-    if path_activate=="None":
-        return "Path to conda no setup"
-
-    if platform.system() == "Windows":
-
-      command_execute = f"source {path_activate} {self.name_env} &&"
-      for com in command :
-        command_execute = command_execute+ " "+com
-
-      user = self.conda.getUser()
-      command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
-      logger.info(f"command_to_execute in condaRunCommand : {command_to_execute}")
-
-      self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
-                              creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
-                              )
-    else:
-        
-      path_conda_exe = self.conda.getCondaExecutable()
-      command_execute = f"{path_conda_exe} run -n {self.name_env}"
-      for com in command :
-          command_execute = command_execute+ " "+com
-
-      logger.info(f"command_execute in conda run: {command_execute}")
-      self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
-  
-    self.stdout, self.stderr = self.subpro.communicate()
-
-  def cancel_process(self):
-    if platform.system() == 'Windows':
-      self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
-    else:
-      os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
-    logger.info("Cancellation requested. Terminating process...")
-
-    self.subpro.wait() ## important
-    self.cancel = True
-
-  def read_log_path(self):
-    with open(self.log_path, 'r') as f:
-      line = f.readline()
-      if line != '':
-        return line
-
-  def count_num_subjects(self):
-    self.nbSubjects = 0
-    for elt in os.listdir(self.input_dir):
-      name, ext = os.path.splitext(elt)
-      if ext == '.vtk':
-        self.nbSubjects +=1
-
-  def find_cli_parameters(self):
-
-    self.nn_type = self.find_nn_type()
-    self.model, self.num_classes = self.find_model_name()
-
-    parameters = [self.input_dir,
-                  self.output_dir,
-                  self.data_type,
-                  self.task,
-                  self.model,
-                  self.nn_type,
-                  str(self.num_classes),
-                  self.log_path]
-    
-    return parameters
-        
-  def find_nn_type(self):
-    if self.task == 'regression':
-      return 'SaxiMHAFBRegression'
-    else:
-      return 'SaxiMHAFBClassification'
-
-  def find_model_name(self):
-    if 'Condyle' in self.data_type.split(' '):
-      model_name='condyles_4_class'
-      self.num_classes = 4
-
-    elif 'Airway' in self.data_type.split(' '):
-      if self.task == 'binary':
-        model_name='airways_2_class'
-        self.num_classes = 2
-
-      elif self.task == 'severity':
-        model_name='airways_4_class'
-        self.num_classes = 4
-
-      elif self.task == 'regression':
-        model_name='airways_4_regress'
-        self.num_classes = 1
-      else:
-        logger.warning("no model found for undefined task")
-
-    elif 'Cleft' in self.data_type.split(' '):
-      model_name='clefts_4_class'
-      self.num_classes = 4
-
-    else:
-      logger.warning("No model found")
-      return None, None
-    return model_name, self.num_classes
+    def __init__(self, parent):
+        ScriptedLoadableModule.__init__(self, parent)
+        self.parent.title = _("DOCShapeAXI")
+        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.contributors = [
+            "Lucie Dole (UoNC)",
+            "Lucia Cevidanes (UoM)",
+            "Juan Carlos Prieto (UoNC)",
+        ]
+        self.parent.helpText = _("""
+        Grades a surface mesh - a mandibular condyle, a nasopharynx airway or an alveolar
+        cleft - with a shapeaxi classifier hosted on the Automated Dental Tools server, and
+        returns each surface again carrying a GradCAM array that shows which part of it the
+        model graded on.
+        See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools">documentation</a>.
+        """)
+        self.parent.acknowledgementText = _("""
+        This module was supported by NIDCR R01 024450.
+        """)
+
+
+class DOCShapeAXIWidget(ServerToolWidgetBase):
+    """Thin GUI: HTTP, async, form generation, styling and lifecycle all live
+    in ServerToolsCoreLib. See ARCHITECTURE.md."""
+
+    TOOL_NAME = "DOCShapeAXI"
+    LOAD_RESULTS_LABEL = _("Load the explainability surfaces into the scene when done")
+    RUN_REPORT = "DOCShapeAXI_report.json"
+
+    # No FILE_INPUTS: `meshes` and `model` are a packaged tool's `path`, which
+    # the client already gives a picker taking a file or a folder
+    # (client.accepts_folder). A cohort is a folder and a single case is a
+    # file, and both are what the tool takes.
+    #
+    # No RESULT_KIND: output_kind "files" is a prediction table plus one
+    # GradCAM surface per case, bundled into one .zip and unpacked into the
+    # output folder the user picks.
+
+    # A graded cohort returns one surface per case per grade. Twelve is what
+    # AREG and GreedyReg use for the same kind of output.
+    MAX_RESULTS_TO_LOAD = 12
+
+    # Pattern -> how to load it. The GradCAM surfaces are models; the
+    # prediction table is a CSV and there is nothing to put in a scene for it,
+    # which is why it is deliberately absent here and named in the summary
+    # instead.
+    _LOADABLE = (
+        ("*.vtk", "model"),
+        ("*.vtp", "model"),
+    )
+
+    # ------------------------------------------------------------------
+    # Panel
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Result
+    # ------------------------------------------------------------------
+
+    def handleResult(self, result) -> None:
+        """Unpack the archive (base class), then say what was graded with what.
+
+        Which checkpoint produced a grade is worth stating: the anatomy and the
+        task pick it, and a clinician reading a four-grade score needs to know
+        it was not the binary model that gave it.
+        """
+        super().handleResult(result)
+
+        outputDir = self._outputFolderWidget.currentPath if self._outputFolderWidget else None
+        if not outputDir:
+            return
+
+        report = self._readRunReport(outputDir)
+        if report:
+            slicer.util.showStatusMessage(self._summarize(report), 8000)
+
+        self._maybeLoadResults()
+
+    @staticmethod
+    def _summarize(report: dict) -> str:
+        return _(
+            "DOCShapeAXI graded {surfaces} surface(s): {data_type}, {task}, "
+            "using {checkpoint}."
+        ).format(
+            surfaces=report.get("surfaces", "?"),
+            data_type=report.get("data_type") or "?",
+            task=report.get("task") or "?",
+            checkpoint=report.get("checkpoint") or "?",
+        )

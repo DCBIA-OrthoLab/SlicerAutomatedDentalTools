@@ -12,6 +12,11 @@ set(MODULE_PYTHON_RESOURCES
 
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
+  FlexRegLib/__init__.py
+  FlexRegLib/butterfly_preview.py
+  FlexRegLib/orientation.py
+  FlexRegLib/transform.py
+  FlexRegLib/util.py
   FlexReg_utils/__init__.py
   FlexReg_utils/butterfly_preview.py
   FlexReg_utils/mgl_patch.py

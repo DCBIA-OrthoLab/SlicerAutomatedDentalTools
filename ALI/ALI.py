@@ -1,2228 +1,255 @@
+"""ALI - Automatic Landmark Identification, computed on the tool server.
 
-import os, sys, time, zipfile, urllib.request, shutil, glob, re
-import vtk, qt, slicer
-from qt import (
-    QWidget,
-    QGridLayout,
-)
+Replaces the former local module (a Slicer widget driving the ALI_CBCT and
+ALI_IOS CLIs, a conda `shapeaxi` environment and a WSL detour on Windows).
+Nothing is computed in Slicer any more: the panel is generated from the
+server's `GET /tools` entry, the data goes up, the landmarks come back. The
+old CLI modules are left in the tree but are no longer wired to this one.
 
+Three things about ALI's schema are worth knowing when reading this file:
 
-from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin, pip_install
-import webbrowser
-import textwrap
-import signal
+* **There is no `mode` argument.** The server inspects what the input actually
+  holds - volumes, DICOM series or surface meshes - and picks the CBCT or IOS
+  engine itself. This module must not guess: a `.zip` can carry either kind,
+  so an extension tells you nothing.
+* **Both engines' selections are always shown, and one of them is always
+  inert.** The engine isn't known until the server has looked at the data, so
+  there is no field to hide the other one behind - `visible_when` needs a
+  `choice` argument to test, and ALI declares none on purpose. What the schema
+  does instead is put each engine's selection in its own collapsible box
+  (`section`) and repeat "CBCT only" / "IOS only" in each description, which
+  formgen renders as a visible hint. Hiding one by guessing would be wrong more
+  often than the clutter is annoying.
+* **CBCT landmarks can be chosen by region or one by one.** `cbct_regions` is
+  the granularity a human wants; `landmarks` (119 options, rendered as tabs
+  from the server's own grouping) is for asking for named points, and naming
+  any of them *replaces* the region selection rather than narrowing it. It
+  exists because ASO's fully-automated mode registers on seven landmarks that
+  straddle two regions, and going through regions would run 58 deep-RL agents
+  to use seven.
+* **A partial run is normal and is not an error.** A landmark whose weights
+  are missing from the bundle, or whose agent never converged, is reported in
+  `run_report.json` while every other landmark is still written out. Surfacing
+  that report is this module's one real job - see handleResult.
+"""
 
-import platform
-import threading
-import subprocess
+import logging
+import os
 
-# ADTLib sits next to the modules in an installed build, in the directory Slicer
-# already has on sys.path. A source tree has no such entry -- a module search
-# path only gets there once Slicer finds a module in it, and ADT holds none --
-# so the entry points walk up to the holder directory and add it themselves.
-# This has to run before the first import of anything local, not just before
-# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
-_adt_root = os.path.dirname(os.path.realpath(__file__))
-while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
-        and _adt_root != os.path.dirname(_adt_root):
-    _adt_root = os.path.dirname(_adt_root)
-if os.path.join(_adt_root, "ADT") not in sys.path:
-    sys.path.append(os.path.join(_adt_root, "ADT"))
+import qt
+import slicer
+from slicer.i18n import tr as _
+from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ADTLib.logging_setup import get_logger
+from ServerToolsCoreLib import slicer_io
+from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from ServerToolsCoreLib.errors import plain_text
 
-logger = get_logger("ALI")
+logger = logging.getLogger("ALI")
 
-from ALI_Method.IOS import Auto_IOS
-from ALI_Method.CBCT import Auto_CBCT
-from ALI_Method.Method import Method
-from ALI_Method.Progress import Display
-
-from ADTLib.format import format_elapsed, elapsed_since
-from ADTLib.theming import update_line_edit_and_combo_box
-from ADTLib.env.deps import check_lib_installed as lib_satisfies, requirement
-from ADTLib.env.conda import (
-    check_pythonpath, conda_quote, give_pythonpath,
-    init_conda as init_conda_call, check_lib_wsl as wsl_libraries_present,
-    windows_to_linux_path as windows_to_linux_path_shared)
-from ADTLib.format import format_timer
-from ADTLib.requests import ALIRequest
-from ADTLib.model_registry import SLICER_TESTING_DATA
-from ADTLib.testdata import TestDataError, ensure_with_progress
-import traceback
-
-
-def check_lib_installed(lib_name, required_version=None):
-    """Whether the library is installed and satisfies the constraint."""
-    return lib_satisfies(lib_name, required_version)
-
-# import csv
-def install_function(self, libs=None):
-  libs_to_install = []
-  for lib, version in libs:
-    if not check_lib_installed(lib, version):
-      libs_to_install.append((lib, version))
-
-  if libs_to_install:
-    message = "The following libraries are not installed or need updating:\n"
-    message += "\n".join([requirement(lib, version) for lib, version in libs_to_install])
-    message += "\n\nDo you want to install/update these libraries?\n Doing it could break other modules"
-    user_choice = slicer.util.confirmYesNoDisplay(message)
-
-    if user_choice:
-      self.ui.label_LibsInstallation.setVisible(True)
-      for lib, version in libs_to_install:
-        pip_install(requirement(lib, version))
-    else:
-      return False
-  return True
-
-#region ========== FUNCTIONS ==========
-
-def PathFromNode(node):
-  storage_node=node.GetStorageNode()
-  if storage_node is not None:
-    filepath=storage_node.GetFullNameFromFileName()
-  else:
-    filepath=None
-  return filepath
-
-
-#: ALI publishes no DICOM dataset. The button says so, rather than failing on
-#: a made-up link -- the previous call went looking for a URL that exists
-#: nowhere and ended in "Failed to download test files".
-NO_DCM_TEST_FILES = (
-  "No DICOM test dataset is published for ALI.\n\n"
-  "Pick the \"NIFTI, NRRD, GIPL\" extension to use the published test scan, "
-  "or press Search to point ALI at a DICOM folder of your own."
-)
-
-MODELS_LINK = {
-  "CBCT": [
-    'https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/tag/v0.1-v2.0_models',
-  ],
-  "IOS" : [
-    'https://github.com/baptistebaquero/ALIDDM/releases/tag/v1.0.3',
-  ],
-}
-
-
-GROUPS_LANDMARKS = {
-  'Impacted canine' : ['UR3OI','UL3OI','UR3RI','UL3RI'],
-
-  'Cranial base' : ['Ba', 'S', 'N', 'RPo', 'LPo', 'RFZyg', 'LFZyg', 'C2', 'C3', 'C4'],
-
-  'Lower' : ['RCo', 'RGo', 'Me', 'Gn', 'Pog', 'PogL', 'B', 'LGo', 'LCo', 'LR1O', 'LL6MB', 'LL6DB', 'LR6MB', 'LR6DB', 'LAF', 'LAE', 'RAF', 'RAE', 'LMCo', 'LLCo', 'RMCo', 'RLCo', 'RMeF', 'LMeF', 'RSig', 'RPRa', 'RARa', 'LSig', 'LARa', 'LPRa', 'LR7R', 'LR5R', 'LR4R', 'LR3R', 'LL3R', 'LL4R', 'LL5R', 'LL7R', 'LL7O', 'LL5O', 'LL4O', 'LL3O', 'LL2O', 'LL1O', 'LR2O', 'LR3O', 'LR4O', 'LR5O', 'LR7O', 'LL6R', 'LR6R', 'LL6O', 'LR6O', 'LR1R', 'LL1R', 'LL2R', 'LR2R'],
-
-  'Upper' : ['RInfOr', 'LInfOr', 'LMZyg', 'RPF', 'LPF', 'PNS', 'ANS', 'A', 'UR3O', 'UR1O', 'UL3O', 'UR6DB', 'UR6MB', 'UL6MB', 'UL6DB', 'IF', 'ROr', 'LOr', 'RMZyg', 'RNC', 'LNC', 'UR7O', 'UR5O', 'UR4O', 'UR2O', 'UL1O', 'UL2O', 'UL4O', 'UL5O', 'UL7O', 'UL7R', 'UL5R', 'UL4R', 'UL2R', 'UL1R', 'UR2R', 'UR4R', 'UR5R', 'UR7R', 'UR6MP', 'UL6MP', 'UL6R', 'UR6R', 'UR6O', 'UL6O', 'UL3R', 'UR3R', 'UR1R'],
-}
-
-
-TEETH = {
-  'Upper teeth' : ['UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7'],
-  'Lower teeth' : ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7'],
-}
-
-# Labels eligible for the mucogingival line (MG) model, lower jaw only.
-# MG naming is centered on the midline: L0MG is the midline label
-# (universal id 25) and LL/LR numbering runs distally from it, so LR1MG
-# sits on tooth 26. Must match MG_OUTPUT_NAME in ALI_IOS_utils/model.py,
-# or TradLabelMG will not recognise what this tab sends.
-MG_TEETH = {
-  'MGL Lower' : ['LL6MG','LL5MG','LL4MG','LL3MG','LL2MG','LL1MG','L0MG',
-                 'LR1MG','LR2MG','LR3MG','LR4MG','LR5MG','LR6MG'],
-}
-
-SURFACE_LANDMARKS = {
-  'Cervical' : ['CL','CB','R','RIP','OIP'],
-  'Occlusal' : ['O','DB','MB'],
-}
-
-SURFACE_NETWORK = {
-  '_O_' : 'Occlusal',
-  '_C_' : 'Cervical'
-}
-
-
-
-  # "Dental" :  ['LL7','LL6','LL5','LL4','LL3','LL2','LL1','LR1','LR2','LR3','LR4','LR5','LR6','LR7','UL7','UL6','UL5','UL4','UL3','UL2','UL1','UR1','UR2','UR3','UR4','UR5','UR6','UR7'] ,
-
-  # "Landmarks type" : ['CL','CB','O','DB','MB','R','RIP','OIP']
-
-
-def condaQuote(conda, value):
-    """Delegated to ADTLib; kept as a module function for the call sites."""
-    return conda_quote(conda, value)
+# Loading a markups node per predicted file is instant for a handful of scans
+# and minutes of frozen UI for a cohort. Past this count the user is asked
+# rather than made to wait for something they may not have wanted.
+_CONFIRM_LOAD_ABOVE = 20
 
 
 class ALI(ScriptedLoadableModule):
-  """Uses ScriptedLoadableModule base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
+    """Uses ScriptedLoadableModule base class, available at:
+    https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
+    """
 
-  def __init__(self, parent):
-    ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "ALI"
-    self.parent.categories = ["Automated Dental Tools"]  # set categories (folders where the module shows up in the module selector)
-    # CondaSetUp (SlicerConda) is imported lazily where it is used; a hard module
-    # dependency makes this module fail to load wherever SlicerConda's modules are
-    # not registered, as on the extensions factory test runs.
-    self.parent.dependencies = []
-    self.parent.contributors = ["Maxime Gillot (UoM), Baptiste Baquero (UoM)"]
-    
-    self.parent.helpText = """
-This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools#ALI">module documentation</a>.
-"""
-    
-    self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
-"""
-
-    # Additional initialization step after application startup is complete
-    slicer.app.connect("startupCompleted()", registerSampleData)
-
-#
-# Register sample data sets in Sample Data module
-#
-
-def registerSampleData():
-  """
-  Add data sets to Sample Data module.
-  """
-  # It is always recommended to provide sample data for users to make it easy to try the module,
-  # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
-
-  import SampleData
-  icons_path = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
-
-  # To ensure that the source code repository remains small (can be downloaded and installed quickly)
-  # it is recommended to store data sets that are larger than a few MB in a Github release.
-
-  # ALI1
-  SampleData.SampleDataLogic.registerCustomSampleDataSource(
-    # Category and sample name displayed in Sample Data module
-    category='ALI',
-    sampleName='ALI1',
-    # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
-    # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-    thumbnailFileName=os.path.join(icons_path, 'ALI1.png'),
-    # Download URL and target file name
-    uris=f"{SLICER_TESTING_DATA}/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-    fileNames='ALI1.nrrd',
-    # Checksum to ensure file integrity. Can be computed by this command:
-    checksums = 'SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
-    # This node name will be used when the data set is loaded
-    nodeNames='ALI1'
-  )
-
-  # ALI2
-  SampleData.SampleDataLogic.registerCustomSampleDataSource(
-    # Category and sample name displayed in Sample Data module
-    category='ALI',
-    sampleName='ALI2',
-    thumbnailFileName=os.path.join(icons_path, 'ALI2.png'),
-    # Download URL and target file name
-    uris=f"{SLICER_TESTING_DATA}/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-    fileNames='ALI2.nrrd',
-    checksums = 'SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
-    # This node name will be used when the data set is loaded
-    nodeNames='ALI2'
-  )
-  
-class PopUpWindow(qt.QDialog):
-    """Class to generate a popup window with text and button (either radio or checkbox)"""
-
-    def __init__(
-        self,
-        title="Title",
-        text=None,
-        listename=["1", "2", "3"],
-        type=None,
-        tocheck=None,
-    ):
-        QWidget.__init__(self)
-        self.setWindowTitle(title)
-        layout = QGridLayout()
-        self.setLayout(layout)
-        self.ListButtons = []
-        self.listename = listename
-        self.type = type
-
-        if self.type == "radio":
-            self.radiobutton(layout)
-
-        elif self.type == "checkbox":
-            self.checkbox(layout)
-            if tocheck is not None:
-                self.toCheck(tocheck)
-
-        elif text is not None:
-            label = qt.QLabel(text)
-            layout.addWidget(label)
-            # add ok button to close the window
-            button = qt.QPushButton("OK")
-            button.connect("clicked()", self.onClickedOK)
-            layout.addWidget(button)
-
-    def checkbox(self, layout):
-        j = 0
-        for i in range(len(self.listename)):
-            button = qt.QCheckBox(self.listename[i])
-            self.ListButtons.append(button)
-            if i % 20 == 0:
-                j += 1
-            layout.addWidget(button, i % 20, j)
-        # Add a button to select and deselect all
-        button = qt.QPushButton("Select All")
-        button.connect("clicked()", self.onClickedSelectAll)
-        layout.addWidget(button, len(self.listename) + 1, j - 2)
-        button = qt.QPushButton("Deselect All")
-        button.connect("clicked()", self.onClickedDeselectAll)
-        layout.addWidget(button, len(self.listename) + 1, j - 1)
-
-        # Add a button to close the dialog
-        button = qt.QPushButton("OK")
-        button.connect("clicked()", self.onClickedCheckbox)
-        layout.addWidget(button, len(self.listename) + 1, j)
-
-    def toCheck(self, tocheck):
-        for i in range(len(self.listename)):
-            if self.listename[i] in tocheck:
-                self.ListButtons[i].setChecked(True)
-
-    def onClickedSelectAll(self):
-        for button in self.ListButtons:
-            button.setChecked(True)
-
-    def onClickedDeselectAll(self):
-        for button in self.ListButtons:
-            button.setChecked(False)
-
-    def onClickedCheckbox(self):
-        true_false = [button.isChecked() for button in self.ListButtons]
-        self.checked = [
-            self.listename[i] for i in range(len(self.listename)) if true_false[i]
+    def __init__(self, parent):
+        ScriptedLoadableModule.__init__(self, parent)
+        self.parent.title = _("ALI")
+        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.contributors = [
+            "Maxime Gillot (UoM)",
+            "Baptiste Baquero (UoM)",
+            "Lucia Cevidanes (UoM)",
+            "Juan Carlos Prieto (UoNC)",
         ]
-        self.accept()
-
-    def radiobutton(self, layout):
-        for i in range(len(self.listename)):
-            radiobutton = qt.QRadioButton(self.listename[i])
-            self.ListButtons.append(radiobutton)
-            radiobutton.connect("clicked(bool)", self.onClickedRadio)
-            layout.addWidget(radiobutton, i, 0)
-
-    def onClickedRadio(self):
-        self.checked = self.listename[
-            [button.isChecked() for button in self.ListButtons].index(True)
-        ]
-        self.accept()
-
-    def onClickedOK(self):
-        self.accept()
-
-
-#
-# ALIWidget
-#
-
-class ALIWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
-  """Uses ScriptedLoadableModuleWidget base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-
-  def __init__(self, parent=None):
-    """
-    Called when the user opens the module the first time and the widget is initialized.
-    """
-    ScriptedLoadableModuleWidget.__init__(self, parent)
-    VTKObservationMixin.__init__(self)  # needed for parameter node observation
-    self.logic = None
-    self._parameterNode = None
-    self._updatingGUIFromParameterNode = False
-
-    self.folder_as_input = False # If use a folder as input
-
-    self.MRMLNode_scan = None # MRML node of the selected scan
-    self.input_path = None # path to the folder containing the scans
-    self.model_folder = None
-
-    self.available_landmarks = [] # list of available landmarks to predict
-
-    self.output_folder = None # If save the output in a folder
-    self.goup_output_files = False
-
-    self.scan_count = 0 # number of scans in the input folder
-    self.landmark_cout = 0 # number of landmark to identify
-    self.nb_patient = 0 # number of patients to process
-
-  def setup(self):
-    """
-    Called when the user opens the module the first time and the widget is initialized.
-    """
-    ScriptedLoadableModuleWidget.setup(self)
-
-    # Load widget from .ui file (created by Qt Designer).
-    # Additional widgets can be instantiated manually and added to self.layout.
-    ui_widget = slicer.util.loadUI(self.resourcePath('UI/ALI.ui'))
-    self.layout.addWidget(ui_widget)
-    self.uiWidget = ui_widget  # Store reference for styling
-
-    self.ui = slicer.util.childWidgetVariables(ui_widget)
-    
-    # Apply dark mode styling if needed
-    self._applyDarkModeStylesheet(ui_widget)
-
-    # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
-    # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
-    # "setMRMLScene(vtkMRMLScene*)" slot.
-    ui_widget.setMRMLScene(slicer.mrmlScene)
-
-    # Create logic class. Logic implements all computations that should be possible to run
-    # in batch mode, without a graphical user interface.
-    self.logic = ALILogic()
-    
-    
-    self.MethodDic = {
-      "IOS": Auto_IOS(self),
-      "CBCT": Auto_CBCT(self),
-    }
-    self.ActualMeth = Method
-    self.ActualMeth = self.MethodDic["CBCT"]
-    self.type = "CBCT"
-    self.display = Display
-    self.selected_tooth = None
-    self.selected_mg_tooth = "None"
-    
-    self.nb_patient = 0
-    self.time_log = 0
-    
-    self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
-    
-    documents_location = qt.QStandardPaths.DocumentsLocation
-    self.documents = qt.QStandardPaths.writableLocation(documents_location)
-    self.SlicerDownloadPath = os.path.join(
-      self.documents,
-      slicer.app.applicationName + "Downloads",
-      "ALI",
-      "ALI_" + self.type,
-    )
-
-    if not os.path.exists(self.SlicerDownloadPath):
-      os.makedirs(self.SlicerDownloadPath)
-
-    
-    self.HideComputeItems()
-    
-    # Connections
-
-    # These connections ensure that we update parameter node when scene is closed
-    self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
-    self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
-
-    # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
-    # (in the selected parameter node).
-
-
-    self.lm_selection_area = qt.QWidget()
-    self.lm_selection_layout = qt.QHBoxLayout(self.lm_selection_area)
-    self.ui.OptionVLayout.addWidget(self.lm_selection_area)
-    self.tooth_lm = LMTab()
-    self.tooth_lm.Clear()
-    self.tooth_lm.FillTab(TEETH,True)
-    self.lm_selection_layout.addWidget(self.tooth_lm.widget)
-
-    # Separate tab for the mucogingival line (MG) of the lower jaw:
-    # selecting teeth here requests the MG landmark for those teeth
-    self.mg_tooth_lm = LMTab()
-    self.mg_tooth_lm.Clear()
-    self.mg_tooth_lm.FillTab(MG_TEETH,True)
-    self.lm_selection_layout.addWidget(self.mg_tooth_lm.widget)
-
-    self.lm_tab = LMTab()
-    # LM_tab_widget,LM_buttons_dic = GenLandmarkTab(Landmarks_group)
-    self.lm_selection_layout.addWidget(self.lm_tab.widget)
-
-
-    #region ===== INPUTS =====
-
-    self.ui.InputTypeComboBox.currentIndexChanged.connect(self.SwitchInputType)
-    self.SwitchInputType(0)
-    self.ui.ExtensioncomboBox.currentIndexChanged.connect(self.SwitchInputExtension)
-    self.SwitchInputExtension(0)
-    self.ui.MRMLNodeComboBox.setMRMLScene(slicer.mrmlScene)
-    self.ui.MRMLNodeComboBox.currentNodeChanged.connect(self.onNodeChanged)
-    self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox.currentNodeID)
-    self.ui.InputComboBox.currentIndexChanged.connect(self.SwitchInput)
-    self.SwitchInput(0)
-    self.ui.DownloadTestPushButton.connect('clicked(bool)',self.TestFiles)
-    #endregion
-
-    self.ui.SavePredictCheckBox.connect("toggled(bool)", self.UpdateSaveType)
-
-    self.ui.SearchSaveFolder.setHidden(False)
-    self.ui.SaveFolderLineEdit.setHidden(False)
-    self.ui.PredictFolderLabel.setHidden(False)
-    # Buttons
-    self.ui.SearchScanFolder.pressed.connect(
-      lambda: self.onSearchScanButton(self.ui.lineEditScanPath)
-    )
-    self.ui.SearchModelsFolder.connect('clicked(bool)',self.onSearchModelButton)
-    self.ui.SearchModelFolder.pressed.connect(
-      lambda: self.downloadModel(
-        self.ui.lineEditModelPath
-      )
-    )
-
-    self.ui.SearchSaveFolder.connect('clicked(bool)',self.onSearchSaveButton)
-
-
-    self.ui.PredictionButton.connect('clicked(bool)', self.onPredictButton)
-    self.ui.CancelButton.connect('clicked(bool)', self.onCancel)
-
-    # Make sure parameter node is initialized (needed for module reload)
-    self.initializeParameterNode()
-
-  #region ===== FUNCTIONS =====
-
-  #region ===== INPUTS =====
-
-  def SwitchInputType(self,index):
-
-    self.lm_tab.Clear()
-
-    if index == 1:
-      self.SwitchInputExtension(0)
-      self.type = "IOS"
-      self.ui.MRMLNodeComboBox.nodeTypes = ['vtkMRMLModelNode']
-      self.lm_tab.FillTab(SURFACE_LANDMARKS)
-      self.ui.ExtensionLabel.setVisible(False)
-      self.ui.ExtensioncomboBox.setVisible(False)
-      self.ui.label_LibsInstallation.setVisible(False)
-
-    else:
-      self.type = "CBCT"
-      self.ui.MRMLNodeComboBox.nodeTypes = ['vtkMRMLVolumeNode']
-      self.lm_tab.FillTab(GROUPS_LANDMARKS)
-      self.ui.ExtensionLabel.setVisible(True)
-      self.ui.ExtensioncomboBox.setVisible(True)
-      self.ui.label_LibsInstallation.setVisible(False)
-
-    self.ui.lineEditModelPath.setText("")
-    self.model_folder = None
-
-    self.tooth_lm.widget.setHidden(True if self.type == "CBCT" else False)
-    self.mg_tooth_lm.widget.setHidden(True if self.type == "CBCT" else False)
-
-    self.ActualMeth = self.MethodDic[self.type]
-    self.SlicerDownloadPath = os.path.join(
-      self.documents,
-      slicer.app.applicationName + "Downloads",
-      "ALI",
-      "ALI_" + self.type,
-    )
-
-  def SwitchInputExtension(self,index):
-
-    if index == 0: # NIFTI, NRRD, GIPL Files
-      self.SwitchInput(0)
-      self.isDCMInput = False
-
-      self.ui.label_11.setVisible(True)
-      self.ui.InputComboBox.setVisible(True)
-
-    if index == 1: # DICOM Files
-      self.SwitchInput(1)
-      self.ui.label_11.setVisible(False)
-      self.ui.InputComboBox.setVisible(False)
-      self.ui.ScanPathLabel.setText('DICOM\'s Folder')
-      self.isDCMInput = True
-
-    # The button is disabled in DICOM, and its tooltip says why: ALI publishes
-    # no DICOM dataset, and a button that always fails teaches nothing.
-    self.ui.DownloadTestPushButton.setEnabled(not self.isDCMInput)
-    self.ui.DownloadTestPushButton.setToolTip(
-      NO_DCM_TEST_FILES if self.isDCMInput
-      else "Download the published test scans if they are missing, then fill in "
-           "the scan, model and output folders so the run can be started."
-    )
-
-  def SwitchInput(self,index):
-
-    if index == 0:
-      self.folder_as_input = True
-      self.input_path = None
-
-    else:
-      self.folder_as_input = False
-      self.ui.SavePredictCheckBox.setChecked(False)
-      self.onNodeChanged()
-
-    self.ui.ScanPathLabel.setVisible(self.folder_as_input)
-    self.ui.lineEditScanPath.setVisible(self.folder_as_input)
-    self.ui.SearchScanFolder.setVisible(self.folder_as_input)
-    self.ui.SavePredictCheckBox.setEnabled(self.folder_as_input)
-  
-    self.ui.SelectNodeLabel.setVisible(not self.folder_as_input)
-    self.ui.MRMLNodeComboBox.setVisible(not self.folder_as_input)
-    self.ui.FillNodeLlabel.setVisible(not self.folder_as_input)
-
-
-  def onNodeChanged(self):
-    selected = False
-    self.MRMLNode_scan = slicer.mrmlScene.GetNodeByID(self.ui.MRMLNodeComboBox.currentNodeID)
-    if self.MRMLNode_scan is not None:
-      logger.debug(f"Node path: {PathFromNode(self.MRMLNode_scan)}")
-      self.input_path = PathFromNode(self.MRMLNode_scan)
-      self.nb_patient = 1
-
-      self.ui.LabelInfoPreProc.setText("Number of scans to process: 1")
-      selected = True
-
-    return selected
-
-  def onModelDownloadButton(self):
-    for link in MODELS_LINK[self.type]:
-      webbrowser.open(link)
-
-  def UpdateSaveType(self,caller=None, event=None):
-    state = self.ui.SavePredictCheckBox.isChecked()
-    self.ui.SearchSaveFolder.setEnabled(not state)
-    self.ui.SaveFolderLineEdit.setEnabled(not state)
-
-    if state:
-      self.output_folder = self.ui.lineEditScanPath.text
-      self.ui.SaveFolderLineEdit.text = self.output_folder
-
-  def onSearchScanButton(self, lineEdit):
-    scan_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-    if scan_folder != '':
-      lineEdit.setText(scan_folder)
-      if self.type == "CBCT":
-        if self.isDCMInput:
-          logger.debug("DICOM format detected")
-          nbr_scans = len(os.listdir(scan_folder))
-        else:
-          nbr_scans = self.logic.CountFileWithExtention(scan_folder, [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"],[])
-      else:
-        nbr_scans = self.logic.CountFileWithExtention(scan_folder, [".vtk", ".stl"],[])
-
-      if nbr_scans == 0:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'No scans found in the selected folder')
-
-      else:
-        self.input_path = scan_folder
-        self.ui.lineEditScanPath.setText(self.input_path)
-        self.scan_count = nbr_scans
-        self.CheckScan()
-      
-        
-  def EnsureTestFiles(self, name, urls):
-    """The folder of test scans for the current mode, fetched only if missing.
-
-    A mode may need more than one file -- ALI IOS wants an upper and a lower
-    arch -- and then `urls` is a dict: every part lands under the one folder
-    the module is given as input, each with its own completeness marker, so
-    an interrupted download is never taken for a finished one.
-    """
-    root = os.path.join(self.SlicerDownloadPath, "Test_Files")
-    if isinstance(urls, str):
-      return ensure_with_progress(urls, root, name, self.parent,
-                                  "Downloading %s..." % name)
-
-    for part, url in urls.items():
-      ensure_with_progress(url, root, os.path.join(name, part), self.parent,
-                           "Downloading %s (%s)..." % (name, part))
-    return os.path.join(root, name)
-
-  def TestFiles(self):
-    """Fetch this mode's test files if they are missing, and fill in every field.
-
-    Filling only the scan folder was not enough: the model folder is required
-    too, so pressing this and then Run answered "Please select folder for the
-    landmark identification model". The models come down the same way the
-    "Download Models" button gets them.
-    """
-    if self.isDCMInput:
-      # Nothing is published in DICOM for ALI: say so, rather than failing
-      # on a made-up link.
-      qt.QMessageBox.information(self.parent, "No DICOM test files",
-                                 NO_DCM_TEST_FILES)
-      return
-
-    name, urls = self.ActualMeth.getTestFileList()
-    logger.debug(f"Test files for {self.type}: {name} from {urls}")
-
-    try:
-      scan_folder = self.EnsureTestFiles(name, urls)
-    except (TestDataError, OSError) as error:
-      logger.error(f"Test files for {self.type} could not be obtained: {error}",
-                   exc_info=True)
-      qt.QMessageBox.warning(self.parent, "Error",
-                             f"Failed to download the test files:\n{error}")
-      return
-
-    logger.debug(f"Scan folder: {scan_folder}")
-    error = self.ActualMeth.TestScan(scan_folder)
-    if isinstance(error, str):
-      qt.QMessageBox.warning(self.parent, "Warning", error)
-      return
-
-    self.input_path = scan_folder
-    self.ui.lineEditScanPath.setText(scan_folder)
-    self.CheckScan()
-
-    # The models folder is required too: without it, Run refuses.
-    try:
-      self.downloadModel(self.ui.lineEditModelPath)
-    except (OSError, zipfile.BadZipFile) as error:
-      logger.error(f"Models for {self.type} could not be downloaded: {error}",
-                   exc_info=True)
-      qt.QMessageBox.warning(
-        self.parent, "Error",
-        f"The test scans are in {scan_folder}, but the {self.type} models could "
-        f"not be downloaded:\n{error}")
-      return
-
-    # The output field, for its part, is not overwritten: what the user chose
-    # stays.
-    if self.ui.SaveFolderLineEdit.text == "":
-      self.output_folder = os.path.join(scan_folder, "Predicted")
-      self.ui.SaveFolderLineEdit.setText(self.output_folder)
-
-  def DownloadUnzip(
-        self, url, directory, folder_name=None, num_downl=1, total_downloads=1
-    ):
-        out_path = os.path.join(directory, folder_name)
-
-        if not os.path.exists(out_path):
-            os.makedirs(out_path)
-
-            temp_path = os.path.join(directory, "temp.zip")
-
-            # Download the zip file from the url
-            with urllib.request.urlopen(url) as response, open(
-                temp_path, "wb"
-            ) as out_file:
-                # Pop up a progress bar with a QProgressDialog
-                progress = qt.QProgressDialog(
-                    "Downloading {} (File {}/{})".format(
-                        folder_name.split(os.sep)[0], num_downl, total_downloads
-                    ),
-                    "Cancel",
-                    0,
-                    100,
-                    self.parent,
-                )
-                progress.setCancelButton(None)
-                progress.setWindowModality(qt.Qt.WindowModal)
-                progress.setWindowTitle(
-                    "Downloading {}...".format(folder_name.split(os.sep)[0])
-                )
-                # progress.setWindowFlags(qt.Qt.WindowStaysOnTopHint)
-                progress.show()
-                length = response.info().get("Content-Length")
-                if length:
-                    length = int(length)
-                    blocksize = max(4096, length // 100)
-                    read = 0
-                    while True:
-                        buffer = response.read(blocksize)
-                        if not buffer:
-                            break
-                        read += len(buffer)
-                        out_file.write(buffer)
-                        progress.setValue(read * 100.0 / length)
-                        qt.QApplication.processEvents()
-                shutil.copyfileobj(response, out_file)
-
-            # Unzip the file
-            with zipfile.ZipFile(temp_path, "r") as zip:
-                zip.extractall(out_path)
-
-            # Delete the zip file
-            os.remove(temp_path)
-
-        return out_path
-  
-  def CheckScan(self):
-    """Function to test scan folder"""
-    if self.isDCMInput:
-      nb_scans = self.ActualMeth.NumberScanDCM(
-        self.ui.lineEditScanPath.text
-      )
-      error = self.ActualMeth.TestScanDCM(
-        self.ui.lineEditScanPath.text
-      )
-
-    else:
-      nb_scans = self.ActualMeth.NumberScan(
-        self.ui.lineEditScanPath.text
-      )
-      error = self.ActualMeth.TestScan(
-        self.ui.lineEditScanPath.text
-      )
-
-    if isinstance(error, str):
-      qt.QMessageBox.warning(self.parent, "Warning", error)
-
-    else:
-      self.nb_patient = nb_scans
-      self.ui.LabelInfoPreProc.setText(
-        "Number of Patients to process : " + str(nb_scans)
-      )
-      self.ui.LabelProgressPatient.setText(
-        "Patient process : 0 /" + str(nb_scans)
-      )
-
-  def SearchScan(self, lineEdit):
-    scan_folder = qt.QFileDialog.getExistingDirectory(
-      self.parent, "Select a scan folder for Input"
-    )
-
-    if scan_folder != "":
-      lineEdit.setText(scan_folder)
-
-      if (self.ui.lineEditScanPath.text != ""):
-        self.CheckScan()
-        
-  def loadModelFolder(self, model_folder):
-    if self.type == "CBCT":
-      lm_group = GetLandmarkGroup(GROUPS_LANDMARKS)
-      available_lm, brain_dic = GetAvailableLm(model_folder, lm_group)
-
-      if len(available_lm.keys()) == 0:
-        qt.QMessageBox.warning(
-          self.parent,
-          'Warning',
-          'No models found in the selected folder\nPlease select a folder containing .pth files\nYou can download the latest models with\n  "Download latest models" button'
-        )
-        return False
-      else:
-        self.model_folder = model_folder
-        self.ui.lineEditModelPath.setText(self.model_folder)
-        self.available_landmarks = available_lm.keys()
-        self.lm_tab.Clear()
-        self.lm_tab.FillTab(available_lm, enable=True)
-        return True
-    else:
-      available_lm = self.logic.GetAvailableSurfLm(model_folder)
-      has_mg_model = self.logic.HasMGModel(model_folder)
-
-      if len(available_lm.keys()) == 0 and not has_mg_model:
-        qt.QMessageBox.warning(
-          self.parent,
-          'Warning',
-          'No models found in the selected folder\nPlease select a folder containing .pth files\nYou can download the latest models with\n  "Download latest models" button'
-        )
-        return False
-      else:
-        self.model_folder = model_folder
-        self.ui.lineEditModelPath.setText(self.model_folder)
-        self.available_landmarks = available_lm.keys()
-        self.lm_tab.Clear()
-        self.lm_tab.FillTab(available_lm, enable=True)
-        return True
-
-  def downloadModel(self, lineEdit):
-    """Function to download the model files from the link in the getModelUrl function"""
-      
-    name = "Prediction" if self.type == "IOS" else "Landmark"
-    
-    listmodel = self.ActualMeth.getModelUrl()
-
-    urls = listmodel[name]
-    if isinstance(urls, str):
-      url = urls
-      # Keep the release tag in the folder name: DownloadUnzip skips a
-      # destination that already exists, so a model added to a later release
-      # would otherwise stay hidden behind the folder an earlier one left.
-      model_folder = self.DownloadUnzip(
-          url=url,
-          directory=os.path.join(self.SlicerDownloadPath),
-          folder_name=os.path.join("Models", name, url.rsplit("/", 2)[-2]),
-          num_downl=1,
-          total_downloads=1,
-      )
-
-    elif isinstance(urls, dict):
-      for i, (name_bis, url) in enumerate(urls.items()):
-        _ = self.DownloadUnzip(
-          url=url,
-          directory=os.path.join(self.SlicerDownloadPath),
-          folder_name=os.path.join("Models", name, name_bis),
-          num_downl=i + 1,
-          total_downloads=len(urls),
-        )
-      model_folder = os.path.join(self.SlicerDownloadPath, "Models", name)
-
-    if not model_folder == "":
-      error = self.ActualMeth.TestModel(model_folder, lineEdit.name)
-
-      if isinstance(error, str):
-        qt.QMessageBox.warning(self.parent, "Warning", error)
-
-      else:
-        lineEdit.setText(model_folder)
-        self.loadModelFolder(model_folder)
-
-  def onSearchModelButton(self):
-    model_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a model folder")
-    if model_folder != '':
-      self.loadModelFolder(model_folder)
-
-  def onSearchSaveButton(self):
-    save_folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
-    if save_folder != '':
-      self.output_folder = save_folder
-      self.ui.SaveFolderLineEdit.setText(save_folder)
-
-  def onPredictButton(self):
-    if self.type == "CBCT":
-      list_libs_cbct = [('itk', None), ('dicom2nifti', '>=2.6.2'), ('pydicom', '3.0.2')]
-      monai_version = '1.3.2' if sys.version_info >= (3, 10) else '0.7.0'
-      list_libs_cbct.append(('monai', monai_version))
-      
-      is_installed = install_function(self,list_libs_cbct)
-
-    else:
-      is_installed = False
-      check_env = self.onCheckRequirements()
-      logger.debug(f"Environment check result: {check_env}")
-      
-      if check_env:
-        list_libs_ios = [('itk', None), ('dicom2nifti', '>=2.6.2'), ('pydicom', '3.0.2')]
-        monai_version = '1.3.2' if sys.version_info >= (3, 10) else '0.7.0'
-        list_libs_ios.append(('monai', monai_version))
-
-        is_installed = install_function(self,list_libs_ios)
-      
-    if not is_installed:
-      qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
-      return
-    
-    self.logic.check_cli_script()
-    
-    self.ui.label_LibsInstallation.setVisible(False)
-      
-    if self.type == "IOS":
-      selected_tooth_lst = self.tooth_lm.GetSelected()
-      selected_mg_lst = self.mg_tooth_lm.GetSelected()
-      selected_lm_lst = self.lm_tab.GetSelected()
-
-      if len(selected_tooth_lst) == 0 and len(selected_mg_lst) == 0:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one tooth (Upper/Lower teeth or MGL Lower)')
-        return
-      if len(selected_tooth_lst) > 0 and len(selected_lm_lst) == 0:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark type for the selected teeth')
-        return
-      if len(selected_mg_lst) > 0 and not self.logic.HasMGModel(self.model_folder):
-        qt.QMessageBox.warning(self.parent, 'Warning', 'MGL Lower teeth are selected but no mucogingival model was found\nPlease add a "Lower_MG_*.pth" file to the model folder')
-        return
-
-      self.selected_tooth = " ".join(selected_tooth_lst) if selected_tooth_lst else "None"
-      self.selected_mg_tooth = " ".join(selected_mg_lst) if selected_mg_lst else "None"
-      self.selected_lm = " ".join(selected_lm_lst) if selected_lm_lst else "None"
-      self.landmark_cout = len(selected_lm_lst)
-
-    else:
-      selected_lm_lst = self.lm_tab.GetSelected()
-      self.landmark_cout = len(selected_lm_lst)
-      if len(selected_lm_lst) == 0:
-        qt.QMessageBox.warning(self.parent, 'Warning', 'Please select at least one landmark')
-        return
-      self.selected_lm = " ".join(selected_lm_lst)
-    if self.folder_as_input:
-      if not self.input_path:
-        # The path may have been typed directly instead of picked with the
-        # Search button, which is the only place that sets input_path
-        self.input_path = self.ui.lineEditScanPath.text.strip() or None
-
-    else:
-      # Node as input: the file the node was loaded from is what gets processed,
-      # so a node that only lives in the scene has nothing to give us
-      self.onNodeChanged()
-      if self.MRMLNode_scan is None:
-        qt.QMessageBox.warning(
-          self.parent, 'Warning',
-          'No scan selected.\nPick the scan to process in the "Select node" list at the '
-          'top of the module, or switch the input to a file or a folder.'
-        )
-        return
-      if not self.input_path:
-        qt.QMessageBox.warning(
-          self.parent, 'Warning',
-          f'The scan "{self.MRMLNode_scan.GetName()}" is not saved on disk, so it cannot '
-          'be processed.\nSave it as a .vtk file first (File > Save), then select it again.'
-        )
-        return
-
-    error = self.ActualMeth.TestProcess(
-      ALIRequest(input_folder=self.input_path,
-      model_folder=self.model_folder,
-      output_folder=self.ui.SaveFolderLineEdit.text,
-    ))
-    if isinstance(error, str):
-      qt.QMessageBox.warning(self.parent, "Warning", error.replace(",", "\n"))
-      return
-    try:
-      self.list_Processes_Parameters = self.ActualMeth.Process(
-        ALIRequest(input_folder=self.input_path,
-        model_folder=self.model_folder,
-        lm_type=self.selected_lm,
-        teeth=self.selected_tooth,
-        teeth_mg=self.selected_mg_tooth,
-        output_folder=self.ui.SaveFolderLineEdit.text,
-        log_path=self.log_path,
-        is_dicom_input=self.isDCMInput,
-      ))
-    except RuntimeError as e:
-      qt.QMessageBox.warning(self.parent, "Warning", str(e))
-      return
-    self.nb_extension_launch = len(self.list_Processes_Parameters)
-    if self.type == "IOS":
-      self.nb_lm = self.ActualMeth.NumberLandmark(self.selected_tooth) + self.ActualMeth.NumberLandmark(self.selected_mg_tooth)
-    else:
-      self.nb_lm = self.ActualMeth.NumberLandmark(self.selected_lm)
-    self.onProcessStarted()
-    
-    self.module_name = self.list_Processes_Parameters[0]["Module"]
-    self.displayModule = self.list_Processes_Parameters[0]["Display"]
-
-    if "CrownSegmentationcli" in self.module_name:
-      logger.debug(f"Module name: {self.module_name}")
-      self.nb_extension_did += 1
-      self.run_conda_tool("seg")
-      self.module_name = self.list_Processes_Parameters[0]["Module"]
-    if "ALI_IOS" in self.module_name:
-      self.nb_extension_did += 1
-      logger.debug(f"Module name: {self.module_name}")
-      self.run_conda_tool("ali")
-      self.OnEndProcess()
-     
-    else:
-      self.process = slicer.cli.run(
-        self.list_Processes_Parameters[0]["Process"],
-        None,
-        self.list_Processes_Parameters[0]["Parameter"],
-      )
-      self.processObserver = self.process.AddObserver(
-        "ModifiedEvent", self.onProcessUpdate
-      )
-    
-      del self.list_Processes_Parameters[0]
-    
-  def onProcessStarted(self):
-    self.ui.label_LibsInstallation.setHidden(True)
-    self.ui.LabelInfoPreProc.setHidden(True)
-    self.startTime = time.time()
-
-    self.ui.progressBar.setValue(0)
-    
-    self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
-    self.ui.LabelProgressExtension.setText(f"Extension : 1 / {self.nb_extension_launch}")
-    
-    self.nb_extension_did = 0
-    self.module_name_before = 0
-    self.nb_change_bystep = 0
-
-    self.RunningUI(True)
-
-  def onCondaProcessUpdate(self):
-      if os.path.isfile(self.log_path):
-          self.ui.LabelProgressExtension.setText(
-              f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
-          )
-          time_progress = os.path.getmtime(self.log_path)
-          line = self.logic.read_log_path(self.log_path)
-          if (time_progress != self.time_log) and line:
-              progress = line.strip()
-          
-              self.progress = int(progress)
-              self.ui.LabelProgressPatient.setText(f"Patient : {self.progress}/{self.nb_patient}")
-              
-              progress_bar_value = round((self.progress) / self.nb_patient * 100,2)
-              self.time_log = time_progress
-              
-              self.ui.progressBar.setValue(progress_bar_value)
-              self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
-
-  def onProcessUpdate(self, caller, event):
-        # timer = f"Time : {time.time()-self.startTime:.2f}s"
-        currentTime = time.time() - self.startTime
-        timer = format_timer(currentTime)
-
-        self.ui.TimerLabel.setText(timer)
-        progress = caller.GetProgress()
-        self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
-
-        if self.module_name_before != self.module_name:
-            self.ui.LabelProgressPatient.setText(f"Landmarks : 0 / {self.nb_lm*self.nb_patient} | Patient : 0 / {self.nb_patient}")
-            self.nb_extension_did += 1
-            self.ui.LabelProgressExtension.setText(
-                f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
+        self.parent.helpText = _("""
+        Places anatomical landmarks automatically, on CBCT scans or on intraoral surface scans,
+        using models hosted on the Automated Dental Tools server. Give it one scan or a whole
+        folder (DICOM series included) and pick a model bundle; the server decides which engine
+        applies and returns one Slicer markups file per scan, plus a report of what it could and
+        could not find.
+        See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools">documentation</a>.
+        """)
+        self.parent.acknowledgementText = _("""
+        This file was developed by Maxime Gillot (CPE Lyon & UoM) and Baptiste Baquero (CPE Lyon & UoM)
+        and was supported by NIDCR R01 024450, AA0F Dewel Memorial Biomedical Research award and by
+        Research Enhancement Award Activity 141 from the University of the Pacific, Arthur A. Dugoni
+        School of Dentistry.
+        """)
+
+
+class ALIWidget(ServerToolWidgetBase):
+    """Thin GUI: HTTP, async, form generation, styling and lifecycle all live
+    in ServerToolsCoreLib. See ARCHITECTURE.md."""
+
+    TOOL_NAME = "ALI"
+    RUN_REPORT = "run_report.json"
+
+    # The one thing ALI's schema cannot state. `input` is typed
+    # ("volume_or_zip_file", "surface_or_zip_file") - both file types, no
+    # "folder" - so the schema-driven rule would give it a file picker only.
+    # But a cohort, and *any* DICOM series, is a directory: the user picks a
+    # folder, base_widget zips it, and the server extracts it. Which of the two
+    # was given is read off the path at upload time, never asked.
+    FILE_INPUTS = {"input": "file_or_folder"}
+
+    # The CBCT engine takes a scan in, so one picked as input is shown in 3D
+    # with this preset. Its own results are markups, loaded by this module's
+    # own path below, and an IOS surface loads as a mesh -- neither is a volume,
+    # so neither reaches this.
+    VOLUME_RENDERING = "CT-AAA"
+
+    # RESULT_KIND is deliberately absent: output_kind is "files", which can
+    # only mean "save the archive", and formgen.result_kind_for derives it.
+
+    def __init__(self, parent=None):
+        ServerToolWidgetBase.__init__(self, parent)
+        self.loadResultsCheckBox = None
+
+    # ------------------------------------------------------------------
+    # Panel
+    # ------------------------------------------------------------------
+
+    def configureFields(self) -> None:
+        """Show the server's own default for `prediction_ID` as a placeholder.
+
+        A placeholder rather than a pre-filled value, on purpose: an empty
+        optional field is dropped from the request (see
+        ServerToolWidgetBase.collectArgs), so the default stays written down
+        once, server-side, instead of being duplicated here where the two
+        copies would drift.
+        """
+        field = self._argWidgets.get("prediction_ID")
+        if field is not None:
+            field.setPlaceholderText("Pred")
+
+    def addExtraWidgets(self, layout) -> None:
+        self.loadResultsCheckBox = qt.QCheckBox(_("Load the predicted landmarks into the scene"))
+        self.loadResultsCheckBox.setChecked(True)
+        layout.addWidget(self.loadResultsCheckBox)
+
+    # ------------------------------------------------------------------
+    # Result
+    # ------------------------------------------------------------------
+
+    def handleResult(self, result) -> None:
+        """Unpack the archive, load what was predicted, and report what wasn't.
+
+        Overriding rather than extending the base "save_as" handling: its info
+        dialog would pop before the report has even been read, and the report
+        is the whole point - a landmark missing from the scene means one of two
+        very different things, and only `run_report.json` says which.
+        """
+        resultDir = os.path.dirname(result.path)
+        # Normally unpacked already, off the main thread, before this is called
+        # (base_widget._unpackedOnWorker); then the archive is gone.
+        if getattr(result, "extracted", None) is None and slicer_io.is_extractable_archive(result.path):
+            slicer_io.unzip_folder(result.path, resultDir)
+            os.remove(result.path)
+
+        report = self._readRunReport(resultDir)
+        markupFiles = self._findMarkupFiles(resultDir)
+        loaded = self._loadMarkups(markupFiles)
+
+        slicer.util.infoDisplay(plain_text(self._summarize(resultDir, report, len(markupFiles), loaded)))
+
+    @staticmethod
+    def _findMarkupFiles(resultDir: str) -> list:
+        """Every predicted markups file, in the per-scan tree the server built."""
+        found = []
+        for root, _dirs, names in os.walk(resultDir):
+            found.extend(
+                os.path.join(root, name) for name in sorted(names) if name.endswith(".mrk.json")
             )
-            self.ui.progressBar.setValue(0)
+        return sorted(found)
 
-            self.module_name_before = self.module_name
-            self.nb_change_bystep = 0
+    def _loadMarkups(self, paths: list) -> int:
+        """Load the markups files into the scene; return how many made it.
 
-        if progress == 0:
-            self.updateProgressBar = False
+        A file that fails to load is logged and skipped rather than aborting
+        the rest: one unreadable result must not cost the user the other 199.
+        """
+        if not paths or not (self.loadResultsCheckBox and self.loadResultsCheckBox.isChecked()):
+            return 0
 
-        if self.displayModule.isProgress(
-            progress=progress, updateProgressBar=self.updateProgressBar
+        if len(paths) > _CONFIRM_LOAD_ABOVE and not slicer.util.confirmYesNoDisplay(
+            _("This run produced {count} landmark files. Load them all into the scene?").format(
+                count=len(paths)
+            )
         ):
-            progress_bar, message = self.displayModule()
-            self.ui.progressBar.setValue(progress_bar)
-            self.ui.LabelProgressPatient.setText(message)
-            self.nb_change_bystep += 1
+            return 0
 
-        if caller.GetStatus() & caller.Completed:
-            if caller.GetStatus() & caller.ErrorsMask:
-                logger.error("========= PROCESSING ERROR =========")
-                logger.error(f"Process output: {self.process.GetOutputText()}")
-                error_text = self.process.GetErrorText()
-                logger.error(f"CLI execution failed: {error_text}")
-                self.onCancel()
+        loaded = 0
+        for path in paths:
+            try:
+                slicer.util.loadMarkups(path)
+                loaded += 1
+            except Exception as exc:
+                logger.warning("Could not load %s: %s", path, exc)
+        return loaded
 
-            else:
-                logger.info("========= PROCESSING COMPLETED =========")
-                logger.info(f"Process output: {self.process.GetOutputText()}")
-                try:
-                    if self.list_Processes_Parameters[0]["Module"]=="ALI_IOS":
-                        logger.debug(f"Process name: {self.list_Processes_Parameters[0]['Process']}")
-                        self.run_conda_tool("ali")
-                        
-                except IndexError:
-                    self.OnEndProcess()
-                    
-  def OnEndProcess(self):
-    self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_lm}")
-    self.ui.LabelProgressExtension.setText(
-      f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
-    )
-    self.ui.progressBar.setValue(0)
-    
-    self.module_name_before = self.module_name
-    self.nb_change_bystep = 0
-    total_time = time.time() - self.startTime
-    logger.info("Processing completed successfully")
-    logger.info(
-      f"Processing completed in {int(total_time / 60)} min and {int(total_time % 60)} sec"
-    )
-    # A run that processed nobody has no average, and dividing by that zero
-    # raised ZeroDivisionError right here -- inside the end-of-process handler,
-    # so the module never signalled that it had stopped and the caller waited
-    # for its whole ceiling on a run that had failed in the first minute.
-    # AREG already guards the same line; ALI and ASO did not.
-    if self.nb_patient:
-      average_time = total_time / self.nb_patient
-      logger.info(
-        f"Average time per patient: {int(average_time / 60)} min and {int(average_time % 60)} sec"
-      )
-    else:
-      logger.warning("No patient was processed, so there is no average to report")
-    self.RunningUI(False)
+    @staticmethod
+    def _summarize(resultDir: str, report, produced: int, loaded: int) -> str:
+        """The end-of-run message, built around what did NOT work.
 
-    stop_time = time.time()
+        The successes are visible in the scene and on disk; the failures exist
+        only in the report, and a landmark silently absent reads as a bug in
+        the tool. Both failure kinds are named, and they are kept apart because
+        the fix differs: a missing model means "use another bundle", a failed
+        search means "this scan is hard".
+        """
+        lines = []
 
-    logger.info(f"Processing completed in {stop_time-self.startTime:.2f} seconds")
+        if report:
+            mode = report.get("mode") or "?"
+            selection = report.get("regions") or report.get("networks") or []
+            line = _("ALI finished in {mode} mode.").format(mode=mode)
+            if selection:
+                line += " " + _("Selection: {selection}.").format(selection=", ".join(selection))
+            lines.append(line)
 
-    s = PopUpWindow(
-      title="Process Done",
-      text="Successfully done in {} min and {} sec \nAverage time per patient: {} min and {} sec".format(
-        int(total_time / 60),
-        int(total_time % 60),
-        int(average_time / 60),
-        int(average_time % 60),
-      ),
-    )
-    s.exec_()
+            # `cases` is what the tools write; `scans` was the older name.
+            scans = report.get("cases") or report.get("scans") or {}
+            found_total = sum(len(scan.get("landmarks_found") or []) for scan in scans.values())
+            lines.append(
+                _("{scans} scan(s), {found} landmark(s) written.").format(
+                    scans=len(scans), found=found_total
+                )
+            )
 
-  def onCancel(self):
-    try:
-      self.process.Cancel()
-    except Exception as e:
-      logger.error(f"Error canceling process: {str(e)}", exc_info=True)
-      self.logic.cancel_process()
-
-    logger.warning("========= PROCESSING CANCELED =========")
-
-    self.RunningUI(False)
-
-  def RunningUI(self, run = False):
-
-    self.HideComputeItems(run)
-    
-  def format_time(self, seconds):
-    """Seconds as HH:MM:SS."""
-    return format_elapsed(seconds)
-
-  def update_ui_time(self, start_time, previous_time):
-    """Elapsed time since `start_time`, formatted for the installation label.
-
-    `previous_time` is kept for signature parity with the call sites, which
-    pass it but never update their own copy. It used to throttle this to one
-    update every 0.3s and return None in between, which is what wrote
-    "time: None" into the label. Formatting unconditionally is both simpler
-    and correct.
-    """
-    self.elapsed_time = elapsed_since(start_time)
-    return self.format_time(self.elapsed_time)
-    
-  def run_conda_tool(self, type):
-    if type == "seg":
-      output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
-      clean_output = re.search(r"Result: (.+)", output_command)
-      if clean_output:
-        dentalmodelseg_path = clean_output.group(1).strip()
-        dentalmodelseg_path_clean = dentalmodelseg_path.replace("\\n","")
-      else:
-        logger.error("Unable to find dentalmodelseg path")
-        return
-      
-      args = self.list_Processes_Parameters[0]["Parameter"]
-      logger.debug(f"Processing arguments: {args}")
-      conda_exe = self.logic.conda.getCondaExecutable()
-      command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
-      for key, value in args.items():
-        if key in ["out","input_csv","vtk_folder","dentalmodelseg_path"]:
-          value = self.logic.windows_to_linux_path(value)
-        if key == "dentalmodelseg_path":
-          value = dentalmodelseg_path_clean
-        command.append(f"\"{value}\"")
-      logger.debug(f"Executing command: {' '.join(command)}")
-      
-      # running in // to not block Slicer
-      self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
-      self.process.start()
-      self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
-      self.ui.TimerLabel.setHidden(False)
-      self.ui.TimerLabel.setText(f"Time : 0.00s")
-      previous_time = self.startTime
-      while self.process.is_alive():
-        self.ui.CancelButton.setVisible(True)
-        self.onCondaProcessUpdate()
-        slicer.app.processEvents()
-        current_time = time.time()
-        gap=current_time-previous_time
-        if gap>0.3:
-          currentTime = time.time() - self.startTime
-          previous_time = currentTime
-          timer = format_timer(currentTime)
-          
-          self.ui.TimerLabel.setText(timer)
-      
-      del self.list_Processes_Parameters[0]
-    
-    elif type == "ali":
-      args = self.list_Processes_Parameters[0]["Parameter"]
-      logger.debug(f"Processing arguments: {args}")
-      conda_exe = self.logic.conda.getCondaExecutable()
-      command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"ALI_IOS"]
-      for key, value in args.items():
-        logger.debug(f"Processing key: {key}")
-        if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
-            value = self.logic.windows_to_linux_path(value)
-        command.append(f"\"{value}\"")
-      logger.debug(f"Executing command: {' '.join(command)}")
-
-      # running in // to not block Slicer
-      self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
-      self.process.start()
-      self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
-      self.ui.TimerLabel.setHidden(False)
-      self.ui.TimerLabel.setText(f"time : 0.00s")
-      previous_time = self.startTime
-
-      while self.process.is_alive():
-        self.ui.CancelButton.setVisible(True)
-        self.onCondaProcessUpdate()
-        slicer.app.processEvents()
-        current_time = time.time()
-        gap=current_time-previous_time
-        if gap>0.3:
-          currentTime = time.time() - self.startTime
-          previous_time = currentTime
-          timer = format_timer(currentTime)
-            
-          self.ui.TimerLabel.setText(timer)
-
-      del self.list_Processes_Parameters[0]
-      
-    
-  def onCheckRequirements(self):
-    if not self.logic.isCondaSetUp:
-      message_box = qt.QMessageBox()
-      text = textwrap.dedent("""
-      SlicerConda is not set up, please click
-      <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
-      """).strip()
-      message_box.information(None, "Information", text)
-      return False
-    
-    if platform.system() == "Windows":
-      self.ui.label_LibsInstallation.setHidden(False)
-      self.ui.label_LibsInstallation.setText(f"Checking if wsl is installed, this task may take a moments")
-      
-      if self.logic.conda.testWslAvailable():
-        self.ui.label_LibsInstallation.setText(f"WSL installed")
-        if not self.logic.check_lib_wsl():
-          self.ui.label_LibsInstallation.setText(f"Checking if the required librairies are installed, this task may take a moments")
-          message_box = qt.QMessageBox()
-          text = textwrap.dedent("""
-              WSL doesn't have all the necessary libraries, please download the installer
-              and follow the instructions
-              <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
-              for installation. The link may be blocked by Chrome, just authorize it.""").strip()
-
-          message_box.information(None, "Information", text)
-          return False
-        
-      else : # if wsl not install, ask user to install it ans stop process
-        message_box = qt.QMessageBox()
-        text = textwrap.dedent("""
-            WSL is not installed, please download the installer and follow the instructions
-            <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
-            for installation. The link may be blocked by Chrome, just authorize it.""").strip()
-
-        message_box.information(None, "Information", text)
-        return False
-        
-    
-    ## MiniConda
-    
-    
-    self.ui.label_LibsInstallation.setText(f"Checking if miniconda is installed")
-    if "no setup" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
-      message_box = qt.QMessageBox()
-      text = textwrap.dedent("""
-      Code can't be launch. \nConda is not setup.
-      Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
-      message_box.information(None, "Information", text)
-      return False
-    
-    
-    ## shapeAXI
-
-
-    self.ui.label_LibsInstallation.setText(f"Checking if environnement exists")
-    if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
-      user_response = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
-      if user_response :
-        start_time = time.time()
-        previous_time = start_time
-        formatted_time = self.format_time(0)
-        self.ui.label_LibsInstallation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
-        process = self.logic.install_shapeaxi()
-        
-        while self.logic.process.is_alive():
-          slicer.app.processEvents()
-          formatted_time = self.update_ui_time(start_time, previous_time)
-          self.ui.label_LibsInstallation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
-    
-        start_time = time.time()
-        previous_time = start_time
-        formatted_time = self.format_time(0)
-        text = textwrap.dedent(f"""
-        Installation of librairies into the new environnement.
-        This task may take a few minutes.\ntime: {formatted_time}""").strip()
-        self.ui.label_LibsInstallation.setText(text)
-      else:
-        return False
-    else:
-      self.ui.label_LibsInstallation.setText(f"Ennvironnement already exists")
-    
-    
-    ## pytorch3d
-
-
-    self.ui.label_LibsInstallation.setText(f"Checking if pytorch3d is installed")
-    if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed
-      process = self.logic.install_pytorch3d()
-      start_time = time.time()
-      previous_time = start_time
-      
-      while self.logic.process.is_alive():
-        slicer.app.processEvents()
-        formatted_time = self.update_ui_time(start_time, previous_time)
-        text = textwrap.dedent(f"""
-        Installation of pytorch into the new environnement.
-        This task may take a few minutes.\ntime: {formatted_time}
-        """).strip()
-        self.ui.label_LibsInstallation.setText(text)
-    else:
-      self.ui.label_LibsInstallation.setText(f"pytorch3d is already installed")
-      logger.info("pytorch3d already installed")
-
-    self.all_installed = True
-    return True
-
-  def _applyDarkModeStylesheet(self, uiWidget) -> None:
-    """Apply dark mode stylesheet to labels and collapsible buttons if Slicer is in dark mode."""
-    # Check if Slicer is using a dark theme
-    app = qt.QApplication.instance()
-    palette = app.palette()
-    
-    # Determine if dark mode is active by checking the window background color
-    bg_color = palette.color(qt.QPalette.Window)
-    is_dark_mode = bg_color.lightness() < 128  # If background is darker than middle gray
-    
-    if is_dark_mode:
-      # Dark mode stylesheet
-      dark_stylesheet = """
-      /* Labels in dark mode */
-      QLabel {
-        font-weight: 500;
-        color: #e0e0e0 !important;
-      }
-      
-      /* Collapsible buttons in dark mode */
-      ctkCollapsibleButton {
-        font-weight: 600 !important;
-        color: #ffffff !important;
-        padding: 8px;
-        background-color: #3a3a3a !important;
-        border: 1px solid #555555 !important;
-        border-radius: 6px;
-      }
-      
-      ctkCollapsibleButton:hover {
-        background-color: #454545 !important;
-        border: 1px solid #777777 !important;
-      }
-      
-      ctkCollapsibleButton:pressed {
-        background-color: #2a2a2a !important;
-        border: 1px solid #444444 !important;
-      }
-      
-      /* Push buttons in dark mode */
-      QPushButton {
-        background-color: #2a6fb8 !important;
-        color: #ffffff !important;
-        border-radius: 6px;
-        padding: 8px;
-        font-weight: 600;
-        border: 1px solid #1a5fa8 !important;
-      }
-      
-      QPushButton:hover {
-        background-color: #3a7fd8 !important;
-        border: 1px solid #2a6fb8 !important;
-      }
-      
-      QPushButton:pressed {
-        background-color: #1a5fa8 !important;
-        border: 1px solid #0a4f98 !important;
-      }
-      
-      /* Radio buttons in dark mode */
-      QRadioButton {
-        color: #e0e0e0 !important;
-        spacing: 5px;
-      }
-      
-      QRadioButton::indicator {
-        width: 14px;
-        height: 14px;
-      }
-      
-      QRadioButton::indicator:unchecked {
-        background-color: #444444;
-        border: 1px solid #666666;
-        border-radius: 7px;
-      }
-      
-      QRadioButton::indicator:unchecked:hover {
-        background-color: #555555;
-        border: 1px solid #777777;
-      }
-      
-      QRadioButton::indicator:checked {
-        background-color: #2a6fb8;
-        border: 1px solid #1a5fa8;
-        border-radius: 7px;
-      }
-      
-      /* Line edits and text edits in dark mode */
-      QLineEdit, QTextEdit, ctkPathLineEdit {
-        color: #e0e0e0 !important;
-        background-color: #2a2a2a !important;
-        border: 1px solid #444444 !important;
-        border-radius: 4px;
-      }
-      
-      QLineEdit:focus, QTextEdit:focus {
-        border: 2px solid #3a7fd8 !important;
-      }
-      
-      /* ComboBox in dark mode */
-      QComboBox {
-        color: #e0e0e0 !important;
-        background-color: #2a2a2a !important;
-        border: 1px solid #444444 !important;
-        border-radius: 4px;
-      }
-      
-      QComboBox:focus {
-        border: 2px solid #3a7fd8 !important;
-      }
-      """
-      
-      # Apply stylesheet to all widgets
-      for widget in uiWidget.findChildren(qt.QWidget):
-        widget.setStyleSheet(widget.styleSheet + dark_stylesheet)
-    
-    else:
-      # Light mode stylesheet - restore from .ui file style
-      light_stylesheet = """
-      /* Labels in light mode */
-      QLabel {
-        color: #2c3e50;
-        font-weight: 500;
-      }
-      
-      /* Collapsible buttons in light mode */
-      ctkCollapsibleButton {
-        background-color: #ffffff !important;
-        border: 1px solid #e0e6ed !important;
-        border-radius: 6px;
-        margin-bottom: 8px;
-        font-weight: 600;
-        padding: 6px 10px;
-      }
-      
-      ctkCollapsibleButton:hover {
-        background-color: #fbfcfd !important;
-        border: 1px solid #3498db !important;
-      }
-      
-      /* Push buttons in light mode */
-      QPushButton {
-        background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4ba3ff, stop:1 #3498db) !important;
-        color: white !important;
-        border: none;
-        border-radius: 6px;
-        font-weight: 600;
-        font-size: 10pt;
-        padding: 8px;
-        margin-top: 4px;
-      }
-      
-      QPushButton:hover {
-        background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5ab3ff, stop:1 #4aa4dc) !important;
-      }
-      
-      QPushButton:pressed {
-        background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3b93df, stop:1 #2988bb) !important;
-      }
-      
-      /* Line edits and text edits in light mode */
-      QLineEdit, QTextEdit, ctkPathLineEdit {
-        background-color: #ffffff;
-        border: 1px solid #e0e6ed;
-        border-radius: 4px;
-        padding: 6px;
-        selection-background-color: #3498db;
-      }
-      
-      QLineEdit:focus, QTextEdit:focus {
-        border: 2px solid #3498db;
-      }
-      
-      /* ComboBox in light mode */
-      QComboBox {
-        background-color: #ffffff;
-        border: 1px solid #e0e6ed;
-        border-radius: 4px;
-        padding: 4px 6px;
-      }
-      
-      QComboBox:focus {
-        border: 2px solid #3498db;
-      }
-      
-      QComboBox::drop-down {
-        width: 20px;
-        border: none;
-      }
-      """
-      
-      # Apply stylesheet to all widgets
-      for widget in uiWidget.findChildren(qt.QWidget):
-        widget.setStyleSheet(widget.styleSheet + light_stylesheet)
-
-  def cleanup(self):
-    """
-    Called when the application closes and the module widget is destroyed.
-    """
-    if self.logic is not None and hasattr(self.logic, 'cliNode') and self.logic.cliNode is not None:
-      # if self.logic.cliNode.GetStatus() & self.logic.cliNode.Running:
-      self.logic.cliNode.Cancel()
-
-    self.removeObservers()
-
-  def enter(self):
-    """
-    Called each time the user opens this module.
-    """
-    # Make sure parameter node exists and observed
-    self.initializeParameterNode()
-
-  def exit(self):
-    """
-    Called each time the user opens a different module.
-    """
-    # Do not react to parameter node changes (GUI wlil be updated when the user enters into the module)
-    self.removeObserver(
-      self._parameterNode,
-      vtk.vtkCommand.ModifiedEvent,
-      self.updateGUIFromParameterNode
-    )
-
-  def onSceneStartClose(self, caller, event):
-    """
-    Called just before the scene is closed.
-    """
-    # Parameter node will be reset, do not use it anymore
-    self.setParameterNode(None)
-
-  def onSceneEndClose(self, caller, event):
-    """
-    Called just after the scene is closed.
-    """
-    # If this module is shown while the scene is closed then recreate a new parameter node immediately
-    if self.parent.isEntered:
-      self.initializeParameterNode()
-
-  def initializeParameterNode(self):
-    """
-    Ensure parameter node exists and observed.
-    """
-    # Parameter node stores all user choices in parameter values, node selections, etc.
-    # so that when the scene is saved and reloaded, these settings are restored.
-
-
-  def setParameterNode(self, input_parameter_node):
-    """
-    Set and observe parameter node.
-    Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
-    """
-
-    # if inputParameterNode:
-    self.setParameterNode(self.logic.getParameterNode())
-
-    # Unobserve previously selected parameter node and add an observer to the newly selected.
-    # Changes of parameter node are observed so that whenever parameters are changed by a script or any other module
-    # those are reflected immediately in the GUI.
-    if self._parameterNode is not None:
-      self.removeObserver(
-        self._parameterNode,
-        vtk.vtkCommand.ModifiedEvent,
-        self.updateGUIFromParameterNode
-      )
-    self._parameterNode = input_parameter_node
-    if self._parameterNode is not None:
-      self.addObserver(
-        self._parameterNode,
-        vtk.vtkCommand.ModifiedEvent,
-        self.updateGUIFromParameterNode
-      )
-
-    # Initial GUI update
-    self.updateGUIFromParameterNode()
-
-  def updateGUIFromParameterNode(self, caller=None, event=None):
-    """
-    This method is called whenever parameter node is changed.
-    The module GUI is updated to show the current state of the parameter node.
-    """
-
-    if self._parameterNode is None or self._updatingGUIFromParameterNode:
-      return
-
-    # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
-    self._updatingGUIFromParameterNode = True
-
-    # Update node selectors and sliders
-    self.ui.inputSelector.setCurrentNode(
-      self._parameterNode.GetNodeReference("InputVolume")
-    )
-    self.ui.outputSelector.setCurrentNode(
-      self._parameterNode.GetNodeReference("OutputVolume")
-    )
-    self.ui.invertedOutputSelector.setCurrentNode(
-      self._parameterNode.GetNodeReference("OutputVolumeInverse")
-    )
-    # self.ui.imageThresholdSliderWidget.value = float(self._parameterNode.GetParameter("Threshold"))
-    self.ui.invertOutputCheckBox.checked = (
-      self._parameterNode.GetParameter("Invert") == "true"
-    )
-
-    # All the GUI updates are done
-    self._updatingGUIFromParameterNode = False
-
-  def updateParameterNodeFromGUI(self, caller=None, event=None):
-    """
-    This method is called when the user makes any change in the GUI.
-    The changes are saved into the parameter node (so that they are restored when the scene is saved and loaded).
-    """
-
-    if self._parameterNode is None or self._updatingGUIFromParameterNode:
-      return
-
-    was_modified = (
-      self._parameterNode.StartModify()  # Modify all properties in a single batch
-    )
-
-    self._parameterNode.SetNodeReferenceID(
-      "InputVolume", self.ui.inputSelector.currentNodeID
-    )
-    self._parameterNode.SetNodeReferenceID(
-      "OutputVolume", self.ui.outputSelector.currentNodeID
-    )
-    # self._parameterNode.SetParameter("Threshold", str(self.ui.imageThresholdSliderWidget.value))
-    self._parameterNode.SetParameter(
-      "Invert", "true" if self.ui.invertOutputCheckBox.checked else "false"
-    )
-    self._parameterNode.SetNodeReferenceID(
-      "OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID
-    )
-
-    self._parameterNode.EndModify(was_modified)
-
-
-  def onApplyButton(self):
-    """
-    Run processing when user clicks "Apply" button.
-    """
-    try:
-      # Compute output
-      self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(),
-        self.ui.imageThresholdSliderWidget.value, self.ui.invertOutputCheckBox.checked)
-
-      # Compute inverted output (if needed)
-      if self.ui.invertedOutputSelector.currentNode():
-        # If additional output volume is selected then result with inverted threshold is written there
-        self.logic.process(self.ui.inputSelector.currentNode(), self.ui.invertedOutputSelector.currentNode(),
-          self.ui.imageThresholdSliderWidget.value, not self.ui.invertOutputCheckBox.checked, showResult=False)
-
-    except Exception as e:
-      slicer.util.errorDisplay("Failed to compute results: "+str(e))
-      traceback.print_exc()
-      
-  def HideComputeItems(self, run=False):
-    self.ui.PredictionButton.setVisible(not run)
-
-    self.ui.CancelButton.setVisible(run)
-
-    self.ui.LabelProgressPatient.setVisible(run)
-    self.ui.LabelProgressExtension.setVisible(run)
-    self.ui.LabelNameExtension.setVisible(run)
-    self.ui.progressBar.setVisible(run)
-
-    self.ui.TimerLabel.setVisible(run)
-
-  def _updateAllLabelsColor(self, parent, color):
-    """
-    Recursively update the color of all QLabel widgets in the hierarchy.
-    """
-    # Update current widget if it's a QLabel
-    if isinstance(parent, qt.QLabel):
-      try:
-        parent.setStyleSheet(f"color: #{color.name().lstrip('#')};")
-      except (AttributeError, RuntimeError):
-          # A widget without that method, or whose C++ object is already gone.
-          pass
-    
-    # Recursively update all children
-    if hasattr(parent, 'children'):
-      for child in parent.children():
-        self._updateAllLabelsColor(child, color)
-
-  def _updateDynamicWidgetsColor(self, parent):
-    """
-    Recursively update the color of dynamically created widgets (QCheckBox, QPushButton, etc).
-    """
-    # Update QCheckBox text color
-    if isinstance(parent, qt.QCheckBox):
-      try:
-        parent.setStyleSheet("color: #ffffff;")
-      except (AttributeError, RuntimeError):
-          pass
-    
-    # Update QPushButton text color (for Switch tab selection button in LMTab)
-    if isinstance(parent, qt.QPushButton):
-      try:
-        parent.setStyleSheet("color: #ffffff;")
-      except (AttributeError, RuntimeError):
-          pass
-    
-    # Recursively update all children
-    if hasattr(parent, 'children'):
-      for child in parent.children():
-        self._updateDynamicWidgetsColor(child)
-
-  def _updateMRMLNodeComboBoxColor(self, parent):
-    """
-    Recursively update the color of qMRMLNodeComboBox widgets.
-    These widgets need special handling as they don't respond well to standard CSS.
-    """
-    # Import at function level to handle qMRMLNodeComboBox
-    try:
-      # Check if widget is qMRMLNodeComboBox
-      widget_class_name = parent.__class__.__name__
-      if 'qMRMLNodeComboBox' in widget_class_name:
-        try:
-          # Force dark background and white text
-          parent.setStyleSheet("""
-            qMRMLNodeComboBox {
-              background-color: #3c3c3c;
-              color: #ffffff;
-              border: 1px solid #555555;
-              padding: 4px;
+            failed = {
+                key: sorted((scan.get("landmarks_failed") or {}).keys())
+                for key, scan in scans.items()
+                if scan.get("landmarks_failed")
             }
-          """)
-          # Also try to update any child widgets
-          if hasattr(parent, 'children'):
-            for child in parent.children():
-              try:
-                child.setStyleSheet("color: #ffffff; background-color: #3c3c3c;")
-              except (AttributeError, RuntimeError):
-                  pass
-        except (AttributeError, RuntimeError):
-            pass
-    except (AttributeError, RuntimeError):
-        pass
-    
-    # Recursively update all children
-    if hasattr(parent, 'children'):
-      for child in parent.children():
-        self._updateMRMLNodeComboBoxColor(child)
+            if failed:
+                lines.append("")
+                lines.append(_("Did not converge (the scan, not the model):"))
+                lines.extend(f"  {key}: {', '.join(names)}" for key, names in sorted(failed.items()))
 
-  def _updateLineEditAndComboBoxDarkMode(self, parent):
-    """Shared recursive pass, kept as a method for the existing call sites."""
-    update_line_edit_and_combo_box(parent)
-
-class LMTab:
-    def __init__(self) -> None:
-
-      self.widget = qt.QWidget()
-      layout = qt.QVBoxLayout(self.widget)
-
-      self.LM_tab_widget = qt.QTabWidget()
-      self.LM_tab_widget.minimumSize = qt.QSize(100,200)
-      self.LM_tab_widget.maximumSize = qt.QSize(800,400)
-      self.LM_tab_widget.setMovable(True)
-
-      buttons_wid = qt.QWidget()
-      buttons_layout = qt.QHBoxLayout(buttons_wid)
-      self.select_all_btn = qt.QPushButton("Select All")
-      self.select_all_btn.setEnabled(False)
-      self.select_all_btn.connect('clicked(bool)', self.SelectAll)
-      self.clear_all_btn = qt.QPushButton("Clear All")
-      self.clear_all_btn.setEnabled(False)
-      self.clear_all_btn.connect('clicked(bool)', self.ClearAll)
-
-      buttons_layout.addWidget(self.select_all_btn)
-      buttons_layout.addWidget(self.clear_all_btn)
-
-      layout.addWidget(self.LM_tab_widget)
-      layout.addWidget(buttons_wid)
-      self.lm_status_dic = {}
-
-    def Clear(self):
-      self.LM_tab_widget.clear()
-
-    def FillTab(self,lm_dic, enable = False):
-      self.select_all_btn.setEnabled(enable)
-      self.clear_all_btn.setEnabled(enable)
-
-      self.lm_group_dic = lm_dic.copy()
-      self.lm_group_dic["All"] = []
-
-      cbd = {}
-      lmsd = {}
-      for group,lm_lst in lm_dic.items():
-          # lm_lst = lm_lst.sort()
-          for lm in sorted(lm_lst):
-              if lm not in lmsd.keys():
-                  lmsd[lm] = False
-                  self.lm_group_dic["All"].append(lm)
-
-      self.check_box_dic = cbd
-      self.lm_status_dic = lmsd
-
-
-      for group,lm_lst in self.lm_group_dic.items():
-        lst_wid = []
-        # lm_lst = lm_lst.sort()
-        for lm in sorted(lm_lst):
-          new_cb = qt.QCheckBox(lm)
-          self.check_box_dic[new_cb] = lm
-          lst_wid.append(new_cb)
-
-        new_lm_tab = self.GenNewTab(lst_wid,enable)
-        # new_lm_tab.setEnabled(False)
-        self.LM_tab_widget.insertTab(0,new_lm_tab,group)
-
-      self.LM_tab_widget.currentIndex = 0
-
-      lcbd = {}
-      for cb,lm in self.check_box_dic.items():
-        if lm not in lcbd.keys():
-          lcbd[lm] = [cb]
+            without_model = report.get("landmarks_without_model") or []
+            if without_model:
+                lines.append("")
+                lines.append(
+                    _("Not in the selected model bundle: {landmarks}").format(
+                        landmarks=", ".join(without_model)
+                    )
+                )
         else:
-          lcbd[lm].append(cb)
+            lines.append(
+                _("ALI finished. {produced} landmark file(s) produced.").format(produced=produced)
+            )
+            lines.append(_("No run report was found in the results."))
 
-      self.lm_cb_dic = lcbd
-
-      # for lm in lm_dic["U"]:
-      #   self.UpdateLmSelect(lm,True)
-
-      for cb in self.check_box_dic.keys():
-        cb.connect("toggled(bool)", self.CheckBox)
-        cb.setEnabled(enable)
-
-    def CheckBox(self, caller=None, event=None):
-      for cb,lm in self.check_box_dic.items():
-        if cb.checkState():
-          state = True
-        else:
-          state = False
-
-        if self.lm_status_dic[lm] != state:
-          self.UpdateLmSelect(lm,state)
-
-    def ToggleSelection(self):
-      idx = self.LM_tab_widget.currentIndex
-      group = self.LM_tab_widget.tabText(idx)
-      new_state = not self.lm_status_dic[self.lm_group_dic[group][0]]
-      for lm in self.lm_group_dic[group]:
-        self.UpdateLmSelect(lm,new_state)
-
-
-    def GenNewTab(self,widget_lst,enable = False):
-        new_widget = qt.QWidget()
-        vb = qt.QVBoxLayout(new_widget)
-        scr_box = qt.QScrollArea()
-        vb.addWidget(scr_box)
-        pb = qt.QPushButton('Switch group selection')
-        pb.connect('clicked(bool)', self.ToggleSelection)
-        pb.setEnabled(enable)
-        vb.addWidget(pb)
-
-        wid = qt.QWidget()
-        vb2 = qt.QVBoxLayout()
-        for widget in widget_lst:
-          vb2.addWidget(widget)
-        vb2.addStretch()
-        wid.setLayout(vb2)
-
-        scr_box.setVerticalScrollBarPolicy(qt.Qt.ScrollBarAlwaysOn)
-        scr_box.setHorizontalScrollBarPolicy(qt.Qt.ScrollBarAlwaysOff)
-        scr_box.setWidgetResizable(True)
-        scr_box.setWidget(wid)
-
-        return new_widget
-
-    def UpdateLmSelect(self,lm_id,state):
-      for cb in self.lm_cb_dic[lm_id]:
-        cb.setChecked(state)
-      self.lm_status_dic[lm_id] = state
-
-    def UpdateAll(self,state):
-      for lm_id,cb_lst in self.lm_cb_dic.items():
-        for cb in cb_lst:
-          cb.setChecked(state)
-        self.lm_status_dic[lm_id] = state
-
-    def GetSelected(self):
-      selected_lm = []
-      for lm,state in self.lm_status_dic.items():
-        if state:
-          selected_lm.append(lm)
-      return selected_lm
-
-    def SelectAll(self):
-      self.UpdateAll(True)
-
-    def ClearAll(self):
-      self.UpdateAll(False)
-
-def GetAvailableLm(mfold,lm_group):
-  brain_dic = GetBrain(mfold)
-  available_lm = {}
-  for lm in brain_dic.keys():
-    if lm in lm_group.keys():
-      group = lm_group[lm]
-    else:
-      group = "Other"
-    if group not in available_lm.keys():
-      available_lm[group] = [lm]
-    else:
-      available_lm[group].append(lm)
-
-  # available_lm = brain_dic.keys()
-
-  return available_lm,brain_dic
-
-
-def GetLandmarkGroup(group_landmark):
-  lm_group = {}
-  for group,labels in group_landmark.items():
-      for label in labels:
-          lm_group[label] = group
-  return lm_group
-
-def GetBrain(dir_path):
-    brainDic = {}
-    normpath = os.path.normpath("/".join([dir_path, '**', '']))
-    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-        if os.path.isfile(img_fn) and ".pth" in img_fn:
-            lab = os.path.basename(os.path.dirname(os.path.dirname(img_fn)))
-            num = os.path.basename(os.path.dirname(img_fn))
-            if lab in brainDic.keys():
-                brainDic[lab][num] = img_fn
-            else:
-                network = {num : img_fn}
-                brainDic[lab] = network
-
-    return brainDic
-
-#
-# ALILogic
-#
-
-class ALILogic(ScriptedLoadableModuleLogic):
-  """This class should implement all the actual
-  computation done by your module.  The interface
-  should be such that other python code can import
-  this class and make use of the functionality without
-  requiring an instance of the Widget.
-  Uses ScriptedLoadableModuleLogic base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-
-  def __init__(self):
-    """
-    Called when the logic class is instantiated. Can be used for initializing member variables.
-    """
-    ScriptedLoadableModuleLogic.__init__(self)
-
-    self.cliNode = None
-    self.isCondaSetUp = False
-    self.conda = self.init_conda()
-    self.name_env = "shapeaxi"
-    self.cliNode = None
-    self.pythonVersion = "3.12"  # shared "shapeaxi" env - see FlexReg.py for why
-
-  def init_conda(self):
-    """The SlicerConda entry point for this platform, or False without it."""
-    call = init_conda_call()
-    self.isCondaSetUp = bool(call)
-    return call
-    
-  def run_conda_command(self, target, command):
-    self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
-    self.process.start()
-    
-  def install_shapeaxi(self):
-    # Only SimpleITK here. Everything that depends on torch - torch itself,
-    # torchvision, ocnn, pytorch3d, shapeaxi - is installed afterwards by
-    # install_pytorch, which is the only place that can pass the
-    # --index-url selecting a CUDA build. Asked for here, pip took PyPI's
-    # default variant (2.12.1+cu130) and no pytorch3d wheel is published
-    # for it; shapeaxi on top of that fails outright, since it declares
-    # pytorch3d and PyPI carries no distribution for it at all.
-    self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.pythonVersion,["SimpleITK"],)) #run in parallel to not block slicer
-    
-  def check_if_pytorch3d(self):
-    conda_exe = self.conda.getCondaExecutable()
-    # Unquoted where nothing strips the quotes: kept, they turn the body
-    # into a single string literal that Python evaluates and exits 0 on,
-    # so the check reported pytorch3d present in an env without it.
-    command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", condaQuote(self.conda, "import pytorch3d;import pytorch3d.renderer;import shapeaxi.dental_model_seg as d;d.saxi_nets_lightning.DentalModelSeg")]
-    return self.conda.condaRunCommand(command)
-
-  def install_pytorch3d(self):
-    result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
-    if not result_pythonpath :
-      self.give_pythonpath_windows()
-      result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
-    
-    if result_pythonpath :
-      conda_exe = self.conda.getCondaExecutable()
-      path_pip = self.conda.getCondaPath()+f"/envs/{self.name_env}/bin/pip"
-      command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"ADTLib.env.install_pytorch",path_pip]
-
-    self.run_conda_command(target=self.conda.condaRunCommand, command=(command,))
-    
-  def setup_cli_command(self):
-    args = self.find_cli_parameters()
-    conda_exe = self.conda.getCondaExecutable()
-    command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"ALI_IOS"]
-    for arg in args :
-      command.append("\""+arg+"\"")
-
-    self.run_conda_command(target=self.condaRunCommand, command=(command,))
-    
-  def check_lib_wsl(self) -> bool:
-    """Whether WSL carries the system libraries the tools need."""
-    return wsl_libraries_present()
-
-  def check_pythonpath_windows(self, file):
-    """Whether `file` is importable by the Python of this module's environment."""
-    return check_pythonpath(self.conda, self.name_env, file)
-
-  def give_pythonpath_windows(self):
-    """Publish Slicer's module search paths into this module's environment."""
-    give_pythonpath(self.conda, self.name_env)
-    
-  def windows_to_linux_path(self, windows_path):
-    """A Windows path as WSL sees it."""
-    return windows_to_linux_path_shared(windows_path)
-  
-  def cancel_process(self):
-    if platform.system() == 'Windows':
-      self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
-    else:
-      os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
-    logger.info("Cancellation requested. Terminating process...")
-
-    self.subpro.wait() ## important
-    self.cancel = True
-
-  def check_cli_script(self):
-    if not self.check_pythonpath_windows("ALI_IOS"):
-      self.give_pythonpath_windows()
-      results = self.check_pythonpath_windows("ALI_IOS")
-        
-    if not self.check_pythonpath_windows("CrownSegmentationcli"):
-      self.give_pythonpath_windows()
-      results = self.check_pythonpath_windows("CrownSegmentationcli")
-        
-  def condaRunCommand(self, command: list[str]):
-    '''
-    Runs a command in a specified Conda environment, handling different operating systems.
-    
-    copy paste from SlicerConda and change the process line to be able to get the stderr/stdout
-    and cancel the process without blocking slicer
-    '''
-    path_activate = self.conda.getActivateExecutable()
-
-    if path_activate=="None":
-      return "Path to conda no setup"
-
-    if platform.system() == "Windows":
-      command_execute = f"source {path_activate} {self.name_env} &&"
-      for com in command :
-        command_execute = command_execute+ " "+com
-
-      user = self.conda.getUser()
-      command_to_execute = ["wsl", "--user", user,"--","bash","-c", command_execute]
-      logger.info(f"command_to_execute in condaRunCommand : {command_to_execute}")
-
-      self.subpro = subprocess.Popen(command_to_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(),
-                              creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # For Windows
-                              )
-    else:
-        path_conda_exe = self.conda.getCondaExecutable()
-        command_execute = f"{path_conda_exe} run -n {self.name_env}"
-        for com in command :
-          command_execute = command_execute+ " "+com
-
-        logger.info(f"command_to_execute in conda run : {command_execute}")
-        self.subpro = subprocess.Popen(command_execute, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', env=slicer.util.startupEnvironment(), executable="/bin/bash", preexec_fn=os.setsid)
-    import sys
-    
-    self.stdout, self.stderr = self.subpro.communicate()
-
-    logger.info("PROCESS OUTPUT")
-    if self.stdout:
-      logger.info(self.stdout)
-    else:
-      logger.info("(No output)")
-    
-    logger.info("PROCESS Error")
-    if self.stderr:
-      # A subprocess that SUCCEEDED still writes to stderr: torch, monai and
-      # the CUDA runtime all put their warnings there, and one of them -- "Creating
-      # a tensor from a list of numpy.ndarrays is extremely slow" -- came out of
-      # every healthy ALI IOS run. Logged at ERROR, it made a run that worked
-      # indistinguishable from one that did not, for anybody reading the log or
-      # counting error lines in it. The return code is what decides.
-      if self.subpro.returncode == 0:
-        logger.warning(self.stderr)
-      else:
-        logger.error(self.stderr)
-    else:
-      logger.info("(No error)")
-    sys.stdout.flush()
-  def CountFileWithExtention(self,path,extentions = [".nrrd", ".nrrd.gz", ".nii", ".nii.gz", ".gipl", ".gipl.gz"], exception = ["Seg", "seg", "Pred"]):
-
-    count = 0
-    normpath = os.path.normpath("/".join([path, '**', '']))
-    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-        basename = os.path.basename(img_fn)
-
-        if True in [ext in basename for ext in extentions]:
-            if not True in [ex in basename for ex in exception]:
-                count += 1
-
-    return count
-
-  def GetAvailableSurfLm(self,model_folder):
-    available_lm = {}
-    networks = self.GetNetworks(model_folder)
-    for net in networks:
-      available_lm[net] = SURFACE_LANDMARKS[net]
-
-    return available_lm
-
-  def GetNetworks(self,dir_path):
-    networks = []
-    normpath = os.path.normpath("/".join([dir_path, '**', '']))
-    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-        if os.path.isfile(img_fn) and ".pth" in img_fn:
-          for id, group in SURFACE_NETWORK.items():
-            if id in os.path.basename(img_fn):
-              networks.append(group)
-    return networks
-
-  def HasMGModel(self,dir_path):
-    """True if the folder contains a lower mucogingival model (Lower_MG_*.pth)"""
-    if not dir_path:
-      return False
-    normpath = os.path.normpath("/".join([dir_path, '**', '']))
-    for img_fn in sorted(glob.iglob(normpath, recursive=True)):
-      basename = os.path.basename(img_fn)
-      if os.path.isfile(img_fn) and basename.endswith(".pth") and "Lower" in basename:
-        parts = basename.split("_")
-        if len(parts) > 1 and parts[1] == "MG":
-          return True
-    return False
-
-  def read_txt(self):
-    '''
-    Read a file and return the last line
-    '''
-    script_path = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_path,"tempo.txt")
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
-        return lines[-1] if lines else None
-  def read_log_path(self, log_path):
-      with open(log_path, 'r') as f:
-          line = f.readline()
-          if line != '':
-              return line
-  
-
-      
+        lines.append("")
+        if loaded:
+            lines.append(_("{loaded} landmark file(s) loaded into the scene.").format(loaded=loaded))
+        lines.append(_("Results saved to {path}").format(path=resultDir))
+        return "\n".join(lines)
