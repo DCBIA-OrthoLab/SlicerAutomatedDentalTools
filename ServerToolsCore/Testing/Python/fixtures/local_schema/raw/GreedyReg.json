@@ -1,0 +1,70 @@
+{
+ "name": "GreedyReg",
+ "description": "Register each patient's second CBCT onto their first, with Greedy.",
+ "arguments": {
+  "t1": {
+   "type": "path",
+   "required": true,
+   "description": "Folder of first-timepoint scans -- the FIXED images, the frame everything is brought into."
+  },
+  "t2": {
+   "type": "path",
+   "required": true,
+   "description": "Folder of second-timepoint scans -- the MOVING images, the ones that get resampled. A patient is paired with their T1 by name, up to the timepoint token: `P1_T1_scan.nii.gz` pairs with `P1_T2.nii.gz`. Anyone present in only one folder is reported rather than dropped."
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where the registered volumes and transforms are written."
+  },
+  "masks": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "One mask per patient, and the metric is then computed inside it only. This is how a growing patient is registered on what has NOT changed -- the cranial base, typically, which AMASSS segments. The mask belongs to the T1 scan, since T1 is the fixed image.",
+   "section": "Advanced"
+  },
+  "initial_transforms": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "A `.mat` transform per patient to start the search from, for two timepoints too far apart for the search to find each other on its own. Without one the search starts from identity.",
+   "section": "Advanced"
+  },
+  "metric": {
+   "type": "str",
+   "required": false,
+   "default": "NCC",
+   "choices": [
+    "NCC",
+    "NMI",
+    "SSD"
+   ],
+   "description": "What the registration optimises. NCC compares local patterns in a 4x4x4 window and is the one to keep for two CBCTs of one patient. NMI compares the two intensity distributions instead, which is what to reach for when the scans were acquired differently enough that their grey values no longer correspond. SSD compares voxel values directly and needs them on the same scale."
+  },
+  "transform_type": {
+   "type": "str",
+   "required": false,
+   "default": "Rigid",
+   "choices": [
+    "Rigid",
+    "Affine"
+   ],
+   "description": "Rigid moves and rotates and nothing else, 6 degrees of freedom. Affine adds scaling and shear, 12. For two timepoints of one patient rigid is almost always what is wanted: affine can absorb real growth into the transform, and that growth is the thing a longitudinal study is measuring."
+  },
+  "output_suffix": {
+   "type": "str",
+   "required": false,
+   "default": "registered",
+   "description": "Appended to each patient's name in the output."
+  }
+ },
+ "returns": "path",
+ "paired": {
+  "axes": [
+   "t1",
+   "t2"
+  ]
+ },
+ "source_hash": "e1ab8ba6796b61e69a7d4fb5f3d8921a96ae4146461a086f6cdff9a0dfae37da"
+}

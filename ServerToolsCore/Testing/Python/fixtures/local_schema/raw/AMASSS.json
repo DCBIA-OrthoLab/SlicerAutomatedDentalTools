@@ -1,0 +1,148 @@
+{
+ "name": "AMASSS",
+ "description": "Segment craniofacial structures on a CBCT scan.",
+ "arguments": {
+  "scans": {
+   "type": "path",
+   "required": true,
+   "description": "One oriented CBCT scan (.nii/.nii.gz/.nrrd/.nrrd.gz/.gipl/ .gipl.gz), or a folder of them for a batch. Folders are searched recursively, and files that look like a previous AMASSS output are skipped so a folder can be re-run in place."
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where results are written -- one `<scan>_<ID>_SegOut/` folder per scan, plus `AMASSS_report.json`. Nothing is written outside it."
+  },
+  "model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The model bundle: one subfolder per structure code (MAND/, MAX/, ...), each holding an nnUNet v2 model. Left empty, the bundle this deployment publishes for AMASSS is used.",
+   "hidden": true
+  },
+  "structures": {
+   "type": "list[str]",
+   "required": false,
+   "default": [
+    "MAND",
+    "MAX",
+    "CB",
+    "CV",
+    "UAW"
+   ],
+   "choices": [
+    "MAND",
+    "MAX",
+    "CB",
+    "CV",
+    "UAW",
+    "SKIN",
+    "CBMASK",
+    "MANDMASK",
+    "MAXMASK"
+   ],
+   "description": "What to segment. One with no model in the bundle is reported rather than failing the run.",
+   "ui": "chips",
+   "groups": {
+    "Bones": [
+     "MAND",
+     "MAX",
+     "CB",
+     "CV"
+    ],
+    "Soft tissue": [
+     "UAW",
+     "SKIN"
+    ],
+    "Masks": [
+     "CBMASK",
+     "MANDMASK",
+     "MAXMASK"
+    ]
+   },
+   "option_help": {
+    "MAND": "Mandible",
+    "MAX": "Maxilla",
+    "CB": "Cranial base",
+    "CV": "Cervical vertebra",
+    "UAW": "Upper airway",
+    "SKIN": "Skin",
+    "CBMASK": "Cranial base (Mask)",
+    "MANDMASK": "Mandible (Mask)",
+    "MAXMASK": "Maxilla (Mask)"
+   },
+   "min_selected": 1
+  },
+  "merge": {
+   "type": "list[str]",
+   "required": false,
+   "default": [
+    "MERGED"
+   ],
+   "choices": [
+    "MERGED",
+    "SEPARATE"
+   ],
+   "description": "Which form the output takes; both may be given.",
+   "option_help": {
+    "MERGED": "One multi-label file per scan, every structure in it",
+    "SEPARATE": "One binary file per structure"
+   },
+   "min_selected": 1
+  },
+  "prediction_ID": {
+   "type": "str",
+   "required": false,
+   "default": "Pred",
+   "description": "Suffix used in output names, e.g. `scan_Pred_MAND.nii.gz`."
+  },
+  "generate_surface": {
+   "type": "bool",
+   "required": false,
+   "default": false,
+   "description": "Also export a 3D surface (.vtk) beside each segmentation."
+  },
+  "surface_smoothing": {
+   "type": "int",
+   "required": false,
+   "default": 5,
+   "description": "Smoothing iterations for the surfaces (0-95). Ignored without generate_surface."
+  },
+  "surface_decimation": {
+   "type": "int",
+   "required": false,
+   "default": 90,
+   "description": "Percentage of surface triangles to drop (0-99). Marching cubes runs on the original scan grid, so a 0.33 mm CBCT gives a triangle per voxel face -- 3.5 M across a five-structure run -- for detail the mask does not have, being accurate to about half a voxel. 90 drops nine triangles in ten and moves the cranial-base surface by 0.059 mm on average (max 0.692 mm); 0 keeps the raw mesh. Ignored without generate_surface."
+  },
+  "device": {
+   "type": "str",
+   "required": false,
+   "default": "cuda",
+   "choices": [
+    "cuda",
+    "cpu"
+   ],
+   "description": "\"cuda\" or \"cpu\". CUDA falls back to CPU when no card is visible, with a warning."
+  },
+  "tile_step_size": {
+   "type": "float",
+   "required": false,
+   "default": 0.5,
+   "description": "nnUNet's sliding-window overlap; the window advances by patch_size times this. It DOES move the segmentation (0.7 measures Dice 0.995 against 0.5), so it is left at nnUNet's own default."
+  },
+  "gpu_resampling": {
+   "type": "bool",
+   "required": false,
+   "default": true,
+   "description": "Resample on the GPU instead of nnUNet's scipy splines. Roughly seven times less time in resampling, which is where a run actually goes. Ignored on CPU and for a bundle whose plans pin a non-default resampler. Set false for bit-identical nnUNet output."
+  },
+  "num_workers": {
+   "type": "int",
+   "required": false,
+   "default": 0,
+   "description": "How many structures to predict at once. 0 lets the server decide from the room it reserved for this run, which is the normal case; a number is a ceiling on that, never a floor over it. One structure is one nnUNet model resident on the card, and a run is two thirds preprocessing on a single core -- which is the idle time this fills."
+  }
+ },
+ "returns": "path",
+ "supervisor": true,
+ "source_hash": "0f774146aeec0433ecf4d8ad7c0e99eca89bec3938e694949204dd3f2648a16c"
+}

@@ -1,0 +1,268 @@
+{
+ "name": "FlexReg",
+ "description": "Build a registration patch on intraoral surfaces, and register them.",
+ "arguments": {
+  "surfaces": {
+   "type": "path",
+   "required": true,
+   "description": "One labelled intraoral surface (.vtk/.vtp/.stl), or a folder of them. A folder is one call rather than one call per patient.",
+   "label": "Arches",
+   "section": "Inputs"
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where the patched or registered surfaces are written."
+  },
+  "mode": {
+   "type": "str",
+   "required": false,
+   "default": "Patch and register",
+   "choices": [
+    "Patch",
+    "Register",
+    "Patch and register"
+   ],
+   "description": "Build the patch, register on a patch already there, or both.",
+   "label": "What to do",
+   "section": "Inputs"
+  },
+  "patch": {
+   "type": "str",
+   "required": false,
+   "default": "Palate (butterfly)",
+   "choices": [
+    "Palate (butterfly)",
+    "Mucogingival line"
+   ],
+   "description": "Which region the registration is computed on. The palate is built from the four teeth below; the mucogingival line has to be present in the mesh already.",
+   "label": "Register on",
+   "section": "Inputs"
+  },
+  "reference": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The surface the others are registered onto. Required to register, unused when only building a patch.",
+   "label": "Register onto",
+   "section": "Inputs",
+   "visible_when": {
+    "mode": [
+     "Register",
+     "Patch and register"
+    ]
+   }
+  },
+  "tooth_anterior_right": {
+   "type": "int",
+   "required": false,
+   "default": 6,
+   "description": "Universal number of the anterior right tooth.",
+   "hidden": true
+  },
+  "anterior_right": {
+   "type": "vec2",
+   "required": false,
+   "default": [
+    0.5,
+    0.0
+   ],
+   "description": "Where that corner sits: ratio along the tooth (0 at mid-arch, 1 on the tooth) and millimetres fore or aft.",
+   "section_columns": 2,
+   "visible_when": {
+    "patch": "Palate (butterfly)"
+   },
+   "x_label": "Ratio (R-L)",
+   "y_label": "Adjust (A-P)",
+   "x_range": [
+    0.0,
+    1.0
+   ],
+   "x_labels": [
+    "mid",
+    "out"
+   ],
+   "y_range": [
+    -5.0,
+    5.0
+   ],
+   "y_labels": [
+    "POST",
+    "ANT"
+   ],
+   "ui": "joystick",
+   "section": "Patch",
+   "label": "Anterior right",
+   "cell": "ar"
+  },
+  "tooth_anterior_left": {
+   "type": "int",
+   "required": false,
+   "default": 11,
+   "description": "Universal number of the anterior left tooth.",
+   "hidden": true
+  },
+  "anterior_left": {
+   "type": "vec2",
+   "required": false,
+   "default": [
+    0.5,
+    0.0
+   ],
+   "description": "Where that corner sits.",
+   "section_columns": 2,
+   "visible_when": {
+    "patch": "Palate (butterfly)"
+   },
+   "x_label": "Ratio (R-L)",
+   "y_label": "Adjust (A-P)",
+   "x_range": [
+    0.0,
+    1.0
+   ],
+   "x_labels": [
+    "mid",
+    "out"
+   ],
+   "y_range": [
+    -5.0,
+    5.0
+   ],
+   "y_labels": [
+    "POST",
+    "ANT"
+   ],
+   "ui": "joystick",
+   "section": "Patch",
+   "label": "Anterior left",
+   "cell": "al"
+  },
+  "tooth_posterior_right": {
+   "type": "int",
+   "required": false,
+   "default": 3,
+   "description": "Universal number of the posterior right tooth.",
+   "hidden": true
+  },
+  "posterior_right": {
+   "type": "vec2",
+   "required": false,
+   "default": [
+    0.5,
+    0.0
+   ],
+   "description": "Where that corner sits.",
+   "section_columns": 2,
+   "visible_when": {
+    "patch": "Palate (butterfly)"
+   },
+   "x_label": "Ratio (R-L)",
+   "y_label": "Adjust (A-P)",
+   "x_range": [
+    0.0,
+    1.0
+   ],
+   "x_labels": [
+    "mid",
+    "out"
+   ],
+   "y_range": [
+    -5.0,
+    5.0
+   ],
+   "y_labels": [
+    "POST",
+    "ANT"
+   ],
+   "ui": "joystick",
+   "section": "Patch",
+   "label": "Posterior right",
+   "cell": "pr"
+  },
+  "tooth_posterior_left": {
+   "type": "int",
+   "required": false,
+   "default": 14,
+   "description": "Universal number of the posterior left tooth.",
+   "hidden": true
+  },
+  "posterior_left": {
+   "type": "vec2",
+   "required": false,
+   "default": [
+    0.5,
+    0.0
+   ],
+   "description": "Where that corner sits.",
+   "section_columns": 2,
+   "visible_when": {
+    "patch": "Palate (butterfly)"
+   },
+   "x_label": "Ratio (R-L)",
+   "y_label": "Adjust (A-P)",
+   "x_range": [
+    0.0,
+    1.0
+   ],
+   "x_labels": [
+    "mid",
+    "out"
+   ],
+   "y_range": [
+    -5.0,
+    5.0
+   ],
+   "y_labels": [
+    "POST",
+    "ANT"
+   ],
+   "ui": "joystick",
+   "section": "Patch",
+   "label": "Posterior left",
+   "cell": "pl"
+  },
+  "shift": {
+   "type": "vec2",
+   "required": false,
+   "default": [
+    0.0,
+    0.0
+   ],
+   "description": "Millimetres the whole patch moves, left-right then fore-aft.",
+   "ui": "joystick",
+   "label": "Move the whole patch",
+   "x_range": [
+    -15.0,
+    15.0
+   ],
+   "x_labels": [
+    "L",
+    "R"
+   ],
+   "y_range": [
+    -15.0,
+    15.0
+   ],
+   "y_labels": [
+    "POST",
+    "ANT"
+   ],
+   "section": "Patch",
+   "visible_when": {
+    "patch": "Palate (butterfly)"
+   },
+   "x_label": "Shift (R-L)",
+   "y_label": "Shift (A-P)"
+  },
+  "output_suffix": {
+   "type": "str",
+   "required": false,
+   "default": "_Reg",
+   "description": "Appended to each written file's name.",
+   "label": "Suffix",
+   "section": "Outputs"
+  }
+ },
+ "returns": "path",
+ "source_hash": "6f431aec7258f39d3c7425f23a429f5ce0b5acef3fcc648c0780521452076574"
+}

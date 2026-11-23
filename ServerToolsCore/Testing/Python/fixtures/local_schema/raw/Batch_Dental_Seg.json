@@ -1,0 +1,90 @@
+{
+ "name": "Batch_Dental_Seg",
+ "description": "Segment teeth and jaw structures on a dental CT or CBCT scan.",
+ "arguments": {
+  "scans": {
+   "type": "path",
+   "required": true,
+   "description": "One scan (.nii/.nii.gz/.nrrd/.nrrd.gz/.gipl/.gipl.gz), or a folder of them for a batch. Folders are searched recursively and the output mirrors the input tree, so two patients whose scans share a file name stay apart. Files that look like a previous run's output are skipped, so a folder can be re-run in place."
+  },
+  "model": {
+   "type": "path",
+   "required": true,
+   "description": "The model bundle to use. Its folder name chooses the model and with it the label table: DentalSegmentator (adult, five segments), PediatricDentalSeg (paediatric, the same five), NasoMaxillaDentSeg (six, maxilla split from the upper skull) or UniversalLab (every tooth in Universal numbering). Pairing one bundle with another's labels is impossible by construction -- the choice is one thing."
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where results are written, one file per scan plus `BatchDentalSeg_report.json`. Nothing is written outside it."
+  },
+  "separate_segments": {
+   "type": "bool",
+   "required": false,
+   "default": false,
+   "description": "Also write one binary file per label the network emitted. Only labels PRESENT in the scan are written: a full UniversalLab run would otherwise produce 55 mostly-empty files per patient, and an empty mask is indistinguishable from a structure the model failed on."
+  },
+  "prediction_ID": {
+   "type": "str",
+   "required": false,
+   "default": "Seg",
+   "description": "Suffix used in output names, e.g. `scan_Seg.nii.gz`."
+  },
+  "device": {
+   "type": "str",
+   "required": false,
+   "default": "cuda",
+   "choices": [
+    "cuda",
+    "cpu"
+   ],
+   "description": "\"cuda\" or \"cpu\". CUDA falls back to CPU when no card is visible, with a warning."
+  },
+  "tile_step_size": {
+   "type": "float",
+   "required": false,
+   "default": 0.5,
+   "description": "nnUNet's sliding-window overlap; the window advances by patch_size times this. It DOES move the segmentation, so it is left at nnUNet's own default."
+  },
+  "gpu_resampling": {
+   "type": "bool",
+   "required": false,
+   "default": true,
+   "description": "Resample on the GPU instead of nnUNet's scipy splines. Resampling, not the network, is where a run goes: measured per bundle on a 512x512x365 CBCT at 0.33 mm, it is 1.5x (Naso), 3.0x (DentalSegmentator, Pediatric) and 4.8x (UniversalLab, 279 s down to 58 s) end to end. Ignored on CPU and for a bundle whose plans pin a non-default resampler. It is lossy, which is why it is an argument: the input resampling drops from spline order 3 to order 1 (torch has no 3D cubic interpolation). Against the scipy pipeline on the same scan the worst label of each bundle measured Dice 0.991 (DentalSegmentator, Naso), 0.993 (Pediatric) and 0.993 (UniversalLab) -- a sub-voxel boundary shift, and better than the 0.978 AMASSS accepted for the same change. Set false for bit-identical nnUNet output. One caution, and it is about memory rather than accuracy: UniversalLab has 55 output classes, and resampling all of them on the card takes its peak from 15.5 GiB to 37.1 GiB. On a card smaller than about 40 GiB, pass false for THAT bundle. See README, \"GPU resampling\". Recorded in the run report either way."
+  },
+  "export_formats": {
+   "type": "list[str]",
+   "required": false,
+   "default": [
+    "NIFTI"
+   ],
+   "choices": [
+    "NIFTI",
+    "STL",
+    "OBJ",
+    "VTK",
+    "VTK (merged)"
+   ],
+   "description": "What comes out. NIFTI is the label volume this tool has always written; the rest are surfaces, one file per label the network actually emitted, except \"VTK (merged)\" which is a single file holding every surface with a `Label` cell array. Ticking several costs one marching-cubes pass, not one per format. NIFTI alone by default, which is what every earlier call meant. Untick it and no volume is written -- a caller who wants meshes only is not made to carry a cohort of label volumes for them.",
+   "section": "Export format",
+   "ui": "chips",
+   "option_help": {
+    "NIFTI": "The label volume, one file per scan. What this tool has always written",
+    "STL": "One mesh per label. What most printers and mesh viewers open",
+    "OBJ": "One mesh per label, as text. The largest of the three -- the format has no binary form",
+    "VTK": "One mesh per label, binary, carrying its label number",
+    "VTK (merged)": "Every label in ONE mesh, separable again by its `Label` array"
+   },
+   "min_selected": 1
+  },
+  "surface_decimation": {
+   "type": "int",
+   "required": false,
+   "default": 0,
+   "description": "Percentage of triangles dropped from every surface, 0 to 99. It applies to the mesh formats and to nothing else. 0, which is parity with the module this replaces: that one exports Slicer's closed surface representation, whose `Decimation factor` is 0.0, and at 0 the two agree to the byte. Measured on one real UniversalLab segmentation at 0.33 mm, label 8: 11852 triangles and 592684 bytes of STL either way. An earlier version defaulted to 90, borrowed from AMASSS without being remeasured, and that was wrong here. AMASSS decimates a cranial base of 1.6 million triangles, where 90 percent costs 0.059 mm and stops Slicer freezing on a 41.9 MB archive; a tooth is 11852 triangles, three orders of magnitude below the problem that rule was written for. It cost a factor of ten in detail for a saving nobody needed.",
+   "section": "Export format",
+   "label": "Surface reduction (%)"
+  }
+ },
+ "returns": "path",
+ "source_hash": "73ba24e124e237d9ea58deed6928436bf68b8c25bc5ca2015e2f5ae167184511"
+}

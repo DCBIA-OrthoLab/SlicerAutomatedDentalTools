@@ -1,0 +1,121 @@
+{
+ "name": "Agent",
+ "description": "Route a free-text request to one of this server's tools.",
+ "arguments": {
+  "prompt": {
+   "type": "str",
+   "required": true,
+   "description": "What the user wants, in their own words. The whole routing decision is made from this and the folders below.",
+   "section": "Request",
+   "label": "What do you need?"
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where the decision is written -- `routing.json`, the run report, and in Ask mode `advice.md`. With `execute`, the chosen tool's own outputs land in `run/` inside it. Nothing is written outside it."
+  },
+  "catalog_file": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "A JSON file holding what the server's `GET /tools` returns: every tool, its arguments, their types, whether they are required, and their choices. Leave it empty and the live registry is read instead, from `SADT_API` -- which is the point of the whole design: the catalogue is generated from each tool's own signature by that tool's own interpreter, so it cannot drift from what the tools actually take.",
+   "section": "Tools",
+   "label": "Tool catalogue (optional)"
+  },
+  "mode": {
+   "type": "str",
+   "required": false,
+   "default": "Agent (Automated)",
+   "choices": [
+    "Agent (Automated)",
+    "Ask (Interactive)"
+   ],
+   "description": "\"Agent (Automated)\" picks a tool and fills its parameters. \"Ask (Interactive)\" answers with methodology advice and never proposes a run, whatever `execute` says.",
+   "section": "Request",
+   "label": "Mode"
+  },
+  "folders": {
+   "type": "list[path]",
+   "required": false,
+   "default": [],
+   "description": "The folders holding the data this request is about. They are the only paths the model is shown, and it is told to use them verbatim; with `execute`, they are also the only paths a run may be handed. Sent as a list, so a folder whose name contains a comma stays one folder.",
+   "section": "Request",
+   "label": "Folders with your data"
+  },
+  "history": {
+   "type": "str",
+   "required": false,
+   "default": "",
+   "description": "Earlier turns of this conversation, as a JSON array of `{\"role\": \"user\"|\"assistant\"|\"system\", \"content\": \"...\"}`, so a follow-up that only supplies a missing parameter still makes sense. Empty means a fresh conversation; anything that is not that shape is an error rather than a silently forgotten conversation.",
+   "section": "Request",
+   "label": "Conversation so far",
+   "hidden": true
+  },
+  "candidates": {
+   "type": "int",
+   "required": false,
+   "default": 8,
+   "description": "How many tools the model is shown, best first. 0 means all of them. The ranker only narrows when it has signal: a request that matches nothing gets the whole catalogue rather than an arbitrary slice of it.",
+   "section": "Tools",
+   "label": "Tools shown to the model (0 = all)"
+  },
+  "execute": {
+   "type": "bool",
+   "required": false,
+   "default": false,
+   "description": "Run the chosen tool, through the supervisor, once the proposal is complete. Off by default and deliberately so -- a model choosing what to run on patient data unattended is a decision a person should make. It is refused anyway when no tool was chosen, when a required argument is missing, when the router's own confidence is below 0.5, when a path argument does not resolve inside one of `folders`, or when a model-named argument is anything but a bare name.",
+   "section": "Tools",
+   "label": "Run the chosen tool as well as proposing it",
+   "visible_when": {
+    "mode": "Agent (Automated)"
+   }
+  },
+  "endpoint": {
+   "type": "str",
+   "required": false,
+   "default": "",
+   "description": "The Ollama server to talk to, e.g. `http://127.0.0.1:11434`. Empty means `OLLAMA_HOST`, then loopback. Anything else must be a loopback address or `OLLAMA_HOST` itself. The endpoint is an operational prerequisite: this tool does not install Ollama, does not start it, and does not pull models.",
+   "section": "Language model",
+   "label": "Ollama endpoint",
+   "hidden": true
+  },
+  "model_tag": {
+   "type": "str",
+   "required": false,
+   "default": "qwen3:8b",
+   "description": "The Ollama model to route with, e.g. `qwen3:8b`. It must already be pulled on that server. Called a tag rather than a model because it is neither a file nor a bundle this server hosts: an argument named `model` is published as a name picked from `DATA/<tool>/models/`, and this is a string an Ollama server resolves.",
+   "section": "Language model",
+   "label": "Ollama model"
+  },
+  "temperature": {
+   "type": "float",
+   "required": false,
+   "default": 0.0,
+   "description": "Sampling temperature. 0 makes the same request route to the same tool twice, which is what lets a decision be checked.",
+   "section": "Language model",
+   "label": "Temperature",
+   "hidden": true
+  },
+  "seed": {
+   "type": "int",
+   "required": false,
+   "default": 0,
+   "description": "The sampler's seed, so a run above temperature 0 is reproducible.",
+   "section": "Language model",
+   "label": "Sampler seed",
+   "hidden": true
+  },
+  "timeout_seconds": {
+   "type": "int",
+   "required": false,
+   "default": 300,
+   "description": "How long to wait for one model call, and for reading the live registry.",
+   "section": "Language model",
+   "label": "Timeout (s)",
+   "hidden": true
+  }
+ },
+ "returns": "path",
+ "supervisor": true,
+ "source_hash": "961d909b1fbb11d567b1e5f358e5cc8132061df76e6f61d34a5340173ecf56f3"
+}

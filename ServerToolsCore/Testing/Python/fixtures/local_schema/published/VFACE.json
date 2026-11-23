@@ -1,0 +1,639 @@
+{
+ "name": "VFACE",
+ "arguments": {
+  "t1": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": true,
+   "description": "The CBCT volumes, one folder, searched recursively. Raw scans for the full pipeline; already-oriented ones for the modes that skip it, which read the frame each was oriented into off its name.",
+   "server_selectable": "testfile",
+   "selectable_scope": "CBCT_Or_FullyAuto",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "CBCT volumes",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "mode": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "How far down the pipeline the scans already are. Full pipeline resamples, orients, segments, registers and measures. File already Oriented starts at the segmentation; File already Registered measures only.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Full pipeline": true,
+    "File already Oriented": false,
+    "File already Registered": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Starting from",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "study": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "An asymmetry assessment has no second scan -- the patient is compared against their own mirror image. A longitudinal study compares the baseline with the follow-up in `t2`.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Asymmetry assessment": true,
+    "Longitudinal study": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Study",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "outputs": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "Measurements and a classification, heat maps of where the two surfaces differ, or both. Measurements need no segmentation of the soft tissue and heat maps need no landmarks, so a deployment missing one tool can still answer the other half.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Measurements and classification": true,
+    "Measurements and heat maps": false,
+    "Heat maps": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "What to produce",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "regions": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Which regions to measure. Each is worked in the frame it is defined in: the mandible against the cranial base, the maxilla against the occlusal plane.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Cranial base": true,
+    "Mandible": true,
+    "Maxilla": true
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Regions to measure",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "Cranial base": "CB",
+    "Mandible": "MAND",
+    "Maxilla": "MAX"
+   }
+  },
+  "t2": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The follow-up CBCTs, for a longitudinal study. Ignored by an asymmetry assessment, which makes its own second scan.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Follow-up CBCT volumes",
+   "section": "Inputs",
+   "visible_when": {
+    "study": "Longitudinal study"
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "measurements": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "A folder holding one measurement list per region -- an Excel naming, per row, a measurement and the landmarks it is taken on. Matched to its region by the file's name.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Measurement lists (one per region)",
+   "section": "Measurements",
+   "visible_when": {
+    "outputs": [
+     "Measurements and heat maps",
+     "Measurements and classification"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "feature_template": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The workbook whose columns name the features the classifier was trained on. It comes from the same training run as `classifier_model`; a template alone gives the feature table, and the verdict on top of it needs the bundle too.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Feature list the classifier was trained on",
+   "section": "Measurements",
+   "visible_when": {
+    "outputs": [
+     "Measurements and heat maps",
+     "Measurements and classification"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "registration_transforms": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The transforms a registration you already made produced, one subfolder per region. What `File already Registered` measures, and what it refuses without -- the orientation transforms beside the scans are a different matrix, and using them would move the landmarks wrongly while the run reported success.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Transforms from a registration you already made",
+   "section": "Inputs",
+   "visible_when": {
+    "mode": "File already Registered"
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "cranial_base_reference": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "An already-oriented case defining the Frankfort horizontal and mid-sagittal frame, to use instead of the one ASO holds for it. Left empty -- the normal case -- ASO orients onto its own.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Cranial base orientation reference",
+   "section": "References",
+   "visible_when": {
+    "mode": "Full pipeline"
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "maxilla_reference": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "An already-oriented case defining the occlusal and mid-sagittal frame, to use instead of the one ASO holds for it. Left empty -- the normal case -- ASO orients onto its own.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Maxilla orientation reference",
+   "section": "References",
+   "visible_when": {
+    "mode": "Full pipeline"
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "mirror_reference": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The transform that reflects a scan across the mid-sagittal plane. What an asymmetry assessment compares against.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Mirror transform",
+   "section": "References",
+   "visible_when": {
+    "study": "Asymmetry assessment"
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "segmentation_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "A bundle to segment the bone each region is registered on, instead of AMASSS's own. Left empty -- the normal case -- AMASSS uses the model it holds.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Bone segmentation bundle",
+   "section": "Models",
+   "visible_when": {
+    "mode": [
+     "Full pipeline",
+     "File already Oriented"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "landmark_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The bundle that places the landmarks every measurement is computed from.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "CBCT landmark bundle",
+   "section": "Models",
+   "visible_when": {
+    "outputs": [
+     "Measurements and heat maps",
+     "Measurements and classification"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "classifier_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The bundle holding the three asymmetry models.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Asymmetry classifier bundle",
+   "section": "Models",
+   "visible_when": {
+    "outputs": [
+     "Measurements and heat maps",
+     "Measurements and classification"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "surface_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The bundle that segments the surfaces a heat map is drawn on.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Surface segmentation bundle",
+   "section": "Models",
+   "visible_when": {
+    "outputs": [
+     "Measurements and heat maps",
+     "Heat maps"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "stop_after": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Stop the run after this step and return what it produced, instead of carrying on. Nothing is ticked by default and a run that is not asked to stop does not stop.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "ALI_CBCT": false,
+    "AMASSS": false,
+    "AREG_CBCT/AMASSS": false,
+    "AREG_CBCT/ASO/ALI_CBCT": false,
+    "AREG_CBCT/ASO": false,
+    "AREG_CBCT": false,
+    "ASO/ALI_CBCT": false,
+    "ASO": false,
+    "AutoMatrix": false,
+    "Batch_Dental_Seg": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Stop after",
+   "section": "Quality control",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_kind": {
+    "ALI_CBCT": "landmarks",
+    "AMASSS": "view",
+    "AREG_CBCT/AMASSS": "view",
+    "AREG_CBCT/ASO/ALI_CBCT": "landmarks",
+    "AREG_CBCT/ASO": "view",
+    "AREG_CBCT": "view",
+    "ASO/ALI_CBCT": "landmarks",
+    "ASO": "view",
+    "AutoMatrix": "view",
+    "Batch_Dental_Seg": "view"
+   },
+   "select_all": true
+  },
+  "keep_intermediate": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Return what a step produced, as it produced it and in its own space, for checking the run. Each one is written under `intermediate/` in the output folder.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "ALI_CBCT": false,
+    "AMASSS": false,
+    "AREG_CBCT": false,
+    "ASO": false,
+    "AutoMatrix": false,
+    "Batch_Dental_Seg": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Raw intermediate files",
+   "section": "Quality control",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "ASO": "The scans once each sits in the cranial base and maxillary frames, before a mask or a registration is built on them.",
+    "AMASSS": "The bone each region's registration is confined to -- what to look at when a registration lands on the wrong anatomy.",
+    "AutoMatrix": "The mirrored scan an asymmetry assessment compares the patient against, and the landmarks carried into the registered frame.",
+    "AREG_CBCT": "The registration itself, per region: the transform every measurement is taken through.",
+    "ALI_CBCT": "The landmarks the measurements are made on. A measurement is no better than the point it is taken from, and nothing downstream reveals a point that landed badly.",
+    "Batch_Dental_Seg": "The segmented surfaces the heat maps are painted onto."
+   },
+   "select_all": true
+  }
+ },
+ "output_kind": "files",
+ "batch": {
+  "axis": "t1",
+  "max_mb": 400,
+  "max_files": 25
+ }
+}

@@ -1,0 +1,27 @@
+{
+ "name": "Surg_Mov_Pred",
+ "description": "Predict post-surgical skeletal movements from cephalometric measurements.",
+ "arguments": {
+  "measurements": {
+   "type": "path",
+   "required": true,
+   "description": "One CSV/XLSX/ODS table of pre-operative measurements, one row per patient, or a folder of them concatenated into a batch. A patient identifier column ('#', 'ID', 'PatientID'...) is detected and carried into the output; without one the identifiers are blank.",
+   "label": "Measurements and plan"
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where the two result tables are written."
+  },
+  "model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "Folder of model packages, one subfolder per predicted measurement, each holding a `stacking_package.pkl`. Left empty, this tool uses the models installed for it -- every package found underneath, however they are filed.",
+   "hidden": true
+  }
+ },
+ "returns": "dict[str, path]",
+ "supervisor": true,
+ "source_hash": "b1593da4be5ea44ba1f2bbfb8d61368498f450d2084b2ac74cde8dc16b4282ab"
+}

@@ -1,0 +1,89 @@
+{
+ "name": "CNE",
+ "description": "Extract structured findings from free-text clinical notes with a local LLM.",
+ "arguments": {
+  "notes": {
+   "type": "path",
+   "required": true,
+   "description": "One clinical note (.txt, .pdf or .docx), or a folder of them for a cohort. Folders are searched recursively and the extension is matched case-insensitively, so notes filed per patient and a `NOTE.PDF` off a Windows share are both found.",
+   "extensions": [
+    ".docx",
+    ".pdf",
+    ".txt"
+   ],
+   "section": "Notes",
+   "label": "Clinical notes"
+  },
+  "notes_type": {
+   "type": "str",
+   "required": true,
+   "choices": [
+    "TMJ",
+    "Ortho"
+   ],
+   "description": "Which fine-tune is being run, \"TMJ\" or \"Ortho\". It selects the system prompt, the context window and, unless a model is named below, the model itself -- they are two different models.",
+   "section": "Notes",
+   "label": "Note type"
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where the extractions are written. Nothing is written outside it, and it may not be the notes folder itself."
+  },
+  "model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The quantised GGUF model, named from what this server hosts. Left empty, the bundle named after the note type is used, which is the one fine-tuned for it. A hosted bundle folder holding exactly one .gguf resolves to it; one holding several is refused rather than resolved by sort order.",
+   "section": "Notes",
+   "label": "Model"
+  },
+  "max_tokens": {
+   "type": "int",
+   "required": false,
+   "default": 2048,
+   "description": "The longest answer the model may give per note. An answer cut off at this limit is reported as a failure and never written: truncated JSON parses as nothing, and upstream wrote the fragment as if it were the extraction.",
+   "section": "Generation",
+   "label": "Longest answer (tokens)"
+  },
+  "temperature": {
+   "type": "float",
+   "required": false,
+   "default": 0.0,
+   "description": "Sampling temperature. 0 makes the same note extract to the same answer twice, which is what lets a result be checked.",
+   "section": "Generation",
+   "label": "Temperature"
+  },
+  "context_tokens": {
+   "type": "int",
+   "required": false,
+   "default": 0,
+   "description": "The context window, in tokens. 0 means the note type's own default (TMJ 6144, Ortho 2048).",
+   "section": "Generation",
+   "label": "Context window (tokens, 0 = auto)"
+  },
+  "seed": {
+   "type": "int",
+   "required": false,
+   "default": 0,
+   "description": "The sampler's seed, so a run above temperature 0 is still reproducible.",
+   "section": "Generation",
+   "label": "Seed"
+  },
+  "device": {
+   "type": "str",
+   "required": false,
+   "default": "cpu",
+   "choices": [
+    "cpu",
+    "cuda"
+   ],
+   "description": "\"cpu\" or \"cuda\". \"cuda\" offloads every layer of the model to the card, which is measured at 8-13x faster per note; it needs the CUDA build of llama.cpp, which this tool pins. Where that build is not the one installed, the request is reported as ignored -- `gpu_offload` in the report is what actually happened -- rather than passing silently as it used to.",
+   "section": "Generation",
+   "label": "Device"
+  }
+ },
+ "returns": "path",
+ "supervisor": true,
+ "source_hash": "6101e8479b54e0bb999eaf444e525f0e0e3578bfb52f3b6738b86fe71a97d78a"
+}
