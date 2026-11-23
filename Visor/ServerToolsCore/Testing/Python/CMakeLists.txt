@@ -138,6 +138,24 @@ add_test(
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   )
 
+# test_mode_switch.py: what the classic/VISOR switch bar says, remembers and
+# opens, with a fake QSettings. The widget and its injection need Slicer:
+# see ../Slicer/mode_switch_check.py.
+add_test(
+  NAME ServerToolsCore_test_mode_switch
+  COMMAND ${Python3_EXECUTABLE} -m unittest test_mode_switch
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  )
+
+# test_visor_layout.py: the two sets of modules as the build sees them: no
+# name in both, every manifest complete, every import installed, and the
+# classic files identical to upstream/main (skipped when that ref is absent).
+add_test(
+  NAME ServerToolsCore_test_visor_layout
+  COMMAND ${Python3_EXECUTABLE} -m unittest test_visor_layout
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  )
+
 # test_quality_control.py: a run that stops for a reader to correct it, and is
 # then carried on. Both halves -- the client recognising the record and posting
 # the corrections back, and the panel's loop around a stub reviewer -- run
