@@ -41,9 +41,9 @@ import slicer
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib import slicer_io
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
-from ServerToolsCoreLib.errors import plain_text
+from SADTCoreLib import slicer_io
+from SADTCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.errors import plain_text
 
 logger = logging.getLogger("ALI")
 
@@ -62,7 +62,7 @@ class ALI(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("ALI")
         self.parent.categories = ["Automated Dental Tools"]
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = [
             "Maxime Gillot (UoM)",
             "Baptiste Baquero (UoM)",
@@ -87,7 +87,7 @@ class ALI(ScriptedLoadableModule):
 
 class ALIWidget(ServerToolWidgetBase):
     """Thin GUI: HTTP, async, form generation, styling and lifecycle all live
-    in ServerToolsCoreLib. See ARCHITECTURE.md."""
+    in SADTCoreLib. See ARCHITECTURE.md."""
 
     TOOL_NAME = "ALI"
     RUN_REPORT = "run_report.json"

@@ -13,7 +13,7 @@ CrownSeg by hand. `AREG_Method/` is left in the tree but is no longer wired to
 this one.
 
 **There is no `.ui` file here, and that is the design rather than an omission.**
-The panel is built from the server's schema by `ServerToolsCoreLib.formgen`, so a
+The panel is built from the server's schema by `SADTCoreLib.formgen`, so a
 field added to the tool server-side appears here with no client release. The
 former module's `Resources/UI/AREG.ui` was kept for a while and then deleted,
 because keeping it invited edits that changed nothing: CMakeLists did not ship
@@ -36,8 +36,8 @@ import slicer
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib import slicer_io
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib import slicer_io
+from SADTCoreLib.base_widget import ServerToolWidgetBase
 
 logger = logging.getLogger("AREG")
 
@@ -149,7 +149,7 @@ class AREG(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("AREG")
         self.parent.categories = ["Automated Dental Tools"]
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = [
             "Nathan Hutin (UoM)",
             "Luc Anchling (UoM)",
@@ -175,7 +175,7 @@ class AREG(ScriptedLoadableModule):
 
 class AREGWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
-    lives in ServerToolsCoreLib. See ARCHITECTURE.md.
+    lives in SADTCoreLib. See ARCHITECTURE.md.
 
     Nothing about the pipeline lives here. Which anatomical regions can be
     registered on, which modes exist, what each mode additionally needs, and the

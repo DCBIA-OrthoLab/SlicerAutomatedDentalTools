@@ -28,7 +28,7 @@ import slicer
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.base_widget import ServerToolWidgetBase
 
 
 class CNE(ScriptedLoadableModule):
@@ -40,7 +40,7 @@ class CNE(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("CNE")
         self.parent.categories = ["Automated Dental Tools"]
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = ["Paul Dumont, University of North Carolina, Chapell Hill"]
         self.parent.helpText = _("""
         This tool helps to create summaries of clinical notes.
@@ -56,7 +56,7 @@ class CNE(ScriptedLoadableModule):
 
 class CNEWidget(ServerToolWidgetBase):
     """Thin GUI: HTTP, async, form generation, styling and lifecycle all live
-    in ServerToolsCoreLib. See ARCHITECTURE.md."""
+    in SADTCoreLib. See ARCHITECTURE.md."""
 
     TOOL_NAME = "CNE"
     RUN_REPORT = "CNE_report.json"

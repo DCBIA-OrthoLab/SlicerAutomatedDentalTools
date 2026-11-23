@@ -31,8 +31,8 @@ import slicer
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib import formgen, slicer_io
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib import formgen, slicer_io
+from SADTCoreLib.base_widget import ServerToolWidgetBase
 
 logger = logging.getLogger("AutoMatrix")
 
@@ -46,7 +46,7 @@ class AutoMatrix(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("AutoMatrix")
         self.parent.categories = ["Automated Dental Tools"]
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = [
             "Gaelle Leroux (UoM)",
             "Lucia Cevidanes (UoM)",
@@ -67,7 +67,7 @@ class AutoMatrix(ScriptedLoadableModule):
 
 class AutoMatrixWidget(ServerToolWidgetBase):
     """Thin GUI: HTTP, async, form generation, styling and lifecycle all live
-    in ServerToolsCoreLib. See ARCHITECTURE.md."""
+    in SADTCoreLib. See ARCHITECTURE.md."""
 
     TOOL_NAME = "AutoMatrix"
     LOAD_RESULTS_LABEL = _("Load the moved scans and landmarks into the scene when done")

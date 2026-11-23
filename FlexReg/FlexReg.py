@@ -33,7 +33,7 @@ import slicer
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.base_widget import ServerToolWidgetBase
 
 # The corner pads, in the order the preview names them.
 CORNERS = ("anterior_right", "anterior_left", "posterior_right", "posterior_left")
@@ -92,7 +92,7 @@ class FlexRegWidget(ServerToolWidgetBase):
         # Imported lazily: it pulls numpy, vtk and matplotlib. Slicer ships all
         # three, but a module that will not IMPORT takes its whole panel with
         # it, and the preview is the one thing here that can be done without.
-        from FlexRegLib.butterfly_preview import ButterflyPreview
+        from FlexRegUILib.butterfly_preview import ButterflyPreview
 
         self._preview = ButterflyPreview()
         self._contourNode = None

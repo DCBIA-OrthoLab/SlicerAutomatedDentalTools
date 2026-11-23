@@ -2,7 +2,7 @@
 Crop of both temporomandibular joints of a CBCT.
 
 Thin facade over SADT-VISOR's `TMJ_Crop` tool, run on this machine through the
-local client (ServerToolsCoreLib.local_client): the panel is generated from
+local client (SADTCoreLib.local_client): the panel is generated from
 the tool's own run() schema, and the tool orients the scan with ASO (which
 places its landmarks with ALI_CBCT), segments the mandible with AMASSS and
 cuts a box around each condyle, each tool in its own environment. Nothing is
@@ -15,7 +15,7 @@ Authors:
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.base_widget import ServerToolWidgetBase
 
 
 class TMJ_Crop(ScriptedLoadableModule):
@@ -27,7 +27,7 @@ class TMJ_Crop(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("TMJ_Crop")
         self.parent.categories = ["Automated Dental Tools"]
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = ["Jules Grivot Pélisson (UNC)"]
         self.parent.helpText = _("""
         Crops both temporomandibular joints of a CBCT into fixed-size volumes: the scan is
@@ -43,7 +43,7 @@ class TMJ_Crop(ScriptedLoadableModule):
 
 class TMJ_CropWidget(ServerToolWidgetBase):
     """Thin GUI: the form, the run, the progress and the results all come from
-    ServerToolsCoreLib, driven by the tool's schema."""
+    SADTCoreLib, driven by the tool's schema."""
 
     TOOL_NAME = "TMJ_Crop"
     # `scans` is a "path": one CBCT or a folder of them.

@@ -16,8 +16,8 @@ import slicer
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib import slicer_io
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib import slicer_io
+from SADTCoreLib.base_widget import ServerToolWidgetBase
 
 
 class AMASSS(ScriptedLoadableModule):
@@ -29,7 +29,7 @@ class AMASSS(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("AMASSS")
         self.parent.categories = ["Automated Dental Tools"]
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = [
             "Maxime Gillot (CPE Lyon & UoM)",
             "Baptiste Baquero (CPE Lyon & UoM)",
@@ -52,7 +52,7 @@ class AMASSS(ScriptedLoadableModule):
 
 class AMASSSWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
-    lives in ServerToolsCoreLib. See ARCHITECTURE.md.
+    lives in SADTCoreLib. See ARCHITECTURE.md.
 
     Nothing about the anatomy lives here: the structure list, its display names
     and which ones start checked are a `multichoice` argument in the server's

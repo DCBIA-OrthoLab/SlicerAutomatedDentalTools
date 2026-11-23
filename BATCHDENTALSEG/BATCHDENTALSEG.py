@@ -17,7 +17,7 @@ inference it existed to drive.
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.base_widget import ServerToolWidgetBase
 
 
 class BATCHDENTALSEG(ScriptedLoadableModule):
@@ -29,7 +29,7 @@ class BATCHDENTALSEG(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("BatchDentalSegmentator")
         self.parent.categories = ["Automated Dental Tools"]
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = [
             "Enzo Tulissi (UoM)",
             "Gauthier DOT (AP-HP)",
@@ -50,7 +50,7 @@ class BATCHDENTALSEG(ScriptedLoadableModule):
 
 class BATCHDENTALSEGWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
-    lives in ServerToolsCoreLib. See ARCHITECTURE.md.
+    lives in SADTCoreLib. See ARCHITECTURE.md.
 
     Nothing about the anatomy or the models lives here. Which bundles exist is
     `GET /tools/Batch_Dental_Seg/data`, and the label table each one implies is

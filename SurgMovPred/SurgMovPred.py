@@ -1,7 +1,7 @@
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.base_widget import ServerToolWidgetBase
 
 
 class SurgMovPred(ScriptedLoadableModule):
@@ -13,7 +13,7 @@ class SurgMovPred(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("SurgMovPred")
         self.parent.categories = ["Automated Dental Tools"]
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = ["Paul Dumont, University of North Carolina, Chapel Hill"]
         self.parent.helpText = _("""
         Predicts surgical movement outcomes from cephalometric measurements, computed by a
@@ -28,7 +28,7 @@ class SurgMovPred(ScriptedLoadableModule):
 
 class SurgMovPredWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
-    lives in ServerToolsCoreLib. See ARCHITECTURE.md."""
+    lives in SADTCoreLib. See ARCHITECTURE.md."""
 
     TOOL_NAME = "Surg_Mov_Pred"
     # No FILE_INPUTS. There used to be one, `{"input": "folder_zip"}`, and it

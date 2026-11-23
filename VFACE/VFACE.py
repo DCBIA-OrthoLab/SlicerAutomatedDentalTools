@@ -31,7 +31,7 @@ What did NOT survive the port, and deliberately:
   and they are real VFACE inputs.
 
 **There is no `.ui` file here, and that is the design rather than an omission.**
-The panel is built from the server's schema by `ServerToolsCoreLib.formgen`, so a
+The panel is built from the server's schema by `SADTCoreLib.formgen`, so a
 field added to the tool server-side appears here with no client release. The
 former module's `Resources/UI/VFACE.ui` was deleted rather than left behind,
 because a resource CMakeLists no longer ships and no code reads still looks like
@@ -47,7 +47,7 @@ import qt
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.base_widget import ServerToolWidgetBase
 
 
 class VFACE(ScriptedLoadableModule):
@@ -61,7 +61,7 @@ class VFACE(ScriptedLoadableModule):
         # today, and somebody looking for it types what they saw.
         self.parent.title = _("V FACE")
         self.parent.categories = ["Automated Dental Tools"]
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = [
             "Alexandre Buisson (University of North Carolina at Chapel Hill)",
         ]
@@ -88,7 +88,7 @@ class VFACE(ScriptedLoadableModule):
 
 class VFACEWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
-    lives in ServerToolsCoreLib. See ARCHITECTURE.md.
+    lives in SADTCoreLib. See ARCHITECTURE.md.
 
     Nothing about the pipeline lives here. Which studies exist, which regions can
     be measured, what a run returns, and the fact that a longitudinal study asks

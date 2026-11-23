@@ -24,7 +24,7 @@ include(${Slicer_USE_FILE})
 # Extension modules
 # Shared code, declared before the modules that import it.
 add_subdirectory(ADT)
-add_subdirectory(ServerToolsCore)
+add_subdirectory(SADTCore)
 add_subdirectory(SADTToolsManager)
 add_subdirectory(AMASSS)
 add_subdirectory(AMASSS_CLI)
@@ -62,8 +62,8 @@ add_subdirectory(Agent_CLI)
 add_subdirectory(SurgMovPred)
 add_subdirectory(SurgMovPred_CLI)
 add_subdirectory(TMJ_Crop)
-add_subdirectory(VISU)
-add_subdirectory(Crown_Seg)
+add_subdirectory(SADTVisu)
+add_subdirectory(CrownSeg)
 add_subdirectory(Convert)
 ## NEXT_MODULE
 
