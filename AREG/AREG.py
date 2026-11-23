@@ -1,0 +1,3601 @@
+import os, sys,time, traceback
+import vtk, qt, slicer
+from qt import (
+    QWidget,
+    QVBoxLayout,
+    QScrollArea,
+    QTabWidget,
+    QGridLayout,
+    QComboBox,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+)
+from slicer.ScriptedLoadableModule import *
+from slicer.util import VTKObservationMixin, pip_install
+
+# ===== Logging Configuration =====
+
+# Slicer captures its own stdout through a pipe that it drains from the Qt event
+# loop, so whatever writes to the log needs that loop to keep running. A conda
+# tool's output used to be logged straight from the worker thread reading it,
+# while the main thread span on processEvents: the tool fills the pipe faster
+# than the loop empties it, the main thread then writes one line of its own,
+# blocks in the write, and stops draining -- after which nothing can ever drain
+# it again. The run freezes with the panel up and no error, and the tool it was
+# waiting on is left as a zombie.
+#
+# The worker now only queues lines; the main thread logs them, a slice at a
+# time, so a single write stays far below what the pipe holds and the loop gets
+# to drain between slices.
+CONDA_OUTPUT_MAX_LINES = 200000   # what the queue holds before dropping oldest
+CONDA_OUTPUT_CHARS_PER_UPDATE = 4000   # a pipe holds 64 kB; stay well under it
+
+
+# Height of the MGL patch on each side of the mucogingival line, in mm. At 0
+# nothing is left of the patch but the landmarks, and the registration runs on
+# those points alone; above 20 mm it runs past the scanned mucosa.
+# Row of the models folder field inside gridLayout_2 of AREG.ui, where the
+# Browse button is added beside its Download button.
+MODEL3_GRID_ROW = 8
+
+MGL_DEFAULT_RADIUS = 5.0
+MGL_MIN_RADIUS = 0.0
+MGL_MAX_RADIUS = 20.0
+
+# ADTLib sits next to the modules in an installed build, in the directory Slicer
+# already has on sys.path. A source tree has no such entry -- a module search
+# path only gets there once Slicer finds a module in it, and ADT holds none --
+# so the entry points walk up to the holder directory and add it themselves.
+# This has to run before the first import of anything local, not just before
+# the ADTLib ones: ALI reaches ADTLib through ALI_Method.IOS.
+_adt_root = os.path.dirname(os.path.realpath(__file__))
+while not os.path.isdir(os.path.join(_adt_root, "ADT", "ADTLib")) \
+        and _adt_root != os.path.dirname(_adt_root):
+    _adt_root = os.path.dirname(_adt_root)
+if os.path.join(_adt_root, "ADT") not in sys.path:
+    sys.path.append(os.path.join(_adt_root, "ADT"))
+
+from ADTLib.logging_setup import get_logger
+
+logger = get_logger("AREG")
+
+from AREG_Method.IOS import Auto_IOS, Semi_IOS
+from AREG_Method.CBCT import Semi_CBCT, Auto_CBCT, Or_Auto_CBCT
+from AREG_Method.IOSCBCT import Auto_IOSCBCT,Semi_IOSCBCT,Reg_IOSCBCT
+from AREG_Method.Method import Method
+from AREG_Method.Progress import Display
+from AREG_Method import Review
+from AREG_Method.pip_install_window import PipInstallWindow
+
+import textwrap
+try:
+    import importlib.metadata as importlib_metadata
+except ImportError:
+    import importlib_metadata
+import platform
+import signal
+import threading
+import collections
+import subprocess
+import re
+
+from ADTLib.format import format_elapsed, elapsed_since
+from ADTLib.theming import update_line_edit_and_combo_box
+from ADTLib.env.deps import check_lib_installed as lib_satisfies, torch_cuda_conflict
+from ADTLib.env.cuda import torch_install_arguments, torch_needs_numpy1
+from ADTLib.env.conda import (
+    check_pythonpath, conda_quote, give_pythonpath,
+    init_conda as init_conda_call, check_lib_wsl as wsl_libraries_present,
+    windows_to_linux_path as windows_to_linux_path_shared)
+from ADTLib.format import format_timer
+from ADTLib.requests import AREGRequest
+from ADTLib.model_registry import SLICER_TESTING_DATA
+from ADTLib.testdata import ensure_with_progress, TestDataError
+
+
+def _get_installed_version(lib_name):
+    try:
+        return importlib_metadata.version(lib_name)
+    except importlib_metadata.PackageNotFoundError:
+        raise importlib_metadata.PackageNotFoundError
+
+
+def check_lib_installed(lib_name, required_version=None):
+    """Whether the library is installed and satisfies the constraint."""
+    return lib_satisfies(lib_name, required_version)
+
+# import csv
+
+def torch_requirements_for_this_gpu():
+    """The pip arguments for a torch this GPU can run, or None to change nothing.
+
+    This replaces a `torch==2.2.0` that every branch carried. That pin resolves
+    to a cu121 wheel whose kernels stop at sm_90, so on an RTX 50 series it
+    installed cleanly, answered `torch.cuda.is_available()` with True, and then
+    failed every single kernel launch with "no kernel image is available" - a
+    message that names neither torch nor the wheel, and sent the diagnosis
+    looking at the driver, the machine and the data instead.
+
+    None covers three cases that all mean "leave it alone": the installed stack
+    already serves this GPU, there is no GPU to serve, or no published wheel
+    covers it and the CPU is the only thing left to run on.
+    """
+    arguments = torch_install_arguments()
+    if arguments is None:
+        logger.info("the installed torch serves this GPU, or there is none to serve")
+    return arguments
+
+
+def warn_on_torch_cuda_conflict():
+    """Say so when the torch family ended up on two different CUDA builds.
+
+    AREG pins torch, torchvision and torchaudio together; nothing stops another
+    extension, or an earlier run, from having replaced one of them. The three
+    then import fine and fail much later, inside a model, with an
+    `undefined symbol` that reads like anything but a version mismatch.
+
+    Only an explicit disagreement is reported: a wheel without a `+cuXXX` label
+    says nothing about its build, and warning on that would fire on every plain
+    PyPI install.
+    """
+    conflict = torch_cuda_conflict()
+    if not conflict:
+        return
+    detail = ", ".join("%s (cu%s)" % (name, label) for name, label in sorted(conflict.items()))
+    logger.warning("torch family built against different CUDA versions: %s", detail)
+    slicer.util.warningDisplay(
+        "These libraries come from different CUDA builds:\n\n" + detail
+        + "\n\nThey import without complaining and fail later, inside a model,"
+          " with an error that does not mention versions. Reinstalling them"
+          " together, from the same index, is the fix."
+    )
+
+
+def install_function(self, list_libs:list, extra_requirements=()):
+    '''
+    Test the necessary libraries and install them with the specific version if needed
+    User is asked if he wants to install/update-by changing his environment- the libraries with a pop-up window
+
+    `extra_requirements` holds pip argument strings to install verbatim, each in
+    one call. The torch trio goes through here rather than through `list_libs`:
+    whether it has to be replaced is not a question about version numbers -- a
+    torch that satisfies the pin exactly can still have no kernels for this GPU
+    -- and the three wheels have to be resolved together, which one entry per
+    library cannot express.
+    '''
+    libs = list_libs
+    libs_to_install = []
+    libs_to_update = []
+    installation_errors = []
+    for lib, version_constraint,url in libs:
+        if not check_lib_installed(lib, version_constraint):
+            try:
+            # check if the library is already installed
+                if _get_installed_version(lib):
+                    libs_to_update.append((lib, version_constraint))
+            except Exception:
+                libs_to_install.append((lib, version_constraint))
+
+    extra_requirements = list(extra_requirements)
+
+    if libs_to_install or libs_to_update or extra_requirements:
+          message = "The following changes are required for the libraries:\n"
+
+          #Specify which libraries will be updated with a new version
+          #and which libraries will be installed for the first time
+          if libs_to_update:
+              message += "\n --- Libraries to update (version mismatch): \n"
+              message += "\n".join([f"{lib} (current: {_get_installed_version(lib)}) -> {version_constraint.replace('==','').replace('<=','').replace('>=','').replace('<','').replace('>','')}" for lib, version_constraint in libs_to_update])
+              message += "\n"
+          if libs_to_install:
+
+              message += "\n --- Libraries to install:  \n"
+          message += "\n".join([f"{lib}{version_constraint}" if version_constraint else lib for lib, version_constraint in libs_to_install])
+
+          if extra_requirements:
+              message += "\n\n --- PyTorch build for this GPU: \n"
+              message += "\n".join(extra_requirements)
+
+          message += "\n\nDo you agree to modify these libraries? Doing so could cause conflicts with other installed Extensions."
+          message += "\n\n (If you are using other extensions, consider downloading another Slicer to use AutomatedDentalTools exclusively.)"
+
+          user_choice = slicer.util.confirmYesNoDisplay(message)
+
+          if user_choice:
+            self.ui.label_LibsInstallation.setVisible(True)
+            lib = None
+            # In its own window rather than through slicer.util.pip_install:
+            # that one prints every line pip produces from the timer slot that
+            # drains its queue, and such a burst fills the pipe Slicer captures
+            # its own output into - the main thread then blocks in write() and
+            # the session is gone. See AREG_Method.pip_install_window.
+            try:
+                with PipInstallWindow(requester="AREG") as window:
+                    # torch first, and on its own: monai and nnunetv2 declare an
+                    # unbounded dependency on it, so installing them beforehand
+                    # lets pip pull PyPI's default build in and the GPU-specific
+                    # one installed afterwards is the one that gets replaced.
+                    for requirement in extra_requirements:
+                        lib = requirement.split("==")[0]
+                        if not window.install(requirement):
+                            installation_errors.append(
+                                (lib, "pip failed, see the installation window")
+                            )
+                            break
+
+                    for lib, version_constraint in (
+                            [] if installation_errors
+                            else libs_to_install + libs_to_update):
+                        if not version_constraint:
+                            requirement = lib
+
+                        elif "https:/" in version_constraint:
+                            logger.debug(f"Version constraint: {version_constraint}")
+                            # download the library from the url
+                            requirement = version_constraint
+                        else:
+                            logger.debug(f"Version constraint else: {version_constraint}")
+                            requirement = f'{lib}{version_constraint}' if version_constraint else lib
+
+                        if not window.install(requirement):
+                            # Stop at the first failure: what follows would be
+                            # installed against an environment already known to
+                            # be half-way through a change.
+                            installation_errors.append(
+                                (lib, "pip failed, see the installation window")
+                            )
+                            break
+            except Exception as e:
+                    installation_errors.append((lib, str(e)))
+
+            if installation_errors:
+                error_message = "The following errors occured during installation:\n"
+                error_message += "\n".join([f"{lib}: {error}" for lib, error in installation_errors])
+                slicer.util.errorDisplay(error_message)
+                return False
+
+            warn_on_torch_cuda_conflict()
+            return True
+          else :
+            return False
+
+    else:
+        warn_on_torch_cuda_conflict()
+        return True
+
+def condaQuote(conda, value):
+    """Delegated to ADTLib; kept as a module function for the call sites."""
+    return conda_quote(conda, value)
+
+
+class AREG(ScriptedLoadableModule):
+    """Uses ScriptedLoadableModule base class, available at:
+    https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
+    """
+
+    def __init__(self, parent):
+        ScriptedLoadableModule.__init__(self, parent)
+        self.parent.title = (
+            "AREG"
+        )
+        self.parent.categories = [
+            "Automated Dental Tools"
+        ]  # set categories (folders where the module shows up in the module selector)
+        # CondaSetUp (SlicerConda) is imported lazily where it is used; a hard module
+        # dependency makes this module fail to load wherever SlicerConda's modules are
+        # not registered, as on the extensions factory test runs.
+        self.parent.dependencies = []
+        self.parent.contributors = [
+            "Nathan Hutin (UoM), Luc Anchling (UoM)"
+        ]
+        
+        self.parent.helpText = """
+        This is an example of scripted loadable module bundled in an extension.
+        See more information in <a href="https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools#AREG">module documentation</a>.
+        """
+        
+        self.parent.acknowledgementText = """
+        This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
+        and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
+        """
+
+        # Additional initialization step after application startup is complete
+        slicer.app.connect("startupCompleted()", self.registerSampleData)
+        # The environment every IOS pipeline runs on is looked for here, once,
+        # rather than at the first Run of a module. See ADTEnvSetup.
+        slicer.app.connect("startupCompleted()", self.checkSharedEnvironment)
+
+        #
+        # Register sample data sets in Sample Data module
+        #
+
+    def checkSharedEnvironment(self):
+        """Look once, at startup, for the Conda environment the IOS pipelines share."""
+        try:
+            from AREG_Method import ADTEnvSetup
+
+            ADTEnvSetup.checkAtStartup()
+        except Exception:
+            # A missing environment is a nuisance; it must never be the thing
+            # that keeps Slicer from starting.
+            logger.exception("The startup check of the shapeaxi environment failed")
+
+    def registerSampleData(self):
+        """
+        Add data sets to Sample Data module.
+        """
+        # It is always recommended to provide sample data for users to make it easy to try the module,
+        # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
+
+        import SampleData
+
+        icons_path = os.path.join(os.path.dirname(__file__), "Resources/Icons")
+
+        # To ensure that the source code repository remains small (can be downloaded and installed quickly)
+        # it is recommended to store data sets that are larger than a few MB in a Github release.
+
+        # ALI1
+        SampleData.SampleDataLogic.registerCustomSampleDataSource(
+            # Category and sample name displayed in Sample Data module
+            category="AREG",
+            sampleName="AREG1",
+            # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
+            # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
+            thumbnailFileName=os.path.join(icons_path, "AREG1.png"),
+            # Download URL and target file name
+            uris=f"{SLICER_TESTING_DATA}/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+            fileNames="AREG1.nrrd",
+            # Checksum to ensure file integrity. Can be computed by this command:
+            checksums="SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+            # This node name will be used when the data set is loaded
+            nodeNames="AREG1",
+        )
+
+        # AREG2
+        SampleData.SampleDataLogic.registerCustomSampleDataSource(
+            # Category and sample name displayed in Sample Data module
+            category="AREG",
+            sampleName="AREG2",
+            thumbnailFileName=os.path.join(icons_path, "AREG2.png"),
+            # Download URL and target file name
+            uris=f"{SLICER_TESTING_DATA}/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+            fileNames="AREG2.nrrd",
+            checksums="SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+            # This node name will be used when the data set is loaded
+            nodeNames="AREG2",
+        )
+
+
+class PopUpWindow(qt.QDialog):
+    """Class to generate a popup window with text and button (either radio or checkbox)"""
+
+    def __init__(
+        self,
+        title="Title",
+        text=None,
+        listename=["1", "2", "3"],
+        type=None,
+        tocheck=None,
+    ):
+        # Without a parent the window manager attaches the dialog to a 1x1
+        # dummy window and never maps it. A modal one then takes every click
+        # with nothing on screen to dismiss - the run looks frozen at the end.
+        QWidget.__init__(self, slicer.util.mainWindow())
+        self.setWindowTitle(title)
+        layout = QGridLayout()
+        self.setLayout(layout)
+        self.ListButtons = []
+        self.listename = listename
+        self.type = type
+
+        if self.type == "radio":
+            self.radiobutton(layout)
+
+        elif self.type == "checkbox":
+            self.checkbox(layout)
+            if tocheck is not None:
+                self.toCheck(tocheck)
+
+        elif text is not None:
+            label = qt.QLabel(text)
+            layout.addWidget(label)
+            # add ok button to close the window
+            button = qt.QPushButton("OK")
+            button.connect("clicked()", self.onClickedOK)
+            layout.addWidget(button)
+
+    def checkbox(self, layout):
+        j = 0
+        for i in range(len(self.listename)):
+            button = qt.QCheckBox(self.listename[i])
+            self.ListButtons.append(button)
+            if i % 20 == 0:
+                j += 1
+            layout.addWidget(button, i % 20, j)
+        # Add a button to select and deselect all
+        button = qt.QPushButton("Select All")
+        button.connect("clicked()", self.onClickedSelectAll)
+        layout.addWidget(button, len(self.listename) + 1, j - 2)
+        button = qt.QPushButton("Deselect All")
+        button.connect("clicked()", self.onClickedDeselectAll)
+        layout.addWidget(button, len(self.listename) + 1, j - 1)
+
+        # Add a button to close the dialog
+        button = qt.QPushButton("OK")
+        button.connect("clicked()", self.onClickedCheckbox)
+        layout.addWidget(button, len(self.listename) + 1, j)
+
+    def toCheck(self, tocheck):
+        for i in range(len(self.listename)):
+            if self.listename[i] in tocheck:
+                self.ListButtons[i].setChecked(True)
+
+    def onClickedSelectAll(self):
+        for button in self.ListButtons:
+            button.setChecked(True)
+
+    def onClickedDeselectAll(self):
+        for button in self.ListButtons:
+            button.setChecked(False)
+
+    def onClickedCheckbox(self):
+        true_false = [button.isChecked() for button in self.ListButtons]
+        self.checked = [
+            self.listename[i] for i in range(len(self.listename)) if true_false[i]
+        ]
+        self.accept()
+
+    def radiobutton(self, layout):
+        for i in range(len(self.listename)):
+            radiobutton = qt.QRadioButton(self.listename[i])
+            self.ListButtons.append(radiobutton)
+            radiobutton.connect("clicked(bool)", self.onClickedRadio)
+            layout.addWidget(radiobutton, i, 0)
+
+    def onClickedRadio(self):
+        self.checked = self.listename[
+            [button.isChecked() for button in self.ListButtons].index(True)
+        ]
+        self.accept()
+
+    def onClickedOK(self):
+        self.accept()
+
+
+#
+# AREGWidget
+#
+
+
+class AREGWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
+    """Uses ScriptedLoadableModuleWidget base class, available at:
+    https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
+    """
+
+    def __init__(self, parent=None):
+        """
+        Called when the user opens the module the first time and the widget is initiAREGzed.
+        """
+        ScriptedLoadableModuleWidget.__init__(self, parent)
+        VTKObservationMixin.__init__(self)  # needed for parameter node observation
+        self.logic = None
+        self._parameterNode = None
+        self._updatingGUIFromParameterNode = False
+        self.all_installed = False
+
+        self.nb_patient = 0  # number of scans in the input folder
+        self.time_log = 0  # time of the last log update
+
+        # Review pauses: which steps the user ticked, and the one on screen
+        self.module_name = ""
+        self.review = Review.ReviewSession()
+        self.review_checkboxes = {}
+        self.review_step = {}
+        self.executed_steps = []
+        self.review_flagged_carry = []
+        self.review_temp_folders = []
+
+        #: The output folder `Test Files` filled in, or "" -- what tells an
+        #: auto-filled path from one the user typed. See FillFromTestFiles.
+        self._auto_output = ""
+
+    def setup(self):
+        """
+        Called when the user opens the module the first time and the widget is initiAREGzed.
+        """
+        ScriptedLoadableModuleWidget.setup(self)
+
+        # Load widget from .ui file (created by Qt Designer).
+        # Additional widgets can be instantiated manually and added to self.layout.
+        ui_widget = slicer.util.loadUI(self.resourcePath("UI/AREG.ui"))
+        self.uiWidget = ui_widget  # Store reference for styling
+        self.layout.addWidget(ui_widget)
+
+        self.ui = slicer.util.childWidgetVariables(ui_widget)
+
+        # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
+        # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
+        # "setMRMLScene(vtkMRMLScene*)" slot.
+        ui_widget.setMRMLScene(slicer.mrmlScene)
+
+        # Create logic class. Logic implements all computations that should be possible to run
+        # in batch mode, without a graphical user interface.
+        self.logic = AREGLogic()
+
+        # Connections
+
+        # These connections ensure that we update parameter node when scene is closed
+        self.addObserver(
+            slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose
+        )
+        self.addObserver(
+            slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose
+        )
+
+        # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
+        # (in the selected parameter node).
+
+        """
+            888     888        d8888 8888888b.  8888888        d8888 888888b.   888      8888888888  .d8888b.
+            888     888       d88888 888   Y88b   888         d88888 888  "88b  888      888        d88P  Y88b
+            888     888      d88P888 888    888   888        d88P888 888  .88P  888      888        Y88b.
+            Y88b   d88P     d88P 888 888   d88P   888       d88P 888 8888888K.  888      8888888     "Y888b.
+             Y88b d88P     d88P  888 8888888P"    888      d88P  888 888  "Y88b 888      888            "Y88b.
+              Y88o88P     d88P   888 888 T88b     888     d88P   888 888    888 888      888              "888
+               Y888P     d8888888888 888  T88b    888    d8888888888 888   d88P 888      888        Y88b  d88P
+                Y8P     d88P     888 888   T88b 8888888 d88P     888 8888888P"  88888888 8888888888  "Y8888P"
+        """
+
+        self.MethodDic = {
+            "Semi_IOS": Semi_IOS(self),
+            "Auto_IOS": Auto_IOS(self),
+            "Semi_CBCT": Semi_CBCT(self),
+            "Auto_CBCT": Auto_CBCT(self),
+            "Or_Auto_CBCT": Or_Auto_CBCT(self),
+            "Auto_IOSCBCT": Auto_IOSCBCT(self),
+            "Semi_IOSCBCT": Semi_IOSCBCT(self),
+            "Reg_IOSCBCT" :Reg_IOSCBCT(self)
+        }
+        self.reference_lm = []
+        self.ActualMeth = Method
+        self.ActualMethName = "Or_Auto_CBCT"
+        self.ActualMeth = self.MethodDic[self.ActualMethName]
+        self.type = "CBCT"
+        self.nb_scan = 0
+        self.startprocess = 0
+        self.patient_process = 0
+        self.checkboxes = {}
+        self.checkboxes2 = {}
+        self.display = Display
+        self.isDCMInput = False
+        self.CBCTOrientRef = "Frankfurt Horizontal and Midsagittal Plane"
+        self.SegmentationLabels = [0]
+        """
+        example dic = {'teeth'=['A,....],'Type'=['O',...]}
+        """
+
+        self.log_path = os.path.join(slicer.util.tempDirectory(), "process.log")
+        self.time = 0
+
+        # use messletter to add big comment with univers as police
+
+        documents_location = qt.QStandardPaths.DocumentsLocation
+        self.documents = qt.QStandardPaths.writableLocation(documents_location)
+        self.SlicerDownloadPath = os.path.join(
+            self.documents,
+            slicer.app.applicationName + "Downloads",
+            "AREG",
+            "AREG_" + self.type,
+        )
+
+        if not os.path.exists(self.SlicerDownloadPath):
+            os.makedirs(self.SlicerDownloadPath)
+
+        """
+
+                                        8888888 888b    888 8888888 88888888888
+                                          888   8888b   888   888       888
+                                          888   88888b  888   888       888
+                                          888   888Y88b 888   888       888
+                                          888   888 Y88b888   888       888
+                                          888   888  Y88888   888       888
+                                          888   888   Y8888   888       888
+                                        8888888 888    Y888 8888888     888
+
+        """
+
+        self.initCheckBoxCBCT(
+            self.MethodDic["Semi_CBCT"],
+            self.ui.LayoutSemiCBCT,
+            self.ui.tohideCBCT,
+        )
+
+        self.initCheckBoxCBCT(
+            self.MethodDic["Auto_CBCT"],
+            self.ui.LayoutAutoCBCT,
+            self.ui.tohideCBCT_2,
+        )
+
+        self.initCheckBoxCBCT(
+            self.MethodDic["Or_Auto_CBCT"],
+            self.ui.LayoutOrAutoCBCT,
+            self.ui.tohideCBCT_3,
+        )
+
+        self.initRegistrationReference()
+        self.HideComputeItems()
+        self.setupReviewUi()
+        self.SwitchType()
+        
+        self.ui.label_11.setVisible(False)
+        self.ui.lineEditMaskT1Path.setVisible(False)
+        self.ui.ButtonSearchT1Mask.setVisible(False)
+
+        """
+
+                     .d8888b.   .d88888b.  888b    888 888b    888 8888888888  .d8888b.  88888888888
+                    d88P  Y88b d88P" "Y88b 8888b   888 8888b   888 888        d88P  Y88b     888
+                    888    888 888     888 88888b  888 88888b  888 888        888    888     888
+                    888        888     888 888Y88b 888 888Y88b 888 8888888    888            888
+                    888        888     888 888 Y88b888 888 Y88b888 888        888            888
+                    888    888 888     888 888  Y88888 888  Y88888 888        888    888     888
+                    Y88b  d88P Y88b. .d88P 888   Y8888 888   Y8888 888        Y88b  d88P     888
+                     "Y8888P"   "Y88888P"  888    Y888 888    Y888 8888888888  "Y8888P"      888
+
+        """
+
+        self.ui.ButtonSearchScan1.pressed.connect(
+            lambda: self.SearchScan(self.ui.lineEditScanT1LmPath)
+        )
+        self.ui.ButtonSearchT1Mask.pressed.connect(
+            lambda: self.SearchScan(self.ui.lineEditMaskT1Path)
+        )
+        self.ui.ButtonSearchScan2.pressed.connect(
+            lambda: self.SearchScan(self.ui.lineEditScanT2LmPath)
+        )
+
+        self.ui.ButtonSearchT2LM.pressed.connect(
+            lambda: self.SearchScan(self.ui.lineEditT2LMPath)
+        )
+
+        self.ui.ButtonSearchModel1.pressed.connect(
+            lambda: self.downloadModel(
+                self.ui.lineEditModel1, self.ui.labelModelFolder.text.split(" ")[0]
+            )
+        )
+        self.ui.ButtonSearchModel3.pressed.connect(
+            lambda: self.downloadModel(
+                self.ui.lineEditModel3, self.ui.label_4.text.split(" ")[0]
+            )
+        )
+        self.ui.ButtonSearchModel2.pressed.connect(
+            lambda: self.downloadModel(
+                self.ui.lineEditModel2, self.ui.label_6.text.split(" ")[0]
+            )
+        )
+        self.ui.ButtonOriented.connect("clicked(bool)", self.onPredictButton)
+        self.ui.ButtonOutput.connect("clicked(bool)", self.ChosePathOutput)
+        self.ui.ButtonCancel.connect("clicked(bool)", self.onCancel)
+        self.ui.CbInputType.activated.connect(lambda: self.SwitchType("InputType"))
+        self.ui.CbModeType.activated.connect(lambda: self.SwitchType("ModeType"))
+        self.ui.CbCBCTInputType.currentIndexChanged.connect(self.SwitchCBCTInputType)
+        self.ui.ButtonTestFiles.clicked.connect(self.TestFiles)
+        
+        self.ui.LabelSelectcomboBox.setVisible(False)
+        self.ui.label_10.setVisible(False)
+        
+        # Apply dark mode styles
+        self.applyDarkModeStyles()
+
+    """
+
+
+                888888b.   888     888 88888888888 88888888888  .d88888b.  888b    888  .d8888b.
+                888  "88b  888     888     888         888     d88P" "Y88b 8888b   888 d88P  Y88b
+                888  .88P  888     888     888         888     888     888 88888b  888 Y88b.
+                8888888K.  888     888     888         888     888     888 888Y88b 888  "Y888b.
+                888  "Y88b 888     888     888         888     888     888 888 Y88b888     "Y88b.
+                888    888 888     888     888         888     888     888 888  Y88888       "888
+                888   d88P Y88b. .d88P     888         888     Y88b. .d88P 888   Y8888 Y88b  d88P
+                8888888P"   "Y88888P"      888         888      "Y88888P"  888    Y888  "Y8888P"
+
+
+
+    """
+
+    def SwitchCBCTInputType(self, index):
+        """Function to change the input type of the CBCT (NIFTI or DCM)"""
+        if index == 0:  # NIFTI as Input
+            self.isDCMInput = False
+        if index == 1:  # DCM as Input
+            self.isDCMInput = True
+
+    def SwitchModeCBCT(self, index):
+        self.ShowRegistrationReference(False)
+        """Function to change the UI depending on the mode selected (Semi or Fully Automated)"""
+        self.ui.CbCBCTInputType.setVisible(True)
+        self.ui.label_CBCTInputType.setVisible(True)
+        self.ui.advancedCollapsibleButton.collapsed = False
+        self.ui.label_11.setVisible(False)
+        self.ui.lineEditMaskT1Path.setVisible(False)
+        self.ui.ButtonSearchT1Mask.setVisible(False)
+        self.ui.label_3.setText("T1 Scans")
+        self.ui.label_2.setText("T2 Scans")
+        self.ui.label_LibsInstallation.setVisible(False)
+
+        self.ui.label_12.setVisible(False)
+        self.ui.ButtonSearchT2LM.setVisible(False)
+        self.ui.lineEditT2LMPath.setVisible(False)
+
+        if index == 2:  # Semi-Automated
+
+            self.ui.label_6.setVisible(False)
+            self.ui.lineEditModel2.setVisible(False)
+            self.ui.ButtonSearchModel2.setVisible(False)
+
+            self.ui.label_4.setVisible(False)
+            self.ui.lineEditModel3.setVisible(False)
+            self.ui.ButtonSearchModel3.setVisible(False)
+            
+            self.ui.label_11.setVisible(True)
+            self.ui.label_11.setText("T1 Masks")
+            self.ui.lineEditMaskT1Path.setVisible(True)
+            self.ui.ButtonSearchT1Mask.setVisible(True)
+
+            self.ui.labelModelFolder.setVisible(True)
+            self.ui.labelModelFolder.setText("Segmentation Model Folder")
+            self.ui.ButtonSearchModel1.setVisible(True)
+            self.ui.lineEditModel1.setVisible(True)
+
+        if index == 1:  # Fully Automated
+
+            self.ui.labelModelFolder.setVisible(True)
+            self.ui.labelModelFolder.setText("Segmentation Model Folder")
+            self.ui.ButtonSearchModel1.setVisible(True)
+            self.ui.lineEditModel1.setVisible(True)
+
+            self.ui.lineEditModel2.setVisible(False)
+            self.ui.ButtonSearchModel2.setVisible(False)
+            self.ui.label_6.setVisible(False)
+
+            self.ui.label_4.setVisible(False)
+            self.ui.lineEditModel3.setVisible(False)
+            self.ui.ButtonSearchModel3.setVisible(False)
+
+        if index == 0:  #  Orientation & Fully Auto Reg
+
+            self.ui.labelModelFolder.setVisible(True)
+            self.ui.labelModelFolder.setText("Segmentation Model Folder")
+            self.ui.ButtonSearchModel1.setVisible(True)
+            self.ui.lineEditModel1.setVisible(True)
+
+            self.ui.label_6.setVisible(True)
+            self.ui.lineEditModel2.setVisible(True)
+            self.ui.ButtonSearchModel2.setVisible(True)
+            self.ui.label_6.setText("Orientation Model Folder")
+
+            self.ui.label_4.setVisible(False)
+            self.ui.lineEditModel3.setVisible(False)
+            self.ui.ButtonSearchModel3.setVisible(False)
+
+            self.ui.CbCBCTInputType.setVisible(False)
+            self.ui.label_CBCTInputType.setVisible(False)
+            self.isDCMInput = False
+
+    def initRegistrationReference(self):
+        """Build the IOS choice of registration reference, below the input fields.
+
+        Two stable regions are available and they do not describe the same arch:
+        the palate carries the upper registration, the band along the
+        mucogingival line carries the lower one.
+        """
+        grid = self.ui.gridLayout_2
+        row = grid.rowCount()
+
+        self.label_reg_reference = QLabel("Registration Reference")
+        self.CbRegReference = QComboBox()
+        self.CbRegReference.addItem("Palate (Butterfly) - upper arch")
+        self.CbRegReference.addItem("Mucogingival line (MGL) - lower arch")
+        self.CbRegReference.setToolTip(
+            "Surface the registration is computed on. The palate is painted by a "
+            "neural network on the upper arch; the mucogingival band is built from "
+            "the MGL landmarks on the lower arch."
+        )
+        grid.addWidget(self.label_reg_reference, row, 0)
+        grid.addWidget(self.CbRegReference, row, 1)
+
+        # A plain line edit rather than a spin box: the module stylesheet pads
+        # every QLineEdit by 6px, and a spin box wears that padding on its inner
+        # editor, which clips the digits out of view.
+        self.label_mgl_radius = QLabel("MGL Patch Height (mm)")
+        self.lineEditMGLRadius = QLineEdit(str(MGL_DEFAULT_RADIUS))
+        self.lineEditMGLRadius.setToolTip(
+            f"How far the patch spreads on each side of the mucogingival line, "
+            f"along the surface, in mm (between {MGL_MIN_RADIUS} and {MGL_MAX_RADIUS}). "
+            "At 0 there is no patch left, only the MGL landmarks : the "
+            "registration then runs on those points alone, which is the control "
+            "case rather than a setting to work with. Vertices belonging to the "
+            "crowns are always left out, whatever the value."
+        )
+        grid.addWidget(self.label_mgl_radius, row + 1, 0)
+        grid.addWidget(self.lineEditMGLRadius, row + 1, 1)
+
+        self.label_mgl_lm = QLabel("MGL Landmarks Folder")
+        self.lineEditMGLLandmarks = QLineEdit()
+        self.lineEditMGLLandmarks.setPlaceholderText("optional, computed by ALI when left empty")
+        self.lineEditMGLLandmarks.setToolTip(
+            "Folder of MG landmark json files, T1 and T2 together: they are matched "
+            "to their scan by name. Leave it empty to have ALI predict them from the "
+            "models folder."
+        )
+        self.ButtonSearchMGLLandmarks = QPushButton("Browse")
+        self.ButtonSearchMGLLandmarks.clicked.connect(self.SearchMGLLandmarks)
+        grid.addWidget(self.label_mgl_lm, row + 2, 0)
+        grid.addWidget(self.lineEditMGLLandmarks, row + 2, 1)
+        grid.addWidget(self.ButtonSearchMGLLandmarks, row + 2, 2)
+
+        # The model field only ever had a Download button, so a folder already on
+        # the disk could not be selected.
+        self.ButtonBrowseModel3 = QPushButton("Browse")
+        self.ButtonBrowseModel3.setToolTip("Select a models folder already on this computer")
+        self.ButtonBrowseModel3.clicked.connect(self.BrowseModelFolder)
+        # Column 3 sits right of the Download button, on the row of the field it
+        # belongs to (the models row of the .ui grid).
+        grid.addWidget(self.ButtonBrowseModel3, MODEL3_GRID_ROW, 3)
+
+        self.CbRegReference.currentIndexChanged.connect(self.SwitchRegReference)
+        self.SwitchRegReference(0)
+
+    def BrowseModelFolder(self):
+        """Pick the models folder from the disk rather than downloading it."""
+        folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select the models folder")
+        if not folder:
+            return
+
+        if self.isMGLRegistration():
+            error = self.ActualMeth.TestMGLModel(
+                AREGRequest(model_folder_3=folder,
+                mgl_landmarks=self.lineEditMGLLandmarks.text.strip(),
+            )) or None
+        else:
+            error = self.ActualMeth.TestModel(folder, self.ui.lineEditModel3.name)
+
+        if isinstance(error, str):
+            qt.QMessageBox.warning(self.parent, "Warning", error)
+            return
+
+        self.ui.lineEditModel3.setText(folder)
+        self.enableCheckbox()
+
+    def MGLRadius(self):
+        """Patch height as typed, kept inside the range the patch is usable in."""
+        try:
+            radius = float(self.lineEditMGLRadius.text.replace(",", ".").strip())
+        except ValueError:
+            logger.warning(f"Unreadable MGL patch height, falling back to {MGL_DEFAULT_RADIUS} mm")
+            return str(MGL_DEFAULT_RADIUS)
+
+        clamped = min(max(radius, MGL_MIN_RADIUS), MGL_MAX_RADIUS)
+        if clamped != radius:
+            logger.warning(f"MGL patch height {radius} mm is out of range, using {clamped} mm")
+            self.lineEditMGLRadius.setText(str(clamped))
+        return str(clamped)
+
+    def SearchMGLLandmarks(self):
+        folder = qt.QFileDialog.getExistingDirectory(self.parent, "Select the MGL landmarks folder")
+        if folder:
+            self.lineEditMGLLandmarks.setText(folder)
+
+    def isMGLRegistration(self):
+        """True when the lower arch is registered on the mucogingival band."""
+        return (self.type == "IOS"
+                and getattr(self, "CbRegReference", None) is not None
+                and self.CbRegReference.currentIndex == 1)
+
+    def SwitchRegReference(self, index):
+        """Show the fields that belong to the selected reference."""
+        is_mgl = index == 1
+        for widget in (self.label_mgl_radius, self.lineEditMGLRadius, self.label_mgl_lm,
+                       self.lineEditMGLLandmarks, self.ButtonSearchMGLLandmarks):
+            widget.setVisible(is_mgl)
+
+        # The palatal patch is the only one that needs its own trained model.
+        if hasattr(self.ui, "label_4"):
+            self.ui.label_4.setText(
+                "ALI Models Folder (MGL)" if is_mgl else "Registration Model Folder"
+            )
+
+
+        # MGL takes its pose from the landmarks, so the ASO orientation reference
+        # and its segmentation model play no part: hide them rather than leave
+        # the user guessing what to fill in. Outside MGL they come back only in
+        # the mode that orients, which is index 0.
+        orientation_used = not is_mgl and self.ui.CbModeType.currentIndex == 0
+        for widget in (self.ui.labelModelFolder, self.ui.lineEditModel1, self.ui.ButtonSearchModel1,
+                       self.ui.label_6, self.ui.lineEditModel2, self.ui.ButtonSearchModel2):
+            widget.setVisible(orientation_used)
+
+    def ShowRegistrationReference(self, visible):
+        """Hide the whole choice outside IOS, where only one reference exists."""
+        for widget in (self.label_reg_reference, self.CbRegReference):
+            widget.setVisible(visible)
+        # Browsing for the models folder is offered wherever that folder is asked
+        # for, which in this module is the IOS modes.
+        self.ButtonBrowseModel3.setVisible(visible)
+        if visible:
+            self.SwitchRegReference(self.CbRegReference.currentIndex)
+        else:
+            for widget in (self.label_mgl_radius, self.lineEditMGLRadius, self.label_mgl_lm,
+                           self.lineEditMGLLandmarks, self.ButtonSearchMGLLandmarks):
+                widget.setVisible(False)
+
+    def SwitchModeIOS(self, index):
+        self.ui.CbCBCTInputType.setVisible(False)
+        self.ui.label_CBCTInputType.setVisible(False)
+        self.ui.advancedCollapsibleButton.collapsed = True
+        self.ui.label_11.setVisible(False)
+        self.ui.lineEditMaskT1Path.setVisible(False)
+        self.ui.ButtonSearchT1Mask.setVisible(False)
+        self.ui.label_3.setText("T1 Scans")
+        self.ui.label_2.setText("T2 Scans")
+        self.isDCMInput = False
+        self.ui.label_LibsInstallation.setVisible(False)
+
+        self.ui.label_12.setVisible(False)
+        self.ui.ButtonSearchT2LM.setVisible(False)
+        self.ui.lineEditT2LMPath.setVisible(False)
+
+        # registration and orientation
+        if index == 0:
+            self.ui.labelModelFolder.setVisible(True)
+            self.ui.labelModelFolder.setText("Segmentation Model Folder")
+            self.ui.ButtonSearchModel1.setVisible(True)
+            self.ui.lineEditModel1.setVisible(True)
+
+            self.ui.label_6.setVisible(True)
+            self.ui.label_6.setText("Reference Orientation Folder")
+            self.ui.lineEditModel2.setVisible(True)
+            self.ui.ButtonSearchModel2.setVisible(True)
+
+            self.ui.label_4.setVisible(True)
+            self.ui.label_4.setText("Registration Model Folder")
+            self.ui.lineEditModel3.setVisible(True)
+            self.ui.ButtonSearchModel3.setVisible(True)
+
+        # Registration
+        if index == 1:
+            self.ui.labelModelFolder.setVisible(False)
+            self.ui.labelModelFolder.setText("Segmentation Model Folder")
+            self.ui.ButtonSearchModel1.setVisible(False)
+            self.ui.lineEditModel1.setVisible(False)
+
+            self.ui.label_6.setVisible(False)
+            self.ui.label_6.setText("Reference Orientation Folder")
+            self.ui.lineEditModel2.setVisible(False)
+            self.ui.ButtonSearchModel2.setVisible(False)
+
+            self.ui.label_4.setVisible(True)
+            self.ui.label_4.setText("Registration Model Folder")
+            self.ui.lineEditModel3.setVisible(True)
+            self.ui.ButtonSearchModel3.setVisible(True)
+
+        # Last, so the selected reference decides which model fields survive
+        self.ShowRegistrationReference(True)
+
+    def SwitchModeIOSCBCT(self, index):
+        self.ShowRegistrationReference(False)
+        self.ui.CbCBCTInputType.setVisible(False)
+        self.ui.label_CBCTInputType.setVisible(False)
+        self.ui.advancedCollapsibleButton.collapsed = True
+        self.ui.label_11.setVisible(False)
+        self.ui.lineEditMaskT1Path.setVisible(False)
+        self.ui.ButtonSearchT1Mask.setVisible(False)
+        self.isDCMInput = False
+        self.ui.label_LibsInstallation.setVisible(False)
+
+        self.ui.label_12.setVisible(False)
+        self.ui.ButtonSearchT2LM.setVisible(False)
+        self.ui.lineEditT2LMPath.setVisible(False)
+
+        # Fully Registration
+        if index == 0:
+            self.ui.label_3.setText("IOS Scans")
+            self.ui.label_2.setText("CBCT Scans")
+
+            self.ui.labelModelFolder.setVisible(True)
+            self.ui.labelModelFolder.setText("Orientation Model Folder")
+            self.ui.ButtonSearchModel1.setVisible(True)
+            self.ui.lineEditModel1.setVisible(True)
+
+            self.ui.label_6.setVisible(True)
+            self.ui.label_6.setText("CBCT Landmarks identification Folder")
+            self.ui.lineEditModel2.setVisible(True)
+            self.ui.ButtonSearchModel2.setVisible(True)
+
+            self.ui.label_4.setVisible(True)
+            self.ui.label_4.setText("IOS Landmarks identification Folder")
+            self.ui.lineEditModel3.setVisible(True)
+            self.ui.ButtonSearchModel3.setVisible(True)
+
+        # Semi Registration
+        if index == 1:
+            self.ui.label_3.setText("Oriented IOS Scans")
+            self.ui.label_2.setText("Oriented CBCT Scans")
+
+            self.ui.labelModelFolder.setVisible(False)
+            self.ui.ButtonSearchModel1.setVisible(False)
+            self.ui.lineEditModel1.setVisible(False)
+
+            self.ui.label_6.setVisible(True)
+            self.ui.label_6.setText("CBCT Landmarks identification Folder")
+            self.ui.lineEditModel2.setVisible(True)
+            self.ui.ButtonSearchModel2.setVisible(True)
+
+            self.ui.label_4.setVisible(True)
+            self.ui.label_4.setText("IOS Landmarks identification Folder")
+            self.ui.lineEditModel3.setVisible(True)
+            self.ui.ButtonSearchModel3.setVisible(True)
+        
+        #Registration
+        if index == 2:
+            self.ui.label_3.setText("Oriented IOS Scans")
+            self.ui.label_2.setText("Oriented CBCT Scans")
+
+            self.ui.label_11.setVisible(True)
+            self.ui.label_11.setText("IOS Landmarks")
+            self.ui.lineEditMaskT1Path.setVisible(True)
+            self.ui.ButtonSearchT1Mask.setVisible(True)
+
+            self.ui.labelModelFolder.setVisible(False)
+            self.ui.ButtonSearchModel1.setVisible(False)
+            self.ui.lineEditModel1.setVisible(False)
+
+            self.ui.label_12.setVisible(True)
+            self.ui.ButtonSearchT2LM.setVisible(True)
+            self.ui.lineEditT2LMPath.setVisible(True)
+
+            self.ui.label_6.setVisible(False)
+            self.ui.lineEditModel2.setVisible(False)
+            self.ui.ButtonSearchModel2.setVisible(False)
+
+            self.ui.label_4.setVisible(False)
+            self.ui.lineEditModel3.setVisible(False)
+            self.ui.ButtonSearchModel3.setVisible(False)
+
+
+    #: Per input type: the modes offered, in order, the method that answers
+    #: each one, and the function that adjusts the rest of the interface.
+    #: This table replaces three nested `if/elif` branches on combo box
+    #: indices. Adding a mode is done here and in `MethodDic`, without
+    #: touching the body of `SwitchType`.
+    INPUT_TYPES = {
+        0: {
+            "modes": ["Orientation and Registration",
+                      "Fully-Automated Registration",
+                      "Semi-Automated Registration"],
+            "methods": {0: "Or_Auto_CBCT", 1: "Auto_CBCT", 2: "Semi_CBCT"},
+            "switch_mode": "SwitchModeCBCT",
+        },
+        1: {
+            "modes": ["Orientation and Registration", "Registration"],
+            "methods": {0: "Auto_IOS", 1: "Semi_IOS"},
+            "switch_mode": "SwitchModeIOS",
+        },
+        2: {
+            "modes": ["Fully Automated Registration",
+                      "Semi Automated Registration",
+                      "Registration"],
+            "methods": {0: "Auto_IOSCBCT", 1: "Semi_IOSCBCT", 2: "Reg_IOSCBCT"},
+            "switch_mode": "SwitchModeIOSCBCT",
+        },
+    }
+
+    def SwitchType(self, source=None):
+        """Pick the method, then apply the description it gives of itself.
+
+        What the interface must show -- page, scan type, model label -- is
+        read off the method, no longer decided here. See
+        `AREG_Method.Method`.
+        """
+        config = self.INPUT_TYPES[self.ui.CbInputType.currentIndex]
+
+        if source == "InputType":
+            for _ in range(self.ui.CbModeType.count):
+                self.ui.CbModeType.removeItem(0)
+            for label in config["modes"]:
+                self.ui.CbModeType.addItem(label)
+
+        mode = self.ui.CbModeType.currentIndex
+        previous_method = self.ActualMethName
+        if mode in config["methods"]:
+            self.ActualMethName = config["methods"][mode]
+            self.ActualMeth = self.MethodDic[self.ActualMethName]
+            self.ui.stackedWidget.setCurrentIndex(self.ActualMeth.stacked_page)
+            self.type = self.ActualMeth.scan_type
+            if self.ActualMeth.model_label is not None:
+                self.ui.labelModelFolder.setText(self.ActualMeth.model_label)
+
+        getattr(self, config["switch_mode"])(mode)
+
+        self.checkboxes = self.ActualMeth.getcheckbox()
+        self.checkboxes2 = self.ActualMeth.getcheckbox2()
+
+        self.SlicerDownloadPath = os.path.join(
+            self.documents,
+            slicer.app.applicationName + "Downloads",
+            "AREG",
+            "AREG_" + self.type,
+        )
+
+        # Both combos emit `activated` on every click, re-picking the entry
+        # already selected included, so this ran on gestures that changed
+        # nothing at all and emptied the fields under the user's hands.
+        if self.ActualMethName != previous_method:
+            self.ClearModeSpecificPaths()
+            # Each mode has its own test set, under its own scan type, so a
+            # path WE filled in for the previous one no longer means anything.
+            # The user's own choice survives: only ours is dropped.
+            if (self._auto_output
+                    and self.ui.lineEditOutputPath.text == self._auto_output):
+                self.ui.lineEditOutputPath.setText("")
+                self._auto_output = ""
+
+        self.enableCheckbox()
+
+        self.HideComputeItems()
+
+        if self.type == "CBCT":
+            self.ui.CbCBCTInputType.setVisible(True)
+            self.ui.label_CBCTInputType.setVisible(True)
+
+        if self.type == "IOS" or (
+            self.type == "CBCT" and self.ui.CbModeType.currentIndex != 0
+        ):
+            self.ui.CbCBCTInputType.setVisible(False)
+            self.ui.label_CBCTInputType.setVisible(False)
+            self.isDCMInput = False
+
+        self.rebuildReviewSteps()
+
+    def ClearModeSpecificPaths(self):
+        """Empty the fields that belong to the method, and only those.
+
+        An IOS scan folder means nothing to a CBCT run, and a segmentation
+        model folder even less, so changing method has to let them go.
+
+        The output folder is NOT one of them. It is where the user wants their
+        results, and no change of mode makes that choice wrong. It used to be
+        cleared here with the rest, which cost a whole prod run: the user set
+        it, touched the mode combo, never saw the field empty again because the
+        next `Test Files` click refilled it -- and `FillFromTestFiles` fills it
+        with the TEST SET's own folder, in whichever tree that mode downloads
+        to. The run then wrote 2.5 GB somewhere the user had not asked for,
+        with nothing in the log to say the field had been overwritten.
+        """
+        self.ui.lineEditScanT1LmPath.setText("")
+        self.ui.lineEditScanT2LmPath.setText("")
+        self.ui.lineEditModel2.setText("")
+        self.ui.lineEditModel1.setText("")
+
+    def DownloadUnzip(
+        self, url, directory, folder_name=None, num_downl=1, total_downloads=1
+    ):
+        """The folder holding this dataset, downloaded only when it is missing.
+
+        The work belongs to `ADTLib.testdata`, which this module shares with the
+        six others that carried the same copy. What the copy here got wrong, and
+        the shared one does not: it created the destination folder *before*
+        downloading, so a cancelled or failed download left an empty folder that
+        every later call read as "already there". And nothing checked what the
+        server actually sent -- a mistyped release link answers 200 with a web
+        page, which then failed as "not a zip file".
+        """
+        return ensure_with_progress(
+            url,
+            directory,
+            folder_name,
+            parent=self.parent,
+            title="Downloading {} (File {}/{})".format(
+                folder_name.split(os.sep)[0], num_downl, total_downloads
+            ),
+        )
+
+    def testFileListForMode(self):
+        """The (name, url) of the test set for the mode and input type in use.
+
+        `getTestFileListDCM` is only defined by `Or_Auto_CBCT`; for every other
+        mode the base class answers `None`, which unpacked as a `TypeError` with
+        nothing in it for the user. Those modes are reachable only while
+        `isDCMInput` stays False -- `SwitchType` forces it off outside CBCT mode
+        0 -- so the mistake never showed. Say it instead of relying on that.
+        """
+        if self.isDCMInput:
+            files = self.ActualMeth.getTestFileListDCM()
+            if not files:
+                raise TestDataError(
+                    "%s publishes no DICOM test set. Switch the CBCT input type "
+                    "back to NIfTI to use its test files." % self.ActualMethName)
+            return files
+        files = self.ActualMeth.getTestFileList()
+        if not files:
+            raise TestDataError(
+                "%s publishes no test set." % self.ActualMethName)
+        return files
+
+    def TestFiles(self):
+        """Fill every field of the selected mode from its published test set.
+
+        The download is a chain -- scans, then whichever models the mode asks
+        for -- and any link of it can fail on a bad address or on the network.
+        Reported as a message rather than as a traceback in the Python console,
+        which is where it went until now.
+        """
+        try:
+            self.FillFromTestFiles()
+        except TestDataError as error:
+            qt.QMessageBox.warning(self.parent, "Test Files", str(error))
+        except OSError as error:
+            qt.QMessageBox.warning(
+                self.parent, "Test Files",
+                "The test files could not be downloaded: %s" % error)
+
+    def FillFromTestFiles(self):
+        """Download the test set of the current mode and fill in its fields."""
+        name, url = self.testFileListForMode()
+
+        logger.info(f"Test file name: {name}")
+        logger.info(f"Test file url: {url}")
+
+        scan_folder = self.DownloadUnzip(
+            url=url,
+            directory=os.path.join(self.SlicerDownloadPath),
+            folder_name=os.path.join("Test_Files", name)
+            if not self.isDCMInput
+            else os.path.join("Test_Files", "DCM", name),
+        )
+
+        logger.info(f"Scan folder: {scan_folder}")
+        scan_folder_t1 = os.path.join(scan_folder, "T1")
+        scan_folder_t2 = os.path.join(scan_folder, "T2")
+        if self.ActualMethName == "Reg_IOSCBCT":
+            lm_folder_t1 = os.path.join(scan_folder, "IOS Landmarks")
+            lm_folder_t2 = os.path.join(scan_folder, "CBCT Landmarks")
+
+        if self.isDCMInput:
+            nb_scans = self.ActualMeth.NumberScanDCM(scan_folder_t1, scan_folder_t2)
+            error = self.ActualMeth.TestScanDCM(scan_folder_t1, scan_folder_t2)
+        else:
+            nb_scans = self.ActualMeth.NumberScan(scan_folder_t1, scan_folder_t2)
+            error = self.ActualMeth.TestScan(scan_folder_t1, scan_folder_t2)
+
+        if isinstance(error, str):
+            qt.QMessageBox.warning(self.parent, "Warning", error)
+        else:
+            self.nb_patient = nb_scans
+            self.ui.lineEditScanT1LmPath.setText(scan_folder_t1)
+            self.ui.lineEditScanT2LmPath.setText(scan_folder_t2)
+
+            if self.ActualMethName == "Reg_IOSCBCT":
+                self.ui.lineEditMaskT1Path.setText(lm_folder_t1)
+                self.ui.lineEditT2LMPath.setText(lm_folder_t2)
+
+            if self.ActualMethName == "Semi_CBCT":
+                # The semi-automated mode registers on masks the user supplies,
+                # and its TestProcess refuses to start without that folder --
+                # which the button left empty. The published set keeps them in
+                # a <patient>_SegOut folder under T1, so T1 is what to hand
+                # over; it is also the folder AREG_CBCT falls back to on its
+                # own when the field is empty.
+                self.ui.lineEditMaskT1Path.setText(scan_folder_t1)
+
+            self.ui.LabelInfoPreProc.setText(
+                "Number of Patients to process : " + str(nb_scans)
+            )
+            self.ui.LabelProgressPatient.setText(
+                "Patient processed : 0 /" + str(nb_scans)
+            )
+            self.enableCheckbox()
+
+        if self.type == "CBCT":
+            self.downloadModel(
+                lineEdit=self.ui.lineEditModel1, name="Segmentation", test=True
+            )
+            if self.ui.CbModeType.currentIndex == 0:
+                self.SearchModelALI(self.CBCTOrientRef)
+                self.downloadModel(
+                    lineEdit=self.ui.lineEditModel2, name="Orientation", test=True
+                )
+        if self.type == "IOS":
+            # The button downloaded the scans and stopped there, leaving every
+            # model field empty -- and both IOS modes refuse to run without the
+            # registration model. `SwitchModeIOS` names the fields: Model1 the
+            # segmentation, Model2 the orientation reference, Model3 the
+            # registration checkpoint.
+            if self.isMGLRegistration():
+                # MGL builds its patch from the ALI landmarks, so the field
+                # that holds the palatal checkpoint holds the ALI models
+                # instead, and neither orientation field is shown.
+                self.downloadModel(
+                    lineEdit=self.ui.lineEditModel3, name="ALI", test=True
+                )
+            else:
+                self.downloadModel(
+                    lineEdit=self.ui.lineEditModel3, name="Registration", test=True
+                )
+                if self.ActualMethName == "Auto_IOS":
+                    # Only the mode that orients asks for these two.
+                    self.downloadModel(
+                        lineEdit=self.ui.lineEditModel1, name="Segmentation", test=True
+                    )
+                    self.downloadModel(
+                        lineEdit=self.ui.lineEditModel2, name="Reference", test=True
+                    )
+        if self.type == "IOSCBCT":
+            if self.ActualMethName == "Auto_IOSCBCT":
+                self.SearchModelALI(self.CBCTOrientRef)
+                self.downloadModel(
+                    lineEdit=self.ui.lineEditModel1, name="Orientation", test=True
+                )
+            if self.ActualMethName != "Reg_IOSCBCT":
+                self.downloadModel(
+                    lineEdit=self.ui.lineEditModel2, name="CBCT", test=True
+                )
+                self.downloadModel(
+                    lineEdit=self.ui.lineEditModel3, name="IOS", test=True
+                )
+
+        # The folder the USER chose is theirs and is never touched. The one this
+        # button filled in is ours, and it has to follow the mode: each mode
+        # downloads its own test set, under its own scan type, so a path left
+        # from a CBCT session ("AREG_CBCT/Test_Files/Oriented-Automated") is
+        # simply wrong once the mode is IOS-to-CBCT -- and `== ""` never
+        # replaced it, because it is not empty.
+        #
+        # Telling the two apart needs no guessing: remember what was written
+        # here, and treat the field as ours only while it still holds exactly
+        # that. One keystroke by the user and it becomes theirs for good.
+        default_output = os.path.join(scan_folder, "Registered")
+        current = self.ui.lineEditOutputPath.text
+        if current == "" or current == self._auto_output:
+            self.ui.lineEditOutputPath.setText(default_output)
+            self._auto_output = default_output
+            logger.info("Output folder set to this test set's own: "
+                        f"{default_output}")
+        elif current != default_output:
+            logger.info(f"Output folder left as the user set it: {current}")
+
+    def CheckScan(self):
+        """Function to test both t1 and t2 scan folders"""
+        if self.isDCMInput:
+            nb_scans = self.ActualMeth.NumberScanDCM(
+                self.ui.lineEditScanT1LmPath.text, self.ui.lineEditScanT2LmPath.text
+            )
+            error = self.ActualMeth.TestScanDCM(
+                self.ui.lineEditScanT1LmPath.text, self.ui.lineEditScanT2LmPath.text
+            )
+
+        else:
+            nb_scans = self.ActualMeth.NumberScan(
+                self.ui.lineEditScanT1LmPath.text, self.ui.lineEditScanT2LmPath.text
+            )
+            error = self.ActualMeth.TestScan(
+                self.ui.lineEditScanT1LmPath.text, self.ui.lineEditScanT2LmPath.text, self.ui.lineEditMaskT1Path.text
+            )
+
+        if isinstance(error, str):
+            qt.QMessageBox.warning(self.parent, "Warning", error)
+
+        else:
+            self.nb_patient = nb_scans
+            self.ui.LabelInfoPreProc.setText(
+                "Number of Patients to process : " + str(nb_scans)
+            )
+            self.ui.LabelProgressPatient.setText(
+                "Patient process : 0 /" + str(nb_scans)
+            )
+            self.enableCheckbox()
+
+    def SearchScan(self, lineEdit):
+        scan_folder = qt.QFileDialog.getExistingDirectory(
+            self.parent, "Select a scan folder for Input"
+        )
+
+        if not scan_folder == "":
+            lineEdit.setText(scan_folder)
+
+            t1_path = self.ui.lineEditScanT1LmPath.text
+            t2_path = self.ui.lineEditScanT2LmPath.text
+            mask_path = self.ui.lineEditMaskT1Path.text
+
+            if t1_path != "" and t2_path != "":
+                if self.ActualMethName == "Semi_CBCT" or self.ActualMethName == "Reg_IOSCBCT":
+                    if mask_path != "":
+                        self.CheckScan()
+                else:
+                    self.ui.lineEditMaskT1Path.setText("")
+                    self.CheckScan()
+
+    def downloadModel(self, lineEdit, name, test=False):
+        """Function to download the model files from the link in the getModelUrl function"""
+
+        # To select the reference files (CBCT Orientation and Registration mode only)
+        #
+        # `not test` on BOTH branches. Test Files is the one path that runs
+        # with nobody to answer: an automated session opens it, and exec_()
+        # then blocks inside the click, in a dialog its parent never shows
+        # when there is no main window. Measured: the session sat 32 minutes
+        # in do_poll, no CPU, no syscall, until an outer timeout killed it -
+        # and --wait cannot help, the wait loop is never reached.
+        # Nothing is lost by skipping it here: onTestFiles has just called
+        # SearchModelALI(self.CBCTOrientRef), and CBCTOrientRef holds the
+        # default set in setup, which is one of getReferenceList's keys.
+        if (
+            self.type == "CBCT"
+            and self.ui.CbModeType.currentIndex == 0
+            and not test
+            and name == "Orientation"
+        ) or (self.type == "IOSCBCT" and not test and name == "Orientation"):
+            reference_list = self.ActualMeth.getReferenceList()
+            ref_list = list(reference_list.keys())
+
+            s = PopUpWindow(
+                title="Choice of Reference Files", listename=ref_list, type="radio"
+            )
+            s.exec_()
+            self.CBCTOrientRef = s.checked
+
+            self.SearchModelALI(self.CBCTOrientRef)
+
+        listmodel = self.ActualMeth.getModelUrl()
+
+        urls = listmodel[name]
+        if isinstance(urls, str):
+            url = urls
+            _ = self.DownloadUnzip(
+                url=url,
+                directory=os.path.join(self.SlicerDownloadPath),
+                folder_name=os.path.join("Models", name),
+                num_downl=1,
+                total_downloads=1,
+            )
+            model_folder = os.path.join(self.SlicerDownloadPath, "Models", name)
+
+        elif isinstance(urls, dict):
+            for i, (name_bis, url) in enumerate(urls.items()):
+                _ = self.DownloadUnzip(
+                    url=url,
+                    directory=os.path.join(self.SlicerDownloadPath),
+                    folder_name=os.path.join("Models", name, name_bis),
+                    num_downl=i + 1,
+                    total_downloads=len(urls),
+                )
+            model_folder = os.path.join(self.SlicerDownloadPath, "Models", name)
+
+        if not model_folder == "":
+            if self.isMGLRegistration() and lineEdit.name == "lineEditModel3":
+                # That field holds the ALI models in MGL, so the palatal
+                # checkpoint check does not apply to it
+                error = self.ActualMeth.TestMGLModel(
+                    AREGRequest(model_folder_3=model_folder,
+                    mgl_landmarks=self.lineEditMGLLandmarks.text.strip(),
+                )) or None
+            else:
+                error = self.ActualMeth.TestModel(model_folder, lineEdit.name)
+
+            if isinstance(error, str):
+                qt.QMessageBox.warning(self.parent, "Warning", error)
+
+            else:
+                lineEdit.setText(model_folder)
+                self.enableCheckbox()
+
+    def SearchModelALI(self, reference_type=None):
+        """Function to download the ALI CBCT model files"""
+        if reference_type is None:
+            ret = ["Ba", "S", "N", "RPo", "LPo", "ROr", "LOr"]
+        else:
+            correspondance = {
+                "Occlusal and Midsagittal Plane": [
+                    "IF",
+                    "ANS",
+                    "PNS",
+                    "UR1O",
+                    "UR6O",
+                    "UL6O",
+                ],
+                "Frankfurt Horizontal and Midsagittal Plane": [
+                    "N",
+                    "S",
+                    "Ba",
+                    "RPo",
+                    "LPo",
+                    "LOr",
+                    "ROr",
+                ],
+            }
+            ret = correspondance[reference_type]
+
+        name, url = self.ActualMeth.getALIModelList()
+        for i, model in enumerate(ret):
+            _ = self.DownloadUnzip(
+                url=os.path.join(url, "{}.zip".format(model)),
+                directory=self.SlicerDownloadPath.replace("AREG", "ALI"),
+                folder_name=model,
+                num_downl=i + 1,
+                total_downloads=len(ret),
+            )
+
+        model_folder = self.SlicerDownloadPath.replace("AREG", "ALI")
+
+        if not model_folder == "":
+            error = self.ActualMeth.TestModel(model_folder, self.ui.lineEditModel3.name)
+
+            if isinstance(error, str):
+                qt.QMessageBox.warning(self.parent, "Warning", error)
+
+            else:
+                if self.type == "CBCT":
+                    self.ui.lineEditModel3.setText(model_folder)
+                    self.enableCheckbox()
+                elif self.type == "IOSCBCT":
+                    self.ui.lineEditModel1.setText(model_folder)
+                    self.enableCheckbox()
+
+
+    def ChosePathOutput(self):
+        out_folder = qt.QFileDialog.getExistingDirectory(
+            self.parent, "Select a scan folder"
+        )
+        if not out_folder == "":
+            self.ui.lineEditOutputPath.setText(out_folder)
+
+    def enableCheckbox(self):
+        status = self.ActualMeth.existsLandmark(
+            self.ui.lineEditScanT1LmPath.text,
+            self.ui.lineEditScanT2LmPath.text,
+            self.ui.lineEditModel2.text,
+        )
+
+        if status is None:
+            return
+
+        if self.type == "CBCT":
+            for checkboxs, checkboxs2 in zip(
+                self.checkboxes.values(), self.checkboxes2.values()
+            ):
+                for checkbox, checkbox2 in zip(checkboxs, checkboxs2):
+                    checkbox.setVisible(status[checkbox.text])
+                    checkbox2.setVisible(status[checkbox2.text])
+                    if status[checkbox.text]:
+                        checkbox.setChecked(True)
+                        checkbox2.setChecked(True)
+
+    """
+
+                    8888888b.  8888888b.   .d88888b.   .d8888b.  8888888888  .d8888b.   .d8888b.
+                    888   Y88b 888   Y88b d88P" "Y88b d88P  Y88b 888        d88P  Y88b d88P  Y88b
+                    888    888 888    888 888     888 888    888 888        Y88b.      Y88b.
+                    888   d88P 888   d88P 888     888 888        8888888     "Y888b.    "Y888b.
+                    8888888P"  8888888P"  888     888 888        888            "Y88b.     "Y88b.
+                    888        888 T88b   888     888 888    888 888              "888       "888
+                    888        888  T88b  Y88b. .d88P Y88b  d88P 888        Y88b  d88P Y88b  d88P
+                    888        888   T88b  "Y88888P"   "Y8888P"  8888888888  "Y8888P"   "Y8888P"
+
+
+    """
+
+    def onPredictButton(self):
+        # IOSCBCT matches both the "CBCT" and the "IOSCBCT" test below, and each
+        # branch used to assign is_installed outright: a torch install that failed
+        # in the first was overwritten by the second, whose four libraries are
+        # small and usually already there. The run then started without torch and
+        # died several steps later on a bare ModuleNotFoundError from ALI_CBCT,
+        # instead of the warning right below. Every branch now has to agree.
+        is_installed = True
+
+        if "CBCT" in self.type:
+            # 1. Coordinate MONAI and PyTorch versions based on Python version
+            if sys.version_info >= (3, 10):
+                monai_version = '==1.3.2'
+
+            # torch is no longer one entry per library with a version beside it:
+            # which build this machine needs is a question about the GPU, not
+            # about version numbers, and the three wheels have to be resolved in
+            # one call. Empty when nothing has to change, which is every machine
+            # whose card the installed torch already covers.
+            torch_requirements = torch_requirements_for_this_gpu()
+            torch_requirements = [torch_requirements] if torch_requirements else []
+
+            # Only a torch older than 2.3 was built against numpy 1.x. Asked of
+            # the torch that will be there rather than the one being replaced,
+            # so a card moving to 2.7 is not also held on a numpy it left behind.
+            numpy_constraint = '<2.0.0' if torch_needs_numpy1() else None
+
+            if platform.system() == "Windows":
+                list_libs_cbct_windows = [
+                    ('itk', '>=5.4.0', None),
+                    ('itk-elastix', '>=0.19.2', None),
+                    ('dicom2nifti', '>=2.6.2', None),
+                    # pydicom is kept on the version Slicer ships: downgrading it to 2.x breaks
+                    # dicomweb-client and highdicom, hence every DICOM module of Slicer.
+                    ('pydicom', '==3.0.2', None),
+                    ('einops', None, None),
+                    ('nibabel', None, None),
+                    ('connected-components-3d', '>=3.13.0', None),
+                    ('pandas', None, None),
+                ]
+                list_libs_cbct_windows.append(('monai', monai_version, None))
+                is_installed = install_function(
+                    self, list_libs_cbct_windows, torch_requirements) and is_installed
+                
+            else:
+                # macOS / Linux
+                list_libs_cbct = [
+                    ('itk', '>=5.4.0', None),
+                    ('itk-elastix', '>=0.19.2', None),
+                    ('dicom2nifti', '>=2.6.2', None),
+                    # pydicom is kept on the version Slicer ships: downgrading it to 2.x breaks
+                    # dicomweb-client and highdicom, hence every DICOM module of Slicer.
+                    ('pydicom', '==3.0.2', None),
+                    ('einops', None, None),
+                    ('nibabel', None, None),
+                    ('connected-components-3d', '>=3.13.0', None),
+                    ('pandas', None, None),
+                    ('numpy', numpy_constraint, None),
+                    ('blosc2', None,None),
+                    ('nnunetv2','>=2.8.0',None),
+                    ('monai', monai_version, None)
+                ]
+                is_installed = install_function(
+                    self, list_libs_cbct, torch_requirements) and is_installed
+
+                # Read numpy from the distribution metadata, not from the
+                # imported module. numpy is already imported when Slicer starts,
+                # so np.__version__ still reports what was there before pip ran -
+                # and pip has just run, two lines up. nnunetv2 pulls numpy 2.x
+                # back in, and the check above it was blind to exactly that: the
+                # run then reached ALI_CBCT and failed inside monai with
+                # "Failed to initialize NumPy: _ARRAY_API not found".
+                from packaging.version import Version
+
+                try:
+                    numpy_version = Version(importlib_metadata.version("numpy"))
+                except importlib_metadata.PackageNotFoundError:
+                    numpy_version = None
+
+                # Asked again after pip rather than reusing the answer from
+                # before it: nnunetv2 is what pulls numpy 2.x back in, and it was
+                # installed in between.
+                if torch_needs_numpy1() and (
+                        numpy_version is None or numpy_version > Version("2.0")):
+                    logger.info(
+                        f"numpy {numpy_version} is incompatible with this torch:"
+                        " pinning it below 2.0"
+                    )
+                    pip_install("numpy<2.0.0")
+                
+        if self.type == "IOS":
+            check_env = self.onCheckRequirements()
+            logger.debug(f"Segmentation environment: {check_env}")
+            
+            if check_env:
+                list_libs_ios = [("tqdm",None,None),('vtk',None,None),('pandas',None,None)]
+                
+                monai_version = '==1.3.2' if sys.version_info >= (3, 10) else '==0.7.0'
+                list_libs_ios.append(('monai', monai_version, None))
+
+                is_installed = install_function(self,list_libs_ios) and is_installed
+            else:
+                is_installed = False
+
+        if "IOSCBCT" in self.type:
+            # The IOSCBCT pipeline segments the crowns through the shared conda
+            # environment, exactly as IOS does. Without this check run_conda_tool
+            # finds no dentalmodelseg, logs an error and returns, and the run
+            # carries on with its segmentation step silently skipped.
+            check_env = self.onCheckRequirements()
+            logger.debug(f"Segmentation environment: {check_env}")
+
+            if check_env:
+                # libraries and versions compatibility to use AREG_IOSCBCT
+                # tqdm is what PRE_ASO_IOS and SEMI_ASO_IOS import at module
+                # level; the CBCT list this mode also installs does not name it.
+                list_libs_ioscbct = [('pyvista','==0.47.3',None),('scipy',None,None),('numpy',None,None),('SimpleITK',None,None),('tqdm',None,None)]
+
+                is_installed = install_function(self,list_libs_ioscbct) and is_installed
+            else:
+                is_installed = False
+
+        # If the user didn't accept the installation, the module doesn't run
+        if not is_installed:
+            qt.QMessageBox.warning(self.parent, 'Warning', 'The module will not work properly without the required libraries.\nPlease install them and try again.')
+            return
+        
+        self.logic.check_cli_script()
+
+        self.ui.label_LibsInstallation.setVisible(False)
+        error = self.ActualMeth.TestProcess(
+            AREGRequest(input_t1_folder=self.ui.lineEditScanT1LmPath.text,
+            input_t2_folder=self.ui.lineEditScanT2LmPath.text,
+            input_t1_mask=self.ui.lineEditMaskT1Path.text,
+            input_t2_landmarks = self.ui.lineEditT2LMPath.text,
+            output_folder=self.ui.lineEditOutputPath.text,
+            model_folder_1=self.ui.lineEditModel1.text,
+            model_folder_2=self.ui.lineEditModel2.text,
+            model_folder_3=self.ui.lineEditModel3.text,
+            add_in_namefile=self.ui.lineEditAddName.text,
+            dic_checkbox=self.checkboxes,
+            is_dicom_input=self.isDCMInput,
+            OrientReference=self.CBCTOrientRef,
+            reg_type="MGL" if self.isMGLRegistration() else "Butterfly",
+            mgl_landmarks=self.lineEditMGLLandmarks.text.strip(),
+        ))
+
+        if isinstance(error, str):
+            qt.QMessageBox.warning(self.parent, "Warning", error.replace(",", "\n"))
+
+        else:
+            if self.type == "CBCT":
+                merge_seg = (
+                    self.ActualMeth.merge_seg_checkbox.isChecked()
+                    if self.ActualMeth.merge_seg_checkbox is not None
+                    else False
+                )
+            else:
+                merge_seg = None
+
+            if self.isMGLRegistration():
+                # MGL registers the mandibles, which NumberScan does not count
+                self.nb_patient = self.ActualMeth.NumberScanLower(
+                    self.ui.lineEditScanT1LmPath.text, self.ui.lineEditScanT2LmPath.text
+                )
+
+            self.list_Processes_Parameters = self.ActualMeth.Process(
+                AREGRequest(input_t1_folder=self.ui.lineEditScanT1LmPath.text,
+                input_t2_folder=self.ui.lineEditScanT2LmPath.text,
+                input_t1_mask=self.ui.lineEditMaskT1Path.text,
+                input_t2_landmarks = self.ui.lineEditT2LMPath.text,
+                output_folder=self.ui.lineEditOutputPath.text,
+                model_folder_1=self.ui.lineEditModel1.text,
+                model_folder_2=self.ui.lineEditModel2.text,
+                model_folder_3=self.ui.lineEditModel3.text,
+                add_in_namefile=self.ui.lineEditAddName.text,
+                dic_checkbox=self.checkboxes,
+                log_path=self.log_path,
+                merge_seg=merge_seg,
+                is_dicom_input=self.isDCMInput,
+                slicerDownload=self.SlicerDownloadPath,
+                OrientReference=self.CBCTOrientRef,
+                LabelSeg=str(
+                    self.SegmentationLabels[self.ui.LabelSelectcomboBox.currentIndex]
+                ),
+                ApproxStep=self.ui.ApproxcheckBox.isChecked(),
+                reg_type="MGL" if self.isMGLRegistration() else "Butterfly",
+                patch_radius=self.MGLRadius(),
+                mgl_landmarks=self.lineEditMGLLandmarks.text.strip(),
+            ))
+
+            # Guard: if Process() returned an empty list, log and return to avoid IndexError
+            if not self.list_Processes_Parameters:
+                logger.error("list_Processes_Parameters is empty after calling ActualMeth.Process()")
+                return
+
+            self.markProcessesForReview()
+
+            self.nb_extension_launch = len(self.list_Processes_Parameters)
+            self.onProcessStarted()
+
+            try:
+                self.startStep(self.list_Processes_Parameters[0])
+            except Exception:
+                logger.exception("Exception while accessing first process entry")
+                return
+            # /!\ Launch of the first process /!\
+            logger.info(f"Module name: {self.module_name}")
+            logger.info(f"Type: {self.type}")
+            logger.info(f"Method: {self.ActualMethName}")
+
+            if self.type == "CBCT":
+                self.process = slicer.cli.run(
+                    self.list_Processes_Parameters[0]["Process"],
+                    None,
+                    self.list_Processes_Parameters[0]["Parameter"],
+                )
+                self.startStep(self.list_Processes_Parameters[0])
+                self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                self.processObserver = self.process.AddObserver(
+                    "ModifiedEvent", self.onProcessUpdate
+                )
+                del self.list_Processes_Parameters[0]
+
+            elif self.type == "IOS":
+                if self.isMGLRegistration():
+                    # Every step of the MGL pipeline is a conda tool, unlike the
+                    # palatal flow where the orientation is a Slicer CLI, so they
+                    # are simply run one after the other.
+                    while self.list_Processes_Parameters:
+                        module = self.list_Processes_Parameters[0]["Module"]
+                        self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                        if module.startswith("CrownSegmentationcli"):
+                            self.run_conda_tool("seg")    # counts its own runs
+                        elif module.startswith("ALI_IOS"):
+                            self.nb_extension_did += 1
+                            self.run_conda_tool("ali")
+                        else:
+                            self.nb_extension_did += 1
+                            self.run_conda_tool("areg")
+                    try:
+                        self.OnEndProcess()
+                    except Exception:
+                        logger.exception("OnEndProcess failed after the MGL pipeline")
+                    return
+
+                if self.module_name in ["CrownSegmentationcli T1", "AREG_IOS"]:
+                    if "CrownSegmentationcli" in self.module_name:
+                        self.run_conda_tool("seg")
+                        self.process = slicer.cli.run(
+                            self.list_Processes_Parameters[0]["Process"],
+                            None,
+                            self.list_Processes_Parameters[0]["Parameter"],
+                        )
+                        self.startStep(self.list_Processes_Parameters[0])
+                        self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                        self.processObserver = self.process.AddObserver(
+                            "ModifiedEvent", self.onProcessUpdate
+                        )
+                        del self.list_Processes_Parameters[0]
+                    else:
+                        self.nb_extension_did += 1
+                        self.run_conda_tool("areg")
+
+                        if not self.list_Processes_Parameters:
+                            try:
+                                self.OnEndProcess()
+                            except Exception:
+                                logger.exception("OnEndProcess failed after conda run")
+                            return
+                else:
+                    # Every other step of the palatal flow is a Slicer CLI, and
+                    # the orientation is the one that gets here: `PRE_ASO_IOS T1`
+                    # matched neither name above, so the whole block was skipped
+                    # and nothing was launched. No error, no process, no file --
+                    # the run simply stopped, because nothing was left to
+                    # schedule the next step. Launched the way the IOSCBCT branch
+                    # below launches the same module.
+                    self.process = slicer.cli.run(
+                        self.list_Processes_Parameters[0]["Process"],
+                        None,
+                        self.list_Processes_Parameters[0]["Parameter"],
+                    )
+                    self.startStep(self.list_Processes_Parameters[0])
+                    self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                    self.processObserver = self.process.AddObserver(
+                        "ModifiedEvent", self.onProcessUpdate
+                    )
+                    del self.list_Processes_Parameters[0]
+            elif self.type == "IOSCBCT":
+                if self.list_Processes_Parameters[0]["Module"]=="CrownSegmentationcli":
+                    self.run_conda_tool("seg")
+                    self.process = slicer.cli.run(
+                    self.list_Processes_Parameters[0]["Process"],None,self.list_Processes_Parameters[0]["Parameter"],)
+                    self.startStep(self.list_Processes_Parameters[0])
+                    self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                    self.processObserver = self.process.AddObserver(
+                        "ModifiedEvent", self.onProcessUpdate
+                    )
+                    del self.list_Processes_Parameters[0]
+                else:
+                    self.process = slicer.cli.run(
+                        self.list_Processes_Parameters[0]["Process"],
+                        None,
+                        self.list_Processes_Parameters[0]["Parameter"],
+                    )
+                    self.startStep(self.list_Processes_Parameters[0])
+                    self.displayModule = self.list_Processes_Parameters[0]["Display"]
+                    self.processObserver = self.process.AddObserver(
+                        "ModifiedEvent", self.onProcessUpdate
+                    )
+                    del self.list_Processes_Parameters[0]
+              
+
+    def onProcessStarted(self):
+        self.ui.label_LibsInstallation.setHidden(True)
+        self.startTime = time.time()
+
+        self.ui.progressBar.setValue(0)
+
+        self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
+        self.ui.LabelProgressExtension.setText(
+            f"Extension : 1 / {self.nb_extension_launch}"
+        )
+        self.nb_extension_did = 0
+
+        self.module_name_before = 0
+        self.nb_change_bystep = 0
+
+        self.RunningUI(True)
+        
+    def read_log_path(self):
+      with open(self.log_path, 'r') as f:
+          line = f.readline()
+          if line != '':
+              return line
+  
+    def drainCondaOutput(self):
+        """Show a slice of what the conda tool has printed.
+
+        This runs on the main thread, the one whose event loop drains the pipe
+        the log is written into. Writing a bounded slice and returning lets that
+        loop empty the pipe before the next slice goes in, which is what keeps a
+        noisy tool -- a crown segmentation, ALI_IOS -- from wedging the run.
+        """
+        logic = getattr(self, "logic", None)
+        if logic is None or not hasattr(logic, "takeCondaOutput"):
+            return
+        try:
+            text, dropped = logic.takeCondaOutput()
+        except Exception as e:
+            logger.warning(f"Could not read the tool's output: {e}")
+            return
+        if dropped:
+            logger.warning(
+                f"{dropped} line(s) of the tool's output were dropped: it "
+                "printed faster than the panel could show them")
+        if text:
+            logger.info(text)
+
+    def onCondaProcessUpdate(self):
+        self.drainCondaOutput()
+
+        if os.path.isfile(self.log_path):
+            self.ui.LabelNameExtension.setText(self.module_name)
+            
+            self.ui.LabelProgressExtension.setText(
+                f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
+            )
+
+            if self.module_name_before != self.module_name:
+                self.module_name_before = self.module_name
+                self.progress = 0
+                self.ui.LabelProgressPatient.setText(f"Patient : {self.progress}/{self.nb_patient}")
+                progress_bar_value = round(self.progress / self.nb_patient * 100, 2) if self.nb_patient else 0
+                
+                self.ui.progressBar.setValue(progress_bar_value)
+                self.ui.progressBar.setFormat(f"{progress_bar_value:.2f}%")
+
+    def onProcessUpdate(self, caller, event):
+        """Drive the run from the CLI node that just reported in.
+
+        Wrapped because an exception escaping a VTK observer callback is printed
+        by Python straight into the stdout pipe Slicer only drains from the Qt
+        event loop - the very loop this callback is holding. The traceback then
+        freezes the whole application, and the real error is never seen. Report
+        it once the loop turns instead, and stop the run rather than leave it
+        half advanced.
+        """
+        try:
+            self._onProcessUpdate(caller, event)
+        except Exception:
+            details = traceback.format_exc()
+            qt.QTimer.singleShot(0, lambda: self._reportProcessFailure(details))
+
+    def _reportProcessFailure(self, details: str) -> None:
+        """Say what went wrong, then stop the run cleanly."""
+        logger.error(f"The run was stopped by an unexpected error:\n{details}")
+        try:
+            self.onCancel()
+        except Exception as e:
+            logger.error(f"Could not stop the run cleanly: {e}")
+
+    def _onProcessUpdate(self, caller, event):
+        # Observers are never removed, and self.process becomes a plain Thread
+        # while a conda tool runs. So a finished node can wake this up long
+        # after its turn, with self.process pointing at something else - and a
+        # stale Completed event would launch the next step out of order.
+        if self.process is not caller:
+            return
+
+        currentTime = time.time() - self.startTime
+        timer = format_timer(currentTime)
+
+        self.ui.LabelTimer.setText(timer)
+        progress = caller.GetProgress()
+        self.ui.LabelNameExtension.setText(self.module_name)
+
+        if (self.module_name_before != self.module_name) and (self.module_name != "AREG_IOS"):
+            self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
+            self.nb_extension_did += 1
+            self.ui.LabelProgressExtension.setText(
+                f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
+            )
+            self.ui.progressBar.setValue(0)
+
+            self.module_name_before = self.module_name
+            self.nb_change_bystep = 0
+
+        if progress == 0:
+            self.updateProgressBar = False
+
+        if self.displayModule.isProgress(
+            progress=progress, updateProgressBar=self.updateProgressBar
+        ):
+            progress_bar, message = self.displayModule()
+            self.ui.progressBar.setValue(progress_bar)
+            self.ui.LabelProgressPatient.setText(message)
+            self.nb_change_bystep += 1
+
+        if caller.GetStatus() & caller.Completed:
+            if caller.GetStatus() & caller.ErrorsMask:
+                # error
+                out = self.logic._briefCliOutput(caller.GetOutputText())
+                err = self.logic._briefCliOutput(caller.GetErrorText())
+                qt.QTimer.singleShot(0, lambda: logger.error(
+                    "========= PROCESS COMPLETED WITH ERRORS =========\n"
+                    f"{out}\n========= ERROR DETAILS =========\n{err}"
+                ))
+                self.onCancel()
+
+            else:
+                # Deferred and trimmed on purpose: Slicer captures its own stdout
+                # into a pipe it only drains from the Qt event loop, and this runs
+                # inside a VTK observer callback where that loop cannot turn.
+                # Writing a whole CLI's output here fills the pipe with no reader
+                # left and the main thread blocks in write() for ever - a batch of
+                # three patients through ALI is already enough to do it.
+                cli_output = self.logic._briefCliOutput(caller.GetOutputText())
+                qt.QTimer.singleShot(0, lambda: logger.info(
+                    f"========= PROCESS COMPLETED SUCCESSFULLY =========\n{cli_output}"
+                ))
+                if self.enterReviewPause():
+                    return
+                self.advanceToNextProcess()
+
+    def prepareHeadStep(self):
+        """Narrow the step about to run, now that its input is final.
+
+        A rollback marks the steps it queues rather than narrowing them on the
+        spot, because the correction the user went back for is made after that
+        moment. Doing the walk here means the links - or the copies, where the
+        filesystem has no links - are taken from the corrected files.
+
+        The step is narrowed in place: this list is read from several places,
+        and every one of them has to see the same parameters.
+        """
+        if not self.list_Processes_Parameters:
+            return
+        step = self.list_Processes_Parameters[0]
+        patients = step.get("ReviewRestrictTo")
+        if not patients:
+            return
+        try:
+            restricted, folders = Review.restrictStepToPatients(step, patients)
+        except Exception as e:
+            logger.warning(
+                f"Could not narrow {step.get('Module')} to {sorted(patients)}, "
+                f"it runs on the whole batch: {e}"
+            )
+            return
+        self.review_temp_folders.extend(folders)
+        step["Parameter"] = restricted.get("Parameter", step.get("Parameter"))
+
+    def advanceToNextProcess(self):
+        """Launch the next step of the run, or finish if there is none left."""
+        self.prepareHeadStep()
+        try:
+            logger.info(f"Process name: {self.list_Processes_Parameters[0]['Process']}")
+            # The conda tools run to completion right here rather than through
+            # the CLI observer, so their pause has to be taken on the way back
+            # out - otherwise no IOS step could ever stop the run.
+            if self.list_Processes_Parameters[0]["Module"]=="AREG_IOS":
+                self.nb_extension_did += 1
+                self.run_conda_tool("areg")
+                if self.enterReviewPause():
+                    return
+            if self.list_Processes_Parameters[0]["Module"]=="CrownSegmentationcli":
+                self.run_conda_tool("seg")
+                if self.enterReviewPause():
+                    return
+            if self.list_Processes_Parameters[0]["Module"]=="ALI_IOS":
+                self.nb_extension_did += 1
+                self.run_conda_tool("ali")
+                if self.enterReviewPause():
+                    return
+
+            self.ui.ButtonCancel.setEnabled(True)
+            self.process = slicer.cli.run(
+                self.list_Processes_Parameters[0]["Process"],
+                None,
+                self.list_Processes_Parameters[0]["Parameter"],
+            )
+            self.startStep(self.list_Processes_Parameters[0])
+            self.displayModule = self.list_Processes_Parameters[0]["Display"]
+            self.processObserver = self.process.AddObserver(
+                "ModifiedEvent", self.onProcessUpdate
+            )
+            del self.list_Processes_Parameters[0]
+            # self.displayModule.progress = 0
+        except IndexError:
+            self.OnEndProcess()
+
+    # ----------------------------------------------------------- review pauses
+
+    REVIEW_SETTINGS_KEY = "AREG/ReviewSteps"
+    # It only ever goes forward: going back has a button of its own.
+    CONTINUE_TEXT = "Next step"
+
+    def startStep(self, step):
+        """Remember the step being launched, so its pause is found when it ends.
+
+        The run consumes its own list as it goes, so replaying a step needs a
+        record of what has already gone by.
+        """
+        self.module_name = step["Module"]
+        self.review_step = step
+        self.executed_steps.append(step)
+
+    def setupReviewUi(self):
+        """Wire the review section up. Called once, from setup()."""
+        self.ui.ReviewEnableCheckBox.connect("toggled(bool)", self.onReviewEnableToggled)
+        self.ui.ReviewSelectAllButton.connect("clicked(bool)", lambda: self.setAllReviewSteps(True))
+        self.ui.ReviewSelectNoneButton.connect("clicked(bool)", lambda: self.setAllReviewSteps(False))
+        self.ui.ReviewContinueButton.connect("clicked(bool)", self.onReviewContinue)
+        self.ui.ReviewGoBackButton.connect("clicked(bool)", self.onReviewGoBack)
+        self.ui.ReviewPrevPatientButton.connect("clicked(bool)", self.onReviewPreviousPatient)
+        self.ui.ReviewNextPatientButton.connect("clicked(bool)", self.onReviewNextPatient)
+        self.ui.ReviewFlagButton.connect("clicked(bool)", self.onReviewToggleFlag)
+        self.ui.ReviewContinueButton.setVisible(False)
+        self.ui.ReviewGoBackButton.setVisible(False)
+        self.ui.ReviewMessageLabel.setVisible(False)
+        for name in ("ReviewPrevPatientButton", "ReviewNextPatientButton",
+                     "ReviewPatientLabel", "ReviewFlagButton"):
+            getattr(self.ui, name).setVisible(False)
+        self.onReviewEnableToggled(self.ui.ReviewEnableCheckBox.isChecked())
+
+    def onReviewEnableToggled(self, enabled):
+        """Grey the list out when pausing is off, rather than hiding it."""
+        for widget in (self.ui.ReviewScrollArea, self.ui.ReviewSelectAllButton,
+                       self.ui.ReviewSelectNoneButton, self.ui.ReviewHelpLabel):
+            widget.setEnabled(enabled)
+
+    def rebuildReviewSteps(self):
+        """Rebuild the checkboxes for the mode now selected.
+
+        Modes do not share their steps - IOS has no CBCT landmarks, MGL swaps
+        the orientation for landmark placement - so the list is built from what
+        the current method says it offers, and what the user ticked before is
+        restored where the same step still exists.
+        """
+        contents = getattr(self.ui, "ReviewScrollContents", None)
+        layout = contents.layout() if contents is not None else None
+        if layout is None:
+            logger.warning("Review step list not found in the UI, no pause offered")
+            return
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+        self.review_checkboxes = {}
+
+        method = getattr(self, "ActualMeth", None)
+        if method is None:
+            return
+        try:
+            steps = method.getReviewSteps(
+                AREGRequest(reg_type="MGL" if self.isMGLRegistration() else "Butterfly"
+            ))
+        except Exception as e:
+            logger.warning(f"Could not list the reviewable steps: {e}")
+            return
+
+        remembered = self.loadReviewSelection()
+        group = None
+        for step in steps:
+            if step["group"] != group:
+                group = step["group"]
+                header = qt.QLabel(f"<b>{group}</b>")
+                layout.addWidget(header)
+
+            box = qt.QCheckBox(step["label"])
+            if step["kind"] == Review.VIEW:
+                box.setToolTip(f"Look only. {step['hint']}")
+            else:
+                box.setToolTip(f"You can correct this. {step['hint']}")
+                box.setText(step["label"] + "  (editable)")
+            box.setChecked(step["id"] in remembered)
+            box.connect("toggled(bool)", lambda _checked: self.saveReviewSelection())
+            layout.addWidget(box)
+            self.review_checkboxes[step["id"]] = box
+
+        layout.addStretch(1)
+
+    def setAllReviewSteps(self, checked):
+        """Tick or untick every step of the current mode."""
+        for box in self.review_checkboxes.values():
+            box.setChecked(checked)
+
+    def selectedReviewIds(self):
+        """Ids the user ticked, empty when pausing is switched off."""
+        if not self.ui.ReviewEnableCheckBox.isChecked():
+            return set()
+        return {i for i, box in self.review_checkboxes.items() if box.isChecked()}
+
+    def saveReviewSelection(self):
+        """Keep the ticked steps between sessions."""
+        chosen = [i for i, box in self.review_checkboxes.items() if box.isChecked()]
+        qt.QSettings().setValue(self.REVIEW_SETTINGS_KEY, ",".join(sorted(chosen)))
+
+    def loadReviewSelection(self):
+        """Steps ticked the last time, as a set of ids."""
+        stored = qt.QSettings().value(self.REVIEW_SETTINGS_KEY, "")
+        if not stored:
+            return set()
+        if isinstance(stored, (list, tuple)):
+            return set(stored)
+        return {i for i in str(stored).split(",") if i}
+
+    def markProcessesForReview(self):
+        """Flag the steps of this run the user asked to stop at."""
+        chosen = self.selectedReviewIds()
+        if not chosen:
+            return 0
+        marked = 0
+        for step in self.list_Processes_Parameters:
+            if step.get("ReviewId") in chosen:
+                step["ReviewPause"] = True
+                marked += 1
+        logger.info(f"{marked} step(s) will pause for review")
+        return marked
+
+    def enterReviewPause(self):
+        """Whether the step that just finished stops the run.
+
+        The loading itself waits for the event loop: this runs inside a VTK
+        observer callback, where Slicer cannot drain the pipe it captures its
+        own output into, and reading a scan there fills it with no reader left.
+        """
+        step = self.review_step or {}
+        if not step.get("ReviewPause"):
+            return False
+
+        self.review.pending = True
+        qt.QTimer.singleShot(0, self.beginReview)
+        return True
+
+    def beginReview(self):
+        """Load the finished step's result, once the event loop is turning."""
+        if not self.review.pending:
+            return          # cancelled between the callback returning and now
+        self.review.pending = False
+
+        step = self.review_step or {}
+        name = step.get("Module", "this step")
+        # Output folders are reused between runs: without this the review walks
+        # patients this run never processed. Coming back from a rollback, the
+        # only patients worth showing are the ones being redone.
+        # A replayed step carries the patients it was narrowed to, so its own
+        # review shows those and no others. The carry covers the one step the
+        # rollback lands on, which is not replayed and so carries no mark; it is
+        # consumed here, and that is why it cannot serve the replayed steps too.
+        expected = (
+            step.get("ReviewRestrictTo")
+            or self.review_flagged_carry
+            or self.runPatientIds()
+        )
+        self.review_flagged_carry = []
+        self.review.build(step, expected=expected)
+        if not self.review.total or not self.showReviewItem():
+            logger.warning(
+                f"Nothing could be loaded to review after {name}, continuing"
+            )
+            self.review.reset()
+            self.advanceToNextProcess()
+            return
+
+        self.ui.ReviewContinueButton.setVisible(True)
+        self.ui.ButtonCancel.setEnabled(True)
+        logger.info(f"Run paused after {name}")
+
+    def showReviewItem(self):
+        """Show the next patient that can be loaded. False if none can."""
+        while self.review.index < self.review.total:
+            if self.review.loadCurrent():
+                self.showReviewMessage()
+                return True
+            item = self.review.current
+            logger.warning(f"Nothing to load for {item['patient']}, skipping it")
+            self.review.index += 1
+        return False
+
+    def showReviewMessage(self):
+        """Say where the run is and what may be changed, in the module panel."""
+        item = self.review.current
+        step = self.review_step or {}
+        entry = Review.describe(step.get("ReviewId", ""))
+        title = entry.get("label") or step.get("Module", "Result")
+        hint = entry.get("hint", "")
+
+        position = ""
+        if self.review.total > 1:
+            position = f" - patient {self.review.index + 1} of {self.review.total}"
+
+        if item["editable"]:
+            action = "You can move the points"
+        elif item["adjustable"]:
+            action = "You can drag it into place"
+        else:
+            action = "Review only"
+
+        # Name the modules. A clinician who does not already know Slicer has no
+        # way to guess that the points are editable in Markups, that the numbers
+        # behind a displacement are in Transforms, or that the 3D view they are
+        # looking at is driven by Volume Rendering.
+        if item["editable"]:
+            tools = ("Open <b>Markups</b> to pick a point from the list, and "
+                     "<b>Volume Rendering</b> to change how the bone is shown.")
+        elif item["adjustable"]:
+            tools = ("Drag the scan in a slice view. <b>Transforms</b> shows the "
+                     "displacement you are applying, in numbers; "
+                     "<b>Volume Rendering</b> changes how the bone is shown.")
+        else:
+            tools = "<b>Models</b> and <b>Volume Rendering</b> change how this is shown."
+
+        self.ui.ReviewMessageLabel.setText(
+            f"<b>Paused: {title}</b><br/>"
+            f"{item['patient']}{position} &nbsp;·&nbsp; <i>{action}</i><br/>{hint}"
+            f"<br/><span style='color:#7f8c8d'>{tools}</span>"
+        )
+        self.ui.ReviewMessageLabel.setVisible(True)
+
+        self.updateReviewButtons()
+        logger.info(f"Review - {title} - {item['patient']}{position}")
+
+    def runPatientIds(self):
+        """The patients this run is about, read from the folder it was given.
+
+        The scans on the input side are what defines the run; an output folder
+        may hold results from months of earlier work, and a step that skips a
+        patient it has already done leaves that patient's file untouched and
+        old. Only the input list says who is really being processed.
+
+        Returns:
+            set: patient ids, empty if the folder cannot be read
+        """
+        folder = self.ui.lineEditScanT1LmPath.text
+        if not folder or not os.path.isdir(folder):
+            return set()
+
+        wanted = Review.VOLUME_EXT + Review.MODEL_EXT + (".json",)
+        ids = set()
+        for root, _, files in os.walk(folder):
+            for name in files:
+                if name.endswith(wanted):
+                    ids.add(Review.patientIdFromFileName(name))
+        return ids
+
+    def updateReviewButtons(self):
+        """Show the actions this patient, and this step, actually allow.
+
+        Each button does one thing and says so: moving between patients never
+        advances the run, and going back never hides behind a forward label.
+        """
+        session = self.review
+        total, index = session.total, session.index
+
+        self.ui.ReviewPatientLabel.setVisible(True)
+        self.ui.ReviewPatientLabel.setText(
+            f"<b>{session.currentPatient}</b>"
+            + (f" &nbsp;({index + 1} / {total})" if total > 1 else "")
+        )
+
+        self.ui.ReviewPrevPatientButton.setVisible(total > 1)
+        self.ui.ReviewPrevPatientButton.setEnabled(index > 0)
+        self.ui.ReviewNextPatientButton.setVisible(total > 1)
+        self.ui.ReviewNextPatientButton.setEnabled(index < total - 1)
+
+        # Marking is only worth offering when there is somewhere to go back to.
+        target, _ = self.previousCorrectableStep()
+        self.ui.ReviewFlagButton.setVisible(target is not None)
+        if session.isFlagged():
+            self.ui.ReviewFlagButton.setText("Cancel - this patient is fine")
+        else:
+            self.ui.ReviewFlagButton.setText("Go back and edit this patient")
+
+        self.ui.ReviewContinueButton.setVisible(True)
+        self.ui.ReviewContinueButton.setText(self.CONTINUE_TEXT)
+
+        flagged = session.flaggedPatients()
+        self.ui.ReviewGoBackButton.setVisible(bool(flagged) and target is not None)
+        if flagged and target is not None:
+            name = Review.describe(target.get("ReviewId", "")).get("label", "the previous step")
+            self.ui.ReviewGoBackButton.setText(
+                f"Go back to {name} for {len(flagged)} patient(s)"
+            )
+
+
+    def onReviewPreviousPatient(self):
+        """Show the patient before this one, keeping any edit made here."""
+        if self.review.index > 0:
+            self.review.saveEdits()
+            self.review.index -= 1
+            self.showReviewItem()
+
+    def onReviewNextPatient(self):
+        """Show the next patient of this step, keeping any edit made here."""
+        if self.review.index < self.review.total - 1:
+            self.review.saveEdits()
+            self.review.index += 1
+            self.showReviewItem()
+
+    def onReviewToggleFlag(self):
+        """Mark this patient for rework, or take the mark back."""
+        patient = self.review.currentPatient
+        now = self.review.toggleFlag()
+        logger.info(f"{patient}: {'marked for rework' if now else 'mark removed'}")
+        self.updateReviewButtons()
+
+    def onReviewGoBack(self):
+        """Return to the last correctable step, for the patients marked there.
+
+        Correcting the landmarks changes nothing on its own - the orientation
+        was computed from the old ones. So the steps in between are queued to
+        run again, narrowed to the marked patients: the rest of the batch keeps
+        the results it already has, and a run of fifty does not start over
+        because one case was wrong.
+        """
+        target, replay = self.previousCorrectableStep()
+        if target is None:
+            logger.warning("Nothing correctable behind this step")
+            return
+
+        flagged = self.review.flaggedPatients()
+        if not flagged:
+            logger.warning("No patient marked for rework")
+            return
+
+        name = Review.describe(target.get("ReviewId", "")).get("label", target.get("Module"))
+        logger.info(
+            f"Going back to '{name}' for {flagged}; "
+            f"{len(replay)} step(s) will run again for them"
+        )
+
+        # What the user changed on the patient in front of them counts, even
+        # though they are leaving by this button and not by Continue. These
+        # edits used to go in the bin without a word - review.reset() drops the
+        # markups nodes - which is the one way a correction can be lost with no
+        # trace at all, not even a line in the log.
+        self.review.saveEdits()
+
+        # Tagged here, narrowed later. Narrowing walks the output folder and
+        # links what it finds, and at this point the user has not yet made the
+        # correction they came back for. A symlink survives a later rewrite, but
+        # the copy the fallback makes on a filesystem without links does not:
+        # the replay would then run on the file as it stood before the edit,
+        # quietly. advanceToNextProcess narrows instead, once the corrected
+        # files are actually on disk.
+        pending = []
+        for step in replay:
+            queued = dict(step)
+            queued["ReviewRestrictTo"] = list(flagged)
+            pending.append(queued)
+
+        self.review.reset()
+        self.resetReviewUi()
+
+        # The steps between the two run again, ahead of whatever was left.
+        self.list_Processes_Parameters[0:0] = pending
+        self.review_step = target
+        self.review_flagged_carry = list(flagged)
+        # beginReview guards against a pause cancelled between the callback and
+        # the event loop; this one comes from a button, so it is armed here.
+        self.review.pending = True
+        self.beginReview()
+
+    def onReviewContinue(self):
+        """Leave this pause and carry on with the run.
+
+        Moving between patients is what the navigation buttons are for, so this
+        one does the single thing its label promises: it ends the pause. What
+        the user changed on the patient in front of them is saved first, and
+        the patients they never opened keep the results they already have.
+        """
+        self.review.saveEdits()
+        seen = self.review.index + 1
+        total = self.review.total
+        if seen < total:
+            logger.info(f"{total - seen} patient(s) accepted without being opened")
+
+        self.resetReviewUi()
+        self.review.reset()
+        self.advanceToNextProcess()
+
+    def showDoneMessage(self, text):
+        """Say the run is over without taking the application hostage.
+
+        Nothing waits on this answer, so it is shown rather than executed: a
+        modal dialog that fails to appear leaves the user with no way to click
+        anything, and that is exactly what a finished run must not do.
+        """
+        self.done_popup = PopUpWindow(title="Process Done", text=text)
+        self.done_popup.setModal(False)
+        self.done_popup.show()
+        self.done_popup.raise_()
+
+    def previousCorrectableStep(self):
+        """The nearest step behind this one the user can actually change.
+
+        Looking at a bad orientation is useless without a way back to the
+        landmarks that caused it. Steps that only ever get looked at are
+        skipped over, so the button lands where something can be done.
+
+        Returns:
+            tuple: (step, steps to replay after it), or (None, []) if there is
+                nothing correctable behind the current one
+        """
+        current = self.review_step or {}
+        history = self.executed_steps
+        try:
+            # the last time this step ran, not the first
+            here = len(history) - 1 - history[::-1].index(current)
+        except ValueError:
+            return None, []
+
+        for i in range(here - 1, -1, -1):
+            kind = Review.describe(history[i].get("ReviewId", "")).get("kind")
+            if kind in (Review.LANDMARKS, Review.REGISTRATION):
+                return history[i], history[i + 1:here + 1]
+        return None, []
+
+    def resetReviewUi(self):
+        """Put the panel back the way it was before the pause."""
+        self.ui.ReviewContinueButton.setVisible(False)
+        self.ui.ReviewContinueButton.setText(self.CONTINUE_TEXT)
+        self.ui.ReviewGoBackButton.setVisible(False)
+        self.ui.ReviewMessageLabel.setVisible(False)
+        for name in ("ReviewPrevPatientButton", "ReviewNextPatientButton",
+                     "ReviewPatientLabel", "ReviewFlagButton"):
+            getattr(self.ui, name).setVisible(False)
+        self.ui.ReviewMessageLabel.setText("")
+
+    def clearReviewTempFolders(self):
+        """Drop the link farms a rollback made. The scans they point at stay."""
+        import shutil
+        for folder in self.review_temp_folders:
+            try:
+                shutil.rmtree(folder, ignore_errors=True)
+            except Exception as e:
+                logger.warning(f"Could not remove {folder}: {e}")
+        self.review_temp_folders = []
+
+    def OnEndProcess(self):
+        self.resetReviewUi()
+        self.review.reset()
+        self.clearReviewTempFolders()
+        self.ui.LabelProgressPatient.setText(f"Patient : 0 / {self.nb_patient}")
+        self.ui.LabelProgressExtension.setText(
+            f"Extension : {self.nb_extension_did} / {self.nb_extension_launch}"
+        )
+        self.ui.progressBar.setValue(0)
+
+        self.nb_change_bystep = 0
+        total_time = time.time() - self.startTime
+        average_time = total_time / self.nb_patient if self.nb_patient else total_time
+        logger.info("PROCESS DONE.")
+        logger.info(
+            "Done in {} min and {} sec".format(
+                int(total_time / 60), int(total_time % 60)
+            )
+        )
+        logger.info(
+            "Average time per patient : {} min and {} sec".format(
+                int(average_time / 60), int(average_time % 60)
+            )
+        )
+        self.RunningUI(False)
+
+        stop_time = time.time()
+
+        logger.info(f"Processing completed in {stop_time-self.startTime:.2f} seconds")
+
+        # OnEndProcess is reached from onProcessUpdate, i.e. from inside a VTK
+        # observer callback. Opening an application-modal dialog there starts a
+        # nested event loop while the CLI node is still dispatching events, and
+        # the modal grab can leave the whole desktop session unresponsive, not
+        # just Slicer. Defer it so the callback returns first.
+        done_message = (
+            "Successfully done in {} min and {} sec \nAverage time per Patient: {} min and {} sec".format(
+                int(total_time / 60),
+                int(total_time % 60),
+                int(average_time / 60),
+                int(average_time % 60),
+            )
+        )
+        qt.QTimer.singleShot(0, lambda: self.showDoneMessage(done_message))
+
+    def applyDarkModeStyles(self):
+      """
+      Apply dark mode styles to the UI widgets if Slicer's dark mode is enabled.
+      """
+      # Check if Slicer is in dark mode
+      app = qt.QApplication.instance()
+      palette = app.palette()
+      
+      # Get the background color to detect dark mode
+      bg_color = palette.color(qt.QPalette.Window)
+      bg_brightness = bg_color.lightness()
+      
+      # If background is dark (lightness < 128), apply dark mode stylesheet
+      if bg_brightness < 128:
+        # Dark mode stylesheet
+        dark_stylesheet = """
+/* Dark mode */
+qMRMLWidget {
+  background-color: #2b2b2b;
+  color: #ffffff;
+}
+ctkCollapsibleButton {
+  background-color: #1e1e1e;
+  border: 1px solid #404040;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  padding: 6px 10px;
+  color: #ffffff;
+}
+ctkCollapsibleButton:hover {
+  border: 1px solid #5dade2;
+  background-color: #252525;
+}
+QLineEdit, QTextEdit {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 6px;
+  selection-background-color: #5dade2;
+  color: #ffffff;
+}
+QLineEdit:focus, QTextEdit:focus {
+  border: 2px solid #5dade2;
+}
+QComboBox {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #ffffff;
+}
+QComboBox:focus {
+  border: 2px solid #5dade2;
+}
+QComboBox::drop-down {
+  width: 20px;
+  border: none;
+}
+QComboBox::down-arrow {
+  image: none;
+}
+QComboBox QAbstractItemView {
+  background-color: #3c3c3c;
+  color: #ffffff;
+  selection-background-color: #5dade2;
+}
+QLabel {
+  color: #ffffff;
+  font-weight: 500;
+}
+QPushButton {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 10pt;
+  padding: 8px;
+  margin-top: 4px;
+}
+QPushButton:hover:!pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7bbcef, stop:1 #5dade2);
+}
+QPushButton:pressed {
+  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2980b9, stop:1 #1e638d);
+}
+QPushButton:disabled {
+  background-color: #555555;
+  color: #888888;
+}
+QCheckBox {
+  color: #ffffff;
+  font-weight: 500;
+  spacing: 6px;
+}
+QCheckBox::indicator {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  background-color: #3c3c3c;
+}
+QCheckBox::indicator:hover {
+  border: 1px solid #5dade2;
+}
+QCheckBox::indicator:checked {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #5dade2;
+  border-radius: 3px;
+  background-color: #5dade2;
+  image: url(:/Icons/SmallCheckMark.png);
+}
+QCheckBox::indicator:checked:hover {
+  border: 1px solid #7bbcef;
+  background-color: #7bbcef;
+}
+QProgressBar {
+  border: 1px solid #555555;
+  border-radius: 4px;
+  background-color: #3c3c3c;
+  padding: 2px;
+  color: #ffffff;
+}
+QProgressBar::chunk {
+  background-color: #5dade2;
+  border-radius: 3px;
+}
+qMRMLNodeComboBox {
+  background-color: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #ffffff;
+}
+qMRMLNodeComboBox:focus {
+  border: 2px solid #5dade2;
+}
+        """
+        # Apply dark stylesheet to UI widget
+        self.uiWidget.setStyleSheet(dark_stylesheet)
+        
+        # Update QLineEdit and QComboBox for dark mode
+        self._updateLineEditAndComboBoxDarkMode(self.uiWidget)
+        
+        # Update dynamically created checkboxes
+        self._updateDynamicCheckboxesDarkMode()
+
+    def _updateLineEditAndComboBoxDarkMode(self, parent):
+        """Shared recursive pass, kept as a method for the existing call sites."""
+        update_line_edit_and_combo_box(parent)
+    
+    def _updateDynamicCheckboxesDarkMode(self):
+      """
+      Apply dark mode styles to all dynamically created checkboxes.
+      """
+      checkbox_stylesheet = """
+        QCheckBox {
+          color: #ffffff;
+          font-weight: 500;
+          spacing: 6px;
+        }
+        QCheckBox::indicator {
+          width: 18px;
+          height: 18px;
+          border: 1px solid #555555;
+          border-radius: 3px;
+          background-color: #3c3c3c;
+        }
+        QCheckBox::indicator:hover {
+          border: 1px solid #5dade2;
+        }
+        QCheckBox::indicator:checked {
+          width: 18px;
+          height: 18px;
+          border: 1px solid #5dade2;
+          border-radius: 3px;
+          background-color: #5dade2;
+          image: url(:/Icons/SmallCheckMark.png);
+        }
+        QCheckBox::indicator:checked:hover {
+          border: 1px solid #7bbcef;
+          background-color: #7bbcef;
+        }
+      """
+      
+      # Style all QCheckBox widgets recursively from uiWidget
+      self._styleAllCheckboxes(self.uiWidget, checkbox_stylesheet)
+      
+      # Also try to style Method.merge_seg_checkbox if accessible
+      try:
+        if hasattr(self.ui, 'AREG_Method') and hasattr(self.ui.AREG_Method, 'merge_seg_checkbox'):
+          self.ui.AREG_Method.merge_seg_checkbox.setStyleSheet(checkbox_stylesheet)
+      except (AttributeError, RuntimeError):
+          # A widget with no such method, or whose C++ object is already gone.
+          pass
+    
+    def _styleAllCheckboxes(self, parent, stylesheet):
+      """
+      Recursively find and style all QCheckBox widgets in the widget tree.
+      """
+      if isinstance(parent, qt.QCheckBox):
+        try:
+          parent.setStyleSheet(stylesheet)
+        except (AttributeError, RuntimeError):
+            pass
+      
+      # Recursively process all children
+      if hasattr(parent, 'children'):
+        for child in parent.children():
+          self._styleAllCheckboxes(child, stylesheet)
+
+    def onCancel(self):
+        try:
+            self.process.Cancel()
+        except Exception as e:
+            self.logic.cancel_process()
+
+        logger.warning("========= PROCESS CANCELED =========")
+
+        self.resetReviewUi()
+        self.review.reset()
+        self.RunningUI(False)
+
+    def RunningUI(self, run=False):
+        self.ui.ButtonOriented.setVisible(not run)
+
+        self.ui.progressBar.setVisible(run)
+        self.ui.LabelTimer.setVisible(run)
+
+        self.HideComputeItems(run)
+        
+    def format_time(self, seconds):
+        """Seconds as HH:MM:SS."""
+        return format_elapsed(seconds)
+
+    def update_ui_time(self, start_time, previous_time):
+        """Elapsed time since `start_time`, formatted for the installation label.
+
+        `previous_time` is kept for signature parity with the call sites, which
+        pass it but never update their own copy. It used to throttle this to one
+        update every 0.3s and return None in between, which is what wrote
+        "time: None" into the label. Formatting unconditionally is both simpler
+        and correct.
+        """
+        self.elapsed_time = elapsed_since(start_time)
+        return self.format_time(self.elapsed_time)
+        
+        
+    def run_conda_tool(self,type):
+        if type=="seg":
+            output_command = self.logic.conda.condaRunCommand(["which","dentalmodelseg"],self.logic.name_env).strip()
+            clean_output = re.search(r"Result: (.+)", output_command)
+            if clean_output:
+                dentalmodelseg_path = clean_output.group(1).strip()
+                dentalmodelseg_path_clean = dentalmodelseg_path.replace("\\n","")
+            else:
+                logger.error("Error: Unable to find dentalmodelseg path.")
+                return
+            
+            # As many segmentation steps as the pipeline actually holds, at its
+            # head: a timepoint whose scans are already segmented produces no
+            # step, and consuming a fixed two would swallow whatever follows.
+            nbr_run = 0
+            for process in self.list_Processes_Parameters:
+                if not process["Module"].startswith("CrownSegmentationcli"):
+                    break
+                nbr_run += 1
+
+            for i in range(nbr_run):
+                self.nb_extension_did += 1
+                args = self.list_Processes_Parameters[0]["Parameter"]
+                self.startStep(self.list_Processes_Parameters[0])
+                logger.debug(f"Arguments: {args}")
+                conda_exe = self.logic.conda.getCondaExecutable()
+                command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"CrownSegmentationcli"]
+                for key, value in args.items():
+                    if key in ["out","input_csv","vtk_folder","dentalmodelseg_path"]:
+                        value = self.logic.windows_to_linux_path(value)
+                    if key == "dentalmodelseg_path":
+                        value = dentalmodelseg_path_clean
+                    command.append(f"\"{value}\"")
+                logger.debug("="*50)
+                logger.debug(f"Command: {command}")
+                
+                self.ui.LabelNameExtension.setText(f"{self.module_name}")
+
+                # running in // to not block Slicer
+                self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
+                self.process.start()
+                self.ui.LabelTimer.setHidden(False)
+                self.ui.LabelTimer.setText(f"Time : 0.00s")
+                previous_time = self.startTime
+                while self.process.is_alive():
+                    self.ui.ButtonCancel.setVisible(True)
+                    self.onCondaProcessUpdate()
+                    slicer.app.processEvents()
+                    # A bare spin pegs a core and leaves the console no room to
+                    # drain what the tool is writing.
+                    time.sleep(0.05)
+                    current_time = time.time()
+                    gap=current_time-previous_time
+                    if gap>0.3:
+                        currentTime = time.time() - self.startTime
+                        previous_time = currentTime
+                        timer = format_timer(currentTime)
+                        
+                        self.ui.LabelTimer.setText(timer)
+
+                # The worker has stopped; whatever it queued last is still
+                # waiting, and nothing else would ever show it.
+                self.drainCondaOutput()
+                
+                del self.list_Processes_Parameters[0]
+                
+        elif type=="areg":
+            args = self.list_Processes_Parameters[0]["Parameter"]
+            logger.info(f"Module: {self.list_Processes_Parameters[0]['Module']}")
+            logger.debug(f"Arguments: {args}")
+            self.startStep(self.list_Processes_Parameters[0])
+            
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"AREG_IOS"]
+            for key, value in args.items():
+                logger.debug(f"Key: {key}")
+                if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+                    value = self.logic.windows_to_linux_path(value)
+                command.append(f"\"{value}\"")
+            logger.debug(f"Command: {command}")
+
+            # running in // to not block Slicer
+            self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
+            self.process.start()
+            self.ui.LabelTimer.setHidden(False)
+            self.ui.LabelTimer.setText(f"time : 0.00s")
+            previous_time = self.startTime
+            while self.process.is_alive():
+                self.ui.ButtonCancel.setVisible(True)
+                self.onCondaProcessUpdate()
+                slicer.app.processEvents()
+                time.sleep(0.05)
+                current_time = time.time()
+                gap=current_time-previous_time
+                if gap>0.3:
+                    currentTime = time.time() - self.startTime
+                    previous_time = currentTime
+                    timer = format_timer(currentTime)
+                    
+                    self.ui.LabelTimer.setText(timer)
+
+            # The worker has stopped; whatever it queued last is still
+            # waiting, and nothing else would ever show it.
+            self.drainCondaOutput()
+            
+            del self.list_Processes_Parameters[0]
+        elif type == "ali":
+            self.startStep(self.list_Processes_Parameters[0])
+            args = self.list_Processes_Parameters[0]["Parameter"]
+            logger.debug(f"Processing arguments: {args}")
+            conda_exe = self.logic.conda.getCondaExecutable()
+            command = [conda_exe, "run", "-n", self.logic.name_env, "python" ,"-m", f"ALI_IOS"]
+            for key, value in args.items():
+                logger.debug(f"Processing key: {key}")
+                if isinstance(value, str) and ("\\" in value or (len(value) > 1 and value[1] == ":")):
+                    value = self.logic.windows_to_linux_path(value)
+                command.append(f"\"{value}\"")
+            logger.debug(f"Executing command: {' '.join(command)}")
+
+            # running in // to not block Slicer
+            self.process = threading.Thread(target=self.logic.condaRunCommand, args=(command,))
+            self.process.start()
+            self.ui.LabelNameExtension.setText(f"Running {self.module_name}")
+            self.ui.LabelTimer.setHidden(False)
+            self.ui.LabelTimer.setText(f"time : 0.00s")
+            previous_time = self.startTime
+
+            while self.process.is_alive():
+                self.onCondaProcessUpdate()
+                slicer.app.processEvents()
+                time.sleep(0.05)
+                current_time = time.time()
+                gap=current_time-previous_time
+                if gap>0.3:
+                    currentTime = time.time() - self.startTime
+                    previous_time = currentTime
+                    timer = format_timer(currentTime)
+
+                    self.ui.LabelTimer.setText(timer)
+
+            # The worker has stopped; whatever it queued last is still
+            # waiting, and nothing else would ever show it.
+            self.drainCondaOutput()
+            
+            del self.list_Processes_Parameters[0]
+            
+
+    """
+
+            8888888888 888     888 888b    888  .d8888b.      8888888 888b    888 8888888 88888888888
+            888        888     888 8888b   888 d88P  Y88b       888   8888b   888   888       888
+            888        888     888 88888b  888 888    888       888   88888b  888   888       888
+            8888888    888     888 888Y88b 888 888              888   888Y88b 888   888       888
+            888        888     888 888 Y88b888 888              888   888 Y88b888   888       888
+            888        888     888 888  Y88888 888    888       888   888  Y88888   888       888
+            888        Y88b. .d88P 888   Y8888 Y88b  d88P       888   888   Y8888   888       888
+            888         "Y88888P"  888    Y888  "Y8888P"      8888888 888    Y888 8888888     888
+
+
+
+
+    """
+
+    def initCheckBoxCBCT(self, Method, layout, tohide: qt.QLabel):
+        if not tohide is None:
+            tohide.setHidden(True)
+        dic = Method.DicLandmark()
+
+        dicchebox = {}
+        for i, (title, liste) in enumerate(dic.items()):
+            Tab = QTabWidget()
+            layout.addWidget(Tab)
+            listcheckboxlandmark = []
+            tab = self.CreateMiniTab(Tab, title, 0, len(liste))
+            for struct in liste:
+                checkbox = qt.QCheckBox()
+                checkbox.setText(struct)
+                tab.addWidget(checkbox)
+                listcheckboxlandmark.append(checkbox)
+
+            dicchebox[title] = listcheckboxlandmark
+
+        Method.setcheckbox(dicchebox)
+
+        Method.merge_seg_checkbox = qt.QCheckBox()
+        Method.merge_seg_checkbox.setText("Merge Segmentations")
+        Method.merge_seg_checkbox.setChecked(True)
+        layout.addWidget(Method.merge_seg_checkbox)
+
+    def CreateMiniTab(
+        self, tab_widget: QTabWidget, name: str, index: int, number_items=None
+    ):
+        new_widget = QWidget()
+        if number_items is not None:
+            tab_widget.setMinimumHeight(46 * number_items)
+
+        layout = QGridLayout(new_widget)
+
+        scr_box = QScrollArea(new_widget)
+
+        layout.addWidget(scr_box, 0, 0)
+
+        new_widget2 = QWidget(scr_box)
+        layout2 = QVBoxLayout(new_widget2)
+
+        scr_box.setWidgetResizable(True)
+        scr_box.setWidget(new_widget2)
+
+        tab_widget.insertTab(index, new_widget, name)
+
+        return layout2
+
+    def HideComputeItems(self, run=False):
+        self.ui.ButtonOriented.setVisible(not run)
+
+        self.ui.ButtonCancel.setVisible(run)
+
+        self.ui.LabelProgressPatient.setVisible(run)
+        self.ui.LabelProgressExtension.setVisible(run)
+        self.ui.LabelNameExtension.setVisible(run)
+        self.ui.progressBar.setVisible(run)
+
+        self.ui.LabelTimer.setVisible(run)
+
+    def initCheckboxIOS(self, tohide):
+        if not tohide is None:
+            tohide.hide()
+
+    """
+                          .d88888b.  88888888888 888    888 8888888888 8888888b.   .d8888b.
+                         d88P" "Y88b     888     888    888 888        888   Y88b d88P  Y88b
+                         888     888     888     888    888 888        888    888 Y88b.
+                         888     888     888     8888888888 8888888    888   d88P  "Y888b.
+                         888     888     888     888    888 888        8888888P"      "Y88b.
+                         888     888     888     888    888 888        888 T88b         "888
+                         Y88b. .d88P     888     888    888 888        888  T88b  Y88b  d88P
+                          "Y88888P"      888     888    888 8888888888 888   T88b  "Y8888P"
+    """
+    
+    def onCheckRequirements(self):
+        if not self.logic.isCondaSetUp:
+            message_box = qt.QMessageBox()
+            text = textwrap.dedent("""
+            SlicerConda is not set up, please click
+            <a href=\"https://github.com/DCBIA-OrthoLab/SlicerConda/\">here</a> for installation.
+            """).strip()
+            message_box.information(None, "Information", text)
+            return False
+        
+        if platform.system() == "Windows":
+            self.ui.label_LibsInstallation.setHidden(False)
+            self.ui.label_LibsInstallation.setText(f"Checking if wsl is installed, this task may take a moments")
+            
+            if self.logic.conda.testWslAvailable():
+                self.ui.label_LibsInstallation.setText(f"WSL installed")
+                if not self.logic.check_lib_wsl():
+                    self.ui.label_LibsInstallation.setText(f"Checking if the required librairies are installed, this task may take a moments")
+                    message_box = qt.QMessageBox()
+                    text = textwrap.dedent("""
+                        WSL doesn't have all the necessary libraries, please download the installer
+                        and follow the instructions
+                        <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
+                        for installation. The link may be blocked by Chrome, just authorize it.""").strip()
+
+                    message_box.information(None, "Information", text)
+                    return False
+                
+            else : # if wsl not install, ask user to install it ans stop process
+                message_box = qt.QMessageBox()
+                text = textwrap.dedent("""
+                    WSL is not installed, please download the installer and follow the instructions
+                    <a href=\"https://github.com/DCBIA-OrthoLab/SlicerAutomatedDentalTools/releases/download/wsl2_windows/installer_WSL2.zip\">here</a>
+                    for installation. The link may be blocked by Chrome, just authorize it.""").strip()
+
+                message_box.information(None, "Information", text)
+                return False
+            
+        
+        ## MiniConda
+        
+        
+        self.ui.label_LibsInstallation.setText(f"Checking if miniconda is installed")
+        if "no setup" in self.logic.conda.condaRunCommand([self.logic.conda.getCondaExecutable(),"--version"]):
+            message_box = qt.QMessageBox()
+            text = textwrap.dedent("""
+            Code can't be launch. \nConda is not setup.
+            Please go the extension CondaSetUp in SlicerConda to do it.""").strip()
+            message_box.information(None, "Information", text)
+            return False
+        
+        
+        ## shapeAXI
+
+
+        self.ui.label_LibsInstallation.setText(f"Checking if environnement exists")
+        if not self.logic.conda.condaTestEnv(self.logic.name_env) : # check is environnement exist, if not ask user the permission to do it
+            user_response = slicer.util.confirmYesNoDisplay("The environnement to run the classification doesn't exist, do you want to create it ? ", windowTitle="Env doesn't exist")
+            if user_response :
+                start_time = time.time()
+                previous_time = start_time
+                formatted_time = self.format_time(0)
+                self.ui.label_LibsInstallation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
+                process = self.logic.install_shapeaxi()
+                
+                while self.logic.process.is_alive():
+                    slicer.app.processEvents()
+                    formatted_time = self.update_ui_time(start_time, previous_time)
+                    self.ui.label_LibsInstallation.setText(f"Creation of the new environment. This task may take a few minutes.\ntime: {formatted_time}")
+            
+                start_time = time.time()
+                previous_time = start_time
+                formatted_time = self.format_time(0)
+                text = textwrap.dedent(f"""
+                Installation of librairies into the new environnement.
+                This task may take a few minutes.\ntime: {formatted_time}""").strip()
+                self.ui.label_LibsInstallation.setText(text)
+            else:
+                return False
+        else:
+            self.ui.label_LibsInstallation.setText(f"Ennvironnement already exists")
+            
+        
+        ## pytorch3d
+
+
+        self.ui.label_LibsInstallation.setText(f"Checking if pytorch3d is installed")
+        if "Error" in self.logic.check_if_pytorch3d() : # pytorch3d not installed or badly installed
+            process = self.logic.install_pytorch3d()
+            start_time = time.time()
+            previous_time = start_time
+            
+            while self.logic.process.is_alive():
+                slicer.app.processEvents()
+                formatted_time = self.update_ui_time(start_time, previous_time)
+                text = textwrap.dedent(f"""
+                Installation of pytorch into the new environnement.
+                This task may take a few minutes.\ntime: {formatted_time}
+                """).strip()
+                self.ui.label_LibsInstallation.setText(text)
+        else:
+            self.ui.label_LibsInstallation.setText(f"pytorch3d is already installed")
+            logger.info("pytorch3d already installed")
+
+        self.all_installed = True
+        return True
+
+    def cleanup(self):
+        """
+        Called when the application closes and the module widget is destroyed.
+        """
+        if self.logic.cliNode is not None:
+            self.logic.cliNode.Cancel()
+
+        self.removeObservers()
+
+    def enter(self):
+        """
+        Called each time the user opens this module.
+        """
+        # Make sure parameter node exists and observed
+        self.initializeParameterNode()
+
+    def exit(self):
+        """
+        Called each time the user opens a different module.
+        """
+        # Do not react to parameter node changes (GUI wlil be updated when the user enters into the module)
+        self.removeObserver(
+            self._parameterNode,
+            vtk.vtkCommand.ModifiedEvent,
+            self.updateGUIFromParameterNode,
+        )
+
+    def onSceneStartClose(self, caller, event):
+        """
+        Called just before the scene is closed.
+        """
+        # Parameter node will be reset, do not use it anymore
+        self.setParameterNode(None)
+
+    def onSceneEndClose(self, caller, event):
+        """
+        Called just after the scene is closed.
+        """
+        # If this module is shown while the scene is closed then recreate a new parameter node immediately
+        if self.parent.isEntered:
+            self.initializeParameterNode()
+
+    def initializeParameterNode(self):
+        """
+        Ensure parameter node exists and observed.
+        """
+        # Parameter node stores all user choices in parameter values, node selections, etc.
+        # so that when the scene is saved and reloaded, these settings are restored.
+
+    def setParameterNode(self, input_parameter_node):
+        """
+        Set and observe parameter node.
+        Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
+        """
+
+        # if inputParameterNode:
+        self.setParameterNode(self.logic.getParameterNode())
+
+        # Unobserve previously selected parameter node and add an observer to the newly selected.
+        # Changes of parameter node are observed so that whenever parameters are changed by a script or any other module
+        # those are reflected immediately in the GUI.
+        if self._parameterNode is not None:
+            self.removeObserver(
+                self._parameterNode,
+                vtk.vtkCommand.ModifiedEvent,
+                self.updateGUIFromParameterNode,
+            )
+        self._parameterNode = input_parameter_node
+        if self._parameterNode is not None:
+            self.addObserver(
+                self._parameterNode,
+                vtk.vtkCommand.ModifiedEvent,
+                self.updateGUIFromParameterNode,
+            )
+
+        # Initial GUI update
+        self.updateGUIFromParameterNode()
+
+    def updateGUIFromParameterNode(self, caller=None, event=None):
+        """
+        This method is called whenever parameter node is changed.
+        The module GUI is updated to show the current state of the parameter node.
+        """
+
+        if self._parameterNode is None or self._updatingGUIFromParameterNode:
+            return
+
+        # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
+        self._updatingGUIFromParameterNode = True
+
+        # Update node selectors and sliders
+        self.ui.inputSelector.setCurrentNode(
+            self._parameterNode.GetNodeReference("InputVolume")
+        )
+        self.ui.outputSelector.setCurrentNode(
+            self._parameterNode.GetNodeReference("OutputVolume")
+        )
+        self.ui.invertedOutputSelector.setCurrentNode(
+            self._parameterNode.GetNodeReference("OutputVolumeInverse")
+        )
+        # self.ui.imageThresholdSliderWidget.value = float(self._parameterNode.GetParameter("Threshold"))
+        self.ui.invertOutputCheckBox.checked = (
+            self._parameterNode.GetParameter("Invert") == "true"
+        )
+
+        # All the GUI updates are done
+        self._updatingGUIFromParameterNode = False
+
+    def updateParameterNodeFromGUI(self, caller=None, event=None):
+        """
+        This method is called when the user makes any change in the GUI.
+        The changes are saved into the parameter node (so that they are restored when the scene is saved and loaded).
+        """
+
+        if self._parameterNode is None or self._updatingGUIFromParameterNode:
+            return
+
+        was_modified = (
+            self._parameterNode.StartModify()
+        )  # Modify all properties in a single batch
+
+        self._parameterNode.SetNodeReferenceID(
+            "InputVolume", self.ui.inputSelector.currentNodeID
+        )
+        self._parameterNode.SetNodeReferenceID(
+            "OutputVolume", self.ui.outputSelector.currentNodeID
+        )
+        # self._parameterNode.SetParameter("Threshold", str(self.ui.imageThresholdSliderWidget.value))
+        self._parameterNode.SetParameter(
+            "Invert", "true" if self.ui.invertOutputCheckBox.checked else "false"
+        )
+        self._parameterNode.SetNodeReferenceID(
+            "OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID
+        )
+
+        self._parameterNode.EndModify(was_modified)
+
+
+class AREGLogic(ScriptedLoadableModuleLogic):
+    """This class should implement all the actual
+    computation done by your module.  The interface
+    should be such that other python code can import
+    this class and make use of the functionality without
+    requiring an instance of the Widget.
+    Uses ScriptedLoadableModuleLogic base class, available at:
+    https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
+    """
+
+    def __init__(self):
+        """
+        Called when the logic class is instantiated. Can be used for initializing member variables.
+        """
+        ScriptedLoadableModuleLogic.__init__(self)
+        self.isCondaSetUp = False
+        self.conda = self.init_conda()
+        self.name_env = "shapeaxi"
+        self.cliNode = None
+        self.python_version = "3.12"
+
+        # What a conda tool has printed and the main thread has not shown yet.
+        # It is filled by the worker thread that reads the tool's output and
+        # emptied by the main thread, which is the only one allowed to log it:
+        # see condaRunCommand for why logging from the worker deadlocks Slicer.
+        self.conda_output = collections.deque(maxlen=CONDA_OUTPUT_MAX_LINES)
+        self.conda_output_lock = threading.Lock()
+        self.conda_output_dropped = 0
+
+    def init_conda(self):
+        """The SlicerConda entry point for this platform, or False without it."""
+        call = init_conda_call()
+        self.isCondaSetUp = bool(call)
+        return call
+        
+    def run_conda_command(self, target, command):
+        self.process = threading.Thread(target=target, args=command) #run in parallel to not block slicer
+        self.process.start()
+        
+    def install_shapeaxi(self):
+        # Only SimpleITK here. Everything that depends on torch - torch itself,
+        # torchvision, ocnn, pytorch3d, shapeaxi - is installed afterwards by
+        # install_pytorch, which is the only place that can pass the
+        # --index-url selecting a CUDA build. Asked for here, pip took PyPI's
+        # default variant (2.12.1+cu130) and no pytorch3d wheel is published
+        # for it; shapeaxi on top of that fails outright, since it declares
+        # pytorch3d and PyPI carries no distribution for it at all.
+        self.run_conda_command(target=self.conda.condaCreateEnv, command=(self.name_env,self.python_version,["SimpleITK"],)) #run in parallel to not block slicer
+        
+    def check_if_pytorch3d(self):
+        conda_exe = self.conda.getCondaExecutable()
+        # Unquoted where nothing strips the quotes: kept, they turn the body
+        # into a single string literal that Python evaluates and exits 0 on,
+        # so the check reported pytorch3d present in an env without it.
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-c", condaQuote(self.conda, "import pytorch3d;import pytorch3d.renderer;import shapeaxi.dental_model_seg as d;d.saxi_nets_lightning.DentalModelSeg")]
+        return self.conda.condaRunCommand(command)
+    
+    def install_pytorch3d(self):
+        result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
+        if not result_pythonpath :
+            self.give_pythonpath_windows()
+            result_pythonpath = self.check_pythonpath_windows("ADTLib.env.install_pytorch")
+        
+        if result_pythonpath :
+            conda_exe = self.conda.getCondaExecutable()
+            path_pip = self.conda.getCondaPath()+f"/envs/{self.name_env}/bin/pip"
+            command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"ADTLib.env.install_pytorch",path_pip]
+
+        self.run_conda_command(target=self.conda.condaRunCommand, command=(command,))
+        
+    def setup_cli_command(self):
+        args = self.find_cli_parameters()
+        conda_exe = self.conda.getCondaExecutable()
+        command = [conda_exe, "run", "-n", self.name_env, "python" ,"-m", f"AREG_IOS"]
+        for arg in args :
+            command.append("\""+arg+"\"")
+
+        self.run_conda_command(target=self.condaRunCommand, command=(command,))
+        
+    def check_lib_wsl(self) -> bool:
+        """Whether WSL carries the system libraries the tools need."""
+        return wsl_libraries_present()
+    
+    def check_pythonpath_windows(self, file):
+        """Whether `file` is importable by the Python of this module's environment."""
+        return check_pythonpath(self.conda, self.name_env, file)
+    
+    def give_pythonpath_windows(self):
+        """Publish Slicer's module search paths into this module's environment."""
+        give_pythonpath(self.conda, self.name_env)
+        
+    def windows_to_linux_path(self, windows_path):
+        """A Windows path as WSL sees it."""
+        return windows_to_linux_path_shared(windows_path)
+    
+    def cancel_process(self):
+        if platform.system() == 'Windows':
+            self.subpro.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(os.getpgid(self.subpro.pid), signal.SIGTERM)
+        logger.warning("Cancellation requested. Terminating process...")
+
+        self.subpro.wait() ## important
+        self.cancel = True
+    
+    def check_cli_script(self):
+        if not self.check_pythonpath_windows("AREG_IOS"):
+            self.give_pythonpath_windows()
+            results = self.check_pythonpath_windows("AREG_IOS")
+            
+        if not self.check_pythonpath_windows("CrownSegmentationcli"):
+            self.give_pythonpath_windows()
+            results = self.check_pythonpath_windows("CrownSegmentationcli")
+            
+    def condaRunCommand(self, command: list[str]):
+        '''
+        Runs a command in a specified Conda environment, handling different operating systems.
+        
+        copy paste from SlicerConda and change the process line to be able to get the stderr/stdout
+        and cancel the process without blocking slicer
+        '''
+        path_activate = self.conda.getActivateExecutable()
+
+        if path_activate=="None":
+            return "Path to conda no setup"
+
+        if platform.system() == "Windows":
+            command_execute = f"source {path_activate} {self.name_env} &&"
+            for com in command:
+                command_execute = command_execute + " " + com
+
+            user = self.conda.getUser()
+            command_to_execute = ["wsl", "--user", user, "--", "bash", "-c", command_execute]
+            logger.debug(f"Command to execute in condaRunCommand: {command_to_execute}")
+
+            # start subprocess without blocking; merge stderr into stdout to avoid
+            # deadlocking on two separately-filling pipes (see condaRunCommand docstring)
+            self.subpro = subprocess.Popen(
+                command_to_execute,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=slicer.util.startupEnvironment(),
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+        else:
+            path_conda_exe = self.conda.getCondaExecutable()
+            command_execute = f"{path_conda_exe} run -n {self.name_env}"
+            for com in command:
+                command_execute = command_execute + " " + com
+
+            logger.debug(f"Command to execute in conda run: {command_execute}")
+            # start subprocess without blocking; merge stderr into stdout to avoid
+            # deadlocking on two separately-filling pipes (see condaRunCommand docstring)
+            self.subpro = subprocess.Popen(
+                command_execute,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=slicer.util.startupEnvironment(),
+                executable="/bin/bash",
+                preexec_fn=os.setsid,
+            )
+
+        # Read the merged stdout/stderr stream in real time and print to Slicer python console.
+        # A single stream is read (instead of alternating reads on two separate pipes) because
+        # reading two pipes with sequential blocking readline() calls can deadlock: if the child
+        # fills one pipe's OS buffer while the parent is blocked reading the other pipe, both sides
+        # wait on each other forever.
+        #
+        # The lines are grouped rather than logged one by one. This runs in a
+        # worker thread while the caller spins on processEvents, and Slicer
+        # reads its console through a pipe of its own: one log call per line
+        # fills that pipe faster than the main thread drains it, and the two
+        # deadlock with the panel frozen and nothing written. That is what a
+        # crown segmentation, which prints thousands of lines in one burst,
+        # used to do to a whole AREG run.
+        try:
+            stdout = self.subpro.stdout
+            for line in iter(stdout.readline, '') if stdout is not None else []:
+                # Progress bars rewrite one line with \r: keep the last state
+                # only, which is all that means anything once it is logged.
+                line = line.rsplit("\r", 1)[-1].rstrip()
+                if not line:
+                    continue
+                self.queueCondaOutput(line)
+
+            self.subpro.wait()
+
+        except Exception:
+            # Fallback: block until end, then queue what was collected.
+            try:
+                self.stdout, self.stderr = self.subpro.communicate()
+                for stream in (self.stdout, self.stderr):
+                    for line in (stream or "").splitlines():
+                        self.queueCondaOutput(line)
+            except Exception:
+                # Last resort: there is nothing left to try after this, but losing
+                # the process output with no trace makes diagnosis impossible.
+                logger.debug("Could not recover the conda output", exc_info=True)
+
+    def queueCondaOutput(self, line):
+        """Hand one line of a conda tool's output to the main thread.
+
+        Called from the thread reading the tool, which must never log: see the
+        note next to CONDA_OUTPUT_MAX_LINES.
+        """
+        with self.conda_output_lock:
+            if len(self.conda_output) == self.conda_output.maxlen:
+                self.conda_output_dropped += 1
+            self.conda_output.append(line)
+
+    def takeCondaOutput(self, budget=CONDA_OUTPUT_CHARS_PER_UPDATE):
+        """Up to `budget` characters of queued output, oldest first.
+
+        Returns (text, dropped) where `dropped` counts the lines lost to the
+        queue's cap since the last call, so a flood is reported rather than
+        silently truncated.
+        """
+        taken = []
+        size = 0
+        with self.conda_output_lock:
+            while self.conda_output and size < budget:
+                line = self.conda_output.popleft()
+                taken.append(line)
+                size += len(line) + 1
+            dropped = self.conda_output_dropped
+            self.conda_output_dropped = 0
+        return "\n".join(taken), dropped
+    #: Short enough never to fill the pipe Slicer captures its own output
+    #: into. It lived on the Widget while this method is its only reader: the
+    #: move to the Logic left it behind, and `cls.MAX_CLI_OUTPUT_CHARS` raised
+    #: an AttributeError on the first CLI that finished.
+    MAX_CLI_OUTPUT_CHARS = 8000
+
+    @classmethod
+    def _briefCliOutput(cls, text) -> str:
+        """The tail of a CLI's output, small enough to never fill the stdout pipe."""
+        text = text or ""
+        if len(text) <= cls.MAX_CLI_OUTPUT_CHARS:
+            return text
+        kept = text[-cls.MAX_CLI_OUTPUT_CHARS:]
+        return (
+            f"[... {len(text) - len(kept)} characters omitted, "
+            f"full output in the Slicer log ...]\n{kept}"
+        )
