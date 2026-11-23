@@ -162,7 +162,7 @@ class VISU(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("VISU")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = ["Automated Dental Tools team"]
         self.parent.helpText = _("""

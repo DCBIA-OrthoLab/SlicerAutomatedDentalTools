@@ -21,7 +21,7 @@ class Crown_Seg(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("Crown_Seg")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = ["Juan Carlos Prieto (UNC)", "Lucia Cevidanes (UoM)"]
         self.parent.helpText = _("""

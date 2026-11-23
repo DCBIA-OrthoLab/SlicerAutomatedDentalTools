@@ -21,17 +21,19 @@ from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
 from ServerToolsCoreLib import slicer_io
 from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from ServerToolsCoreLib.mode_switch import legacy_icon
 
 
-class ASO(ScriptedLoadableModule):
+class ASOVisor(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("ASO")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.title = _("ASO (VISOR local)")
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
+        self.parent.icon = legacy_icon(__file__, "ASO.png")
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = [
             "Nathan Hutin (UoM)",
@@ -54,7 +56,7 @@ class ASO(ScriptedLoadableModule):
         """)
 
 
-class ASOWidget(ServerToolWidgetBase):
+class ASOVisorWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
     lives in ServerToolsCoreLib. See ARCHITECTURE.md.
 

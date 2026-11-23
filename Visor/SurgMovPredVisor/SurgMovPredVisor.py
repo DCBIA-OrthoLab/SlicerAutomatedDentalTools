@@ -2,17 +2,19 @@ from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
 from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from ServerToolsCoreLib.mode_switch import legacy_icon
 
 
-class SurgMovPred(ScriptedLoadableModule):
+class SurgMovPredVisor(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("SurgMovPred")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.title = _("SurgMovPred (VISOR local)")
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
+        self.parent.icon = legacy_icon(__file__, "SurgMovPred.png")
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = ["Paul Dumont, University of North Carolina, Chapel Hill"]
         self.parent.helpText = _("""
@@ -26,7 +28,7 @@ class SurgMovPred(ScriptedLoadableModule):
         """)
 
 
-class SurgMovPredWidget(ServerToolWidgetBase):
+class SurgMovPredVisorWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
     lives in ServerToolsCoreLib. See ARCHITECTURE.md."""
 

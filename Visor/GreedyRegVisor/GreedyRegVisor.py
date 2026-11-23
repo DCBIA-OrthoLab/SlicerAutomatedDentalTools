@@ -32,19 +32,21 @@ from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
 from ServerToolsCoreLib import slicer_io
 from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from ServerToolsCoreLib.mode_switch import legacy_icon
 
 logger = logging.getLogger("GreedyReg")
 
 
-class GreedyReg(ScriptedLoadableModule):
+class GreedyRegVisor(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("GreedyReg")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.title = _("GreedyReg (VISOR local)")
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
+        self.parent.icon = legacy_icon(__file__, "GreedyReg.png")
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = ["Lucia Cevidanes (UoM)", "Juan Carlos Prieto (UoNC)"]
         self.parent.helpText = _("""
@@ -61,7 +63,7 @@ class GreedyReg(ScriptedLoadableModule):
         """)
 
 
-class GreedyRegWidget(ServerToolWidgetBase):
+class GreedyRegVisorWidget(ServerToolWidgetBase):
     """Thin GUI: HTTP, async, form generation, styling and lifecycle all live
     in ServerToolsCoreLib. See ARCHITECTURE.md."""
 

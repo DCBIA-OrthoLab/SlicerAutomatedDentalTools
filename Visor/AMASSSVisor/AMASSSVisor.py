@@ -18,17 +18,19 @@ from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
 from ServerToolsCoreLib import slicer_io
 from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from ServerToolsCoreLib.mode_switch import legacy_icon
 
 
-class AMASSS(ScriptedLoadableModule):
+class AMASSSVisor(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("AMASSS")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.title = _("AMASSS (VISOR local)")
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
+        self.parent.icon = legacy_icon(__file__, "AMASSS.png")
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = [
             "Maxime Gillot (CPE Lyon & UoM)",
@@ -50,7 +52,7 @@ class AMASSS(ScriptedLoadableModule):
         """)
 
 
-class AMASSSWidget(ServerToolWidgetBase):
+class AMASSSVisorWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
     lives in ServerToolsCoreLib. See ARCHITECTURE.md.
 

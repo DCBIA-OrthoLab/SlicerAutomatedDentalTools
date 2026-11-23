@@ -18,17 +18,19 @@ from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
 from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from ServerToolsCoreLib.mode_switch import legacy_icon
 
 
-class BATCHDENTALSEG(ScriptedLoadableModule):
+class BATCHDENTALSEGVisor(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("BatchDentalSegmentator")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.title = _("BatchDentalSegmentator (VISOR local)")
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
+        self.parent.icon = legacy_icon(__file__, "DentalSegmentator.png")
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = [
             "Enzo Tulissi (UoM)",
@@ -48,7 +50,7 @@ class BATCHDENTALSEG(ScriptedLoadableModule):
         self.parent.acknowledgementText = _("This module was supported by NIDCR R01 024450.")
 
 
-class BATCHDENTALSEGWidget(ServerToolWidgetBase):
+class BATCHDENTALSEGVisorWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
     lives in ServerToolsCoreLib. See ARCHITECTURE.md.
 

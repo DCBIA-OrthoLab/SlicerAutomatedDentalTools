@@ -16,17 +16,19 @@ from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
 from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from ServerToolsCoreLib.mode_switch import legacy_icon
 
 
-class TMJ_Crop(ScriptedLoadableModule):
+class TMJ_CropVisor(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("TMJ_Crop")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.title = _("TMJ_Crop (VISOR local)")
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
+        self.parent.icon = legacy_icon(__file__, "TMJ_Crop.png")
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = ["Jules Grivot Pélisson (UNC)"]
         self.parent.helpText = _("""
@@ -41,7 +43,7 @@ class TMJ_Crop(ScriptedLoadableModule):
         """)
 
 
-class TMJ_CropWidget(ServerToolWidgetBase):
+class TMJ_CropVisorWidget(ServerToolWidgetBase):
     """Thin GUI: the form, the run, the progress and the results all come from
     ServerToolsCoreLib, driven by the tool's schema."""
 

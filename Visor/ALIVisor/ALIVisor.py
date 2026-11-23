@@ -43,6 +43,7 @@ from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
 from ServerToolsCoreLib import slicer_io
 from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from ServerToolsCoreLib.mode_switch import legacy_icon
 from ServerToolsCoreLib.errors import plain_text
 
 logger = logging.getLogger("ALI")
@@ -53,15 +54,16 @@ logger = logging.getLogger("ALI")
 _CONFIRM_LOAD_ABOVE = 20
 
 
-class ALI(ScriptedLoadableModule):
+class ALIVisor(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("ALI")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.title = _("ALI (VISOR local)")
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
+        self.parent.icon = legacy_icon(__file__, "ALI.png")
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = [
             "Maxime Gillot (UoM)",
@@ -85,7 +87,7 @@ class ALI(ScriptedLoadableModule):
         """)
 
 
-class ALIWidget(ServerToolWidgetBase):
+class ALIVisorWidget(ServerToolWidgetBase):
     """Thin GUI: HTTP, async, form generation, styling and lifecycle all live
     in ServerToolsCoreLib. See ARCHITECTURE.md."""
 

@@ -31,7 +31,7 @@ class SADTToolsManager(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("SADT Tools Manager")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = ["Jules Grivot Pélisson (UNC)"]
         self.parent.helpText = _("""

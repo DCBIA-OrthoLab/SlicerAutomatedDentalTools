@@ -15,17 +15,19 @@ from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
 from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from ServerToolsCoreLib.mode_switch import legacy_icon
 
 
-class AutoCrop3D(ScriptedLoadableModule):
+class AutoCrop3DVisor(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("AutoCrop3D")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.title = _("AutoCrop3D (VISOR local)")
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
+        self.parent.icon = legacy_icon(__file__, "AutoCrop3D.png")
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = [
             "Enzo Tulissi (UoM)",
@@ -42,7 +44,7 @@ class AutoCrop3D(ScriptedLoadableModule):
         self.parent.acknowledgementText = _("This module was supported by NIDCR R01 024450.")
 
 
-class AutoCrop3DWidget(ServerToolWidgetBase):
+class AutoCrop3DVisorWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
     lives in ServerToolsCoreLib. See ARCHITECTURE.md.
 

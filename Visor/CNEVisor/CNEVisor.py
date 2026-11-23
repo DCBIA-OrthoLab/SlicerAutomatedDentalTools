@@ -29,17 +29,19 @@ from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
 from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from ServerToolsCoreLib.mode_switch import legacy_icon
 
 
-class CNE(ScriptedLoadableModule):
+class CNEVisor(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("CNE")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.title = _("CNE (VISOR local)")
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
+        self.parent.icon = legacy_icon(__file__, "CNE.png")
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = ["Paul Dumont, University of North Carolina, Chapell Hill"]
         self.parent.helpText = _("""
@@ -54,7 +56,7 @@ class CNE(ScriptedLoadableModule):
         """)
 
 
-class CNEWidget(ServerToolWidgetBase):
+class CNEVisorWidget(ServerToolWidgetBase):
     """Thin GUI: HTTP, async, form generation, styling and lifecycle all live
     in ServerToolsCoreLib. See ARCHITECTURE.md."""
 

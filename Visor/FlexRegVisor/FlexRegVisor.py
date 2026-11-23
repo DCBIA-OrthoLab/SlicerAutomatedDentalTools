@@ -34,6 +34,7 @@ from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
 from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from ServerToolsCoreLib.mode_switch import legacy_icon
 
 # The corner pads, in the order the preview names them.
 CORNERS = ("anterior_right", "anterior_left", "posterior_right", "posterior_left")
@@ -46,16 +47,17 @@ TEETH = {corner: "tooth_" + corner for corner in CORNERS}
 CONTOUR_NODE = "FlexReg patch preview"
 
 
-class FlexReg(ScriptedLoadableModule):
+class FlexRegVisor(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("FlexReg")
-        self.parent.categories = ["Automated Dental Tools"]
-        self.parent.dependencies = []
+        self.parent.title = _("FlexReg (VISOR local)")
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
+        self.parent.icon = legacy_icon(__file__, "FlexReg.png")
+        self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = ["Nathan Hutin (UoM)", "Luc Anchling (UoM)"]
         self.parent.helpText = _(
             "Build a registration patch on an intraoral arch and register two "
@@ -64,7 +66,7 @@ class FlexReg(ScriptedLoadableModule):
         )
 
 
-class FlexRegWidget(ServerToolWidgetBase):
+class FlexRegVisorWidget(ServerToolWidgetBase):
     """The panel. Everything except the preview comes from the schema."""
 
     TOOL_NAME = "FlexReg"

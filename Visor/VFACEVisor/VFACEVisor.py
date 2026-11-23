@@ -48,9 +48,10 @@ from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
 from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
+from ServerToolsCoreLib.mode_switch import legacy_icon
 
 
-class VFACE(ScriptedLoadableModule):
+class VFACEVisor(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -59,8 +60,9 @@ class VFACE(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         # "V FACE", with the space: that is the name in the module selector
         # today, and somebody looking for it types what they saw.
-        self.parent.title = _("V FACE")
-        self.parent.categories = ["Automated Dental Tools"]
+        self.parent.title = _("V FACE (VISOR local)")
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
+        self.parent.icon = legacy_icon(__file__, "VFACE.png")
         self.parent.dependencies = ["ServerToolsCore"]
         self.parent.contributors = [
             "Alexandre Buisson (University of North Carolina at Chapel Hill)",
@@ -86,7 +88,7 @@ class VFACE(ScriptedLoadableModule):
         """)
 
 
-class VFACEWidget(ServerToolWidgetBase):
+class VFACEVisorWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
     lives in ServerToolsCoreLib. See ARCHITECTURE.md.
 
