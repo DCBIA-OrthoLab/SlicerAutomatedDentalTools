@@ -14,7 +14,7 @@ class ServerToolsCore(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("Server Tools Core")
-        self.parent.categories = ["Automated Dental Tools Remote.Advanced"]
+        self.parent.categories = ["Automated Dental Tools.VISOR local"]
         self.parent.dependencies = []
         self.parent.contributors = ["Automated Dental Tools team"]
         self.parent.hidden = True
@@ -48,3 +48,9 @@ class ServerToolsCore(ScriptedLoadableModule):
                     print(f"ServerToolsCore: put back {', '.join(restored)} after an interrupted update")
         except Exception as error:  # noqa: BLE001 -- bookkeeping must never stop Slicer
             print(f"ServerToolsCore: could not record this Slicer: {error}")
+
+        # The bar that opens the VISOR version, injected into the classic panels
+        # (their files are not touched), and re-injected after a Reload.
+        from ServerToolsCoreLib import mode_switch
+
+        mode_switch.install()

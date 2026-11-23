@@ -28,6 +28,8 @@ set(MODULE_PYTHON_SCRIPTS
   ServerToolsCoreLib/settings_qt.py
   ServerToolsCoreLib/tls.py
   ServerToolsCoreLib/local_schema.py
+  ServerToolsCoreLib/tools_ui.py
+  ServerToolsCoreLib/mode_switch.py
   )
 
 set(MODULE_PYTHON_RESOURCES

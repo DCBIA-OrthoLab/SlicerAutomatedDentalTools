@@ -27,7 +27,7 @@ from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModuleWidget
 from slicer.util import VTKObservationMixin
 
-from . import (config, console, design, digest, formgen, is_file_type, is_log_event,
+from . import (config, console, design, digest, formgen, mode_switch, is_file_type, is_log_event,
                new_run_id, slicer_io, testfile_entries)
 from .errors import RunCancelled, ServerToolError, plain_text
 from .worker import BackgroundJob
@@ -611,6 +611,9 @@ class ServerToolWidgetBase(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.uiWidget = qt.QWidget()
         self.layout.addWidget(self.uiWidget)
+        # The bar that opens the classic version of this tool, above everything
+        # else. Added again by every setup(), so a Reload keeps it.
+        mode_switch.add_visor_bar(self)
         rootLayout = qt.QVBoxLayout(self.uiWidget)
 
         self._statusBadge = design.status_badge(local=self._isLocal())
@@ -707,6 +710,7 @@ class ServerToolWidgetBase(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._refreshServerStatus()
 
     def cleanup(self) -> None:
+        mode_switch.remove_visor_bar(self)
         self.removeObservers()
         # Server-side too, not only locally. This panel is going away (a module
         # reload, Slicer closing), so nothing here can ever collect these
