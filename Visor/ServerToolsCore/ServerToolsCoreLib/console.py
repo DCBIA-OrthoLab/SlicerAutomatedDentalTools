@@ -37,12 +37,26 @@ METRIC = "#1F3F8F"  # dark blue: a number a tool measured, there to be read or s
 WARNING = "#D97706"  # amber: reads on the light and on the dark console
 ERROR = "#FF0000"  # what Slicer already uses for stderr and errors
 
-# The extension's own tree, whatever the layout: in a source checkout this
-# file is <repo>/ServerToolsCore/ServerToolsCoreLib/console.py, in an installed
+# The extension's tree, whatever the layout: in a source checkout this file is
+# <repo>/Visor/ServerToolsCore/ServerToolsCoreLib/console.py, in an installed
 # extension <ext>/lib/Slicer-X.Y/qt-scripted-modules/ServerToolsCoreLib/console.py.
-# Three levels up holds every module of the extension in both, and nothing
-# else of Slicer's.
+# Three levels up is `Visor/` in the first and `lib/Slicer-X.Y` in the second,
+# and in the second it holds the classic modules and the command line modules
+# too. So the tree alone cannot say what is ours: `is_ours` also requires the
+# file to be on the list below. The classic modules keep their upstream journal.
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# The module files of the VISOR set (`<name>.py`), listed by name because the
+# classic modules sit in the same folder once installed.
+OUR_MODULE_FILES = frozenset({
+    "ServerToolsCore", "SADTToolsManager", "VISU", "Convert", "Crown_Seg",
+    "ALIVisor", "AMASSSVisor", "AREGVisor", "ASOVisor", "AutoCrop3DVisor",
+    "AutoMatrixVisor", "BATCHDENTALSEGVisor", "CLICVisor", "CNEVisor",
+    "DOCShapeAXIVisor", "FlexRegVisor", "GreedyRegVisor", "SurgMovPredVisor",
+    "TMJ_CropVisor", "VFACEVisor",
+})
+# The Python packages of the VISOR set. None of them exists in the classic set.
+OUR_PACKAGES = frozenset({"ServerToolsCoreLib", "FlexRegLib", "VISULib"})
 
 
 def _console():
@@ -77,15 +91,28 @@ def show(text: str, color: str = OUTPUT) -> bool:
 
 
 def is_ours(pathname: str, root: str = _ROOT) -> bool:
-    """Whether the file that logged a record belongs to this extension.
+    """Whether the file that logged a record is one of the VISOR set's files.
 
-    Compared with a trailing separator, so a sibling checkout named after this
-    one (`<repo>-wt-something`) is not mistaken for it.
+    It must be under `root` (compared with a trailing separator, so a sibling
+    checkout named after this one is not mistaken for it) AND be either a
+    module file of the VISOR set or inside one of its packages. A warning from
+    a classic module, its helper packages or a command line module is left
+    exactly as Slicer would print it.
     """
     if not pathname:
         return False
+    full = os.path.normcase(os.path.abspath(pathname))
     prefix = os.path.join(os.path.normcase(os.path.abspath(root)), "")
-    return os.path.normcase(os.path.abspath(pathname)).startswith(prefix)
+    if not full.startswith(prefix):
+        return False
+    parts = full[len(prefix):].split(os.sep)
+    if any(part in OUR_PACKAGES_NORMCASE for part in parts[:-1]):
+        return True
+    return os.path.splitext(parts[-1])[0] in OUR_MODULE_FILES_NORMCASE and parts[-1].endswith(".py")
+
+
+OUR_PACKAGES_NORMCASE = frozenset(os.path.normcase(name) for name in OUR_PACKAGES)
+OUR_MODULE_FILES_NORMCASE = frozenset(os.path.normcase(name) for name in OUR_MODULE_FILES)
 
 
 class OrangeWarnings(logging.Filter):

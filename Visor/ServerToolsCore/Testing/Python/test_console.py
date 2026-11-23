@@ -114,6 +114,44 @@ class IsOursTest(unittest.TestCase):
         self.assertFalse(console.is_ours("", _ROOT))
 
 
+class TheClassicModulesKeepTheirJournalTest(unittest.TestCase):
+    """Installed, the classic and the VISOR modules share one folder, and the
+    command line modules sit in its sibling. The filter takes files from a
+    list, not a folder, so a classic module's warning is posted as upstream
+    posts it."""
+
+    ROOT = os.path.join(os.sep, "ext", "lib", "Slicer-5.12")
+    QT = os.path.join(ROOT, "qt-scripted-modules")
+
+    def test_ours_installed(self):
+        for rel in ("ALIVisor.py", "VISU.py", "ServerToolsCore.py",
+                    os.path.join("ServerToolsCoreLib", "base_widget.py"),
+                    os.path.join("FlexRegLib", "util.py"),
+                    os.path.join("VISULib", "index.py")):
+            self.assertTrue(console.is_ours(os.path.join(self.QT, rel), self.ROOT), rel)
+
+    def test_classic_files_installed_are_not(self):
+        for path in (os.path.join(self.QT, "ALI.py"),
+                     os.path.join(self.QT, "ALI_Method", "CBCT.py"),
+                     os.path.join(self.QT, "FlexReg_utils", "util.py"),
+                     os.path.join(self.QT, "GreedyReg.py"),
+                     os.path.join(self.ROOT, "cli-modules", "ALI_CBCT.py"),
+                     os.path.join(self.QT, "ADTLib", "utils.py")):
+            self.assertFalse(console.is_ours(path, self.ROOT), path)
+
+    def test_a_classic_warning_is_left_on_slicers_own_path(self):
+        shown, handler = [], _Handler()
+        keep = console.OrangeWarnings(handler, show=lambda t, c: shown.append(t) or True, root=self.ROOT)
+        record = _record(logging.WARNING, pathname=os.path.join(self.QT, "ALI_Method", "CBCT.py"))
+        self.assertTrue(keep.filter(record))
+        self.assertEqual((shown, handler.emitted), ([], []))
+
+    def test_the_list_is_the_visor_folder(self):
+        names = {d for d in os.listdir(_ROOT)
+                 if os.path.isfile(os.path.join(_ROOT, d, d + ".py"))}
+        self.assertEqual(names, set(console.OUR_MODULE_FILES))
+
+
 class ShowTest(unittest.TestCase):
     def test_nothing_is_printed_outside_slicer(self):
         self.assertFalse(console.show("hello"))
