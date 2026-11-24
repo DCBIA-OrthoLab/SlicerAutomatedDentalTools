@@ -101,32 +101,32 @@ class SwitchTest(unittest.TestCase):
 class BarStateTest(unittest.TestCase):
     def test_the_classic_bar_offers_the_visor_version(self):
         state = ms.bar_state("classic", "ALI")
-        self.assertEqual(state.button, "Passer à la version VISOR locale")
+        self.assertEqual(state.button, "Switch to the VISOR local version")
         self.assertTrue(state.enabled)
-        self.assertIn("classique", state.heading)
+        self.assertIn("lassic", state.heading)
         self.assertTrue(state.explanation)
 
     def test_the_visor_bar_offers_the_classic_version(self):
         state = ms.bar_state("visor", "ALI")
-        self.assertEqual(state.button, "Revenir à la version classique")
+        self.assertEqual(state.button, "Back to the classic version")
         self.assertTrue(state.enabled)
         self.assertIn("VISOR", state.heading)
 
     def test_a_running_treatment_greys_the_bar_and_says_why(self):
         for side in ("classic", "visor"):
-            state = ms.bar_state(side, "ALI", busy_reason="2 traitement(s) lancé(s) depuis ce panneau")
+            state = ms.bar_state(side, "ALI", busy_reason="2 process(es) started from this panel")
             self.assertFalse(state.enabled, side)
             self.assertIn("ALI", state.explanation)
-            self.assertIn("2 traitement(s)", state.explanation)
+            self.assertIn("2 process(es)", state.explanation)
             self.assertTrue(state.tooltip)
 
     def test_a_missing_twin_greys_the_bar_and_says_so(self):
         state = ms.bar_state("classic", "ALI", target_loaded=False)
         self.assertFalse(state.enabled)
-        self.assertIn("pas chargée", state.explanation)
+        self.assertIn("not loaded", state.explanation)
 
     def test_busy_wins_over_a_missing_twin(self):
-        self.assertIn("en cours", ms.bar_state("visor", "ALI", "x", target_loaded=False).explanation)
+        self.assertIn("process running", ms.bar_state("visor", "ALI", "x", target_loaded=False).explanation)
 
     def test_an_unknown_side_is_refused(self):
         with self.assertRaises(ValueError):

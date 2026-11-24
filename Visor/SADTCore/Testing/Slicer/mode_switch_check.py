@@ -94,11 +94,11 @@ s = qt.QSettings()
 s.remove(ms.settings_key("ALI"))
 check("default mode is classic", ms.get_mode("ALI") == "classic")
 cb = ms._BARS[(ms.CLASSIC, "ALI")]
-check("classic button text", cb.button.text == "Passer à la version VISOR locale", cb.button.text)
+check("classic button text", cb.button.text == "Switch to the VISOR local version", cb.button.text)
 cb.button.click()
 check("click classic -> selectModule(ALIVisor), mode visor", chosen == ["ALIVisor"] and ms.get_mode("ALI") == "visor", (chosen, ms.get_mode("ALI")))
 vb = ms._BARS[(ms.VISOR, "ALI")]
-check("visor button text", vb.button.text == "Revenir à la version classique", vb.button.text)
+check("visor button text", vb.button.text == "Back to the classic version", vb.button.text)
 vb.button.click()
 check("click visor -> selectModule(ALI), mode classic", chosen == ["ALIVisor", "ALI"] and ms.get_mode("ALI") == "classic", (chosen, ms.get_mode("ALI")))
 # failing select restores
@@ -119,7 +119,7 @@ nodes = [FakeNode("ALI_CBCT", True)]
 orig = slicer.util.getNodesByClass
 slicer.util.getNodesByClass = lambda c: nodes
 cb.refresh()
-check("classic busy: button disabled and text says why", (not cb.button.enabled) and "en cours" in cb.explanation.text, cb.explanation.text)
+check("classic busy: button disabled and text says why", (not cb.button.enabled) and "running" in cb.explanation.text, cb.explanation.text)
 cb.button.click(); n_before = len(chosen)
 check("disabled button does nothing", len(chosen) == n_before)
 nodes[0].b = False
@@ -133,11 +133,11 @@ slicer.util.getNodesByClass = orig
 w = slicer.modules.ALIVisorWidget
 w._runs.append(object())
 vb = ms._BARS[(ms.VISOR, "ALI")]; vb.refresh()
-check("visor busy: disabled with reason", (not vb.button.enabled) and "en cours" in vb.explanation.text, vb.explanation.text)
+check("visor busy: disabled with reason", (not vb.button.enabled) and "running" in vb.explanation.text, vb.explanation.text)
 w._runs.clear(); vb.refresh()
 check("visor idle: enabled", vb.button.enabled)
 # --- target missing
 st = ms.bar_state("classic", "ALI", "", False)
-check("target missing: disabled, says so", (not st.enabled) and "pas chargée" in st.explanation)
+check("target missing: disabled, says so", (not st.enabled) and "not loaded" in st.explanation)
 print("SUMMARY", sum(res), "/", len(res))
 slicer.app.exit(0 if all(res) else 1)

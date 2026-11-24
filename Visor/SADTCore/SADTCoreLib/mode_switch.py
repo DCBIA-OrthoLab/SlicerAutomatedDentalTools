@@ -174,35 +174,34 @@ def bar_state(side: str, classic: str, busy_reason: str = "", target_loaded: boo
     False when the other version's module failed to load in this session.
     """
     if side == CLASSIC:
-        heading = _tr("Version classique (calcul dans Slicer, environnement conda)")
-        button = _tr("Passer à la version VISOR locale")
-        other = _tr("la version VISOR locale")
+        heading = _tr("Classic version (computed in Slicer, conda environment)")
+        button = _tr("Switch to the VISOR local version")
+        other = _tr("the VISOR local version")
         explanation = _tr(
-            "La version VISOR locale utilise l'outil VISOR installé sur cet ordinateur, dans son "
-            "propre environnement. Changer de version n'arrête aucun traitement.")
+            "The VISOR local version uses the VISOR tool installed on this computer, in its own "
+            "environment. Switching versions does not stop any running process.")
     elif side == VISOR:
-        heading = _tr("Version VISOR locale (outil installé sur cet ordinateur)")
-        button = _tr("Revenir à la version classique")
-        other = _tr("la version classique")
+        heading = _tr("VISOR local version (tool installed on this computer)")
+        button = _tr("Back to the classic version")
+        other = _tr("the classic version")
         explanation = _tr(
-            "La version classique calcule dans Slicer, avec l'environnement conda de l'extension. "
-            "Changer de version n'arrête aucun traitement.")
+            "The classic version computes in Slicer, with the extension's conda environment. "
+            "Switching versions does not stop any running process.")
     else:
         raise ValueError(f"unknown side {side!r}")
 
     if busy_reason:
         return BarState(
             heading,
-            _tr("Un traitement {tool} est en cours dans cette version ({why}). Le changement de "
-                "version est désactivé tant qu'il dure : il ne l'arrêterait pas, et vous le "
-                "perdriez de vue.").format(tool=classic, why=busy_reason),
-            button, False, _tr("Désactivé : un traitement est en cours dans cette version."))
+            _tr("{tool} has a process running in this version ({why}). Switching versions is "
+                "disabled while it runs: it would not stop it, and you would lose track of it.").format(tool=classic, why=busy_reason),
+            button, False, _tr("Disabled: a process is running in this version."))
     if not target_loaded:
         return BarState(
             heading,
-            _tr("{other} n'est pas chargée dans cette session de Slicer (voir le journal des "
-                "modules). Il n'y a rien vers quoi basculer.").format(other=other.capitalize()),
-            button, False, _tr("Désactivé : le module de l'autre version n'est pas chargé."))
+            _tr("{other} is not loaded in this Slicer session (see the module log). "
+                "There is nothing to switch to.").format(other=other[:1].upper() + other[1:]),
+            button, False, _tr("Disabled: the other version's module is not loaded."))
     return BarState(heading, explanation, button, True)
 
 
@@ -260,7 +259,7 @@ def classic_busy_reason(classic: str) -> str:
     for node in nodes:
         with contextlib.suppress(Exception):
             if node.GetModuleTitle().lower() in names and node.IsBusy():
-                return _tr("module en ligne de commande {name} actif").format(name=node.GetModuleTitle())
+                return _tr("command-line module {name} is running").format(name=node.GetModuleTitle())
     return ""
 
 
@@ -269,7 +268,7 @@ def visor_busy_reason(widget) -> str:
     runs = list(getattr(widget, "_runs", None) or [])
     if not runs:
         return ""
-    return _tr("{n} traitement(s) lancé(s) depuis ce panneau").format(n=len(runs))
+    return _tr("{n} process(es) started from this panel").format(n=len(runs))
 
 
 # --------------------------------------------------------------------------
