@@ -150,9 +150,24 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
         root.addWidget(self.pathLabel)
         self.whyLabel = design.hint_label("")
         root.addWidget(self.whyLabel)
+        # The version line wraps, and so does everything below that names tools:
+        # a label that does not wrap, or a button that names them, sets the
+        # panel's minimum width to the length of the list.
+        versionRow = qt.QHBoxLayout()
         self.versionLabel = qt.QLabel()
         self.versionLabel.setTextFormat(qt.Qt.RichText)
-        root.addWidget(self.versionLabel)
+        self.versionLabel.setWordWrap(True)
+        versionRow.addWidget(self.versionLabel, 1)
+        # The watch asks every 15 minutes; this asks now, after a push.
+        self.checkButton = design.secondary_button(_("Check for updates"))
+        self.checkButton.clicked.connect(lambda: self.onCheckForUpdates())
+        versionRow.addWidget(self.checkButton, 0, qt.Qt.AlignTop)
+        root.addLayout(versionRow)
+        self.checkLabel = design.hint_label("")
+        self.checkLabel.setWordWrap(True)
+        self.checkLabel.setVisible(False)
+        root.addWidget(self.checkLabel)
+        self._checkJob = None
         # A study keeps the version its results came from; everyone else follows.
         self.pinCheckBox = qt.QCheckBox(_("Stay on this tools version (for a study): do not offer updates"))
         self.pinCheckBox.toggled.connect(lambda checked: self.onPin(checked))
@@ -160,6 +175,10 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
         self.updateAllButton = design.primary_button("")
         self.updateAllButton.clicked.connect(lambda: self.onUpdateAll())
         root.addWidget(self.updateAllButton)
+        # The names of the tools it updates: here, wrapped, not on the button.
+        self.updateAllNames = design.hint_label("")
+        self.updateAllNames.setWordWrap(True)
+        root.addWidget(self.updateAllNames)
         buttons = qt.QHBoxLayout()
         openButton = design.secondary_button(_("Open folder"))
         changeButton = design.secondary_button(_("Change for this Slicer..."))
@@ -268,9 +287,13 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
         self.pinCheckBox.blockSignals(True)
         self.pinCheckBox.setChecked(bool(getattr(self.store, "pinned", False)))
         self.pinCheckBox.blockSignals(False)
-        self.updateAllButton.setText(_("Update {count} tool(s) to {version}: {names}").format(
-            count=len(outdated), version=self.store.version, names=", ".join(outdated)))
+        self.updateAllButton.setText(_("Update all ({count} tool(s)) to {version}").format(
+            count=len(outdated), version=self.store.version))
+        self.updateAllButton.setToolTip(", ".join(outdated))
         self.updateAllButton.setVisible(bool(outdated))
+        self.updateAllNames.setText(", ".join(outdated))
+        self.updateAllNames.setVisible(bool(outdated))
+        self._showCheckButton()
         old = [row for row in self.tools if not row["current"] and self.store.is_older(row["version"])]
         versions = sorted({row["version"] for row in old}, key=tools_store.version_key)
         size = sum(row.get("size") or 0 for row in old)
@@ -295,6 +318,46 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
         if state.get("error"):
             return f" &nbsp;·&nbsp; following SADT-VISOR's releases (could not ask at {when}: offline?)"
         return f" &nbsp;·&nbsp; following SADT-VISOR's releases (asked at {when})"
+
+    def _showCheckButton(self):
+        """Enabled when this Slicer follows the releases; the tooltip says why not."""
+        if self._checkJob is not None:
+            return
+        self.checkButton.setText(_("Check for updates"))
+        if not getattr(self.store, "from_release", False):
+            enabled, tip = False, _("The tools come from a SADT-VISOR checkout, not from its releases.")
+        elif getattr(self.store, "pinned", False):
+            enabled, tip = False, _("Kept on {version} for a study: untick the box below to follow "
+                                    "the releases again.").format(version=self.store.version)
+        else:
+            enabled, tip = True, _("Ask SADT-VISOR now for a newer tools release "
+                                   "(otherwise asked every 15 minutes).")
+        self.checkButton.setEnabled(enabled)
+        self.checkButton.setToolTip(tip)
+
+    def onCheckForUpdates(self):
+        from SADTCoreLib import releases
+        from SADTCoreLib.worker import BackgroundJob
+
+        if self._checkJob is not None:
+            return
+        root, before = self.store.root, self.store.version
+        self.checkButton.setEnabled(False)
+        self.checkButton.setText(_("Checking..."))
+
+        def finished(state):
+            self._checkJob = None
+            reset_client()
+            self.refresh()
+            self.checkLabel.setText(releases.describe_check(before, state))
+            self.checkLabel.setVisible(True)
+
+        def failed(error):
+            finished({"error": str(error), "latest": releases.latest_known(root)})
+
+        self._checkJob = BackgroundJob(lambda _progress: releases.check(root),
+                                       on_success=finished, on_error=failed)
+        self._checkJob.start()
 
     def onPin(self, checked: bool):
         settings = slicer_settings()
