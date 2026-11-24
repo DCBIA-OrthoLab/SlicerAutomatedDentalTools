@@ -141,6 +141,18 @@ def check(root: str, timeout: float = 10.0, levels=KNOWN_API_LEVELS) -> dict:
     return state
 
 
+def describe_check(before: str, state: dict) -> str:
+    """One line for a user who asked: what the check found, against `before`."""
+    when = time.strftime("%H:%M", time.localtime(float(state.get("checked") or time.time())))
+    latest = state.get("latest")
+    if state.get("error"):
+        seen = f" The newest release seen before is {latest}." if latest else ""
+        return f"Could not reach GitHub at {when} (offline?).{seen}"
+    if latest and version_key(latest) > version_key(before):
+        return f"Tools {latest} is available (this Slicer had {before}), asked at {when}."
+    return f"Up to date: {before} is the newest tools release, asked at {when}."
+
+
 def due(root: str, interval: float = CHECK_INTERVAL_SECONDS) -> bool:
     """Whether this tools folder has not been checked for `interval` seconds."""
     return time.time() - float(read_state(root).get("checked") or 0) >= interval

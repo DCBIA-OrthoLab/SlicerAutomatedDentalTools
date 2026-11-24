@@ -168,6 +168,27 @@ class ReleasesTest(unittest.TestCase):
         self.assertFalse(os.path.isdir(releases.source_dir(self.root, "2026.11.24-2")))
 
 
+class DescribeCheckTest(unittest.TestCase):
+    """The line a user reads after pressing Check for updates."""
+
+    def test_a_newer_release_is_named(self):
+        text = releases.describe_check("2026.11.24-2", {"latest": "2026.11.24-10", "error": "", "checked": 0})
+
+        self.assertIn("2026.11.24-10 is available", text)
+        self.assertIn("2026.11.24-2", text)
+
+    def test_the_same_release_is_up_to_date(self):
+        text = releases.describe_check("2026.11.24-3", {"latest": "2026.11.24-3", "error": "", "checked": 0})
+
+        self.assertTrue(text.startswith("Up to date"))
+
+    def test_offline_says_so_and_keeps_what_was_seen(self):
+        text = releases.describe_check("2026.11.24-2", {"latest": "2026.11.24-3", "error": "offline"})
+
+        self.assertIn("Could not reach GitHub", text)
+        self.assertIn("2026.11.24-3", text)
+
+
 class ReleaseVersionTest(unittest.TestCase):
     """The version a Slicer runs: pinned, else the newest seen, else its own."""
 
