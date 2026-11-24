@@ -137,6 +137,8 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
 
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
+        self._folderSize = {}  # tools folder -> bytes, as last measured
+        self._sizeJob = None
         self.uiWidget = qt.QWidget()
         self.layout.addWidget(self.uiWidget)
         root = qt.QVBoxLayout(self.uiWidget)
@@ -383,13 +385,44 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
                 total += value or 0
                 table.setItem(index, column, qt.QTableWidgetItem(size(value) if value is not None else "—"))
             _fit(table, stretch=(0, 3) if table is self.modelsTable else -2)
-        # The folder as it is on disk, each hard-linked file once: the per-tool
-        # sizes above each count the packages they share (torch) in full.
-        total = tools_store.folder_size(self.store.root) if os.path.isdir(self.store.root) else 0
+        self._showSummary()
+        self._measureFolder()
+
+    def _showSummary(self):
+        """The counts now; the folder's size as last measured, or "measuring"."""
         tools = len([row for row in self.tools if row["current"]])
+        measured = self._folderSize.get(self.store.root)
         self.summaryLabel.setText(
             _("{tools} tools · {models} models · {size}").format(
-                tools=tools, models=len(self.modelRows), size=size(total)))
+                tools=tools, models=len(self.modelRows),
+                size=tools_store.human_size(measured) if measured is not None else _("measuring...")))
+
+    def _measureFolder(self):
+        """The folder as it is on disk, each hard-linked file once (the per-tool
+        sizes each count the packages they share, torch, in full).
+
+        Measured on a worker: the walk visits every file of every environment
+        and of uv's cache, half a million on a full install, which took three
+        seconds each time the Manager was opened.
+        """
+        from SADTCoreLib.worker import BackgroundJob
+
+        root = self.store.root
+        if self._sizeJob is not None or not os.path.isdir(root):
+            return
+
+        def measured(total):
+            self._sizeJob = None
+            self._folderSize[root] = total
+            if self.store.root == root:
+                self._showSummary()
+
+        def failed(_error):
+            self._sizeJob = None
+
+        self._sizeJob = BackgroundJob(lambda _progress: tools_store.folder_size(root),
+                                      on_success=measured, on_error=failed)
+        self._sizeJob.start()
 
     # ---- actions ---------------------------------------------------------
 
