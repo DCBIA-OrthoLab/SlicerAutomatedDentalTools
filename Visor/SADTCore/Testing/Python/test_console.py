@@ -126,7 +126,6 @@ class TheClassicModulesKeepTheirJournalTest(unittest.TestCase):
     def test_ours_installed(self):
         for rel in ("ALIVisor.py", "SADTVisu.py", "SADTCore.py",
                     os.path.join("SADTCoreLib", "base_widget.py"),
-                    os.path.join("FlexRegLib", "util.py"),
                     os.path.join("SADTVisuLib", "index.py")):
             self.assertTrue(console.is_ours(os.path.join(self.QT, rel), self.ROOT), rel)
 
@@ -134,6 +133,7 @@ class TheClassicModulesKeepTheirJournalTest(unittest.TestCase):
         for path in (os.path.join(self.QT, "ALI.py"),
                      os.path.join(self.QT, "ALI_Method", "CBCT.py"),
                      os.path.join(self.QT, "FlexReg_utils", "util.py"),
+                     os.path.join(self.QT, "FlexReg.py"),
                      os.path.join(self.QT, "GreedyReg.py"),
                      os.path.join(self.ROOT, "cli-modules", "ALI_CBCT.py"),
                      os.path.join(self.QT, "ADTLib", "utils.py")):

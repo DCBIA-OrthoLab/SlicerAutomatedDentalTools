@@ -133,8 +133,13 @@ class BarStateTest(unittest.TestCase):
             ms.bar_state("remote", "ALI")
 
     def test_the_target_of_each_side(self):
-        self.assertEqual(ms.target_module("classic", "FlexReg"), "FlexRegVisor")
-        self.assertEqual(ms.target_module("visor", "FlexReg"), "FlexReg")
+        self.assertEqual(ms.target_module("classic", "VFACE"), "VFACEVisor")
+        self.assertEqual(ms.target_module("visor", "VFACE"), "VFACE")
+
+    def test_flexreg_has_no_bar_until_its_visor_port(self):
+        self.assertIn("FlexReg", ms.CLASSIC_ONLY)
+        self.assertNotIn("FlexReg", ms.EQUIVALENTS)
+        self.assertNotIn("FlexRegVisor", ms.VISOR_MODULES)
 
 
 class BusyTest(unittest.TestCase):

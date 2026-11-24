@@ -30,7 +30,8 @@ Pairs, and why some modules have no bar
   classic one does. A bar would promise "the same thing, another engine", so
   there is none, on either side. GreedyReg: the classic panel has sliders and
   Center/Harden/transform export that the VISOR batch form does not have.
-* `CLASSIC_ONLY`: no VISOR panel: no bar, nothing is injected.
+* `CLASSIC_ONLY`: no VISOR panel: no bar, nothing is injected. FlexReg is
+  here until its VISOR port is ready.
 * `VISOR_ONLY`: no classic panel: no bar.
 
 Parity of the tools in `EQUIVALENTS` with their classic panel has not been
@@ -40,8 +41,8 @@ What the bar cannot see
 -----------------------
 A classic treatment is detected only when it runs through a command line module
 of the extension (a `vtkMRMLCommandLineModuleNode` that is busy). The classic
-modules that run conda commands by themselves (ALI, AREG, ASO, CLIC, DOCShapeAXI,
-FlexReg) are not detected, and their bar is not greyed out.
+modules that run conda commands by themselves (ALI, AREG, ASO, CLIC, DOCShapeAXI)
+are not detected, and their bar is not greyed out.
 """
 
 import logging
@@ -71,7 +72,6 @@ EQUIVALENTS = {
     "CLIC": (),
     "CNE": ("CNE_CLI",),
     "DOCShapeAXI": ("DOCShapeAXI_CLI",),
-    "FlexReg": ("FlexReg_CLI",),
     "SurgMovPred": ("SurgMovPred_CLI",),
     "TMJ_Crop": ("TMJ_Crop_CLI",),
     "VFACE": ("VFACE_CLI",),
@@ -80,7 +80,8 @@ NO_PARITY = {
     "GreedyReg": "the classic panel has sliders, Center, Harden and a .tfm export that the "
                  "VISOR batch form does not have",
 }
-CLASSIC_ONLY = ("MRI2CBCT", "Agent", "CNE_Dashboard", "Medical_Data_Anonymizer_Module")
+# FlexReg: its VISOR port is not ready, upstream ships the classic module alone for now.
+CLASSIC_ONLY = ("MRI2CBCT", "Agent", "CNE_Dashboard", "Medical_Data_Anonymizer_Module", "FlexReg")
 VISOR_ONLY = ("SADTVisu", "Convert", "CrownSeg", "SADTToolsManager")
 
 # Every module of the VISOR set, with the classic one it is the twin of.

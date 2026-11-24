@@ -52,11 +52,11 @@ OUR_MODULE_FILES = frozenset({
     "SADTCore", "SADTToolsManager", "SADTVisu", "Convert", "CrownSeg",
     "ALIVisor", "AMASSSVisor", "AREGVisor", "ASOVisor", "AutoCrop3DVisor",
     "AutoMatrixVisor", "BATCHDENTALSEGVisor", "CLICVisor", "CNEVisor",
-    "DOCShapeAXIVisor", "FlexRegVisor", "GreedyRegVisor", "SurgMovPredVisor",
+    "DOCShapeAXIVisor", "GreedyRegVisor", "SurgMovPredVisor",
     "TMJ_CropVisor", "VFACEVisor",
 })
 # The Python packages of the VISOR set. None of them exists in the classic set.
-OUR_PACKAGES = frozenset({"SADTCoreLib", "FlexRegLib", "SADTVisuLib"})
+OUR_PACKAGES = frozenset({"SADTCoreLib", "SADTVisuLib"})
 
 
 def _console():

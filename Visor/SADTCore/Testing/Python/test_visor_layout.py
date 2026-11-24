@@ -123,7 +123,7 @@ class ManifestTest(unittest.TestCase):
                 self.assertIn("SADTCoreLib/" + f, listed, f)
 
     def test_every_import_of_a_shared_package_is_in_a_manifest(self):
-        """Exhaustive: every `SADTCoreLib.x`, `FlexRegLib.x` and `SADTVisuLib.x` a file imports is installed."""
+        """Exhaustive: every `SADTCoreLib.x` and `SADTVisuLib.x` a file imports is installed."""
         listed = set()
         for folder in VISOR.values():
             listed |= _manifest(folder)
