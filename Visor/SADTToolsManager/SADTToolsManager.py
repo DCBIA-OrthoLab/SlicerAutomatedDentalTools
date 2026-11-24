@@ -336,28 +336,24 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
         self.checkButton.setToolTip(tip)
 
     def onCheckForUpdates(self):
-        from SADTCoreLib import releases
-        from SADTCoreLib.worker import BackgroundJob
+        from SADTCoreLib import release_watch, releases
 
         if self._checkJob is not None:
             return
-        root, before = self.store.root, self.store.version
-        self.checkButton.setEnabled(False)
-        self.checkButton.setText(_("Checking..."))
+        before = self.store.version
 
-        def finished(state):
+        def finished(_before, state):
             self._checkJob = None
             reset_client()
             self.refresh()
             self.checkLabel.setText(releases.describe_check(before, state))
             self.checkLabel.setVisible(True)
 
-        def failed(error):
-            finished({"error": str(error), "latest": releases.latest_known(root)})
-
-        self._checkJob = BackgroundJob(lambda _progress: releases.check(root),
-                                       on_success=finished, on_error=failed)
-        self._checkJob.start()
+        # The same check as a panel's "check" link: one at a time, shared.
+        if release_watch.check_now(finished):
+            self._checkJob = True
+            self.checkButton.setEnabled(False)
+            self.checkButton.setText(_("Checking..."))
 
     def onPin(self, checked: bool):
         settings = slicer_settings()
