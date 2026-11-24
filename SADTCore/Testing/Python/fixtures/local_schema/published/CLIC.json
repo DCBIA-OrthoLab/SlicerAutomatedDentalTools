@@ -1,0 +1,156 @@
+{
+ "name": "CLIC",
+ "arguments": {
+  "scans": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": true,
+   "description": "One CBCT (.nii/.nii.gz), or a folder of them for a batch. Folders are searched recursively.",
+   "server_selectable": "testfile",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Scans",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "model": {
+   "type": "str",
+   "types": [
+    "str"
+   ],
+   "required": false,
+   "description": "The Mask R-CNN checkpoint (.pth). Left empty, this tool uses the one installed for it, refusing rather than choosing when several are: upstream took the alphabetically first file in a folder, so which model vintage ran depended on file names.",
+   "server_selectable": "model",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": null,
+   "label": "Model",
+   "section": "Model",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "score_threshold": {
+   "type": "float",
+   "types": [
+    "float"
+   ],
+   "required": false,
+   "description": "Detections scoring below this are not painted. The one knob that moves the segmentation, so it is recorded in the report.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 0.7,
+   "extensions": null,
+   "label": "Score threshold",
+   "section": "Options",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "output_suffix": {
+   "type": "str",
+   "types": [
+    "str"
+   ],
+   "required": false,
+   "description": "Appended to each scan's name, `<scan>_<suffix>.nii.gz`.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": "seg",
+   "extensions": null,
+   "label": "Output suffix",
+   "section": "Outputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "device": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "\"cuda\" or \"cpu\". CUDA falls back to CPU when no card is visible.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "cuda": true,
+    "cpu": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Device",
+   "section": "Advanced",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  }
+ },
+ "output_kind": "files",
+ "batch": {
+  "axis": "scans",
+  "max_mb": 400,
+  "max_files": 25
+ }
+}

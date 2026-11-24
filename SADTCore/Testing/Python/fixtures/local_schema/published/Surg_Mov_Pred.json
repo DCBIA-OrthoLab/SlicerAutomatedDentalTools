@@ -1,0 +1,69 @@
+{
+ "name": "Surg_Mov_Pred",
+ "arguments": {
+  "measurements": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": true,
+   "description": "One CSV/XLSX/ODS table of pre-operative measurements, one row per patient, or a folder of them concatenated into a batch. A patient identifier column ('#', 'ID', 'PatientID'...) is detected and carried into the output; without one the identifiers are blank.",
+   "server_selectable": "testfile",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Measurements and plan",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "model": {
+   "type": "str",
+   "types": [
+    "str"
+   ],
+   "required": false,
+   "description": "Folder of model packages, one subfolder per predicted measurement, each holding a `stacking_package.pkl`. Left empty, this tool uses the models installed for it -- every package found underneath, however they are filed.",
+   "server_selectable": "model",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": null,
+   "label": "Model",
+   "section": "Model",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  }
+ },
+ "output_kind": "files",
+ "batch": {
+  "axis": "measurements",
+  "max_mb": 400,
+  "max_files": 25
+ }
+}

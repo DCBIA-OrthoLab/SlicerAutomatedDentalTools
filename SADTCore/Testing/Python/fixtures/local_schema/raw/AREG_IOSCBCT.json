@@ -1,0 +1,296 @@
+{
+ "name": "AREG_IOSCBCT",
+ "description": "Register an intraoral scan onto a CBCT of the same patient.",
+ "arguments": {
+  "input_layout": {
+   "type": "str",
+   "required": false,
+   "default": "One folder per type",
+   "choices": [
+    "One folder per type",
+    "One folder per patient"
+   ],
+   "description": "How the files are organised: one folder for each type of file (T1 and T2, or intraoral scans and CBCT) holding every patient, or one folder for each patient holding all of that patient's files. Rest the pointer on each option for an example.",
+   "section": "Inputs",
+   "label": "Data organisation",
+   "ui": "segmented",
+   "option_help": {
+    "One folder per type": "One folder for each type of file, every patient inside it.\nPatients are matched across the two folders by their file names.\n\nCBCT or IOS registration (T1 and T2):\n    T1/\n        patient001_T1.nii.gz\n        patient002_T1.nii.gz\n    T2/\n        patient001_T2.nii.gz\n        patient002_T2.nii.gz\n\nIOS to CBCT:\n    IOS/\n        patient001_U.stl\n        patient001_L.stl\n    CBCT/\n        patient001_CBCT.nii.gz",
+    "One folder per patient": "One folder for each patient, holding all of that patient's files.\nThe folder's name is the patient's name, and names the results.\n\nCBCT or IOS registration (T1 and T2):\n    patients/\n        patient001/\n            T1/  scan.nii.gz\n            T2/  scan.nii.gz\n        patient002/\n            patient002_T1.nii.gz\n            patient002_T2.nii.gz\n\nIOS to CBCT (sub-folders optional):\n    patients/\n        patient001/\n            IOS/   upper.stl  lower.stl\n            CBCT/  scan.nii.gz"
+   }
+  },
+  "ios": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The intraoral surfaces (.vtk/.stl): one file, or a folder searched recursively. Upper and lower arches are registered separately and matched to their landmarks by the jaw token in the name.",
+   "extensions": [
+    ".stl",
+    ".vtk"
+   ],
+   "section": "Inputs",
+   "label": "Intraoral scans",
+   "visible_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   }
+  },
+  "cbct": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The CBCT volumes: one file, or a folder. Paired to the intraoral scans on the digits of the patient identifier, the two modalities being named by different conventions, and on the timepoint (T1, T2) when the names give one, so each timepoint is registered onto its own CBCT.",
+   "extensions": [
+    ".gipl",
+    ".gipl.gz",
+    ".nii",
+    ".nii.gz",
+    ".nrrd",
+    ".nrrd.gz"
+   ],
+   "section": "Inputs",
+   "label": "CBCT volumes",
+   "visible_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   }
+  },
+  "patients": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The folder of patient folders, in the one-folder-per-patient layout. Each patient's folder name, with its number, names its results.",
+   "section": "Inputs",
+   "label": "Patient folders",
+   "visible_when": {
+    "input_layout": [
+     "One folder per patient"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per patient"
+    ]
+   }
+  },
+  "output_dir": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "Where the registered meshes, their 4x4 matrices and `AREG_report.json` are written, one folder per patient named as its files name it (`case_042`). When the CBCT was oriented first, the oriented scan the meshes are registered onto and its `.tfm` are written beside them. Nothing is written outside it."
+  },
+  "automation": {
+   "type": "str",
+   "required": false,
+   "default": "From the data",
+   "choices": [
+    "From the data",
+    "Registration",
+    "Semi-Automated",
+    "Fully-Automated"
+   ],
+   "description": "Registration takes both landmark sets and predicts nothing -- no other tool is called and no GPU is needed. Semi-Automated labels the crowns and predicts both sets. Fully-Automated orients the CBCT first, which needs a reference.",
+   "section": "Inputs",
+   "label": "Automation",
+   "hidden": true
+  },
+  "ios_landmarks": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "Registration mode. Your own intraoral landmarks.",
+   "extensions": [
+    ".json",
+    ".mrk.json"
+   ],
+   "section": "Advanced",
+   "label": "Intraoral landmarks",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Registration"
+    ]
+   }
+  },
+  "cbct_landmarks": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "Registration mode. Your own CBCT landmarks.",
+   "extensions": [
+    ".json",
+    ".mrk.json"
+   ],
+   "section": "Advanced",
+   "label": "CBCT landmarks",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Registration"
+    ]
+   }
+  },
+  "cbct_reference": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "A reference bundle to orient the CBCT volumes onto instead of the Frankfurt horizontal frame ASO holds. Left empty -- the normal case -- ASO resolves its own.",
+   "hidden": true,
+   "section": "Models",
+   "label": "Orientation reference",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated"
+    ]
+   }
+  },
+  "landmark_model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The CBCT landmark bundle, for the modes that predict.",
+   "hidden": true,
+   "section": "Models",
+   "label": "CBCT landmark bundle",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Semi-Automated",
+     "Fully-Automated"
+    ]
+   }
+  },
+  "ios_landmark_model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The intraoral landmark bundle.",
+   "hidden": true,
+   "section": "Models",
+   "label": "Intraoral landmark bundle",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Semi-Automated",
+     "Fully-Automated"
+    ]
+   }
+  },
+  "crown_model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The crown-labelling checkpoint, for the modes that label.",
+   "hidden": true,
+   "section": "Models",
+   "label": "Crown segmentation model",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Semi-Automated",
+     "Fully-Automated"
+    ]
+   }
+  },
+  "max_dist": {
+   "type": "float",
+   "required": false,
+   "default": 0.0,
+   "description": "How far a point may be from its nearest neighbour and still count as an ICP correspondence, in millimetres. 0 uses 1.5, which is upstream's.",
+   "section": "Outputs",
+   "label": "ICP match distance (mm)",
+   "hidden": true
+  },
+  "orient_cbct_first": {
+   "type": "bool",
+   "required": false,
+   "default": true,
+   "description": "Put the CBCT in the Frankfurt horizontal and mid-sagittal frame before the cross-modality registration. One frame only, unlike the CBCT-to-CBCT engine which offers two: the landmarks the rest of this chain reads are defined in this one, so another would silently change what they mean. Read only when no landmarks are supplied, there being nothing to orient for once they are.",
+   "section": "Inputs",
+   "label": "Standardise the CBCT orientation (Frankfurt)",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Semi-Automated",
+     "Fully-Automated"
+    ]
+   }
+  },
+  "output_suffix": {
+   "type": "str",
+   "required": false,
+   "default": "Reg",
+   "description": "Added to each output name, e.g. `scan_Reg.vtk`.",
+   "section": "Outputs",
+   "label": "Output suffix"
+  },
+  "outputs": {
+   "type": "list[str]",
+   "required": false,
+   "default": [],
+   "choices": [
+    "Registration landmarks (IOS + CBCT)",
+    "Orientation landmarks (ASO)",
+    "CBCT scan",
+    "Transform (.tfm)",
+    "Metrics spreadsheet (.xlsx + .csv)"
+   ],
+   "description": "What to hand back beside the registered meshes, all in the CBCT's space so it opens on top of them. Registration landmarks (IOS + CBCT): each mesh's own, moved with it, and the CBCT landmarks used. Orientation landmarks (ASO): the landmarks ASO oriented the CBCT on, when the run oriented it. CBCT scan: the CBCT the meshes were registered onto. Transform (.tfm): each registration as a `.tfm`. Metrics spreadsheet: what each registration measured, one row per arch and one per landmark, as `AREG_metrics.xlsx` and `.csv` beside the report. Each patient's `scene.json` lists what was written.",
+   "section": "Outputs",
+   "label": "Extra outputs",
+   "note": "Saved beside the result, in the same 3D space. The result and its scene.json are always written.",
+   "option_help": {
+    "Registration landmarks (IOS + CBCT)": "The landmarks the registration paired: each arch's, moved with it onto the CBCT, and the CBCT's own.",
+    "Orientation landmarks (ASO)": "The landmarks ASO oriented the CBCT on, in the oriented CBCT's space. Only when the run oriented it.",
+    "CBCT scan": "The CBCT the meshes were registered onto, copied beside them (the oriented one when the chain oriented it first).",
+    "Transform (.tfm)": "Each registration as a .tfm that 3D Slicer opens.",
+    "Metrics spreadsheet (.xlsx + .csv)": "What each registration measured, one row per case and one per landmark, as AREG_metrics.xlsx and as .csv files beside the report: the numbers the console shows, kept for a cohort's statistics."
+   }
+  }
+ },
+ "returns": "path",
+ "injected_layout": {
+  "keep_intermediate": {
+   "hidden": true,
+   "label": "Raw intermediate files",
+   "option_help": {
+    "ALI_CBCT": "The landmarks placed on the CBCT, before this tool registers on them.",
+    "ALI_IOS": "The landmarks placed on the intraoral scans, which the mucogingival patch is built from.",
+    "ASO": "The scans once both timepoints sit in a common orientation, before the registration is run on them.",
+    "Crown_Seg": "The per-tooth labelled meshes, which this tool otherwise only uses to name the teeth."
+   }
+  },
+  "stop_after": {
+   "label": "Stop after",
+   "option_help": {
+    "ASO/ALI_CBCT": "The landmarks ASO places on the CBCT to orient it. Not the ones the registration uses.",
+    "ASO": "The CBCT once oriented, before any landmark the registration uses is placed on it.",
+    "Crown_Seg": "The intraoral scans with each tooth labelled.",
+    "ALI_IOS/Crown_Seg": "The teeth labelled for the intraoral landmark prediction.",
+    "ALI_IOS": "The intraoral landmarks the registration matches.",
+    "ALI_CBCT": "The CBCT landmarks the registration matches: the last pause before the meshes are registered."
+   }
+  }
+ },
+ "supervisor": true,
+ "calls": [
+  "ALI_CBCT",
+  "ALI_IOS",
+  "ASO",
+  "Crown_Seg"
+ ],
+ "source_hash": "7942c8e4755878a447115ec168518f9d8dccce3f38f509b2c0b1e6f9a46093db"
+}

@@ -1,0 +1,225 @@
+{
+ "name": "GreedyReg",
+ "arguments": {
+  "t1": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": true,
+   "description": "Folder of first-timepoint scans -- the FIXED images, the frame everything is brought into.",
+   "server_selectable": "testfile",
+   "selectable_scope": "CBCT_T1_T2_pair",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "T1",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "t2": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": true,
+   "description": "Folder of second-timepoint scans -- the MOVING images, the ones that get resampled. A patient is paired with their T1 by name, up to the timepoint token: `P1_T1_scan.nii.gz` pairs with `P1_T2.nii.gz`. Anyone present in only one folder is reported rather than dropped.",
+   "server_selectable": "testfile",
+   "selectable_scope": "CBCT_T1_T2_pair",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "T2",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "masks": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "One mask per patient, and the metric is then computed inside it only. This is how a growing patient is registered on what has NOT changed -- the cranial base, typically, which AMASSS segments. The mask belongs to the T1 scan, since T1 is the fixed image.",
+   "server_selectable": "testfile",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Masks",
+   "section": "Advanced",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "initial_transforms": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "A `.mat` transform per patient to start the search from, for two timepoints too far apart for the search to find each other on its own. Without one the search starts from identity.",
+   "server_selectable": "testfile",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Initial transforms",
+   "section": "Advanced",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "metric": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "What the registration optimises. NCC compares local patterns in a 4x4x4 window and is the one to keep for two CBCTs of one patient. NMI compares the two intensity distributions instead, which is what to reach for when the scans were acquired differently enough that their grey values no longer correspond. SSD compares voxel values directly and needs them on the same scale.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "NCC": true,
+    "NMI": false,
+    "SSD": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Metric",
+   "section": "Options",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "transform_type": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "Rigid moves and rotates and nothing else, 6 degrees of freedom. Affine adds scaling and shear, 12. For two timepoints of one patient rigid is almost always what is wanted: affine can absorb real growth into the transform, and that growth is the thing a longitudinal study is measuring.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Rigid": true,
+    "Affine": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Transform type",
+   "section": "Options",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "output_suffix": {
+   "type": "str",
+   "types": [
+    "str"
+   ],
+   "required": false,
+   "description": "Appended to each patient's name in the output.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": "registered",
+   "extensions": null,
+   "label": "Output suffix",
+   "section": "Outputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  }
+ },
+ "output_kind": "files",
+ "paired_batch": {
+  "axes": [
+   "t1",
+   "t2"
+  ],
+  "max_mb": 400,
+  "max_files": 25
+ }
+}

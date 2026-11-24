@@ -1,0 +1,48 @@
+{
+ "name": "CLIC",
+ "description": "Segment the impacted canine on a CBCT scan, and say where it sits.",
+ "arguments": {
+  "scans": {
+   "type": "path",
+   "required": true,
+   "description": "One CBCT (.nii/.nii.gz), or a folder of them for a batch. Folders are searched recursively."
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where the segmentations are written. Nothing is written outside it."
+  },
+  "model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The Mask R-CNN checkpoint (.pth). Left empty, this tool uses the one installed for it, refusing rather than choosing when several are: upstream took the alphabetically first file in a folder, so which model vintage ran depended on file names.",
+   "hidden": true
+  },
+  "score_threshold": {
+   "type": "float",
+   "required": false,
+   "default": 0.7,
+   "description": "Detections scoring below this are not painted. The one knob that moves the segmentation, so it is recorded in the report."
+  },
+  "output_suffix": {
+   "type": "str",
+   "required": false,
+   "default": "seg",
+   "description": "Appended to each scan's name, `<scan>_<suffix>.nii.gz`."
+  },
+  "device": {
+   "type": "str",
+   "required": false,
+   "default": "cuda",
+   "choices": [
+    "cuda",
+    "cpu"
+   ],
+   "description": "\"cuda\" or \"cpu\". CUDA falls back to CPU when no card is visible."
+  }
+ },
+ "returns": "path",
+ "supervisor": true,
+ "source_hash": "d432c81e06c324dc04f156333ef07fb64c17cb8c4cd8f0e3dc82f6ec4ace5c0b"
+}

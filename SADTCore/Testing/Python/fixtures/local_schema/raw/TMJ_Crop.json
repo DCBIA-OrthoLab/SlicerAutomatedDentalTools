@@ -1,0 +1,76 @@
+{
+ "name": "TMJ_Crop",
+ "description": "Crop the temporomandibular joints of a CBCT.",
+ "arguments": {
+  "scans": {
+   "type": "path",
+   "required": true,
+   "description": "One CBCT (.nrrd, .nii.gz and the other formats ASO reads), or a folder of them for a batch."
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where results are written. Per scan: `<scan>_R.nii.gz` and `<scan>_L.nii.gz` (the crops), `<scan>.json` (the report) and `<scan>_qc.png` (a quick view); only the sides asked for are written."
+  },
+  "sides": {
+   "type": "str",
+   "required": false,
+   "default": "Left and Right",
+   "choices": [
+    "Left and Right",
+    "Left",
+    "Right"
+   ],
+   "description": "Which joint to crop: `Left and Right`, `Left` or `Right`.",
+   "label": "Joints to crop"
+  },
+  "outputs": {
+   "type": "list[str]",
+   "required": false,
+   "default": [],
+   "choices": [
+    "Oriented scan",
+    "Mandible segmentation"
+   ],
+   "description": "What to hand back beside the crops, in the oriented frame they were cut from. Oriented scan: the whole scan, as `<scan>_oriented.nii.gz`. Mandible segmentation: the mandible mask (AMASSS), as `<scan>_mandible.nii.gz`.",
+   "label": "Extra outputs",
+   "note": "Saved beside the crops, in the oriented frame. The crops, the report and the quick view are always written.",
+   "option_help": {
+    "Oriented scan": "The whole scan in the Frankfurt horizontal frame the crops were cut from, as <scan>_oriented.nii.gz.",
+    "Mandible segmentation": "The mandible mask (AMASSS) in that same frame, as <scan>_mandible.nii.gz."
+   }
+  },
+  "scale_by": {
+   "type": "str",
+   "required": false,
+   "default": "none",
+   "choices": [
+    "none",
+    "mandible-volume"
+   ],
+   "description": "`none` keeps the box at 28.8 x 33.6 x 24.0 mm. With `mandible-volume` the box follows the cube root of the mandible volume, the voxel count staying the same.",
+   "hidden": true
+  },
+  "scale": {
+   "type": "float",
+   "required": false,
+   "default": 0.0,
+   "description": "A fixed scale factor, overriding `scale_by`; 0 means not given. Useful to reuse one patient's first time point for the next.",
+   "hidden": true
+  }
+ },
+ "returns": "path",
+ "injected_layout": {
+  "keep_intermediate": {
+   "hidden": true,
+   "label": "Raw intermediate files"
+  }
+ },
+ "supervisor": true,
+ "calls": [
+  "AMASSS",
+  "ASO",
+  "Convert"
+ ],
+ "source_hash": "7706d971bbe0e05e2cf67b415354e35a2180ff159e7c8a04309adb81f931a059"
+}

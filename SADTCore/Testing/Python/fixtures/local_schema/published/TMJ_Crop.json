@@ -1,0 +1,241 @@
+{
+ "name": "TMJ_Crop",
+ "arguments": {
+  "scans": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": true,
+   "description": "One CBCT (.nrrd, .nii.gz and the other formats ASO reads), or a folder of them for a batch.",
+   "server_selectable": "testfile",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Scans",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "sides": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "Which joint to crop: `Left and Right`, `Left` or `Right`.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Left and Right": true,
+    "Left": false,
+    "Right": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Joints to crop",
+   "section": "Options",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "stop_after": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Stop the run after this step and return what it produced, instead of carrying on. Nothing is ticked by default and a run that is not asked to stop does not stop.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "AMASSS": false,
+    "ASO/ALI_CBCT": false,
+    "ASO": false,
+    "Convert": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Stop after",
+   "section": "Quality control",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_kind": {
+    "AMASSS": "view",
+    "ASO/ALI_CBCT": "landmarks",
+    "ASO": "view",
+    "Convert": "view"
+   },
+   "select_all": true
+  },
+  "keep_intermediate": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Return what a step produced, as it produced it and in its own space, for checking the run. Each one is written under `intermediate/` in the output folder.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "AMASSS": false,
+    "ASO": false,
+    "Convert": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Raw intermediate files",
+   "section": "Quality control",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "select_all": true
+  },
+  "outputs": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "What to hand back beside the crops, in the oriented frame they were cut from. Oriented scan: the whole scan, as `<scan>_oriented.nii.gz`. Mandible segmentation: the mandible mask (AMASSS), as `<scan>_mandible.nii.gz`.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Oriented scan": false,
+    "Mandible segmentation": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Extra outputs",
+   "section": "Outputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "Oriented scan": "The whole scan in the Frankfurt horizontal frame the crops were cut from, as <scan>_oriented.nii.gz.",
+    "Mandible segmentation": "The mandible mask (AMASSS) in that same frame, as <scan>_mandible.nii.gz."
+   },
+   "note": "Saved beside the crops, in the oriented frame. The crops, the report and the quick view are always written."
+  },
+  "scale_by": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "`none` keeps the box at 28.8 x 33.6 x 24.0 mm. With `mandible-volume` the box follows the cube root of the mandible volume, the voxel count staying the same.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "none": true,
+    "mandible-volume": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Scale by",
+   "section": "Options",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "scale": {
+   "type": "float",
+   "types": [
+    "float"
+   ],
+   "required": false,
+   "description": "A fixed scale factor, overriding `scale_by`; 0 means not given. Useful to reuse one patient's first time point for the next.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 0.0,
+   "extensions": null,
+   "label": "Scale",
+   "section": "Options",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  }
+ },
+ "output_kind": "files",
+ "batch": {
+  "axis": "scans",
+  "max_mb": 400,
+  "max_files": 25
+ }
+}
