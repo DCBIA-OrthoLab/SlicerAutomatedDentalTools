@@ -6,6 +6,7 @@ TempWorkspace so cleanup on error is never forgotten.
 """
 
 import logging
+import contextlib
 import os
 import re
 import shutil
@@ -519,11 +520,9 @@ def _is_scaffolding(node) -> bool:
     An unanswerable question is answered "it is data", which at worst offers one
     node too many -- the failure the other way round hides a user's own mesh.
     """
-    try:
+    with contextlib.suppress(Exception):
         if node.GetHideFromEditors():
             return True
-    except Exception:  # noqa: BLE001
-        pass
     try:
         return bool(slicer.vtkMRMLSliceLogic.IsSliceModelNode(node))
     except Exception:  # noqa: BLE001

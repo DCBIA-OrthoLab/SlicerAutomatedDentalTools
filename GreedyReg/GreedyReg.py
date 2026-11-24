@@ -30,7 +30,6 @@ import slicer
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from SADTCoreLib import slicer_io
 from SADTCoreLib.base_widget import ServerToolWidgetBase
 
 logger = logging.getLogger("GreedyReg")

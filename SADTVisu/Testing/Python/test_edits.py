@@ -3,7 +3,6 @@
     python3 -m unittest test_edits
 """
 
-import copy
 import json
 import os
 import sys

@@ -12,6 +12,7 @@ reads its own list, an unscoped one reads the flat list exactly as before, and
 a scope the server did not send falls back rather than emptying the picker.
 """
 
+import contextlib
 import os
 import sys
 import unittest
@@ -111,10 +112,9 @@ class ScopedDownloadTest(unittest.TestCase):
             client._server_url = "https://example.org"
             client._token = "t"
             client._session = object()
-            try:
+            # The download itself fails on the fake session; only the probe matters.
+            with contextlib.suppress(Exception):
                 client.download_testfile("AREG", "IOSCBCT_TestFile", "/tmp/x", None, "IOSCBCT")
-            except Exception:
-                pass
         finally:
             client_module.transfer.probe_ranged = original
 
