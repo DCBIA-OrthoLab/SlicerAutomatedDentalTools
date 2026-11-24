@@ -229,6 +229,37 @@ def _lock(packages):
     return "\n".join(blocks)
 
 
+class UvSyncTest(unittest.TestCase):
+    def test_a_tool_gets_its_optional_extras_as_on_the_server(self):
+        """Crown_Seg's engine lives in an extra: without it every run fails."""
+        self.assertIn("--all-extras", tools_store.UV_SYNC)
+        self.assertIn("--frozen", tools_store.UV_SYNC)
+        self.assertIn("--no-dev", tools_store.UV_SYNC)
+
+    def test_the_sync_runs_that_command(self):
+        seen = []
+
+        class _Process:
+            returncode = 0
+
+            def __init__(self, command, **kwargs):
+                seen.append(command)
+
+            def poll(self):
+                return 0
+
+        with tempfile.TemporaryDirectory() as root:
+            store = ToolStore(root)
+            saved = (tools_store.subprocess.Popen, ToolStore.uv)
+            tools_store.subprocess.Popen = _Process
+            ToolStore.uv = lambda self, say=None: "uv"
+            try:
+                store._uv_sync(root, {})
+            finally:
+                tools_store.subprocess.Popen, ToolStore.uv = saved
+        self.assertEqual(seen, [["uv", *tools_store.UV_SYNC]])
+
+
 class EstimateTest(unittest.TestCase):
     """What an install says it takes: a package on disk already, or shared, counts once."""
 

@@ -68,6 +68,12 @@ UV_RELEASES = {
                            "4343217d668727b8a8eb5cad92389a1d2eeead93c89940d1b955ba1bb15462eb"),
 }
 UV_URL = "https://github.com/astral-sh/uv/releases/download/{version}/uv-{asset}"
+
+# How a tool's environment is made: from its lock, without its development
+# tools, and WITH its optional extras, as the VISOR server does. A tool may keep
+# its engine in an extra (Crown_Seg's `segmentation` holds shapeaxi); without
+# `--all-extras` it installs, shows its panel, and fails every run.
+UV_SYNC = ("sync", "--frozen", "--no-dev", "--all-extras", "--quiet")
 FOLDER_NAME = "sadt-tools"
 
 README = """SADT tools
@@ -1014,7 +1020,7 @@ class ToolStore:
 
         with _tempfile.TemporaryFile("w+", encoding="utf-8", errors="replace") as errors:
             process = subprocess.Popen(
-                [uv, "sync", "--frozen", "--no-dev", "--quiet"],
+                [uv, *UV_SYNC],
                 cwd=target, env=env, stdout=subprocess.DEVNULL, stderr=errors, text=True,
                 encoding="utf-8", errors="replace", **no_window(),
             )
