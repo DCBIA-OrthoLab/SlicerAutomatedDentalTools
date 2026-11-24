@@ -447,8 +447,11 @@ def install_many(parent, names, on_done=None) -> None:
     store = tool_store()
     estimate = store.estimate(list(names), source, data_source)
     size = tools_store.human_size
-    text = (f"Update {', '.join(names)} to tools {store.version}?\n\n"
-            f"{len(estimate['tools'])} tool(s), download {size(estimate['total'])} "
+    # The names on a line of their own, which wraps: in the headline, a long
+    # list made the dialog as wide as the list.
+    text = (f"Update {len(names)} tool(s) to tools {store.version}?\n\n"
+            f"{', '.join(names)}\n\n"
+            f"{len(estimate['tools'])} tool(s) with what they call, download {size(estimate['total'])} "
             f"(environments {size(estimate['environment'])}, models {size(estimate['models'])}).\n\n"
             "The previous version stays installed until you remove it.")
     if slicer.util.confirmOkCancelDisplay(text, windowTitle="Update tools", parent=parent):
