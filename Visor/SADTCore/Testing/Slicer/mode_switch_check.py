@@ -13,7 +13,7 @@ extension is installed:
 Exit status 0 when every line says PASS. The main window is NOT exercised: the
 moduleSelected signal and the real selectModule are replaced or skipped here.
 """
-import os, sys, time, slicer, qt, traceback
+import time, slicer, qt, traceback
 from SADTCoreLib import mode_switch as ms
 print("mode_switch from", ms.__file__)
 res = []
@@ -140,5 +140,4 @@ check("visor idle: enabled", vb.button.enabled)
 st = ms.bar_state("classic", "ALI", "", False)
 check("target missing: disabled, says so", (not st.enabled) and "pas chargée" in st.explanation)
 print("SUMMARY", sum(res), "/", len(res))
-import threading
 slicer.app.exit(0 if all(res) else 1)

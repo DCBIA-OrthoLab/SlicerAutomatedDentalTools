@@ -45,6 +45,7 @@ modules that run conda commands by themselves (ALI, AREG, ASO, CLIC, DOCShapeAXI
 are not detected, and their bar is not greyed out.
 """
 
+import contextlib
 import logging
 import os
 import weakref
@@ -231,10 +232,8 @@ def switch(side: str, classic: str, select=None, settings=None) -> bool:
     except Exception as error:  # noqa: BLE001
         logger.warning("Could not open %s: %s", target_module(side, classic), error)
         if before is not None:
-            try:
+            with contextlib.suppress(Exception):
                 set_mode(classic, before, settings)
-            except Exception:  # noqa: BLE001
-                pass
         return False
     return True
 
@@ -259,11 +258,9 @@ def classic_busy_reason(classic: str) -> str:
     except Exception:  # noqa: BLE001 -- no scene: nothing runs
         return ""
     for node in nodes:
-        try:
+        with contextlib.suppress(Exception):
             if node.GetModuleTitle().lower() in names and node.IsBusy():
                 return _tr("module en ligne de commande {name} actif").format(name=node.GetModuleTitle())
-        except Exception:  # noqa: BLE001
-            continue
     return ""
 
 
@@ -352,10 +349,8 @@ class ModeSwitchBar:
             switch(self.side, self.classic, self._select, self._settings)
 
     def dispose(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.timer.stop()
-        except Exception:  # noqa: BLE001
-            pass
         key = (self.side, self.classic)
         if _BARS.get(key) is self:
             del _BARS[key]
@@ -375,11 +370,9 @@ def _register(bar: ModeSwitchBar) -> ModeSwitchBar:
     old = _BARS.get(key)
     if old is not None and old is not bar:
         old.dispose()
-        try:
+        with contextlib.suppress(Exception):
             old.frame.hide()
             old.frame.deleteLater()
-        except Exception:  # noqa: BLE001
-            pass
     _BARS[key] = bar
     return bar
 
@@ -521,13 +514,11 @@ def install() -> None:
     """Start following the classic panels. Idempotent. Never raises."""
     try:
         _INJECTOR.start()
-        try:
+        with contextlib.suppress(Exception):
             import slicer
 
             # The main window may not exist yet when the module loads.
             slicer.app.connect("startupCompleted()", _INJECTOR.connect_selector)
-        except Exception:  # noqa: BLE001
-            pass
     except Exception as error:  # noqa: BLE001
         logger.warning("The version bar of the classic panels is not available: %s", error)
 
