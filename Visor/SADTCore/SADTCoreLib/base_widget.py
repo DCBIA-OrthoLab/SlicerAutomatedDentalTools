@@ -4166,13 +4166,17 @@ class ServerToolWidgetBase(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if self._isLocal() and ok and hasattr(self.client, "tool_version"):
                 version = self.client.tool_version(self.TOOL_NAME) or ""
                 update = self.client.update_available(self.TOOL_NAME)
+            store = getattr(self.client, "store", None)
+            target = store.version if store is not None else ""
             design.update_status_badge(self._statusBadge, ok, local=self._isLocal(),
-                                       version=version, update=update)
+                                       version=version, update=update, target=target)
             button = getattr(self, "_updateButton", None)
             if button is not None:
-                store = getattr(self.client, "store", None)
+                # The version it goes to, on the button itself: "Update now"
+                # said nothing of where a clinician's results would come from.
+                button.setText(_("Update to {new}").format(new=target) if target else _("Update now"))
                 button.setToolTip(_("Install the update: tools {old} → {new}").format(
-                    old=version, new=store.version if store else ""))
+                    old=version, new=target))
                 button.setVisible(bool(update))
 
         # The panel is built from the schema, once. If the server was down when

@@ -221,8 +221,9 @@ class LocalToolClient:
             return False
         # A model removed in the Manager: the panel offers Install, which
         # fetches it again, rather than a form whose run would fail.
+        # The tools they call count too: their runs fail the same way.
         if self.store is not None and not self._fixed:
-            return not any(self.store.models_missing(target) for target in targets)
+            return not any(self.store.chain_models_missing(target) for target in targets)
         return True
 
     def _resolve_name_quiet(self, name, known):

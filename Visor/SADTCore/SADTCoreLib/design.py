@@ -1151,7 +1151,7 @@ def status_badge(local: bool = False) -> qt.QLabel:
 
 
 def update_status_badge(label: qt.QLabel, ok: bool, local: bool = False,
-                        version: str = "", update: bool = False) -> None:
+                        version: str = "", update: bool = False, target: str = "") -> None:
     t = tokens()
     color = t["SUCCESS"] if ok else t["DANGER"]
     if local:
@@ -1166,7 +1166,8 @@ def update_status_badge(label: qt.QLabel, ok: bool, local: bool = False,
             # Up to date: say so, in the badge's own green.
             extra += f' <span style="color: {color};">· latest</span>'
         if ok and update:
-            extra += ' <span style="color: #c77700;">· update available</span>'
+            arrow = f" → {target}" if target and target != version else ""
+            extra += f' <span style="color: #c77700;">· update available{arrow}</span>'
         label.setTextFormat(qt.Qt.RichText)
         label.setText(f'<a href="manager" style="color: {color}; text-decoration: none;">{text}</a>{extra}')
     else:

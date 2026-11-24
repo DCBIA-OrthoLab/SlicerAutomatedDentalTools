@@ -54,3 +54,12 @@ class SADTCore(ScriptedLoadableModule):
         from SADTCoreLib import mode_switch
 
         mode_switch.install()
+
+        # New SADT-VISOR releases, asked for every 15 minutes and offered as an
+        # update; never installed without the user.
+        try:
+            from SADTCoreLib import release_watch
+
+            release_watch.install()
+        except Exception as error:  # noqa: BLE001 -- a watch must never stop Slicer
+            print(f"SADTCore: could not start the release watch: {error}")

@@ -30,6 +30,8 @@ set(MODULE_PYTHON_SCRIPTS
   SADTCoreLib/local_schema.py
   SADTCoreLib/tools_ui.py
   SADTCoreLib/mode_switch.py
+  SADTCoreLib/release_watch.py
+  SADTCoreLib/releases.py
   )
 
 set(MODULE_PYTHON_RESOURCES
