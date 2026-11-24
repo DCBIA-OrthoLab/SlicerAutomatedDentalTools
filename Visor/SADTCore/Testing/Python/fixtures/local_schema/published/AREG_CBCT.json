@@ -1,0 +1,702 @@
+{
+ "name": "AREG_CBCT",
+ "arguments": {
+  "input_layout": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "How the files are organised: one folder for each type of file (T1 and T2, or intraoral scans and CBCT) holding every patient, or one folder for each patient holding all of that patient's files. Rest the pointer on each option for an example.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "One folder per type": true,
+    "One folder per patient": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Data organisation",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": "segmented",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "One folder per type": "One folder for each type of file, every patient inside it.\nPatients are matched across the two folders by their file names.\n\nCBCT or IOS registration (T1 and T2):\n    T1/\n        patient001_T1.nii.gz\n        patient002_T1.nii.gz\n    T2/\n        patient001_T2.nii.gz\n        patient002_T2.nii.gz\n\nIOS to CBCT:\n    IOS/\n        patient001_U.stl\n        patient001_L.stl\n    CBCT/\n        patient001_CBCT.nii.gz",
+    "One folder per patient": "One folder for each patient, holding all of that patient's files.\nThe folder's name is the patient's name, and names the results.\n\nCBCT or IOS registration (T1 and T2):\n    patients/\n        patient001/\n            T1/  scan.nii.gz\n            T2/  scan.nii.gz\n        patient002/\n            patient002_T1.nii.gz\n            patient002_T2.nii.gz\n\nIOS to CBCT (sub-folders optional):\n    patients/\n        patient001/\n            IOS/   upper.stl  lower.stl\n            CBCT/  scan.nii.gz"
+   }
+  },
+  "t1": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The baseline scans -- one volume or a folder of them, searched recursively. A DICOM series is converted when `dicom_input` is set.",
+   "server_selectable": "testfile",
+   "selectable_scope": "CBCT_T1",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "T1 (baseline)",
+   "section": "Inputs",
+   "visible_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "t2": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The follow-up scans, paired to T1 by patient key.",
+   "server_selectable": "testfile",
+   "selectable_scope": "CBCT_T2",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "T2 (follow-up)",
+   "section": "Inputs",
+   "visible_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "patients": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The folder of patient folders, in the one-folder-per-patient layout. Each patient's folder name names its results.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Patient folders",
+   "section": "Inputs",
+   "visible_when": {
+    "input_layout": [
+     "One folder per patient"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per patient"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "automation": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "Left on its default the mode is read off the request -- masks mean Semi-Automated, none means Fully-Automated, and the frame named in `orientation` picks the oriented variant. Naming a mode overrides that: Semi-Automated takes your own masks, Fully-Automated segments them, Oriented + Fully-Automated orients both timepoints first, which needs a reference.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "From the data": true,
+    "Semi-Automated": false,
+    "Fully-Automated": false,
+    "Oriented + Fully-Automated": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Automation",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "regions": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "The anatomy to register on -- what has NOT changed between the timepoints. The one argument a clinician must actually think about.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Cranial base": true,
+    "Mandible": false,
+    "Maxilla": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Register on",
+   "section": "Registration",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "Cranial base": "CB",
+    "Mandible": "MAND",
+    "Maxilla": "MAX"
+   }
+  },
+  "t1_masks": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "Your own T1 segmentation masks, instead of having them segmented for you.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "T1 masks",
+   "section": "Advanced",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Semi-Automated"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "segmentations": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Anatomy to segment and return beside the registration, for the modes that segment. Independent of `regions`: ticking the skin does not register on it, and registering on the mandible does not return a mandible you can open. Returned for both timepoints, which costs a second segmentation pass over the T2. None by default -- a registration run returns a registration.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Cranial base": false,
+    "Cervical vertebra": false,
+    "Mandible": false,
+    "Maxilla": false,
+    "Skin": false,
+    "Upper airway": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "AMASSS segmentation",
+   "section": "Registration",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated",
+     "Oriented + Fully-Automated"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": {
+    "Bones": [
+     "Mandible",
+     "Maxilla",
+     "Cranial base",
+     "Cervical vertebra"
+    ],
+    "Soft tissue": [
+     "Upper airway",
+     "Skin"
+    ]
+   },
+   "option_help": {
+    "Cranial base": "CB",
+    "Cervical vertebra": "CV",
+    "Mandible": "MAND",
+    "Maxilla": "MAX",
+    "Skin": "SKIN",
+    "Upper airway": "UAW"
+   }
+  },
+  "segmentation_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "A mask model bundle to use instead of AMASSS's own, for the modes that segment. Left empty -- which is what a panel sends -- AMASSS segments with the model it holds, there being no second answer to the question.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Segmentation model",
+   "section": "Registration",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated",
+     "Oriented + Fully-Automated"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "segmentation_label": {
+   "type": "int",
+   "types": [
+    "int"
+   ],
+   "required": false,
+   "description": "Which label value in the masks to register on.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 0,
+   "extensions": null,
+   "label": "Mask label value",
+   "section": "Advanced",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Semi-Automated"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "reference": {
+   "type": "str",
+   "types": [
+    "str"
+   ],
+   "required": false,
+   "description": "A reference bundle to orient onto instead of the one ASO holds for the frame named in `orientation`. Left empty -- the normal case -- ASO resolves its own.",
+   "server_selectable": "model",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": null,
+   "label": "Orientation reference",
+   "section": "Advanced",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Oriented + Fully-Automated"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "landmark_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The landmark bundle that orientation step predicts with.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Landmark model bundle",
+   "section": "Registration",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Oriented + Fully-Automated"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "dicom_input": {
+   "type": "bool",
+   "types": [
+    "bool"
+   ],
+   "required": false,
+   "description": "The inputs are DICOM series rather than volumes. Detected from the data when left off; this forces the conversion.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": false,
+   "extensions": null,
+   "label": "Input is DICOM",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "orientation": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "The anatomical frame the scans are returned in. \"Leave as scanned\" keeps the scanner's own frame and skips the orientation step; naming a frame orients the T1 onto that reference first, which costs a landmark prediction per patient. The two are not interchangeable: Frankfurt horizontal is defined by Ba, S, N, RPo, LPo, ROr and LOr, the occlusal plane by ANS, IF, PNS, UL6O, UR1O and UR6O, so the measurement made afterwards does not say the same thing. Frankfurt horizontal by default. Read only when no masks are supplied.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Leave as scanned": false,
+    "Frankfurt horizontal": true,
+    "Occlusal plane": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Orientation",
+   "section": "Inputs",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated",
+     "Oriented + Fully-Automated"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "stop_after": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Stop the run after this step and return what it produced, instead of carrying on. Nothing is ticked by default and a run that is not asked to stop does not stop.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "AMASSS": false,
+    "ASO/ALI_CBCT": false,
+    "ASO": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Stop after",
+   "section": "Quality control",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_kind": {
+    "AMASSS": "view",
+    "ASO/ALI_CBCT": "landmarks",
+    "ASO": "view"
+   },
+   "select_all": true
+  },
+  "keep_intermediate": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Return what a step produced, as it produced it and in its own space, for checking the run. Each one is written under `intermediate/` in the output folder.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "AMASSS": false,
+    "ASO": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Raw intermediate files",
+   "section": "Quality control",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "AMASSS": "The bone masks each region's registration is confined to -- what to look at when a registration lands on the wrong anatomy. The ticked segmentations of the T2 are in it too.",
+    "ASO": "The T1 scans once oriented onto the chosen frame, before the registration is run on them. The T2 is not oriented: it is registered into the oriented T1's frame."
+   },
+   "select_all": true
+  },
+  "output_suffix": {
+   "type": "str",
+   "types": [
+    "str"
+   ],
+   "required": false,
+   "description": "Added to each output name, e.g. `scan_Reg.nii.gz`.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": "Reg",
+   "extensions": null,
+   "label": "Output suffix",
+   "section": "Outputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "outputs": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "What to hand back beside each registered T2, in the T1's space so it opens on top of it. T1 scan: the T1 it was registered onto; when it was oriented first, the copy under `T1_Oriented/` rather than a second copy. Orientation landmarks (ASO): the landmarks ASO oriented the T1 on, beside that copy; none when the T1 was not oriented. Metrics spreadsheet: what each registration measured (the optimiser's cost, its iterations, the rigid transform applied), one row per patient and region, as `AREG_metrics.xlsx` and `.csv` beside `AREG_report.json`. Each registration's `_scene.json` lists the 3D files written.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "T1 scan (oriented when orientation is on)": false,
+    "Orientation landmarks (ASO)": false,
+    "Metrics spreadsheet (.xlsx + .csv)": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Extra outputs",
+   "section": "Outputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "T1 scan (oriented when orientation is on)": "The T1 the T2 was registered onto. Oriented, it is the copy already under T1_Oriented/; otherwise it is copied beside the result.",
+    "Orientation landmarks (ASO)": "The landmarks ASO oriented the CBCT on, in the oriented CBCT's space. Only when the run oriented it.",
+    "Metrics spreadsheet (.xlsx + .csv)": "What each registration measured, one row per case and one per landmark, as AREG_metrics.xlsx and as .csv files beside the report: the numbers the console shows, kept for a cohort's statistics."
+   },
+   "note": "Saved beside the result, in the same 3D space. The result and its scene.json are always written."
+  },
+  "num_workers": {
+   "type": "int",
+   "types": [
+    "int"
+   ],
+   "required": false,
+   "description": "How many registrations to run at once. Left at 0 the server decides, from what one registration was measured to cost.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 0,
+   "extensions": null,
+   "label": "Number of workers",
+   "section": "Advanced",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  }
+ },
+ "output_kind": "files",
+ "paired_batch": {
+  "axes": [
+   "t1",
+   "t2"
+  ],
+  "max_mb": 400,
+  "max_files": 25
+ }
+}

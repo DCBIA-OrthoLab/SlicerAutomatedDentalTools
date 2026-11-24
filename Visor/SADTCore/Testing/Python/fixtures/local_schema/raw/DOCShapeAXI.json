@@ -1,0 +1,45 @@
+{
+ "name": "DOCShapeAXI",
+ "description": "Classify each 3D surface, and paint the reason for it onto the mesh.",
+ "arguments": {
+  "surfaces": {
+   "type": "path",
+   "required": true,
+   "description": "A `.vtk` surface, or a folder of them (searched recursively)."
+  },
+  "model": {
+   "type": "path",
+   "required": true,
+   "description": "The checkpoint to use. Its name says which anatomy is being graded, on what scale, and with which network -- upstream asked for all four separately, so a caller could pair a two-class model with a four-class scale and be handed a severity grade the network was never trained to produce."
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where the explained surfaces and the report are written."
+  },
+  "explain": {
+   "type": "bool",
+   "required": false,
+   "default": true,
+   "description": "Also compute the GradCAM attribution and write it onto each surface as a point array. Off, only the predictions are produced, which is several times faster."
+  },
+  "output_suffix": {
+   "type": "str",
+   "required": false,
+   "default": "_pred",
+   "description": "Appended to each written surface's stem."
+  },
+  "device": {
+   "type": "str",
+   "required": false,
+   "default": "cuda",
+   "choices": [
+    "cuda",
+    "cpu"
+   ],
+   "description": "`cuda` or `cpu`. Falls back to `cpu` with a warning when no CUDA device is visible."
+  }
+ },
+ "returns": "path",
+ "source_hash": "30fbb8d353fff9a572d14810809299417a6b43f80f312c7c0ad9ee39cca5b1d0"
+}

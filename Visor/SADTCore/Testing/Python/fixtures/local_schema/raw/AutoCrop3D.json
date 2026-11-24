@@ -1,0 +1,58 @@
+{
+ "name": "AutoCrop3D",
+ "description": "Crop scans or segmentations to a Region Of Interest drawn in Slicer.",
+ "arguments": {
+  "scans": {
+   "type": "path",
+   "required": true,
+   "description": "A volume or a folder of them, searched recursively. `.nii`, `.nii.gz`, `.nrrd`, `.gipl` and `.gipl.gz` are read."
+  },
+  "roi": {
+   "type": "path",
+   "required": true,
+   "description": "A Slicer ROI saved as `.mrk.json`, or a folder of them. One file, or a folder holding one, crops every scan; a folder holding several is matched to the scans by patient name."
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where the cropped volumes are written. The input folder tree is mirrored, and `AutoCrop3D_report.json` records what happened to each scan."
+  },
+  "keep_original_size": {
+   "type": "bool",
+   "required": false,
+   "default": false,
+   "description": "Put the crop back into a volume of the ORIGINAL size and geometry, everything outside the box set to zero, so the result still overlays the scan it came from. Off means the output is only the box."
+  },
+  "surfaces": {
+   "type": "str",
+   "required": false,
+   "default": "segmentations",
+   "choices": [
+    "segmentations",
+    "all",
+    "none"
+   ],
+   "description": "Also write a smoothed `.vtk` surface of the labels. \"segmentations\" does it for files whose own name says they are one, \"all\" for every scan, \"none\" for nothing."
+  },
+  "surface_padding_mm": {
+   "type": "float",
+   "required": false,
+   "default": 5.0,
+   "description": "Margin of background added around a label map before the surface is built, so a structure touching the edge of the crop is still closed."
+  },
+  "surface_smoothing_iterations": {
+   "type": "int",
+   "required": false,
+   "default": 5,
+   "description": "Laplacian smoothing passes. 0 keeps the raw marching-cubes surface."
+  },
+  "suffix": {
+   "type": "str",
+   "required": false,
+   "default": "cropped",
+   "description": "Appended to each output name."
+  }
+ },
+ "returns": "path",
+ "source_hash": "c9f5a11e945d8897550101f5f1adbe8a53dce23cec6dbf94182dc1d7d4c0d275"
+}

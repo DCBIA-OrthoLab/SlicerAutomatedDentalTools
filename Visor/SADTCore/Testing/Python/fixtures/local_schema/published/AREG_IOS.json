@@ -1,0 +1,569 @@
+{
+ "name": "AREG_IOS",
+ "arguments": {
+  "input_layout": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "How the files are organised: one folder for each type of file (T1 and T2, or intraoral scans and CBCT) holding every patient, or one folder for each patient holding all of that patient's files. Rest the pointer on each option for an example.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "One folder per type": true,
+    "One folder per patient": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Data organisation",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": "segmented",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "One folder per type": "One folder for each type of file, every patient inside it.\nPatients are matched across the two folders by their file names.\n\nCBCT or IOS registration (T1 and T2):\n    T1/\n        patient001_T1.nii.gz\n        patient002_T1.nii.gz\n    T2/\n        patient001_T2.nii.gz\n        patient002_T2.nii.gz\n\nIOS to CBCT:\n    IOS/\n        patient001_U.stl\n        patient001_L.stl\n    CBCT/\n        patient001_CBCT.nii.gz",
+    "One folder per patient": "One folder for each patient, holding all of that patient's files.\nThe folder's name is the patient's name, and names the results.\n\nCBCT or IOS registration (T1 and T2):\n    patients/\n        patient001/\n            T1/  scan.nii.gz\n            T2/  scan.nii.gz\n        patient002/\n            patient002_T1.nii.gz\n            patient002_T2.nii.gz\n\nIOS to CBCT (sub-folders optional):\n    patients/\n        patient001/\n            IOS/   upper.stl  lower.stl\n            CBCT/  scan.nii.gz"
+   }
+  },
+  "t1": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The baseline meshes -- one surface or a folder of them, searched recursively. Each must say its jaw in its name.",
+   "server_selectable": "testfile",
+   "selectable_scope": "IOS_T1",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "T1 (baseline)",
+   "section": "Inputs",
+   "visible_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "t2": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The follow-up meshes, paired to T1 by patient key.",
+   "server_selectable": "testfile",
+   "selectable_scope": "IOS_T2",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "T2 (follow-up)",
+   "section": "Inputs",
+   "visible_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "patients": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The folder of patient folders, in the one-folder-per-patient layout. Each patient's folder name names its results.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Patient folders",
+   "section": "Inputs",
+   "visible_when": {
+    "input_layout": [
+     "One folder per patient"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per patient"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "automation": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "Semi-Automated takes meshes that already carry their tooth labels and orientation; Fully-Automated labels and orients them first, through the crown-segmentation and orientation tools.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "From the data": true,
+    "Semi-Automated": false,
+    "Fully-Automated": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Automation",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "ios_reference": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "A reference to orient the arches onto instead of the one ASO holds. Left empty -- the normal case -- ASO uses its own.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Orientation reference",
+   "section": "Registration",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "patch": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "Which part of the arch to match on -- the palate for an upper arch, the band around the mucogingival line for a lower one.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Palate (upper arch)": true,
+    "Mucogingival line (lower arch)": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Registration patch",
+   "section": "Registration",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "registration_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The model that finds the palatal patch. Not used by the mucogingival patch, which is built from landmarks and involves no network at all.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Patch model",
+   "section": "Registration",
+   "visible_when": {
+    "patch": [
+     "Palate (upper arch)"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "crown_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The checkpoint the crown-labelling tool runs with. A mesh that already carries its tooth-label array needs none.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Crown segmentation model",
+   "section": "Registration",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "mgl_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The landmark bundle the mucogingival line is predicted from, when no landmarks are sent.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Mucogingival landmark bundle",
+   "section": "Registration",
+   "visible_when": {
+    "patch": "Mucogingival line (lower arch)"
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "mgl_landmarks": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "Your own 13 landmarks per lower scan, marking the mucogingival line, instead of having them predicted.",
+   "server_selectable": "testfile",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Mucogingival landmarks",
+   "section": "Registration",
+   "visible_when": {
+    "patch": "Mucogingival line (lower arch)"
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "mgl_patch_height": {
+   "type": "float",
+   "types": [
+    "float"
+   ],
+   "required": false,
+   "description": "How far the band extends from the mucogingival line, in millimetres. 0 uses the engine's default.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 0.0,
+   "extensions": null,
+   "label": "Patch height (mm)",
+   "section": "Registration",
+   "visible_when": {
+    "patch": "Mucogingival line (lower arch)"
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "stop_after": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Stop the run after this step and return what it produced, instead of carrying on. Nothing is ticked by default and a run that is not asked to stop does not stop.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "ALI_IOS/Crown_Seg": false,
+    "ALI_IOS": false,
+    "ASO/ALI_CBCT": false,
+    "ASO": false,
+    "Crown_Seg": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Stop after",
+   "section": "Quality control",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_kind": {
+    "ALI_IOS/Crown_Seg": "view",
+    "ALI_IOS": "landmarks",
+    "ASO/ALI_CBCT": "landmarks",
+    "ASO": "view",
+    "Crown_Seg": "view"
+   },
+   "select_all": true
+  },
+  "keep_intermediate": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Return what a step produced, as it produced it and in its own space, for checking the run. Each one is written under `intermediate/` in the output folder.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "ALI_IOS": false,
+    "ASO": false,
+    "Crown_Seg": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Raw intermediate files",
+   "section": "Quality control",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "ALI_IOS": "The landmarks placed on the intraoral scans, which the mucogingival patch is built from.",
+    "ASO": "The scans once both timepoints sit in a common orientation, before the registration is run on them.",
+    "Crown_Seg": "The per-tooth labelled meshes, which this tool otherwise only uses to name the teeth."
+   },
+   "select_all": true
+  },
+  "output_suffix": {
+   "type": "str",
+   "types": [
+    "str"
+   ],
+   "required": false,
+   "description": "Added to each output name, e.g. `scan_Reg.vtk`.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": "Reg",
+   "extensions": null,
+   "label": "Output suffix",
+   "section": "Outputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "outputs": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "What to hand back beside the registered meshes, their transforms and scenes, which are always written. Metrics spreadsheet: what each registration measured, one row per patient and one per landmark, as `AREG_metrics.xlsx` and `.csv` beside the report.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Metrics spreadsheet (.xlsx + .csv)": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Extra outputs",
+   "section": "Outputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "Metrics spreadsheet (.xlsx + .csv)": "What each registration measured, one row per case and one per landmark, as AREG_metrics.xlsx and as .csv files beside the report: the numbers the console shows, kept for a cohort's statistics."
+   },
+   "note": "Saved beside the result, in the same 3D space. The result and its scene.json are always written."
+  }
+ },
+ "output_kind": "files",
+ "paired_batch": {
+  "axes": [
+   "t1",
+   "t2"
+  ],
+  "max_mb": 400,
+  "max_files": 25
+ }
+}

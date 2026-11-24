@@ -1,0 +1,238 @@
+{
+ "name": "AREG_IOS",
+ "description": "Register a follow-up intraoral scan onto its baseline, so the two compare.",
+ "arguments": {
+  "input_layout": {
+   "type": "str",
+   "required": false,
+   "default": "One folder per type",
+   "choices": [
+    "One folder per type",
+    "One folder per patient"
+   ],
+   "description": "How the files are organised: one folder for each type of file (T1 and T2, or intraoral scans and CBCT) holding every patient, or one folder for each patient holding all of that patient's files. Rest the pointer on each option for an example.",
+   "section": "Inputs",
+   "label": "Data organisation",
+   "ui": "segmented",
+   "option_help": {
+    "One folder per type": "One folder for each type of file, every patient inside it.\nPatients are matched across the two folders by their file names.\n\nCBCT or IOS registration (T1 and T2):\n    T1/\n        patient001_T1.nii.gz\n        patient002_T1.nii.gz\n    T2/\n        patient001_T2.nii.gz\n        patient002_T2.nii.gz\n\nIOS to CBCT:\n    IOS/\n        patient001_U.stl\n        patient001_L.stl\n    CBCT/\n        patient001_CBCT.nii.gz",
+    "One folder per patient": "One folder for each patient, holding all of that patient's files.\nThe folder's name is the patient's name, and names the results.\n\nCBCT or IOS registration (T1 and T2):\n    patients/\n        patient001/\n            T1/  scan.nii.gz\n            T2/  scan.nii.gz\n        patient002/\n            patient002_T1.nii.gz\n            patient002_T2.nii.gz\n\nIOS to CBCT (sub-folders optional):\n    patients/\n        patient001/\n            IOS/   upper.stl  lower.stl\n            CBCT/  scan.nii.gz"
+   }
+  },
+  "t1": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The baseline meshes -- one surface or a folder of them, searched recursively. Each must say its jaw in its name.",
+   "section": "Inputs",
+   "label": "T1 (baseline)",
+   "visible_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   }
+  },
+  "t2": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The follow-up meshes, paired to T1 by patient key.",
+   "section": "Inputs",
+   "label": "T2 (follow-up)",
+   "visible_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   }
+  },
+  "patients": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The folder of patient folders, in the one-folder-per-patient layout. Each patient's folder name names its results.",
+   "section": "Inputs",
+   "label": "Patient folders",
+   "visible_when": {
+    "input_layout": [
+     "One folder per patient"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per patient"
+    ]
+   }
+  },
+  "output_dir": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "Where the registered meshes, their transforms and `AREG_report.json` are written. Nothing is written outside it."
+  },
+  "automation": {
+   "type": "str",
+   "required": false,
+   "default": "From the data",
+   "choices": [
+    "From the data",
+    "Semi-Automated",
+    "Fully-Automated"
+   ],
+   "description": "Semi-Automated takes meshes that already carry their tooth labels and orientation; Fully-Automated labels and orients them first, through the crown-segmentation and orientation tools.",
+   "section": "Inputs",
+   "label": "Automation",
+   "hidden": true
+  },
+  "ios_reference": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "A reference to orient the arches onto instead of the one ASO holds. Left empty -- the normal case -- ASO uses its own.",
+   "hidden": true,
+   "section": "Registration",
+   "label": "Orientation reference",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated"
+    ]
+   }
+  },
+  "patch": {
+   "type": "str",
+   "required": false,
+   "default": "Palate (upper arch)",
+   "choices": [
+    "Palate (upper arch)",
+    "Mucogingival line (lower arch)"
+   ],
+   "description": "Which part of the arch to match on -- the palate for an upper arch, the band around the mucogingival line for a lower one.",
+   "section": "Registration",
+   "label": "Registration patch"
+  },
+  "registration_model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The model that finds the palatal patch. Not used by the mucogingival patch, which is built from landmarks and involves no network at all.",
+   "hidden": true,
+   "section": "Registration",
+   "label": "Patch model",
+   "visible_when": {
+    "patch": [
+     "Palate (upper arch)"
+    ]
+   }
+  },
+  "crown_model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The checkpoint the crown-labelling tool runs with. A mesh that already carries its tooth-label array needs none.",
+   "hidden": true,
+   "section": "Registration",
+   "label": "Crown segmentation model",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated"
+    ]
+   }
+  },
+  "mgl_model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The landmark bundle the mucogingival line is predicted from, when no landmarks are sent.",
+   "hidden": true,
+   "section": "Registration",
+   "label": "Mucogingival landmark bundle",
+   "visible_when": {
+    "patch": "Mucogingival line (lower arch)"
+   }
+  },
+  "mgl_landmarks": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "Your own 13 landmarks per lower scan, marking the mucogingival line, instead of having them predicted.",
+   "section": "Registration",
+   "label": "Mucogingival landmarks",
+   "visible_when": {
+    "patch": "Mucogingival line (lower arch)"
+   }
+  },
+  "mgl_patch_height": {
+   "type": "float",
+   "required": false,
+   "default": 0.0,
+   "description": "How far the band extends from the mucogingival line, in millimetres. 0 uses the engine's default.",
+   "section": "Registration",
+   "label": "Patch height (mm)",
+   "visible_when": {
+    "patch": "Mucogingival line (lower arch)"
+   }
+  },
+  "output_suffix": {
+   "type": "str",
+   "required": false,
+   "default": "Reg",
+   "description": "Added to each output name, e.g. `scan_Reg.vtk`.",
+   "section": "Outputs",
+   "label": "Output suffix"
+  },
+  "outputs": {
+   "type": "list[str]",
+   "required": false,
+   "default": [],
+   "choices": [
+    "Metrics spreadsheet (.xlsx + .csv)"
+   ],
+   "description": "What to hand back beside the registered meshes, their transforms and scenes, which are always written. Metrics spreadsheet: what each registration measured, one row per patient and one per landmark, as `AREG_metrics.xlsx` and `.csv` beside the report.",
+   "section": "Outputs",
+   "label": "Extra outputs",
+   "note": "Saved beside the result, in the same 3D space. The result and its scene.json are always written.",
+   "option_help": {
+    "Metrics spreadsheet (.xlsx + .csv)": "What each registration measured, one row per case and one per landmark, as AREG_metrics.xlsx and as .csv files beside the report: the numbers the console shows, kept for a cohort's statistics."
+   }
+  }
+ },
+ "returns": "path",
+ "injected_layout": {
+  "keep_intermediate": {
+   "hidden": true,
+   "label": "Raw intermediate files",
+   "option_help": {
+    "ALI_IOS": "The landmarks placed on the intraoral scans, which the mucogingival patch is built from.",
+    "ASO": "The scans once both timepoints sit in a common orientation, before the registration is run on them.",
+    "Crown_Seg": "The per-tooth labelled meshes, which this tool otherwise only uses to name the teeth."
+   }
+  },
+  "stop_after": {
+   "label": "Stop after"
+  }
+ },
+ "paired": {
+  "axes": [
+   "t1",
+   "t2"
+  ]
+ },
+ "supervisor": true,
+ "calls": [
+  "ALI_IOS",
+  "ASO",
+  "Crown_Seg"
+ ],
+ "source_hash": "3df05a7b9fefb5c74247df87bc1541f2d10104493ab830ac390b92de9e554bdf"
+}

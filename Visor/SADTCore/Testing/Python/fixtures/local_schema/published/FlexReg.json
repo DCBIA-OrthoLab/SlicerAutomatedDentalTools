@@ -1,0 +1,504 @@
+{
+ "name": "FlexReg",
+ "arguments": {
+  "surfaces": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": true,
+   "description": "One labelled intraoral surface (.vtk/.vtp/.stl), or a folder of them. A folder is one call rather than one call per patient.",
+   "server_selectable": "testfile",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Arches",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "mode": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "Build the patch, register on a patch already there, or both.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Patch": false,
+    "Register": false,
+    "Patch and register": true
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "What to do",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "patch": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "Which region the registration is computed on. The palate is built from the four teeth below; the mucogingival line has to be present in the mesh already.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Palate (butterfly)": true,
+    "Mucogingival line": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Register on",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "reference": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The surface the others are registered onto. Required to register, unused when only building a patch.",
+   "server_selectable": "testfile",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Register onto",
+   "section": "Inputs",
+   "visible_when": {
+    "mode": [
+     "Register",
+     "Patch and register"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "tooth_anterior_right": {
+   "type": "int",
+   "types": [
+    "int"
+   ],
+   "required": false,
+   "description": "Universal number of the anterior right tooth.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 6,
+   "extensions": null,
+   "label": "Tooth anterior right",
+   "section": "Options",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "anterior_right": {
+   "type": "vec2",
+   "types": [
+    "vec2"
+   ],
+   "required": false,
+   "description": "Where that corner sits: ratio along the tooth (0 at mid-arch, 1 on the tooth) and millimetres fore or aft.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": [
+    0.5,
+    0.0
+   ],
+   "extensions": null,
+   "label": "Anterior right",
+   "section": "Patch",
+   "visible_when": {
+    "patch": "Palate (butterfly)"
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": "joystick",
+   "x_range": [
+    0.0,
+    1.0
+   ],
+   "y_range": [
+    -5.0,
+    5.0
+   ],
+   "x_labels": [
+    "mid",
+    "out"
+   ],
+   "section_columns": 2,
+   "cell": "ar",
+   "x_label": "Ratio (R-L)",
+   "y_label": "Adjust (A-P)",
+   "y_labels": [
+    "POST",
+    "ANT"
+   ],
+   "groups": null
+  },
+  "tooth_anterior_left": {
+   "type": "int",
+   "types": [
+    "int"
+   ],
+   "required": false,
+   "description": "Universal number of the anterior left tooth.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 11,
+   "extensions": null,
+   "label": "Tooth anterior left",
+   "section": "Options",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "anterior_left": {
+   "type": "vec2",
+   "types": [
+    "vec2"
+   ],
+   "required": false,
+   "description": "Where that corner sits.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": [
+    0.5,
+    0.0
+   ],
+   "extensions": null,
+   "label": "Anterior left",
+   "section": "Patch",
+   "visible_when": {
+    "patch": "Palate (butterfly)"
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": "joystick",
+   "x_range": [
+    0.0,
+    1.0
+   ],
+   "y_range": [
+    -5.0,
+    5.0
+   ],
+   "x_labels": [
+    "mid",
+    "out"
+   ],
+   "section_columns": 2,
+   "cell": "al",
+   "x_label": "Ratio (R-L)",
+   "y_label": "Adjust (A-P)",
+   "y_labels": [
+    "POST",
+    "ANT"
+   ],
+   "groups": null
+  },
+  "tooth_posterior_right": {
+   "type": "int",
+   "types": [
+    "int"
+   ],
+   "required": false,
+   "description": "Universal number of the posterior right tooth.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 3,
+   "extensions": null,
+   "label": "Tooth posterior right",
+   "section": "Options",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "posterior_right": {
+   "type": "vec2",
+   "types": [
+    "vec2"
+   ],
+   "required": false,
+   "description": "Where that corner sits.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": [
+    0.5,
+    0.0
+   ],
+   "extensions": null,
+   "label": "Posterior right",
+   "section": "Patch",
+   "visible_when": {
+    "patch": "Palate (butterfly)"
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": "joystick",
+   "x_range": [
+    0.0,
+    1.0
+   ],
+   "y_range": [
+    -5.0,
+    5.0
+   ],
+   "x_labels": [
+    "mid",
+    "out"
+   ],
+   "section_columns": 2,
+   "cell": "pr",
+   "x_label": "Ratio (R-L)",
+   "y_label": "Adjust (A-P)",
+   "y_labels": [
+    "POST",
+    "ANT"
+   ],
+   "groups": null
+  },
+  "tooth_posterior_left": {
+   "type": "int",
+   "types": [
+    "int"
+   ],
+   "required": false,
+   "description": "Universal number of the posterior left tooth.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 14,
+   "extensions": null,
+   "label": "Tooth posterior left",
+   "section": "Options",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "posterior_left": {
+   "type": "vec2",
+   "types": [
+    "vec2"
+   ],
+   "required": false,
+   "description": "Where that corner sits.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": [
+    0.5,
+    0.0
+   ],
+   "extensions": null,
+   "label": "Posterior left",
+   "section": "Patch",
+   "visible_when": {
+    "patch": "Palate (butterfly)"
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": "joystick",
+   "x_range": [
+    0.0,
+    1.0
+   ],
+   "y_range": [
+    -5.0,
+    5.0
+   ],
+   "x_labels": [
+    "mid",
+    "out"
+   ],
+   "section_columns": 2,
+   "cell": "pl",
+   "x_label": "Ratio (R-L)",
+   "y_label": "Adjust (A-P)",
+   "y_labels": [
+    "POST",
+    "ANT"
+   ],
+   "groups": null
+  },
+  "shift": {
+   "type": "vec2",
+   "types": [
+    "vec2"
+   ],
+   "required": false,
+   "description": "Millimetres the whole patch moves, left-right then fore-aft.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": [
+    0.0,
+    0.0
+   ],
+   "extensions": null,
+   "label": "Move the whole patch",
+   "section": "Patch",
+   "visible_when": {
+    "patch": "Palate (butterfly)"
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": "joystick",
+   "x_range": [
+    -15.0,
+    15.0
+   ],
+   "y_range": [
+    -15.0,
+    15.0
+   ],
+   "x_labels": [
+    "L",
+    "R"
+   ],
+   "section_columns": null,
+   "cell": null,
+   "x_label": "Shift (R-L)",
+   "y_label": "Shift (A-P)",
+   "y_labels": [
+    "POST",
+    "ANT"
+   ],
+   "groups": null
+  },
+  "output_suffix": {
+   "type": "str",
+   "types": [
+    "str"
+   ],
+   "required": false,
+   "description": "Appended to each written file's name.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": "_Reg",
+   "extensions": null,
+   "label": "Suffix",
+   "section": "Outputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  }
+ },
+ "output_kind": "files",
+ "batch": {
+  "axis": "surfaces",
+  "max_mb": 400,
+  "max_files": 25
+ }
+}

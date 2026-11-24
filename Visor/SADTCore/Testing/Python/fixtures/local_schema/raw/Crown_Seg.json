@@ -1,0 +1,72 @@
+{
+ "name": "Crown_Seg",
+ "description": "Label every tooth of an intraoral scan with its dental number.",
+ "arguments": {
+  "meshes": {
+   "type": "path",
+   "required": true,
+   "description": "One intraoral surface (.vtk/.stl), or a folder of them for a batch. Folders are searched recursively and the output mirrors the input tree, so two patients whose meshes share a file name stay apart."
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where the labelled meshes are written, plus `run_report.json`. Nothing is written outside it."
+  },
+  "model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The crown-segmentation checkpoint (a .pth file), or a folder holding it -- the published one is named for the training run that produced it, `<date>_val-loss<number>.pth`, and is found inside a folder however deeply it is filed. That is what lets a caller hand over a whole models directory without knowing where the file sits; a folder holding two of them is refused, naming both. Left empty, this tool uses the checkpoint installed for it.",
+   "hidden": true
+  },
+  "array_name": {
+   "type": "str",
+   "required": false,
+   "default": "",
+   "description": "Name of the point-data array the labels are written to. Left empty it follows `numbering` -- `Universal_ID` or `FDI_ID` -- so the name can never disagree with the integers underneath it. Every tool that reads these meshes looks for the Universal spelling, which is what makes an FDI mesh refused downstream rather than read as a different set of teeth.",
+   "hidden": true
+  },
+  "suffix": {
+   "type": "str",
+   "required": false,
+   "default": "Seg",
+   "description": "Added to each output name, e.g. `arch_Seg.vtk`."
+  },
+  "numbering": {
+   "type": "str",
+   "required": false,
+   "default": "Universal",
+   "choices": [
+    "Universal",
+    "FDI"
+   ],
+   "description": "Universal or FDI tooth numbering. This changes the integers written into the array, not the mesh, and whatever consumes the result has to agree -- the report records which was used.",
+   "label": "Tooth numbering"
+  },
+  "skip_segmented": {
+   "type": "bool",
+   "required": false,
+   "default": true,
+   "description": "Pass a mesh that already carries labels through unchanged instead of spending minutes re-predicting it. That is what makes a mixed batch of raw and pre-segmented meshes one call."
+  },
+  "device": {
+   "type": "str",
+   "required": false,
+   "default": "cuda",
+   "choices": [
+    "cuda",
+    "cpu"
+   ],
+   "description": "\"cuda\" or \"cpu\". CUDA falls back to CPU when no card is visible, with a warning."
+  },
+  "num_workers": {
+   "type": "int",
+   "required": false,
+   "default": 2,
+   "description": "DataLoader workers shapeaxi uses to load meshes. Forced to at least 1: shapeaxi builds its loader with persistent_workers=True, which PyTorch rejects at 0."
+  }
+ },
+ "returns": "path",
+ "supervisor": true,
+ "source_hash": "a48f3b9541bc4c7619af249375914eb000be3de1a3ce1f7a78ebfcb99dcb7089"
+}

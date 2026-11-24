@@ -1,0 +1,1467 @@
+{
+ "name": "AREG",
+ "arguments": {
+  "mode": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": true,
+   "description": "Which of this tool's engines to run.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "CBCT": true,
+    "IOS": false,
+    "IOS to CBCT": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Mode",
+   "section": null,
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "input_layout": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "How the files are organised: one folder for each type of file (T1 and T2, or intraoral scans and CBCT) holding every patient, or one folder for each patient holding all of that patient's files. Rest the pointer on each option for an example.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "One folder per type": true,
+    "One folder per patient": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Data organisation",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": "segmented",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "One folder per type": "One folder for each type of file, every patient inside it.\nPatients are matched across the two folders by their file names.\n\nCBCT or IOS registration (T1 and T2):\n    T1/\n        patient001_T1.nii.gz\n        patient002_T1.nii.gz\n    T2/\n        patient001_T2.nii.gz\n        patient002_T2.nii.gz\n\nIOS to CBCT:\n    IOS/\n        patient001_U.stl\n        patient001_L.stl\n    CBCT/\n        patient001_CBCT.nii.gz",
+    "One folder per patient": "One folder for each patient, holding all of that patient's files.\nThe folder's name is the patient's name, and names the results.\n\nCBCT or IOS registration (T1 and T2):\n    patients/\n        patient001/\n            T1/  scan.nii.gz\n            T2/  scan.nii.gz\n        patient002/\n            patient002_T1.nii.gz\n            patient002_T2.nii.gz\n\nIOS to CBCT (sub-folders optional):\n    patients/\n        patient001/\n            IOS/   upper.stl  lower.stl\n            CBCT/  scan.nii.gz"
+   }
+  },
+  "t1": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The baseline scans -- one volume or a folder of them, searched recursively. A DICOM series is converted when `dicom_input` is set.",
+   "server_selectable": "testfile",
+   "selectable_scope": "CBCT_T1",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "T1 (baseline)",
+   "section": "Inputs",
+   "visible_when": {
+    "input_layout": [
+     "One folder per type"
+    ],
+    "mode": [
+     "CBCT",
+     "IOS"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "t2": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The follow-up scans, paired to T1 by patient key.",
+   "server_selectable": "testfile",
+   "selectable_scope": "CBCT_T2",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "T2 (follow-up)",
+   "section": "Inputs",
+   "visible_when": {
+    "input_layout": [
+     "One folder per type"
+    ],
+    "mode": [
+     "CBCT",
+     "IOS"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "patients": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The folder of patient folders, in the one-folder-per-patient layout. Each patient's folder name names its results.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Patient folders",
+   "section": "Inputs",
+   "visible_when": {
+    "input_layout": [
+     "One folder per patient"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per patient"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "automation": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "Left on its default the mode is read off the request -- masks mean Semi-Automated, none means Fully-Automated, and the frame named in `orientation` picks the oriented variant. Naming a mode overrides that: Semi-Automated takes your own masks, Fully-Automated segments them, Oriented + Fully-Automated orients both timepoints first, which needs a reference.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "From the data": true,
+    "Semi-Automated": false,
+    "Fully-Automated": false,
+    "Oriented + Fully-Automated": false,
+    "Registration": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Automation",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": {
+    "mode": {
+     "CBCT": [
+      "From the data",
+      "Semi-Automated",
+      "Fully-Automated",
+      "Oriented + Fully-Automated"
+     ],
+     "IOS": [
+      "From the data",
+      "Semi-Automated",
+      "Fully-Automated"
+     ],
+     "IOS to CBCT": [
+      "From the data",
+      "Registration",
+      "Semi-Automated",
+      "Fully-Automated"
+     ]
+    }
+   },
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "regions": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "The anatomy to register on -- what has NOT changed between the timepoints. The one argument a clinician must actually think about.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Cranial base": true,
+    "Mandible": false,
+    "Maxilla": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Register on",
+   "section": "Registration",
+   "visible_when": {
+    "mode": [
+     "CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "Cranial base": "CB",
+    "Mandible": "MAND",
+    "Maxilla": "MAX"
+   }
+  },
+  "t1_masks": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "Your own T1 segmentation masks, instead of having them segmented for you.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "T1 masks",
+   "section": "Advanced",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Semi-Automated"
+    ],
+    "mode": [
+     "CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "segmentations": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Anatomy to segment and return beside the registration, for the modes that segment. Independent of `regions`: ticking the skin does not register on it, and registering on the mandible does not return a mandible you can open. Returned for both timepoints, which costs a second segmentation pass over the T2. None by default -- a registration run returns a registration.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Cranial base": false,
+    "Cervical vertebra": false,
+    "Mandible": false,
+    "Maxilla": false,
+    "Skin": false,
+    "Upper airway": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "AMASSS segmentation",
+   "section": "Registration",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated",
+     "Oriented + Fully-Automated"
+    ],
+    "mode": [
+     "CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": {
+    "Bones": [
+     "Mandible",
+     "Maxilla",
+     "Cranial base",
+     "Cervical vertebra"
+    ],
+    "Soft tissue": [
+     "Upper airway",
+     "Skin"
+    ]
+   },
+   "option_help": {
+    "Cranial base": "CB",
+    "Cervical vertebra": "CV",
+    "Mandible": "MAND",
+    "Maxilla": "MAX",
+    "Skin": "SKIN",
+    "Upper airway": "UAW"
+   }
+  },
+  "segmentation_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "A mask model bundle to use instead of AMASSS's own, for the modes that segment. Left empty -- which is what a panel sends -- AMASSS segments with the model it holds, there being no second answer to the question.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Segmentation model",
+   "section": "Registration",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated",
+     "Oriented + Fully-Automated"
+    ],
+    "mode": [
+     "CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "segmentation_label": {
+   "type": "int",
+   "types": [
+    "int"
+   ],
+   "required": false,
+   "description": "Which label value in the masks to register on.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 0,
+   "extensions": null,
+   "label": "Mask label value",
+   "section": "Advanced",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Semi-Automated"
+    ],
+    "mode": [
+     "CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "reference": {
+   "type": "str",
+   "types": [
+    "str"
+   ],
+   "required": false,
+   "description": "A reference bundle to orient onto instead of the one ASO holds for the frame named in `orientation`. Left empty -- the normal case -- ASO resolves its own.",
+   "server_selectable": "model",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": null,
+   "label": "Orientation reference",
+   "section": "Advanced",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Oriented + Fully-Automated"
+    ],
+    "mode": [
+     "CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "landmark_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The landmark bundle that orientation step predicts with.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Landmark model bundle",
+   "section": "Registration",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Oriented + Fully-Automated"
+    ],
+    "mode": [
+     "CBCT",
+     "IOS to CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "dicom_input": {
+   "type": "bool",
+   "types": [
+    "bool"
+   ],
+   "required": false,
+   "description": "The inputs are DICOM series rather than volumes. Detected from the data when left off; this forces the conversion.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": false,
+   "extensions": null,
+   "label": "Input is DICOM",
+   "section": "Inputs",
+   "visible_when": {
+    "mode": [
+     "CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "orientation": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "The anatomical frame the scans are returned in. \"Leave as scanned\" keeps the scanner's own frame and skips the orientation step; naming a frame orients the T1 onto that reference first, which costs a landmark prediction per patient. The two are not interchangeable: Frankfurt horizontal is defined by Ba, S, N, RPo, LPo, ROr and LOr, the occlusal plane by ANS, IF, PNS, UL6O, UR1O and UR6O, so the measurement made afterwards does not say the same thing. Frankfurt horizontal by default. Read only when no masks are supplied.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Leave as scanned": false,
+    "Frankfurt horizontal": true,
+    "Occlusal plane": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Orientation",
+   "section": "Inputs",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated",
+     "Oriented + Fully-Automated"
+    ],
+    "mode": [
+     "CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "stop_after": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Stop the run after this step and return what it produced, instead of carrying on. Nothing is ticked by default and a run that is not asked to stop does not stop.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "AMASSS": false,
+    "ASO/ALI_CBCT": false,
+    "ASO": false,
+    "ALI_IOS/Crown_Seg": false,
+    "ALI_IOS": false,
+    "Crown_Seg": false,
+    "ALI_CBCT": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Stop after",
+   "section": "Quality control",
+   "visible_when": null,
+   "options_when": {
+    "mode": {
+     "CBCT": [
+      "AMASSS",
+      "ASO/ALI_CBCT",
+      "ASO"
+     ],
+     "IOS": [
+      "ALI_IOS/Crown_Seg",
+      "ALI_IOS",
+      "ASO/ALI_CBCT",
+      "ASO",
+      "Crown_Seg"
+     ],
+     "IOS to CBCT": [
+      "ALI_CBCT",
+      "ALI_IOS/Crown_Seg",
+      "ALI_IOS",
+      "ASO/ALI_CBCT",
+      "ASO",
+      "Crown_Seg"
+     ]
+    }
+   },
+   "hidden": false,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "ASO/ALI_CBCT": "The landmarks ASO places on the CBCT to orient it. Not the ones the registration uses.",
+    "ASO": "The CBCT once oriented, before any landmark the registration uses is placed on it.",
+    "Crown_Seg": "The intraoral scans with each tooth labelled.",
+    "ALI_IOS/Crown_Seg": "The teeth labelled for the intraoral landmark prediction.",
+    "ALI_IOS": "The intraoral landmarks the registration matches.",
+    "ALI_CBCT": "The CBCT landmarks the registration matches: the last pause before the meshes are registered."
+   },
+   "option_kind": {
+    "AMASSS": "view",
+    "ASO/ALI_CBCT": "landmarks",
+    "ASO": "view"
+   },
+   "select_all": true
+  },
+  "keep_intermediate": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "Return what a step produced, as it produced it and in its own space, for checking the run. Each one is written under `intermediate/` in the output folder.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "AMASSS": false,
+    "ASO": false,
+    "ALI_IOS": false,
+    "Crown_Seg": false,
+    "ALI_CBCT": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Raw intermediate files",
+   "section": "Quality control",
+   "visible_when": null,
+   "options_when": {
+    "mode": {
+     "CBCT": [
+      "AMASSS",
+      "ASO"
+     ],
+     "IOS": [
+      "ALI_IOS",
+      "ASO",
+      "Crown_Seg"
+     ],
+     "IOS to CBCT": [
+      "ALI_CBCT",
+      "ALI_IOS",
+      "ASO",
+      "Crown_Seg"
+     ]
+    }
+   },
+   "hidden": true,
+   "ui": "chips",
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "AMASSS": "The bone masks each region's registration is confined to -- what to look at when a registration lands on the wrong anatomy. The ticked segmentations of the T2 are in it too.",
+    "ASO": "The scans once both timepoints sit in a common orientation, before the registration is run on them.",
+    "ALI_IOS": "The landmarks placed on the intraoral scans, which the mucogingival patch is built from.",
+    "Crown_Seg": "The per-tooth labelled meshes, which this tool otherwise only uses to name the teeth.",
+    "ALI_CBCT": "The landmarks placed on the CBCT, before this tool registers on them."
+   },
+   "select_all": true
+  },
+  "output_suffix": {
+   "type": "str",
+   "types": [
+    "str"
+   ],
+   "required": false,
+   "description": "Added to each output name, e.g. `scan_Reg.nii.gz`.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": "Reg",
+   "extensions": null,
+   "label": "Output suffix",
+   "section": "Outputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "outputs": {
+   "type": "multichoice",
+   "types": [
+    "multichoice"
+   ],
+   "required": false,
+   "description": "What to hand back beside each registered T2, in the T1's space so it opens on top of it. T1 scan: the T1 it was registered onto; when it was oriented first, the copy under `T1_Oriented/` rather than a second copy. Orientation landmarks (ASO): the landmarks ASO oriented the T1 on, beside that copy; none when the T1 was not oriented. Metrics spreadsheet: what each registration measured (the optimiser's cost, its iterations, the rigid transform applied), one row per patient and region, as `AREG_metrics.xlsx` and `.csv` beside `AREG_report.json`. Each registration's `_scene.json` lists the 3D files written.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "T1 scan (oriented when orientation is on)": false,
+    "Orientation landmarks (ASO)": false,
+    "Metrics spreadsheet (.xlsx + .csv)": false,
+    "Registration landmarks (IOS + CBCT)": false,
+    "CBCT scan": false,
+    "Transform (.tfm)": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Extra outputs",
+   "section": "Outputs",
+   "visible_when": null,
+   "options_when": {
+    "mode": {
+     "CBCT": [
+      "T1 scan (oriented when orientation is on)",
+      "Orientation landmarks (ASO)",
+      "Metrics spreadsheet (.xlsx + .csv)"
+     ],
+     "IOS": [
+      "Metrics spreadsheet (.xlsx + .csv)"
+     ],
+     "IOS to CBCT": [
+      "Registration landmarks (IOS + CBCT)",
+      "Orientation landmarks (ASO)",
+      "CBCT scan",
+      "Transform (.tfm)",
+      "Metrics spreadsheet (.xlsx + .csv)"
+     ]
+    }
+   },
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null,
+   "option_help": {
+    "T1 scan (oriented when orientation is on)": "The T1 the T2 was registered onto. Oriented, it is the copy already under T1_Oriented/; otherwise it is copied beside the result.",
+    "Orientation landmarks (ASO)": "The landmarks ASO oriented the CBCT on, in the oriented CBCT's space. Only when the run oriented it.",
+    "Metrics spreadsheet (.xlsx + .csv)": "What each registration measured, one row per case and one per landmark, as AREG_metrics.xlsx and as .csv files beside the report: the numbers the console shows, kept for a cohort's statistics.",
+    "Registration landmarks (IOS + CBCT)": "The landmarks the registration paired: each arch's, moved with it onto the CBCT, and the CBCT's own.",
+    "CBCT scan": "The CBCT the meshes were registered onto, copied beside them (the oriented one when the chain oriented it first).",
+    "Transform (.tfm)": "Each registration as a .tfm that 3D Slicer opens."
+   },
+   "note": "Saved beside the result, in the same 3D space. The result and its scene.json are always written."
+  },
+  "num_workers": {
+   "type": "int",
+   "types": [
+    "int"
+   ],
+   "required": false,
+   "description": "How many registrations to run at once. Left at 0 the server decides, from what one registration was measured to cost.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 0,
+   "extensions": null,
+   "label": "Number of workers",
+   "section": "Advanced",
+   "visible_when": {
+    "mode": [
+     "CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "ios_reference": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "A reference to orient the arches onto instead of the one ASO holds. Left empty -- the normal case -- ASO uses its own.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Orientation reference",
+   "section": "Registration",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated"
+    ],
+    "mode": [
+     "IOS"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "patch": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "Which part of the arch to match on -- the palate for an upper arch, the band around the mucogingival line for a lower one.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "Palate (upper arch)": true,
+    "Mucogingival line (lower arch)": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Registration patch",
+   "section": "Registration",
+   "visible_when": {
+    "mode": [
+     "IOS"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "registration_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The model that finds the palatal patch. Not used by the mucogingival patch, which is built from landmarks and involves no network at all.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Patch model",
+   "section": "Registration",
+   "visible_when": {
+    "patch": [
+     "Palate (upper arch)"
+    ],
+    "mode": [
+     "IOS"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "crown_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The checkpoint the crown-labelling tool runs with. A mesh that already carries its tooth-label array needs none.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Crown segmentation model",
+   "section": "Registration",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated"
+    ],
+    "mode": [
+     "IOS",
+     "IOS to CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "mgl_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The landmark bundle the mucogingival line is predicted from, when no landmarks are sent.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Mucogingival landmark bundle",
+   "section": "Registration",
+   "visible_when": {
+    "patch": "Mucogingival line (lower arch)",
+    "mode": [
+     "IOS"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "mgl_landmarks": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "Your own 13 landmarks per lower scan, marking the mucogingival line, instead of having them predicted.",
+   "server_selectable": "testfile",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Mucogingival landmarks",
+   "section": "Registration",
+   "visible_when": {
+    "patch": "Mucogingival line (lower arch)",
+    "mode": [
+     "IOS"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "mgl_patch_height": {
+   "type": "float",
+   "types": [
+    "float"
+   ],
+   "required": false,
+   "description": "How far the band extends from the mucogingival line, in millimetres. 0 uses the engine's default.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 0.0,
+   "extensions": null,
+   "label": "Patch height (mm)",
+   "section": "Registration",
+   "visible_when": {
+    "patch": "Mucogingival line (lower arch)",
+    "mode": [
+     "IOS"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "ios": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The intraoral surfaces (.vtk/.stl): one file, or a folder searched recursively. Upper and lower arches are registered separately and matched to their landmarks by the jaw token in the name.",
+   "server_selectable": "testfile",
+   "selectable_scope": "IOSCBCT_T1",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": [
+     ".stl",
+     ".vtk"
+    ]
+   },
+   "label": "Intraoral scans",
+   "section": "Inputs",
+   "visible_when": {
+    "input_layout": [
+     "One folder per type"
+    ],
+    "mode": [
+     "IOS to CBCT"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "cbct": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The CBCT volumes: one file, or a folder. Paired to the intraoral scans on the digits of the patient identifier, the two modalities being named by different conventions, and on the timepoint (T1, T2) when the names give one, so each timepoint is registered onto its own CBCT.",
+   "server_selectable": "testfile",
+   "selectable_scope": "IOSCBCT_T2",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": [
+     ".gipl",
+     ".gipl.gz",
+     ".nii",
+     ".nii.gz",
+     ".nrrd",
+     ".nrrd.gz"
+    ]
+   },
+   "label": "CBCT volumes",
+   "section": "Inputs",
+   "visible_when": {
+    "input_layout": [
+     "One folder per type"
+    ],
+    "mode": [
+     "IOS to CBCT"
+    ]
+   },
+   "required_when": {
+    "input_layout": [
+     "One folder per type"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "ios_landmarks": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "Registration mode. Your own intraoral landmarks.",
+   "server_selectable": "testfile",
+   "selectable_scope": "IOSCBCT_IOS Landmarks",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": [
+     ".json",
+     ".mrk.json"
+    ]
+   },
+   "label": "Intraoral landmarks",
+   "section": "Advanced",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Registration"
+    ],
+    "mode": [
+     "IOS to CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "cbct_landmarks": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "Registration mode. Your own CBCT landmarks.",
+   "server_selectable": "testfile",
+   "selectable_scope": "IOSCBCT_CBCT Landmarks",
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": [
+     ".json",
+     ".mrk.json"
+    ]
+   },
+   "label": "CBCT landmarks",
+   "section": "Advanced",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Registration"
+    ],
+    "mode": [
+     "IOS to CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "cbct_reference": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "A reference bundle to orient the CBCT volumes onto instead of the Frankfurt horizontal frame ASO holds. Left empty -- the normal case -- ASO resolves its own.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Orientation reference",
+   "section": "Models",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Fully-Automated"
+    ],
+    "mode": [
+     "IOS to CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "ios_landmark_model": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": false,
+   "description": "The intraoral landmark bundle.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Intraoral landmark bundle",
+   "section": "Models",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Semi-Automated",
+     "Fully-Automated"
+    ],
+    "mode": [
+     "IOS to CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "max_dist": {
+   "type": "float",
+   "types": [
+    "float"
+   ],
+   "required": false,
+   "description": "How far a point may be from its nearest neighbour and still count as an ICP correspondence, in millimetres. 0 uses 1.5, which is upstream's.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": 0.0,
+   "extensions": null,
+   "label": "ICP match distance (mm)",
+   "section": "Outputs",
+   "visible_when": {
+    "mode": [
+     "IOS to CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "orient_cbct_first": {
+   "type": "bool",
+   "types": [
+    "bool"
+   ],
+   "required": false,
+   "description": "Put the CBCT in the Frankfurt horizontal and mid-sagittal frame before the cross-modality registration. One frame only, unlike the CBCT-to-CBCT engine which offers two: the landmarks the rest of this chain reads are defined in this one, so another would silently change what they mean. Read only when no landmarks are supplied, there being nothing to orient for once they are.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": true,
+   "extensions": null,
+   "label": "Standardise the CBCT orientation (Frankfurt)",
+   "section": "Inputs",
+   "visible_when": {
+    "automation": [
+     "From the data",
+     "Semi-Automated",
+     "Fully-Automated"
+    ],
+    "mode": [
+     "IOS to CBCT"
+    ]
+   },
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  }
+ },
+ "output_kind": "files",
+ "paired_batch": {
+  "by": "mode",
+  "modes": {
+   "CBCT": {
+    "axes": [
+     "t1",
+     "t2"
+    ],
+    "max_mb": 400,
+    "max_files": 25
+   },
+   "IOS": {
+    "axes": [
+     "t1",
+     "t2"
+    ],
+    "max_mb": 400,
+    "max_files": 25
+   }
+  }
+ }
+}

@@ -1,0 +1,156 @@
+{
+ "name": "DOCShapeAXI",
+ "arguments": {
+  "surfaces": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": true,
+   "description": "A `.vtk` surface, or a folder of them (searched recursively).",
+   "server_selectable": "testfile",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Surfaces",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "model": {
+   "type": "str",
+   "types": [
+    "str"
+   ],
+   "required": true,
+   "description": "The checkpoint to use. Its name says which anatomy is being graded, on what scale, and with which network -- upstream asked for all four separately, so a caller could pair a two-class model with a four-class scale and be handed a severity grade the network was never trained to produce.",
+   "server_selectable": "model",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": null,
+   "label": "Model",
+   "section": "Model",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "explain": {
+   "type": "bool",
+   "types": [
+    "bool"
+   ],
+   "required": false,
+   "description": "Also compute the GradCAM attribution and write it onto each surface as a point array. Off, only the predictions are produced, which is several times faster.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": true,
+   "extensions": null,
+   "label": "Explain",
+   "section": "Options",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "output_suffix": {
+   "type": "str",
+   "types": [
+    "str"
+   ],
+   "required": false,
+   "description": "Appended to each written surface's stem.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": null,
+   "initial": "_pred",
+   "extensions": null,
+   "label": "Output suffix",
+   "section": "Outputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "device": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "`cuda` or `cpu`. Falls back to `cpu` with a warning when no CUDA device is visible.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "cuda": true,
+    "cpu": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "Device",
+   "section": "Advanced",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": true,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  }
+ },
+ "output_kind": "files",
+ "batch": {
+  "axis": "surfaces",
+  "max_mb": 400,
+  "max_files": 25
+ }
+}

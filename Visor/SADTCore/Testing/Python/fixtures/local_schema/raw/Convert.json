@@ -1,0 +1,29 @@
+{
+ "name": "Convert",
+ "description": "Convert scans, or DICOM series, to one file format.",
+ "arguments": {
+  "scans": {
+   "type": "path",
+   "required": true,
+   "description": "One scan, or a folder of scans and DICOM series. Folders are kept as they are."
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where the converted scans are written."
+  },
+  "to": {
+   "type": "str",
+   "required": false,
+   "default": "nii.gz",
+   "choices": [
+    "nii.gz",
+    "nrrd",
+    "gipl.gz"
+   ],
+   "description": "The format to write: NIfTI, NRRD or GIPL."
+  }
+ },
+ "returns": "path",
+ "source_hash": "ff344717631287e07a214b5f11b05cb07fdbcc3288843fcb135c70d741313472"
+}

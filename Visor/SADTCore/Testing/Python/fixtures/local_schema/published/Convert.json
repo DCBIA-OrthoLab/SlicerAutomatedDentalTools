@@ -1,0 +1,73 @@
+{
+ "name": "Convert",
+ "arguments": {
+  "scans": {
+   "type": "path",
+   "types": [
+    "path"
+   ],
+   "required": true,
+   "description": "One scan, or a folder of scans and DICOM series. Folders are kept as they are.",
+   "server_selectable": "testfile",
+   "selectable_scope": null,
+   "choices": null,
+   "initial": null,
+   "extensions": {
+    "path": null
+   },
+   "label": "Scans",
+   "section": "Inputs",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  },
+  "to": {
+   "type": "choice",
+   "types": [
+    "choice"
+   ],
+   "required": false,
+   "description": "The format to write: NIfTI, NRRD or GIPL.",
+   "server_selectable": null,
+   "selectable_scope": null,
+   "choices": {
+    "nii.gz": true,
+    "nrrd": false,
+    "gipl.gz": false
+   },
+   "initial": null,
+   "extensions": null,
+   "label": "To",
+   "section": "Options",
+   "visible_when": null,
+   "options_when": null,
+   "hidden": false,
+   "ui": null,
+   "x_range": null,
+   "y_range": null,
+   "x_labels": null,
+   "section_columns": null,
+   "cell": null,
+   "x_label": null,
+   "y_label": null,
+   "y_labels": null,
+   "groups": null
+  }
+ },
+ "output_kind": "files",
+ "batch": {
+  "axis": "scans",
+  "max_mb": 400,
+  "max_files": 25
+ }
+}

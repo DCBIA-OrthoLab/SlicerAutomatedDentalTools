@@ -1,0 +1,74 @@
+{
+ "name": "AutoMatrix",
+ "description": "Apply each patient's transform to their scans, segmentations or landmarks.",
+ "arguments": {
+  "files": {
+   "type": "path",
+   "required": true,
+   "description": "A scan, a segmentation, a landmark file, or a folder of them. Folders are searched recursively.",
+   "section": "Inputs",
+   "label": "Files to transform"
+  },
+  "transforms": {
+   "type": "path",
+   "required": true,
+   "description": "The transforms to apply (.tfm/.mat/.h5/.txt), matched to files by patient name. A patient with several transforms has each of them applied.",
+   "section": "Inputs",
+   "label": "Transforms"
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where the results are written. The input tree is mirrored."
+  },
+  "same_transform_for_every_patient": {
+   "type": "bool",
+   "required": false,
+   "default": false,
+   "description": "Apply the one transform given to every patient, instead of matching it to a patient by name. What a mirror matrix needs, and meaningless with more than one transform.",
+   "section": "Inputs",
+   "label": "Same transform for every patient"
+  },
+  "name_output_after_transform": {
+   "type": "bool",
+   "required": false,
+   "default": false,
+   "description": "Add the transform's name to each output, which is what tells two transforms of one patient apart. A patient who has several gets it whatever this says, since otherwise each output overwrites the last.",
+   "section": "Outputs",
+   "label": "Include the transform name"
+  },
+  "output_suffix": {
+   "type": "str",
+   "required": false,
+   "default": "Reg",
+   "description": "Appended to each output name.",
+   "section": "Outputs",
+   "label": "Output suffix"
+  },
+  "content": {
+   "type": "str",
+   "required": false,
+   "default": "Automatic",
+   "choices": [
+    "Automatic",
+    "Scan",
+    "Segmentation"
+   ],
+   "description": "How the voxels are resampled. \"Segmentation\" uses nearest neighbour, so no label is invented; \"Scan\" interpolates linearly; \"Automatic\" reads it off each file, which is per FILE rather than per run and is what a folder holding both needs.",
+   "section": "Advanced",
+   "label": "How to resample",
+   "hidden": true
+  },
+  "reference": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "Optional volume defining the output grid. Without it each image keeps its own grid and only its origin moves.",
+   "section": "Advanced",
+   "label": "Reference volume",
+   "hidden": true
+  }
+ },
+ "returns": "path",
+ "source_hash": "1341bfcadfbdaca5b4d8f146a494e386f9d4955144c3c543cf19695671d6d980"
+}

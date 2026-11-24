@@ -1,0 +1,251 @@
+{
+ "name": "VFACE",
+ "description": "Classify a patient's facial asymmetry, or measure the change between two scans.",
+ "arguments": {
+  "t1": {
+   "type": "path",
+   "required": true,
+   "description": "The CBCT volumes, one folder, searched recursively. Raw scans for the full pipeline; already-oriented ones for the modes that skip it, which read the frame each was oriented into off its name.",
+   "section": "Inputs",
+   "label": "CBCT volumes"
+  },
+  "output_dir": {
+   "type": "path",
+   "required": true,
+   "description": "Where the measurement tables, the classification and `VFACE_report.json` are written. Nothing is written outside it."
+  },
+  "mode": {
+   "type": "str",
+   "required": false,
+   "default": "Full pipeline",
+   "choices": [
+    "Full pipeline",
+    "File already Oriented",
+    "File already Registered"
+   ],
+   "description": "How far down the pipeline the scans already are. Full pipeline resamples, orients, segments, registers and measures. File already Oriented starts at the segmentation; File already Registered measures only.",
+   "section": "Inputs",
+   "label": "Starting from"
+  },
+  "study": {
+   "type": "str",
+   "required": false,
+   "default": "Asymmetry assessment",
+   "choices": [
+    "Asymmetry assessment",
+    "Longitudinal study"
+   ],
+   "description": "An asymmetry assessment has no second scan -- the patient is compared against their own mirror image. A longitudinal study compares the baseline with the follow-up in `t2`.",
+   "section": "Inputs",
+   "label": "Study"
+  },
+  "outputs": {
+   "type": "str",
+   "required": false,
+   "default": "Measurements and classification",
+   "choices": [
+    "Measurements and classification",
+    "Measurements and heat maps",
+    "Heat maps"
+   ],
+   "description": "Measurements and a classification, heat maps of where the two surfaces differ, or both. Measurements need no segmentation of the soft tissue and heat maps need no landmarks, so a deployment missing one tool can still answer the other half.",
+   "section": "Inputs",
+   "label": "What to produce"
+  },
+  "regions": {
+   "type": "list[str]",
+   "required": false,
+   "default": [
+    "Cranial base",
+    "Mandible",
+    "Maxilla"
+   ],
+   "choices": [
+    "Cranial base",
+    "Mandible",
+    "Maxilla"
+   ],
+   "description": "Which regions to measure. Each is worked in the frame it is defined in: the mandible against the cranial base, the maxilla against the occlusal plane.",
+   "section": "Inputs",
+   "label": "Regions to measure",
+   "ui": "chips",
+   "option_help": {
+    "Cranial base": "CB",
+    "Mandible": "MAND",
+    "Maxilla": "MAX"
+   }
+  },
+  "t2": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The follow-up CBCTs, for a longitudinal study. Ignored by an asymmetry assessment, which makes its own second scan.",
+   "section": "Inputs",
+   "label": "Follow-up CBCT volumes",
+   "visible_when": {
+    "study": "Longitudinal study"
+   }
+  },
+  "measurements": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "A folder holding one measurement list per region -- an Excel naming, per row, a measurement and the landmarks it is taken on. Matched to its region by the file's name.",
+   "hidden": true,
+   "section": "Measurements",
+   "label": "Measurement lists (one per region)",
+   "visible_when": {
+    "outputs": [
+     "Measurements and heat maps",
+     "Measurements and classification"
+    ]
+   }
+  },
+  "feature_template": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The workbook whose columns name the features the classifier was trained on. It comes from the same training run as `classifier_model`; a template alone gives the feature table, and the verdict on top of it needs the bundle too.",
+   "hidden": true,
+   "section": "Measurements",
+   "label": "Feature list the classifier was trained on",
+   "visible_when": {
+    "outputs": [
+     "Measurements and heat maps",
+     "Measurements and classification"
+    ]
+   }
+  },
+  "registration_transforms": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The transforms a registration you already made produced, one subfolder per region. What `File already Registered` measures, and what it refuses without -- the orientation transforms beside the scans are a different matrix, and using them would move the landmarks wrongly while the run reported success.",
+   "section": "Inputs",
+   "label": "Transforms from a registration you already made",
+   "visible_when": {
+    "mode": "File already Registered"
+   }
+  },
+  "cranial_base_reference": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "An already-oriented case defining the Frankfort horizontal and mid-sagittal frame, to use instead of the one ASO holds for it. Left empty -- the normal case -- ASO orients onto its own.",
+   "hidden": true,
+   "section": "References",
+   "label": "Cranial base orientation reference",
+   "visible_when": {
+    "mode": "Full pipeline"
+   }
+  },
+  "maxilla_reference": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "An already-oriented case defining the occlusal and mid-sagittal frame, to use instead of the one ASO holds for it. Left empty -- the normal case -- ASO orients onto its own.",
+   "hidden": true,
+   "section": "References",
+   "label": "Maxilla orientation reference",
+   "visible_when": {
+    "mode": "Full pipeline"
+   }
+  },
+  "mirror_reference": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The transform that reflects a scan across the mid-sagittal plane. What an asymmetry assessment compares against.",
+   "hidden": true,
+   "section": "References",
+   "label": "Mirror transform",
+   "visible_when": {
+    "study": "Asymmetry assessment"
+   }
+  },
+  "segmentation_model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "A bundle to segment the bone each region is registered on, instead of AMASSS's own. Left empty -- the normal case -- AMASSS uses the model it holds.",
+   "hidden": true,
+   "section": "Models",
+   "label": "Bone segmentation bundle",
+   "visible_when": {
+    "mode": [
+     "Full pipeline",
+     "File already Oriented"
+    ]
+   }
+  },
+  "landmark_model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The bundle that places the landmarks every measurement is computed from.",
+   "hidden": true,
+   "section": "Models",
+   "label": "CBCT landmark bundle",
+   "visible_when": {
+    "outputs": [
+     "Measurements and heat maps",
+     "Measurements and classification"
+    ]
+   }
+  },
+  "classifier_model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The bundle holding the three asymmetry models.",
+   "hidden": true,
+   "section": "Models",
+   "label": "Asymmetry classifier bundle",
+   "visible_when": {
+    "outputs": [
+     "Measurements and heat maps",
+     "Measurements and classification"
+    ]
+   }
+  },
+  "surface_model": {
+   "type": "path",
+   "required": false,
+   "default": "",
+   "description": "The bundle that segments the surfaces a heat map is drawn on.",
+   "hidden": true,
+   "section": "Models",
+   "label": "Surface segmentation bundle",
+   "visible_when": {
+    "outputs": [
+     "Measurements and heat maps",
+     "Heat maps"
+    ]
+   }
+  }
+ },
+ "returns": "path",
+ "injected_layout": {
+  "keep_intermediate": {
+   "label": "Raw intermediate files",
+   "option_help": {
+    "ASO": "The scans once each sits in the cranial base and maxillary frames, before a mask or a registration is built on them.",
+    "AMASSS": "The bone each region's registration is confined to -- what to look at when a registration lands on the wrong anatomy.",
+    "AutoMatrix": "The mirrored scan an asymmetry assessment compares the patient against, and the landmarks carried into the registered frame.",
+    "AREG_CBCT": "The registration itself, per region: the transform every measurement is taken through.",
+    "ALI_CBCT": "The landmarks the measurements are made on. A measurement is no better than the point it is taken from, and nothing downstream reveals a point that landed badly.",
+    "Batch_Dental_Seg": "The segmented surfaces the heat maps are painted onto."
+   }
+  }
+ },
+ "supervisor": true,
+ "calls": [
+  "ALI_CBCT",
+  "AMASSS",
+  "AREG_CBCT",
+  "ASO",
+  "AutoMatrix",
+  "Batch_Dental_Seg"
+ ],
+ "source_hash": "a42e3bac669f3d13bf80b64e2cb339cd9369ce6975674880ead3f9d2e14530c6"
+}
