@@ -33,11 +33,13 @@ from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
-# The SADT-VISOR tools release this extension was validated with: the release
-# tag without its `tools-` prefix (SADT-VISOR's tools-release workflow tags them
+# The SADT-VISOR tools release this extension was built with: the release tag
+# without its `tools-` prefix (SADT-VISOR's tools-release workflow tags them
 # tools-YYYY.MM.DD-N). Every install lands in its own `tools-<version>` folder,
-# so two extension versions can coexist.
-TOOLS_VERSION = "2026.11.19-1"
+# so two versions can coexist. Following releases (releases.py), the client
+# moves past it to the newest release it can drive; this one is what it runs
+# before it has ever asked, and it must be a release carrying SUPERVISOR_API.
+TOOLS_VERSION = "2026.11.24-2"
 
 ROOT_VARIABLE = "SADT_TOOLS_ROOT"
 # Where the pilot takes the tools and the models FROM: an SADT-VISOR checkout
@@ -305,6 +307,10 @@ class ToolStore:
         # DATA folder); also what an installed tool is compared with for updates.
         self.source = source
         self.data_source = data_source
+        # Installed from a SADT-VISOR release (its code downloaded under
+        # `.sources/`) rather than from a checkout; and kept on that release.
+        self.from_release = False
+        self.pinned = False
 
     # ---- layout ------------------------------------------------------------
 
@@ -756,6 +762,27 @@ class ToolStore:
             return False
         return any(not os.path.exists(os.path.join(self.data_dir, key, "models", _entry_target(entry)))
                    for entry in manifest.get(key, {}).get("models", []))
+
+    def chain_models_missing(self, tool: str) -> list:
+        """The tools of `tool`'s chain -- itself and every installed tool it
+        calls, recursively -- that lack a model.
+
+        Read from the install records, so it needs no source: a run of AREG
+        calls AMASSS, and AMASSS's model removed in the Manager made AREG's
+        panel look ready and its run fail half way.
+        """
+        lacking, seen, pending = [], set(), [tool]
+        while pending:
+            name = pending.pop()
+            if name in seen:
+                continue
+            seen.add(name)
+            if self.models_missing(name):
+                lacking.append(name)
+            folder = self.tool_dir(name)
+            record = self._record(folder) if folder else None
+            pending.extend((record or {}).get("calls", []))
+        return lacking
 
     def incomplete(self, name, source: str) -> list:
         """What installing `name` has to do anything for: missing, or lacking a model."""

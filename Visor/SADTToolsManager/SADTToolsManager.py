@@ -23,7 +23,7 @@ from slicer.ScriptedLoadableModule import (
     ScriptedLoadableModuleWidget,
 )
 
-from SADTCoreLib import LOCATION_SETTING, reset_client, slicer_settings, tool_store
+from SADTCoreLib import LOCATION_SETTING, PIN_SETTING, reset_client, slicer_settings, tool_store
 from SADTCoreLib import design, tools_store, tools_ui
 
 
@@ -153,6 +153,10 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
         self.versionLabel = qt.QLabel()
         self.versionLabel.setTextFormat(qt.Qt.RichText)
         root.addWidget(self.versionLabel)
+        # A study keeps the version its results came from; everyone else follows.
+        self.pinCheckBox = qt.QCheckBox(_("Stay on this tools version (for a study): do not offer updates"))
+        self.pinCheckBox.toggled.connect(lambda checked: self.onPin(checked))
+        root.addWidget(self.pinCheckBox)
         self.updateAllButton = design.primary_button("")
         self.updateAllButton.clicked.connect(lambda: self.onUpdateAll())
         root.addWidget(self.updateAllButton)
@@ -257,10 +261,15 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
                  else f"<span style='color: {t['SUCCESS']};'>all tools up to date</span>" if self.tools
                  else "")
         self.versionLabel.setText(
-            f"Tools version of this extension: <b>{self.store.version}</b>"
+            f"Tools version: <b>{self.store.version}</b>" + self._followText()
             + (f" &nbsp;·&nbsp; {state}" if state else ""))
-        self.updateAllButton.setText(_("Update {count} tool(s): {names}").format(
-            count=len(outdated), names=", ".join(outdated)))
+        from_release = getattr(self.store, "from_release", False)
+        self.pinCheckBox.setVisible(from_release)
+        self.pinCheckBox.blockSignals(True)
+        self.pinCheckBox.setChecked(bool(getattr(self.store, "pinned", False)))
+        self.pinCheckBox.blockSignals(False)
+        self.updateAllButton.setText(_("Update {count} tool(s) to {version}: {names}").format(
+            count=len(outdated), version=self.store.version, names=", ".join(outdated)))
         self.updateAllButton.setVisible(bool(outdated))
         old = [row for row in self.tools if not row["current"] and self.store.is_older(row["version"])]
         versions = sorted({row["version"] for row in old}, key=tools_store.version_key)
@@ -268,6 +277,31 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
         self.oldButton.setText(_("Remove old version {versions} ({size})").format(
             versions=", ".join(versions), size=tools_store.human_size(size)))
         self.oldButton.setVisible(bool(old))
+
+    def _followText(self) -> str:
+        """Where the version comes from, and when SADT-VISOR was last asked."""
+        if not getattr(self.store, "from_release", False):
+            return " &nbsp;·&nbsp; from the SADT-VISOR checkout " + self.store.source
+        if getattr(self.store, "pinned", False):
+            return " &nbsp;·&nbsp; kept for a study"
+        import time
+
+        from SADTCoreLib import releases
+
+        state = releases.read_state(self.store.root)
+        if not state.get("checked"):
+            return " &nbsp;·&nbsp; following SADT-VISOR's releases (not asked yet)"
+        when = time.strftime("%H:%M", time.localtime(float(state["checked"])))
+        if state.get("error"):
+            return f" &nbsp;·&nbsp; following SADT-VISOR's releases (could not ask at {when}: offline?)"
+        return f" &nbsp;·&nbsp; following SADT-VISOR's releases (asked at {when})"
+
+    def onPin(self, checked: bool):
+        settings = slicer_settings()
+        if settings is not None:
+            settings.setValue(PIN_SETTING, self.store.version if checked else "")
+        reset_client()
+        self.refresh()
 
     def onUpdateAll(self):
         outdated = self._outdated()

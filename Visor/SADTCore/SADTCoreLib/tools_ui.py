@@ -17,8 +17,21 @@ MANAGER_MODULE = "SADTToolsManager"
 
 
 def tools_source() -> tuple:
-    """`(tools source, models source)` the pilot installs from (see tool_store)."""
+    """`(tools source, models source)` installs read from (see tool_store).
+
+    Following releases, the source is that release's code, downloaded the first
+    time it is needed (~3 MB). Offline, there is none: the caller says so.
+    """
     store = tool_store()
+    if getattr(store, "from_release", False) and not os.path.isdir(store.source):
+        from . import releases
+
+        try:
+            with slicer.util.WaitCursor():
+                releases.fetch_source(store.root, store.version)
+        except releases.ReleaseError as error:
+            print(f"SADTCore: could not download tools {store.version}: {error}")
+            return "", store.data_source
     return store.source, store.data_source
 
 
@@ -35,8 +48,8 @@ def confirm_and_install(parent, tool: str, on_done=None) -> None:
     source, data_source = tools_source()
     if not source:
         slicer.util.errorDisplay(
-            "No tools source is configured for this pilot: set SADT_VISOR_SOURCE "
-            "to an SADT-VISOR checkout before starting Slicer.", parent=parent)
+            "The tools could not be downloaded from SADT-VISOR's releases. Check "
+            "this computer's internet connection, then try again.", parent=parent)
         return
     store = tool_store()
     try:
@@ -48,7 +61,12 @@ def confirm_and_install(parent, tool: str, on_done=None) -> None:
         slicer.util.infoDisplay(f"{tool} is already installed.", parent=parent)
         return
     verb = "Update" if all(store.is_installed(name) for name in missing) else "Install"
-    text = f"{verb} {tool}?\n\n{describe_download(store, tool, source, data_source)}"
+    current = store.installed_version(tool)
+    if current and current != store.version:
+        headline = f"Update {tool} from tools {current} to {store.version}?"
+    else:
+        headline = f"{verb} {tool} (tools {store.version})?"
+    text = f"{headline}\n\n{describe_download(store, tool, source, data_source)}"
     text += (f"\n\nWhere: {store.root}\n\n"
              "You can see and remove installed tools at any time in "
              "Automated Dental Tools > SADT Tools Manager.")
@@ -133,7 +151,7 @@ def not_installed_card(parent, layout, tool: str, on_installed) -> None:
         except tools_store.InstallError as error:
             details = str(error)
     else:
-        details = "No tools source is configured (SADT_VISOR_SOURCE)."
+        details = "The tools could not be downloaded: check this computer's internet connection."
     body = qt.QLabel(f"{text}\n\n{details}\n\nInstalled into: {store.root}")
     body.setWordWrap(True)
     body.setTextInteractionFlags(qt.Qt.TextSelectableByMouse)
@@ -176,7 +194,8 @@ def choose_and_install(parent, on_done=None) -> None:
 
     source, data_source = tools_source()
     if not source:
-        slicer.util.errorDisplay("No tools source is configured (SADT_VISOR_SOURCE).", parent=parent)
+        slicer.util.errorDisplay("The tools could not be downloaded from SADT-VISOR's releases: "
+                                 "check this computer's internet connection.", parent=parent)
         return
     store = tool_store()
     names = available_tools(source)
@@ -428,7 +447,7 @@ def install_many(parent, names, on_done=None) -> None:
     store = tool_store()
     estimate = store.estimate(list(names), source, data_source)
     size = tools_store.human_size
-    text = (f"Install {', '.join(names)} at tools version {store.version}?\n\n"
+    text = (f"Update {', '.join(names)} to tools {store.version}?\n\n"
             f"{len(estimate['tools'])} tool(s), download {size(estimate['total'])} "
             f"(environments {size(estimate['environment'])}, models {size(estimate['models'])}).\n\n"
             "The previous version stays installed until you remove it.")

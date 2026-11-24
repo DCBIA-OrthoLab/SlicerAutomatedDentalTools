@@ -50,6 +50,9 @@ LOCATION_SETTING = "SADTTools/Location"
 # The pilot's sources, when not given by the environment: this Slicer's settings.
 SOURCE_SETTING = "SADTTools/Source"
 DATA_SOURCE_SETTING = "SADTTools/DataSource"
+# A tools version this Slicer stays on, for a study that must not move: empty
+# means "follow SADT-VISOR's releases".
+PIN_SETTING = "SADTTools/PinnedVersion"
 
 
 def slicer_settings():
@@ -79,10 +82,34 @@ def tool_store():
     import os
 
     root, _why = tools_store.resolve_root(setting(LOCATION_SETTING))
-    return tools_store.ToolStore(
-        root,
-        source=os.environ.get(tools_store.SOURCE_VARIABLE, "") or setting(SOURCE_SETTING),
-        data_source=os.environ.get(tools_store.DATA_SOURCE_VARIABLE, "") or setting(DATA_SOURCE_SETTING))
+    data_source = os.environ.get(tools_store.DATA_SOURCE_VARIABLE, "") or setting(DATA_SOURCE_SETTING)
+    checkout = os.environ.get(tools_store.SOURCE_VARIABLE, "") or setting(SOURCE_SETTING)
+    if checkout:
+        # A developer's SADT-VISOR checkout: installed as it is, at the
+        # version this extension names.
+        return tools_store.ToolStore(root, source=checkout, data_source=data_source)
+    version, pinned = release_version(root, setting(PIN_SETTING))
+    from . import releases
+
+    store = tools_store.ToolStore(root, version=version,
+                                  source=releases.source_dir(root, version), data_source=data_source)
+    store.from_release = True
+    store.pinned = pinned
+    return store
+
+
+def release_version(root: str, pin: str = "") -> tuple:
+    """`(version, pinned)`: the release this Slicer installs and runs.
+
+    The pinned one when a study set it, else the newest release this client
+    can drive as last seen in this tools folder, else the one this extension
+    was built with (first start, offline).
+    """
+    from . import releases, tools_store
+
+    if pin:
+        return pin, True
+    return (releases.latest_known(root) or tools_store.TOOLS_VERSION), False
 
 
 def reset_client() -> None:
