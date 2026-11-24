@@ -23,8 +23,8 @@ from slicer.ScriptedLoadableModule import (
     ScriptedLoadableModuleWidget,
 )
 
-from ServerToolsCoreLib import LOCATION_SETTING, reset_client, slicer_settings, tool_store
-from ServerToolsCoreLib import design, tools_store, tools_ui
+from SADTCoreLib import LOCATION_SETTING, reset_client, slicer_settings, tool_store
+from SADTCoreLib import design, tools_store, tools_ui
 
 
 class SADTToolsManager(ScriptedLoadableModule):
@@ -32,7 +32,7 @@ class SADTToolsManager(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("SADT Tools Manager")
         self.parent.categories = ["Automated Dental Tools.VISOR local"]
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = ["Jules Grivot Pélisson (UNC)"]
         self.parent.helpText = _("""
         Shows where the tools of Automated Dental Tools and their models are stored on this
@@ -376,7 +376,7 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
         recorded size), so removing an 8 GB environment moves it more than a
         6 MB model. The package cache is cleaned last, its own step.
         """
-        from ServerToolsCoreLib.worker import BackgroundJob
+        from SADTCoreLib.worker import BackgroundJob
 
         window = tools_ui.ProgressWindow(self.parent, title)
         total = max(1, sum(weight for _message, weight, _action in steps))

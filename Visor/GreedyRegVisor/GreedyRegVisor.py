@@ -30,9 +30,8 @@ import slicer
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib import slicer_io
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
-from ServerToolsCoreLib.mode_switch import legacy_icon
+from SADTCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.mode_switch import legacy_icon
 
 logger = logging.getLogger("GreedyReg")
 
@@ -47,7 +46,7 @@ class GreedyRegVisor(ScriptedLoadableModule):
         self.parent.title = _("GreedyReg (VISOR local)")
         self.parent.categories = ["Automated Dental Tools.VISOR local"]
         self.parent.icon = legacy_icon(__file__, "GreedyReg.png")
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = ["Lucia Cevidanes (UoM)", "Juan Carlos Prieto (UoNC)"]
         self.parent.helpText = _("""
         Registers a follow-up CBCT onto its baseline, on the Automated Dental Tools server.
@@ -65,7 +64,7 @@ class GreedyRegVisor(ScriptedLoadableModule):
 
 class GreedyRegVisorWidget(ServerToolWidgetBase):
     """Thin GUI: HTTP, async, form generation, styling and lifecycle all live
-    in ServerToolsCoreLib. See ARCHITECTURE.md."""
+    in SADTCoreLib. See ARCHITECTURE.md."""
 
     TOOL_NAME = "GreedyReg"
     LOAD_RESULTS_LABEL = _("Load the registered volumes into the scene when done")

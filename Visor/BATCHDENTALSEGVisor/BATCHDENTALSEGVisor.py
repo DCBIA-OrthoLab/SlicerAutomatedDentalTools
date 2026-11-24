@@ -17,8 +17,8 @@ inference it existed to drive.
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
-from ServerToolsCoreLib.mode_switch import legacy_icon
+from SADTCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.mode_switch import legacy_icon
 
 
 class BATCHDENTALSEGVisor(ScriptedLoadableModule):
@@ -31,7 +31,7 @@ class BATCHDENTALSEGVisor(ScriptedLoadableModule):
         self.parent.title = _("BatchDentalSegmentator (VISOR local)")
         self.parent.categories = ["Automated Dental Tools.VISOR local"]
         self.parent.icon = legacy_icon(__file__, "DentalSegmentator.png")
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = [
             "Enzo Tulissi (UoM)",
             "Gauthier DOT (AP-HP)",
@@ -52,7 +52,7 @@ class BATCHDENTALSEGVisor(ScriptedLoadableModule):
 
 class BATCHDENTALSEGVisorWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
-    lives in ServerToolsCoreLib. See ARCHITECTURE.md.
+    lives in SADTCoreLib. See ARCHITECTURE.md.
 
     Nothing about the anatomy or the models lives here. Which bundles exist is
     `GET /tools/Batch_Dental_Seg/data`, and the label table each one implies is

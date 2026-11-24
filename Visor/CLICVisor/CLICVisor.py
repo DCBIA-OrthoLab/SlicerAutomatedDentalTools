@@ -13,8 +13,8 @@ the server's `GET /tools` entry.
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
-from ServerToolsCoreLib.mode_switch import legacy_icon
+from SADTCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.mode_switch import legacy_icon
 
 
 class CLICVisor(ScriptedLoadableModule):
@@ -27,7 +27,7 @@ class CLICVisor(ScriptedLoadableModule):
         self.parent.title = _("CLIC (VISOR local)")
         self.parent.categories = ["Automated Dental Tools.VISOR local"]
         self.parent.icon = legacy_icon(__file__, "CLIC.png")
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = [
             "Enzo Tulissi (UoM)",
             "Lucia Cevidanes (UoM)",
@@ -45,7 +45,7 @@ class CLICVisor(ScriptedLoadableModule):
 
 class CLICVisorWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
-    lives in ServerToolsCoreLib. See ARCHITECTURE.md.
+    lives in SADTCoreLib. See ARCHITECTURE.md.
 
     The old panel had a hand-written .ui with its own input, model and output
     rows plus a progress bar; every one of those is a schema argument or part of

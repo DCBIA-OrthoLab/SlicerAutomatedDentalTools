@@ -14,8 +14,8 @@ server's `GET /tools` entry.
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
-from ServerToolsCoreLib.mode_switch import legacy_icon
+from SADTCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.mode_switch import legacy_icon
 
 
 class AutoCrop3DVisor(ScriptedLoadableModule):
@@ -28,7 +28,7 @@ class AutoCrop3DVisor(ScriptedLoadableModule):
         self.parent.title = _("AutoCrop3D (VISOR local)")
         self.parent.categories = ["Automated Dental Tools.VISOR local"]
         self.parent.icon = legacy_icon(__file__, "AutoCrop3D.png")
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = [
             "Enzo Tulissi (UoM)",
             "Lucia Cevidanes (UoM)",
@@ -46,7 +46,7 @@ class AutoCrop3DVisor(ScriptedLoadableModule):
 
 class AutoCrop3DVisorWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
-    lives in ServerToolsCoreLib. See ARCHITECTURE.md.
+    lives in SADTCoreLib. See ARCHITECTURE.md.
 
     Of the 1 457 lines upstream, 1 136 were the Qt panel — its own scan row, ROI
     row, suffix field, check boxes and progress bar. Every one of those is a

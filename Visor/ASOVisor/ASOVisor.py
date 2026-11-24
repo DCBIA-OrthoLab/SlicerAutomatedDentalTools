@@ -15,13 +15,11 @@ Authors:
 - Luc Anchling (UoM)
 """
 
-import slicer
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib import slicer_io
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
-from ServerToolsCoreLib.mode_switch import legacy_icon
+from SADTCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.mode_switch import legacy_icon
 
 
 class ASOVisor(ScriptedLoadableModule):
@@ -34,7 +32,7 @@ class ASOVisor(ScriptedLoadableModule):
         self.parent.title = _("ASO (VISOR local)")
         self.parent.categories = ["Automated Dental Tools.VISOR local"]
         self.parent.icon = legacy_icon(__file__, "ASO.png")
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = [
             "Nathan Hutin (UoM)",
             "Luc Anchling (UoM)",
@@ -58,7 +56,7 @@ class ASOVisor(ScriptedLoadableModule):
 
 class ASOVisorWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
-    lives in ServerToolsCoreLib. See ARCHITECTURE.md.
+    lives in SADTCoreLib. See ARCHITECTURE.md.
 
     Nothing about the anatomy lives here: the landmark catalog, the tooth chart,
     which options start checked, and whether a run is CBCT or IOS, semi- or

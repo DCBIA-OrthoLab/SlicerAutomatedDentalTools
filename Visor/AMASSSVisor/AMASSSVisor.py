@@ -12,13 +12,11 @@ Authors:
 """
 
 
-import slicer
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib import slicer_io
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
-from ServerToolsCoreLib.mode_switch import legacy_icon
+from SADTCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.mode_switch import legacy_icon
 
 
 class AMASSSVisor(ScriptedLoadableModule):
@@ -31,7 +29,7 @@ class AMASSSVisor(ScriptedLoadableModule):
         self.parent.title = _("AMASSS (VISOR local)")
         self.parent.categories = ["Automated Dental Tools.VISOR local"]
         self.parent.icon = legacy_icon(__file__, "AMASSS.png")
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = [
             "Maxime Gillot (CPE Lyon & UoM)",
             "Baptiste Baquero (CPE Lyon & UoM)",
@@ -54,7 +52,7 @@ class AMASSSVisor(ScriptedLoadableModule):
 
 class AMASSSVisorWidget(ServerToolWidgetBase):
     """Thin GUI: everything else (HTTP, async, form generation, styling, lifecycle)
-    lives in ServerToolsCoreLib. See ARCHITECTURE.md.
+    lives in SADTCoreLib. See ARCHITECTURE.md.
 
     Nothing about the anatomy lives here: the structure list, its display names
     and which ones start checked are a `multichoice` argument in the server's

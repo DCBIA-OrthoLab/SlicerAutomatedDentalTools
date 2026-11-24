@@ -28,8 +28,8 @@ import slicer
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
-from ServerToolsCoreLib.mode_switch import legacy_icon
+from SADTCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.mode_switch import legacy_icon
 
 
 class CNEVisor(ScriptedLoadableModule):
@@ -42,7 +42,7 @@ class CNEVisor(ScriptedLoadableModule):
         self.parent.title = _("CNE (VISOR local)")
         self.parent.categories = ["Automated Dental Tools.VISOR local"]
         self.parent.icon = legacy_icon(__file__, "CNE.png")
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = ["Paul Dumont, University of North Carolina, Chapell Hill"]
         self.parent.helpText = _("""
         This tool helps to create summaries of clinical notes.
@@ -58,7 +58,7 @@ class CNEVisor(ScriptedLoadableModule):
 
 class CNEVisorWidget(ServerToolWidgetBase):
     """Thin GUI: HTTP, async, form generation, styling and lifecycle all live
-    in ServerToolsCoreLib. See ARCHITECTURE.md."""
+    in SADTCoreLib. See ARCHITECTURE.md."""
 
     TOOL_NAME = "CNE"
     RUN_REPORT = "CNE_report.json"

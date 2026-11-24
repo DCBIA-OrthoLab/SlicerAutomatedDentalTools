@@ -27,9 +27,8 @@ import slicer
 from slicer.i18n import tr as _
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule
 
-from ServerToolsCoreLib import slicer_io
-from ServerToolsCoreLib.base_widget import ServerToolWidgetBase
-from ServerToolsCoreLib.mode_switch import legacy_icon
+from SADTCoreLib.base_widget import ServerToolWidgetBase
+from SADTCoreLib.mode_switch import legacy_icon
 
 logger = logging.getLogger("DOCShapeAXI")
 
@@ -44,7 +43,7 @@ class DOCShapeAXIVisor(ScriptedLoadableModule):
         self.parent.title = _("DOCShapeAXI (VISOR local)")
         self.parent.categories = ["Automated Dental Tools.VISOR local"]
         self.parent.icon = legacy_icon(__file__, "DOCShapeAXI.png")
-        self.parent.dependencies = ["ServerToolsCore"]
+        self.parent.dependencies = ["SADTCore"]
         self.parent.contributors = [
             "Lucie Dole (UoNC)",
             "Lucia Cevidanes (UoM)",
@@ -64,7 +63,7 @@ class DOCShapeAXIVisor(ScriptedLoadableModule):
 
 class DOCShapeAXIVisorWidget(ServerToolWidgetBase):
     """Thin GUI: HTTP, async, form generation, styling and lifecycle all live
-    in ServerToolsCoreLib. See ARCHITECTURE.md."""
+    in SADTCoreLib. See ARCHITECTURE.md."""
 
     TOOL_NAME = "DOCShapeAXI"
     LOAD_RESULTS_LABEL = _("Load the explainability surfaces into the scene when done")
