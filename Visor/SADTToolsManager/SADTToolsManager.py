@@ -139,6 +139,10 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
         ScriptedLoadableModuleWidget.setup(self)
         self._folderSize = {}  # tools folder -> bytes, as last measured
         self._sizeJob = None
+        # What removing an old copy really gives back, as last measured:
+        # installed tool path -> bytes, and the old versions together.
+        self._freed = {}
+        self._oldJob = None
         self.uiWidget = qt.QWidget()
         self.layout.addWidget(self.uiWidget)
         root = qt.QVBoxLayout(self.uiWidget)
@@ -273,11 +277,19 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
         self.updateAllButton.setText(_("Update {count} tool(s) to {version}: {names}").format(
             count=len(outdated), version=self.store.version, names=", ".join(outdated)))
         self.updateAllButton.setVisible(bool(outdated))
-        old = [row for row in self.tools if not row["current"] and self.store.is_older(row["version"])]
+        self._showOldButton()
+
+    def _oldRows(self) -> list:
+        return [row for row in self.tools if not row["current"] and self.store.is_older(row["version"])]
+
+    def _showOldButton(self):
+        old = self._oldRows()
         versions = sorted({row["version"] for row in old}, key=tools_store.version_key)
-        size = sum(row.get("size") or 0 for row in old)
+        freed = self._freed.get(tuple(versions))
         self.oldButton.setText(_("Remove old version {versions} ({size})").format(
-            versions=", ".join(versions), size=tools_store.human_size(size)))
+            versions=", ".join(versions),
+            size=_("frees {size}").format(size=tools_store.human_size(freed)) if freed is not None
+            else _("measuring...")))
         self.oldButton.setVisible(bool(old))
 
     def _followText(self) -> str:
@@ -385,8 +397,67 @@ class SADTToolsManagerWidget(ScriptedLoadableModuleWidget):
                 total += value or 0
                 table.setItem(index, column, qt.QTableWidgetItem(size(value) if value is not None else "—"))
             _fit(table, stretch=(0, 3) if table is self.modelsTable else -2)
+        self._showOldSizes()
         self._showSummary()
         self._measureFolder()
+        self._measureOld()
+
+    def _showOldSizes(self):
+        """An old copy shows what removing it frees, not its recorded size.
+
+        The recorded size counts every file of its environment, but those are
+        hard links to uv's package cache, shared with the current copy of the
+        same tool: an old AMASSS "of 4 GB" frees a few MB. Summed over twenty
+        tools, the Manager read 86.6 GB for versions that free 0.9 GB.
+        """
+        size = tools_store.human_size
+        old = {id(row) for row in self._oldRows()}
+        for index, row in enumerate(self.tools):
+            if id(row) not in old:
+                continue
+            freed = self._freed.get(row["path"])
+            recorded = size(row.get("size") or 0)
+            item = qt.QTableWidgetItem(size(freed) if freed is not None else "…")
+            item.setToolTip(
+                _("Removing it frees {freed}. The rest of its {recorded} is shared with the "
+                  "current tools (the package cache) and stays.").format(freed=size(freed), recorded=recorded)
+                if freed is not None else _("Measuring what removing it frees..."))
+            self.toolsTable.setItem(index, 2, item)
+
+    def _measureOld(self):
+        """What removing each old copy, and the old versions together, gives back.
+
+        Measured on a worker: it reads every file of the old copies and of the
+        package cache, the same exact count the removal's confirmation gives.
+        """
+        from SADTCoreLib.worker import BackgroundJob
+
+        old = self._oldRows()
+        if self._oldJob is not None or not old:
+            return
+        store = self.store
+        paths = [row["path"] for row in old]
+        versions = tuple(sorted({row["version"] for row in old}, key=tools_store.version_key))
+        folders = [os.path.join(store.root, f"tools-{version}") for version in versions]
+
+        def measure(_progress):
+            extra = store._cache_inodes() if store.private_cache else None
+            freed = {path: store.reclaim(path, extra=extra)["freed"] for path in paths}
+            freed[versions] = store.reclaim(folders, extra=extra)["freed"]
+            return freed
+
+        def measured(freed):
+            self._oldJob = None
+            self._freed.update(freed)
+            if self.store.root == store.root:
+                self._showOldSizes()
+                self._showOldButton()
+
+        def failed(_error):
+            self._oldJob = None
+
+        self._oldJob = BackgroundJob(measure, on_success=measured, on_error=failed)
+        self._oldJob.start()
 
     def _showSummary(self):
         """The counts now; the folder's size as last measured, or "measuring"."""
