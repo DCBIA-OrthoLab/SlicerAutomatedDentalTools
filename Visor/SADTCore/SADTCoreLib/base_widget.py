@@ -595,12 +595,53 @@ class ServerToolWidgetBase(ScriptedLoadableModuleWidget, VTKObservationMixin):
               "Click to see, move or remove them (SADT Tools Manager).").format(where=where))
         self._statusBadge.setOpenExternalLinks(False)
 
-        def clicked(_link):
+        def clicked(link):
+            if link == "check":
+                self._checkForUpdates()
+                return
             from . import tools_ui
 
             tools_ui.open_manager()
 
         self._statusBadge.linkActivated.connect(clicked)
+
+    def _releaseCheckBadge(self, store) -> dict:
+        """The badge's "check" link and what the last check said, for a local panel."""
+        from . import release_watch
+
+        if not self._isLocal() or store is None:
+            return {}
+        if getattr(store, "pinned", False):
+            return {"note": _("kept for a study")}
+        if not release_watch.follows_releases(store):
+            return {"note": _("from a checkout")}
+        if release_watch.checking():
+            return {"note": _("checking...")}
+        return {"note": getattr(self, "_releaseNote", ""), "check": True}
+
+    def _checkForUpdates(self) -> None:
+        """The badge's "check": ask for a new tools release now, then redraw the badge.
+
+        Only ASKS: when there is one, the Update button appears, and installing
+        stays that button's confirmation (size, the tools it brings, test files).
+        """
+        import time
+
+        from . import release_watch
+
+        def done(_before, state):
+            if state.get("error"):
+                self._releaseNote = _("could not reach GitHub")
+            else:
+                self._releaseNote = _("checked {time}").format(
+                    time=time.strftime("%H:%M", time.localtime(float(state.get("checked") or time.time()))))
+            try:
+                self._refreshServerStatus()  # reads the version again, from a fresh client
+            except (RuntimeError, AttributeError):
+                pass  # the panel was closed meanwhile
+
+        if release_watch.check_now(done):
+            self._onStatusChecked(True)  # shows "checking..."
 
     def _isLocal(self) -> bool:
         """Whether the tools run on this machine (the local client) rather than on a server."""
@@ -4169,7 +4210,8 @@ class ServerToolWidgetBase(ScriptedLoadableModuleWidget, VTKObservationMixin):
             store = getattr(self.client, "store", None)
             target = store.version if store is not None else ""
             design.update_status_badge(self._statusBadge, ok, local=self._isLocal(),
-                                       version=version, update=update, target=target)
+                                       version=version, update=update, target=target,
+                                       **self._releaseCheckBadge(store))
             button = getattr(self, "_updateButton", None)
             if button is not None:
                 # The version it goes to, on the button itself: "Update now"

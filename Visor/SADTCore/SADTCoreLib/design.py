@@ -1145,13 +1145,19 @@ def status_badge(local: bool = False) -> qt.QLabel:
     not of a server there is none of.
     """
     label = qt.QLabel("Local run: checking..." if local else "Server: checking...")
+    # Wraps: version, update, last check and "check" on one line would set the
+    # panel's minimum width.
+    label.setWordWrap(True)
     t = tokens()
     label.setStyleSheet(f"color: {t['TEXT_MUTED']}; font-weight: 600; padding: {SPACING_XS}px;")
     return label
 
 
 def update_status_badge(label: qt.QLabel, ok: bool, local: bool = False,
-                        version: str = "", update: bool = False, target: str = "") -> None:
+                        version: str = "", update: bool = False, target: str = "",
+                        note: str = "", check: bool = False) -> None:
+    """`note`: what the last check said ("checking...", "checked 15:42");
+    `check`: offer the "check" link (href "check") that asks for a new release now."""
     t = tokens()
     color = t["SUCCESS"] if ok else t["DANGER"]
     if local:
@@ -1168,6 +1174,10 @@ def update_status_badge(label: qt.QLabel, ok: bool, local: bool = False,
         if ok and update:
             arrow = f" → {target}" if target and target != version else ""
             extra += f' <span style="color: #c77700;">· update available{arrow}</span>'
+        if ok and note:
+            extra += f' <span style="color: {t["TEXT_MUTED"]}; font-weight: 400;">· {note}</span>'
+        if ok and check:
+            extra += f' · <a href="check" style="color: {t["TEXT_MUTED"]}; font-weight: 400;">check</a>'
         label.setTextFormat(qt.Qt.RichText)
         label.setText(f'<a href="manager" style="color: {color}; text-decoration: none;">{text}</a>{extra}')
     else:
