@@ -55,6 +55,10 @@ for n in ms.EQUIVALENTS:
 gl = slicer.modules.greedyreg.widgetRepresentation().layout()
 ms.ensure_existing()
 check("GreedyReg (no parity): no bar", bars_in(gl) == [] and not ms.ensure_bar("GreedyReg"))
+fl = slicer.modules.flexreg.widgetRepresentation().layout()
+ms.ensure_existing()
+check("FlexReg (classic only until its VISOR port): no bar", bars_in(fl) == [] and not ms.ensure_bar("FlexReg"))
+check("no FlexRegVisor module", getattr(slicer.modules, "flexregvisor", None) is None)
 
 # --- reload keeps the bar (poll)
 lay = slicer.modules.ali.widgetRepresentation().layout()
