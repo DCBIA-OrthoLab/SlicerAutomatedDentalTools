@@ -661,9 +661,10 @@ class ServerToolWidgetBase(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self._isLocal():
             # The badge and, on the same line, "Update now" when this tool runs
             # at an older tools version than the extension's (or changed since).
+            # The badge takes the free width (it wraps only when the panel is
+            # narrow); a stretch beside it took that width and wrapped it early.
             badgeRow = qt.QHBoxLayout()
-            badgeRow.addWidget(self._statusBadge)
-            badgeRow.addStretch(1)
+            badgeRow.addWidget(self._statusBadge, 1)
             self._updateButton = design.primary_button(_("Update now"))
             self._updateButton.setVisible(False)
             self._updateButton.clicked.connect(lambda: self._onInstallUpdate())
