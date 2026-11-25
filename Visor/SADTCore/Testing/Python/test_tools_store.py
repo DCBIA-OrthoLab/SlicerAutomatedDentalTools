@@ -396,3 +396,60 @@ class ModelSizesTest(unittest.TestCase):
         self.assertEqual(tools_store.migrate_model_sizes(data), 1)
         self.assertEqual(os.listdir(models), [])
         self.assertEqual(tools_store._model_sizes(models), {"Bundle": 7})
+
+
+class VcRuntimeTest(unittest.TestCase):
+    """Windows without the C++ runtime: Slicer's copy goes beside the tools' Python."""
+
+    def setUp(self):
+        import tempfile
+        from unittest import mock
+
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.root, ignore_errors=True))
+        self.system32 = os.path.join(self.root, "Windows", "System32")
+        self.slicer_bin = os.path.join(self.root, "Slicer", "bin")
+        self.python = os.path.join(self.root, "uv-python", "cpython-3.11")
+        self.venv = os.path.join(self.root, "tool", ".venv")
+        for folder in (self.system32, self.slicer_bin, self.python, self.venv):
+            os.makedirs(folder)
+        for name in tools_store.VC_RUNTIME_DLLS:
+            with open(os.path.join(self.slicer_bin, name), "w") as handle:
+                handle.write("slicer's " + name)
+        with open(os.path.join(self.venv, "pyvenv.cfg"), "w") as handle:
+            handle.write(f"home = {self.python}\nversion_info = 3.11.15\n")
+        for patch in (mock.patch.object(tools_store.sys, "platform", "win32"),
+                      mock.patch.dict(os.environ, {"SystemRoot": os.path.join(self.root, "Windows")}),
+                      mock.patch.object(tools_store, "_vc_runtime_source", lambda: self.slicer_bin)):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_what_windows_lacks_is_copied_beside_the_python(self):
+        copied = tools_store.ensure_vc_runtime(self.venv)
+
+        self.assertEqual(sorted(copied), sorted(tools_store.VC_RUNTIME_DLLS))
+        self.assertTrue(os.path.isfile(os.path.join(self.python, "msvcp140.dll")))
+
+    def test_an_installed_runtime_is_left_to_windows(self):
+        for name in tools_store.VC_RUNTIME_DLLS:
+            open(os.path.join(self.system32, name), "w").close()
+
+        self.assertEqual(tools_store.ensure_vc_runtime(self.venv), [])
+        self.assertFalse(os.path.exists(os.path.join(self.python, "msvcp140.dll")))
+
+    def test_a_file_the_python_already_has_is_kept(self):
+        with open(os.path.join(self.python, "vcruntime140.dll"), "w") as handle:
+            handle.write("python's own")
+
+        copied = tools_store.ensure_vc_runtime(self.venv)
+
+        self.assertNotIn("vcruntime140.dll", copied)
+        with open(os.path.join(self.python, "vcruntime140.dll")) as handle:
+            self.assertEqual(handle.read(), "python's own")
+
+    def test_nothing_happens_off_windows(self):
+        from unittest import mock
+
+        with mock.patch.object(tools_store.sys, "platform", "linux"):
+            self.assertEqual(tools_store.ensure_vc_runtime(self.venv), [])
+        self.assertEqual(os.listdir(self.python), [])

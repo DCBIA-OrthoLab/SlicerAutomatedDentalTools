@@ -1042,6 +1042,19 @@ class ToolStore:
                     ".venv", "__pycache__", ".pytest_cache", "tests"))
                 pending.append(dependency)
 
+    def ensure_vc_runtime(self) -> list:
+        """`ensure_vc_runtime` for every environment of this version (tools
+        installed before it existed). Nothing to do off Windows."""
+        if sys.platform != "win32":
+            return []
+        copied = []
+        tools = os.path.join(self.version_dir, "tools")
+        for folder, dirs, _files in os.walk(tools):
+            if ".venv" in dirs:
+                copied += ensure_vc_runtime(os.path.join(folder, ".venv"))
+                dirs[:] = []  # an environment's own folders hold no other tool
+        return copied
+
     @property
     def uv_path(self) -> str:
         return os.path.join(self.root, ".uv-bin", "uv.exe" if sys.platform == "win32" else "uv")
@@ -1104,18 +1117,26 @@ class ToolStore:
             venv = os.path.join(target, ".venv")
             cache = self.uv_cache if self.private_cache else ""
             baseline = folder_size(cache) if cache and os.path.isdir(cache) else 0
-            while process.poll() is None:
-                if track is not None:
-                    grown = (folder_size(cache) - baseline) if cache and os.path.isdir(cache) else 0
-                    filled = folder_size(venv) if os.path.isdir(venv) else 0
-                    track.environment(max(grown, filled))
-                time.sleep(1.5)
+            try:
+                while process.poll() is None:
+                    if track is not None:
+                        grown = (folder_size(cache) - baseline) if cache and os.path.isdir(cache) else 0
+                        filled = folder_size(venv) if os.path.isdir(venv) else 0
+                        track.environment(max(grown, filled))
+                    time.sleep(1.5)
+            except BaseException:
+                # Whatever stops the wait (a cancel, an error in the progress
+                # display) stops uv too: it went on filling the folder unseen.
+                process.kill()
+                process.wait()
+                raise
             errors.seek(0)
             message = errors.read()
         if process.returncode != 0:
             raise InstallError(
                 f"The environment of {os.path.basename(target)} could not be created."
                 + _network_hint(message) + "\n\n" + message.strip()[-800:])
+        ensure_vc_runtime(venv)
 
     def _install_data(self, tool: str, data_source: str, kind: str = "models",
                       python: str = "", say=None, track=None) -> None:
@@ -1733,6 +1754,63 @@ def _open_url(url: str):
             raise error
         context = ssl.create_default_context(cafile=certifi.where())
         return urllib.request.urlopen(url, timeout=60, context=context)
+
+
+# The Microsoft C++ runtime that compiled packages are linked against (torch,
+# SimpleITK, VTK, llama.cpp, greedy). Windows does not ship it: it comes with
+# the "Visual C++ Redistributable", which a fresh Windows does not have. Python
+# finds a compiled module's DLLs beside the interpreter or in System32, not on
+# the PATH, so Slicer's own copy (in its bin folder) is not seen by the Python
+# uv installs for the tools: torch failed with "Error loading c10.dll or one of
+# its dependencies", SimpleITK with "DLL load failed".
+VC_RUNTIME_DLLS = ("msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll", "vcruntime140.dll",
+                   "vcruntime140_1.dll", "concrt140.dll", "vcomp140.dll")
+
+
+def _vc_runtime_source() -> Optional[str]:
+    """This Slicer's own copy of the runtime: its bin folder."""
+    here = os.path.dirname(sys.executable)
+    for folder in (here, os.path.join(os.path.dirname(here), "bin")):
+        if os.path.isfile(os.path.join(folder, "msvcp140.dll")):
+            return folder
+    return None
+
+
+def _venv_home(venv: str) -> Optional[str]:
+    """The folder of the Python an environment runs on (`home` in pyvenv.cfg)."""
+    try:
+        with open(os.path.join(venv, "pyvenv.cfg"), encoding="utf-8") as handle:
+            for line in handle:
+                key, _, value = line.partition("=")
+                if key.strip() == "home" and os.path.isdir(value.strip()):
+                    return value.strip()
+    except OSError:
+        pass
+    return None
+
+
+def ensure_vc_runtime(venv: str) -> list:
+    """On Windows without the C++ runtime: Slicer's copy beside the environment's Python.
+
+    Only what System32 lacks, never over a file already there. Returns the names
+    copied. Elsewhere, or with the runtime installed, it does nothing.
+    """
+    if sys.platform != "win32":
+        return []
+    system = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
+    missing = [name for name in VC_RUNTIME_DLLS if not os.path.isfile(os.path.join(system, name))]
+    home = _venv_home(venv) if missing else None
+    source = _vc_runtime_source() if home else None
+    copied = []
+    for name in (missing if source else []):
+        origin, target = os.path.join(source, name), os.path.join(home, name)
+        if os.path.isfile(origin) and not os.path.exists(target):
+            try:
+                shutil.copy2(origin, target)
+                copied.append(name)
+            except OSError as error:
+                logger.warning("Could not copy %s beside %s: %s", name, home, error)
+    return copied
 
 
 def _network_hint(output: str) -> str:
