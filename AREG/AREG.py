@@ -3264,8 +3264,6 @@ qMRMLNodeComboBox:focus {
         Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
         """
 
-        # if inputParameterNode:
-        self.setParameterNode(self.logic.getParameterNode())
 
         # Unobserve previously selected parameter node and add an observer to the newly selected.
         # Changes of parameter node are observed so that whenever parameters are changed by a script or any other module
