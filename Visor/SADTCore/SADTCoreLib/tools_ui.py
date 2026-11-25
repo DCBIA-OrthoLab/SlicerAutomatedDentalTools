@@ -10,7 +10,7 @@ import qt
 import slicer
 
 from . import reset_client, tool_store
-from . import tools_store
+from . import release_watch, releases, tools_store
 from .worker import BackgroundJob
 
 MANAGER_MODULE = "SADTToolsManager"
@@ -20,12 +20,18 @@ def tools_source() -> tuple:
     """`(tools source, models source)` installs read from (see tool_store).
 
     Following releases, the source is that release's code, downloaded the first
-    time it is needed (~3 MB). Offline, there is none: the caller says so.
+    time it is needed (~3 MB). Offline, there is none: the caller says so. On a
+    tools folder that was never asked, the newest release is asked for first.
     """
     store = tool_store()
+    if release_watch.follows_releases(store) and not releases.latest_known(store.root):
+        # Never asked in this tools folder: ask now, so the first install is the
+        # newest release and not the older one the extension was built with.
+        with slicer.util.WaitCursor():
+            releases.ensure_known(store.root)
+        reset_client()
+        store = tool_store()
     if getattr(store, "from_release", False) and not os.path.isdir(store.source):
-        from . import releases
-
         try:
             with slicer.util.WaitCursor():
                 releases.fetch_source(store.root, store.version)

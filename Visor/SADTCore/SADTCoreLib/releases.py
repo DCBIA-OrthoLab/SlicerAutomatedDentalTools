@@ -141,6 +141,22 @@ def check(root: str, timeout: float = 10.0, levels=KNOWN_API_LEVELS) -> dict:
     return state
 
 
+def ensure_known(root: str, timeout: float = 5.0, retry_after: float = 60.0,
+                 levels=KNOWN_API_LEVELS) -> Optional[str]:
+    """The newest release, asking once now if this tools folder has never been asked.
+
+    A first install must not wait for the background check: without a release
+    on record the client falls back to the version written in the extension,
+    installs it, and then offers an update that downloads every environment
+    again. Offline, it asks again only after `retry_after` seconds, so a
+    computer without internet is not made to wait at every click.
+    """
+    known = latest_known(root)
+    if known or not due(root, retry_after):
+        return known
+    return check(root, timeout, levels).get("latest")
+
+
 def describe_check(before: str, state: dict) -> str:
     """One line for a user who asked: what the check found, against `before`."""
     when = time.strftime("%H:%M", time.localtime(float(state.get("checked") or time.time())))

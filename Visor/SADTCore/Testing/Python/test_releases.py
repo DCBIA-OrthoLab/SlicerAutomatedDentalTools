@@ -168,6 +168,54 @@ class ReleasesTest(unittest.TestCase):
         self.assertFalse(os.path.isdir(releases.source_dir(self.root, "2026.11.24-2")))
 
 
+class EnsureKnownTest(unittest.TestCase):
+    """A first install asks for the newest release instead of using the extension's."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.root, ignore_errors=True))
+        self._real_get = releases._get
+        self.addCleanup(setattr, releases, "_get", self._real_get)
+
+    def _github(self, tags, levels):
+        fake = _FakeGitHub(tags, levels)
+        releases._get = fake.get
+        return fake
+
+    def test_a_folder_never_asked_asks_now_and_gets_the_newest_release(self):
+        fake = self._github(["2026.11.25-1", "2026.11.24-2"], {"2026.11.25-1": 2, "2026.11.24-2": 2})
+
+        self.assertEqual(releases.ensure_known(self.root), "2026.11.25-1")
+        self.assertEqual(releases.latest_known(self.root), "2026.11.25-1")
+        self.assertTrue(fake.asked)
+
+    def test_a_folder_already_asked_does_not_ask_again(self):
+        with open(os.path.join(self.root, releases.STATE_FILE), "w") as handle:
+            json.dump({"latest": "2026.11.24-3", "checked": time.time()}, handle)
+        fake = self._github(["2026.11.25-1"], {"2026.11.25-1": 2})
+
+        self.assertEqual(releases.ensure_known(self.root), "2026.11.24-3")
+        self.assertEqual(fake.asked, [])
+
+    def test_offline_returns_nothing_and_waits_before_asking_again(self):
+        fake = self._github(["2026.11.25-1"], {"2026.11.25-1": 2})
+        fake.offline = True
+
+        self.assertIsNone(releases.ensure_known(self.root))
+        asked = len(fake.asked)
+        self.assertGreater(asked, 0)
+        self.assertIsNone(releases.ensure_known(self.root))
+        self.assertEqual(len(fake.asked), asked)
+
+    def test_offline_asks_again_once_the_wait_is_over(self):
+        fake = self._github(["2026.11.25-1"], {"2026.11.25-1": 2})
+        fake.offline = True
+        releases.ensure_known(self.root)
+        fake.offline = False
+
+        self.assertEqual(releases.ensure_known(self.root, retry_after=0.0), "2026.11.25-1")
+
+
 class DescribeCheckTest(unittest.TestCase):
     """The line a user reads after pressing Check for updates."""
 
