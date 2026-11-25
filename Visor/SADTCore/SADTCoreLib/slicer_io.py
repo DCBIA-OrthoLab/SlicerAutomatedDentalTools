@@ -31,12 +31,15 @@ console.install()
 class TempWorkspace:
     """Context manager for a temp directory, removed on exit including on error."""
 
-    def __init__(self, prefix="ServerTools_"):
+    def __init__(self, prefix="ServerTools_", dir=None):
         self._prefix = prefix
+        self._dir = dir
         self.path = None
 
     def __enter__(self):
-        self.path = tempfile.mkdtemp(prefix=self._prefix)
+        if self._dir:
+            os.makedirs(self._dir, exist_ok=True)
+        self.path = tempfile.mkdtemp(prefix=self._prefix, dir=self._dir)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):

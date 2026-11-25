@@ -28,6 +28,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Callable, Optional
 
@@ -77,6 +78,9 @@ UV_URL = "https://github.com/astral-sh/uv/releases/download/{version}/uv-{asset}
 # `--all-extras` it installs, shows its panel, and fails every run.
 UV_SYNC = ("sync", "--frozen", "--no-dev", "--all-extras", "--quiet")
 FOLDER_NAME = "sadt-tools"
+# Temporary files of runs and installs, inside the tools folder (see ToolStore.scratch_dir).
+SCRATCH_FOLDER = ".tmp"
+SCRATCH_MAX_AGE_SECONDS = 2 * 24 * 3600
 
 README = """SADT tools
 ==========
@@ -342,6 +346,44 @@ class ToolStore:
         cache instead: installs stay instant and nothing is stored twice.
         """
         return not self.data_source
+
+    @property
+    def scratch_dir(self) -> str:
+        """Where runs and installs keep their temporary files: inside this folder.
+
+        Not the system's temporary folder: on a computer whose tools live on a
+        second disk because the first is full, a run's intermediate files (the
+        scans a tool hands the tools it calls, gigabytes for one registration)
+        must go to that second disk too.
+        """
+        return os.path.join(self.root, SCRATCH_FOLDER)
+
+    def scratch(self, prefix: str) -> str:
+        """A new empty folder under `scratch_dir`; the caller removes it."""
+        os.makedirs(self.scratch_dir, exist_ok=True)
+        return tempfile.mkdtemp(prefix=prefix, dir=self.scratch_dir)
+
+    def clean_scratch(self, older_than: float = SCRATCH_MAX_AGE_SECONDS) -> int:
+        """Remove what a crashed run left in `scratch_dir`; returns how many entries.
+
+        Only entries untouched for `older_than` seconds: a run still going in
+        another Slicer keeps writing to its own.
+        """
+        if not os.path.isdir(self.scratch_dir):
+            return 0
+        removed, limit = 0, time.time() - older_than
+        for entry in os.scandir(self.scratch_dir):
+            try:
+                if entry.stat(follow_symlinks=False).st_mtime > limit:
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    _rmtree(entry.path)
+                else:
+                    os.remove(entry.path)
+                removed += 1
+            except OSError:
+                continue
+        return removed
 
     def lock(self) -> StoreLock:
         return StoreLock(self.root)
@@ -1043,6 +1085,11 @@ class ToolStore:
             # default): the link count is how prune_cache tells a package still
             # in use from one no tool needs any more.
             env["UV_LINK_MODE"] = "hardlink"
+        if self.root:
+            # uv unpacks and builds in the temporary folder: on the tools' disk too.
+            scratch = self.scratch_dir
+            os.makedirs(scratch, exist_ok=True)
+            env.update(TMPDIR=scratch, TEMP=scratch, TMP=scratch)
         import tempfile as _tempfile
 
         with _tempfile.TemporaryFile("w+", encoding="utf-8", errors="replace") as errors:

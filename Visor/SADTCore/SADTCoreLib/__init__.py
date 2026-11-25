@@ -130,6 +130,11 @@ def get_client():
         from .local_client import LocalToolClient
 
         _client = LocalToolClient(environment=_startup_environment, store=tool_store())
+        try:
+            # What a run cut short (Slicer closed, a crash) left in the tools folder.
+            _client.store.clean_scratch()
+        except (AttributeError, OSError):
+            pass
     if _client is None:
         _client = ToolServerClient(
             server_url=config.SERVER_URL,

@@ -283,6 +283,16 @@ class LocalToolClient:
                 return candidate
         return None
 
+    def _scratch(self, prefix: str) -> str:
+        """A temporary folder in the tools folder; the system's without a store."""
+        if self.store is not None:
+            return self.store.scratch(prefix)
+        return tempfile.mkdtemp(prefix=prefix)
+
+    def scratch_dir(self):
+        """Where this client's temporary files go, for the panel's own; None: the system's."""
+        return self.store.scratch_dir if self.store is not None else None
+
     def _clean_environment(self) -> dict:
         environment = dict(self._environment())
         for variable in ("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONEXECUTABLE"):
@@ -454,7 +464,7 @@ class LocalToolClient:
         values = dict(args or {})
         values.update(files or {})
         if not output_dir:
-            output_dir = tempfile.mkdtemp(prefix=f"sadt_{name}_")
+            output_dir = self._scratch(f"sadt_{name}_")
         try:
             os.makedirs(output_dir, exist_ok=True)
             probe = tempfile.NamedTemporaryFile(dir=output_dir, prefix=".sadt-write-test-")
@@ -473,10 +483,21 @@ class LocalToolClient:
         params["output_dir"] = output_dir
 
         before = self._snapshot(output_dir)
-        job_dir = tempfile.mkdtemp(prefix=f"sadt_job_{target}_")
+        job_dir = self._scratch(f"sadt_job_{target}_")
+        # The tool and every tool it calls write their temporary files -- the
+        # supervisor's scratch, where a callee's outputs land, nnUNet's and
+        # elastix's -- wherever TMPDIR/TEMP/TMP say: the tools folder, so a
+        # run uses the disk the user chose for the tools, not the system one.
+        run_scratch = self._scratch(f"run_{target}_")
+        environment = self._environment()
+        environment.update(TMPDIR=run_scratch, TEMP=run_scratch, TMP=run_scratch)
         if progress_cb:
             progress_cb(f"Starting {target} on this machine...")
-        job = run_tool.start(target, params, job_dir, env=self._environment(), data_dir=data_dir)
+        try:
+            job = run_tool.start(target, params, job_dir, env=environment, data_dir=data_dir)
+        except BaseException:
+            shutil.rmtree(run_scratch, ignore_errors=True)
+            raise
         with _RUNNING_LOCK:
             _RUNNING[target] = _RUNNING.get(target, 0) + 1
         if run_id:
@@ -511,6 +532,7 @@ class LocalToolClient:
             except run_tool.ToolFailed as error:
                 raise ServerToolError(f"{type(error).__name__}: {error}")
         finally:
+            shutil.rmtree(run_scratch, ignore_errors=True)
             with _RUNNING_LOCK:
                 _RUNNING[target] -= 1
                 if not _RUNNING[target]:
