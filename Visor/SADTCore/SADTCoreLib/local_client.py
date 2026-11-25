@@ -128,6 +128,7 @@ class LocalToolClient:
         # The installed tools (tools_store): where they are unless a developer
         # points the three variables at a checkout instead.
         self.store = store
+        self._runtime_checked = False  # see run(): the C++ runtime on Windows
         self._scripts_dir = (scripts_dir or os.environ.get(SCRIPTS_VARIABLE, "")
                              or (store.scripts_dir if store else ""))
         self._tools_dir = (tools_dir or os.environ.get(TOOLS_VARIABLE, "")
@@ -458,6 +459,11 @@ class LocalToolClient:
     def run(self, tool_name, args=None, files=None, output_dir=None, progress_cb=None,
             run_id=None, event_cb=None, cancel_event=None, batch=None, **_):
         """Run the tool and wait for it, on the caller's (worker) thread."""
+        if self.store is not None and not self._runtime_checked:
+            # Windows without the C++ runtime: tools installed before the store
+            # put Slicer's copy beside their Python get it now, once a session.
+            self.store.ensure_vc_runtime()
+            self._runtime_checked = True
         run_tool = self._supervisor(tool_name)
         schema = self.get_tool_schema(tool_name)
         name = self._resolve_name(tool_name, list(self._tool_folders(tool_name)) + list(local_schema.FACADES))
