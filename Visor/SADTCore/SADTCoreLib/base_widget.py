@@ -2211,7 +2211,10 @@ class ServerToolWidgetBase(ScriptedLoadableModuleWidget, VTKObservationMixin):
         prepared = []
         try:
             for batch in batches:
-                workspace = slicer_io.TempWorkspace()
+                # A local run: the scans exported from the scene go to the tools'
+                # disk, like everything else the run writes.
+                scratch = getattr(self.client, "scratch_dir", None)
+                workspace = slicer_io.TempWorkspace(dir=scratch() if callable(scratch) else None)
                 workspace.__enter__()
                 try:
                     # Called with one argument when there is no batch, which is
