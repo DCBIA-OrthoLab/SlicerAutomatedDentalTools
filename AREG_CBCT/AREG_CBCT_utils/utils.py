@@ -20,6 +20,7 @@ from ADTLib.naming import patient_id as read_patient_id
 # --- LOGGING CONFIGURATION ---
 from ADTLib.logging_setup import get_logger
 from ADTLib.io.landmarks import WriteJson  # noqa: F401  (re-exported)
+from ADTLib.io.dicom import convert_single_volume
 from ADTLib.io.fs import search as search_files
 
 logger = get_logger("AREG_CBCT_utils")
@@ -677,9 +678,9 @@ def convertdicom2nifti(input_folder, output_folder=None):
                     # ===== FALLBACK METHOD: dicom2nifti =====
                     try:
                         logger.debug(f"Attempting dicom2nifti conversion")
-                        dicom2nifti.convert_directory(current_directory, output_folder)
-                        nifti_file = search(output_folder, ["nii.gz"])["nii.gz"][0]
-                        os.rename(nifti_file, output_path)
+                        convert_single_volume(
+                            current_directory, output_path, dicom2nifti.convert_directory
+                        )
                         logger.info(f"Successfully converted {patient_context} using dicom2nifti")
                     except Exception as e2:
                         logger.error(f"Both conversion methods failed for {patient_context}: SimpleITK={str(e)}, dicom2nifti={str(e2)}")
