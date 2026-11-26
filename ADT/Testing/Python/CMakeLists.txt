@@ -22,6 +22,10 @@ slicer_add_python_unittest(SCRIPT test_cuda_channel.py)
 # both halves of the mistake, and neither raised until the step ran.
 slicer_add_python_unittest(SCRIPT test_context_managers.py)
 
+# The anonymizer writes nothing it could not anonymize: on an error it saved
+# the original text as the anonymized file, and announced a success.
+slicer_add_python_unittest(SCRIPT test_anonymizer_fail_closed.py)
+
 # The Semi-Automated ASO CBCT mode needs no prior transform: the published
 # test set has none, and the identity is the neutral value of that step.
 slicer_add_python_unittest(SCRIPT test_aso_cbct_optional_transform.py)
