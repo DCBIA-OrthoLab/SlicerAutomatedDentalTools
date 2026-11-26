@@ -3,6 +3,7 @@ import slicer
 from slicer.ScriptedLoadableModule import *
 import ctk
 import qt
+import re
 import uuid
 import warnings
 
@@ -24,6 +25,18 @@ from ADTLib.logging_setup import get_logger
 import csv
 
 logger = get_logger("Medical_Anonymizer")
+
+# What Presidio scores every phone number, before an English context word such
+# as "phone" raises it. A threshold above this finds almost none.
+PHONE_SCORE = 0.4
+
+# Two decimals or more in a row: a spacing, a point, a column of measurements.
+# Presidio takes many of them for phone numbers at that score. A token shaped
+# like 415.5550198 is left out, it can be one.
+MEASUREMENT_RUN = re.compile(
+    r"(?<![\w.+])-?(?:\d{1,2}\.\d+|\d{3}\.\d{1,3})"
+    r"(?:\s+-?(?:\d{1,2}\.\d+|\d{3}\.\d{1,3}))+(?!\.?\d)(?!\w)"
+)
 
 # Suppress Presidio multilingual warnings - we only use English
 os.environ['PRESIDIO_SUPPRESS_WARNINGS'] = '1'
@@ -140,7 +153,8 @@ class Medical_Data_Anonymizer_ModuleWidget(ScriptedLoadableModuleWidget):
         self.scoreThresholdSlider.maximum = 1.0
         self.scoreThresholdSlider.value = 0.5
         self.scoreThresholdSlider.singleStep = 0.05
-        self.scoreThresholdSlider.setToolTip("Confidence threshold for entity detection (0.0-1.0). Higher = more strict.")
+        self.scoreThresholdSlider.setToolTip("Confidence threshold for entity detection (0.0-1.0). Higher = more strict. "
+                                             f"Phone numbers are never held to more than {PHONE_SCORE}.")
         advanced_layout.addRow("Confidence Threshold:", self.scoreThresholdSlider)
 
         # Install Dependencies Button
@@ -718,13 +732,25 @@ class Medical_Data_Anonymizer_ModuleLogic(ScriptedLoadableModuleLogic):
         """
         try:
             
-            # Analyze text with detected language
-            results = analyzer.analyze(
-                text=text,
-                language='en',
-                entities=entities,
-                score_threshold=score_threshold
-            )
+            # Analyze text with detected language. Phone numbers have a threshold
+            # of their own, every other entity follows the slider.
+            lowest = score_threshold
+            if "PHONE_NUMBER" in entities:
+                lowest = min(score_threshold, PHONE_SCORE)
+            measurements = [match.span() for match in MEASUREMENT_RUN.finditer(text)]
+            results = [
+                result for result in analyzer.analyze(
+                    text=text,
+                    language='en',
+                    entities=entities,
+                    score_threshold=lowest
+                )
+                if result.score >= score_threshold or (
+                    result.entity_type == "PHONE_NUMBER"
+                    and not any(start <= result.start and result.end <= end
+                                for start, end in measurements)
+                )
+            ]
 
             # Define operators based on method
             if method == "replace":

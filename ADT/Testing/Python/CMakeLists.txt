@@ -6,6 +6,10 @@ slicer_add_python_unittest(SCRIPT test_naming.py)
 # check_lib_installed: version constraints, and the inherited spellings.
 slicer_add_python_unittest(SCRIPT test_deps.py)
 
+# A phone number is found at the default threshold, which sat above the score
+# Presidio gives them, and a row of measurements is not one.
+slicer_add_python_unittest(SCRIPT test_anonymizer_phone_threshold.py)
+
 # The progress channel, at both ends: what ALI CBCT prints, and what its
 # widget makes of it. The two disagreed and the bar never moved.
 slicer_add_python_unittest(SCRIPT test_ali_progress_contract.py)
